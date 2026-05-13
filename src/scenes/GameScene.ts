@@ -15,6 +15,7 @@ const PULSE_CANNON_MUZZLE_OFFSET = 36;
 const PULSE_TRAIL_OFFSET = 11;
 const PULSE_TRAIL_FADE_MS = 220;
 const PLAYER_SHIP_DISPLAY_SIZE = 118;
+const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -207,6 +208,7 @@ export class GameScene extends Phaser.Scene {
     const sprite = this.add.image(0, 0, PLAYER_SHIP_TEXTURE_KEY);
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplaySize(PLAYER_SHIP_DISPLAY_SIZE, PLAYER_SHIP_DISPLAY_SIZE);
+    sprite.setRotation(PLAYER_SHIP_VISUAL_ROTATION);
 
     const ship = this.add.container(x, y, [sprite]);
     ship.setDepth(10);
