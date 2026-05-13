@@ -20,3 +20,7 @@ export function createArenaSize(viewport: ViewportSize): ArenaSize {
 export function getArenaCenter(arena: ArenaSize): Phaser.Math.Vector2 {
   return new Phaser.Math.Vector2(arena.width / 2, arena.height / 2);
 }
+
+export function wrapCoordinate(value: number, max: number): number {
+  return ((value % max) + max) % max;
+}

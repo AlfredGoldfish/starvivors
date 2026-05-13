@@ -1,26 +1,45 @@
 import Phaser from 'phaser';
-import { createArenaSize, getArenaCenter, type ArenaSize } from '../core/arena';
+import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
+import { interceptorMovement } from '../data/balance';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
+  private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
   private starfield?: Phaser.GameObjects.Graphics;
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
 
   constructor() {
     super('GameScene');
   }
 
   create(): void {
+    this.createInput();
     this.rebuildWorld();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
 
-  update(): void {
+  update(_time: number, delta: number): void {
+    this.updatePlayerMovement(delta / 1000);
+    this.wrapPlayer();
     this.updateDebugText();
+  }
+
+  private createInput(): void {
+    if (!this.input.keyboard) {
+      throw new Error('Keyboard input is required for the STARVIVORS scaffold.');
+    }
+
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as Record<
+      'W' | 'A' | 'S' | 'D',
+      Phaser.Input.Keyboard.Key
+    >;
   }
 
   private rebuildWorld(): void {
@@ -30,6 +49,7 @@ export class GameScene extends Phaser.Scene {
 
     this.children.removeAll(true);
     this.cameras.main.setBounds(0, 0, this.arena.width, this.arena.height);
+    this.playerVelocity.set(0, 0);
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -111,6 +131,44 @@ export class GameScene extends Phaser.Scene {
     return ship;
   }
 
+  private updatePlayerMovement(deltaSeconds: number): void {
+    if (!this.player) {
+      return;
+    }
+
+    const rotateLeft = this.wasdKeys.A.isDown || this.cursors.left.isDown;
+    const rotateRight = this.wasdKeys.D.isDown || this.cursors.right.isDown;
+    const thrustForward = this.wasdKeys.W.isDown || this.cursors.up.isDown;
+    const braking = this.wasdKeys.S.isDown || this.cursors.down.isDown;
+
+    if (rotateLeft) {
+      this.player.rotation -= interceptorMovement.rotationSpeed * deltaSeconds;
+    }
+
+    if (rotateRight) {
+      this.player.rotation += interceptorMovement.rotationSpeed * deltaSeconds;
+    }
+
+    if (thrustForward) {
+      this.playerVelocity.x += Math.sin(this.player.rotation) * interceptorMovement.thrustAcceleration * deltaSeconds;
+      this.playerVelocity.y -= Math.cos(this.player.rotation) * interceptorMovement.thrustAcceleration * deltaSeconds;
+    }
+
+    const damping = braking ? interceptorMovement.brakeDamping : interceptorMovement.lowFrictionDamping;
+    this.playerVelocity.scale(Math.pow(damping, deltaSeconds * 60));
+    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+
+    this.player.x += this.playerVelocity.x * deltaSeconds;
+    this.player.y += this.playerVelocity.y * deltaSeconds;
+  }
+
+  private wrapPlayer(): void {
+    this.player.setPosition(
+      wrapCoordinate(this.player.x, this.arena.width),
+      wrapCoordinate(this.player.y, this.arena.height)
+    );
+  }
+
   private updateDebugText(): void {
     if (!this.debugText || !this.player) {
       return;
@@ -124,7 +182,8 @@ export class GameScene extends Phaser.Scene {
       `FPS: ${fps}`,
       `Viewport: ${viewportWidth} x ${viewportHeight}`,
       `Arena: ${this.arena.width} x ${this.arena.height}`,
-      `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`
+      `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)`,
+      `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}`
     ]);
   }
 

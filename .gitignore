@@ -1,3 +1,4 @@
 *.zip
 node_modules/
 dist/
+.vite-dev-server.pid
