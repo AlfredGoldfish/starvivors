@@ -531,6 +531,8 @@ Enemies should be readable shapes with distinct movement and attack behavior.
 
 Asteroids are natural drifting hazards.
 
+The prototype supports four asteroid visual variants. Current spawning should choose a random visual variant for each asteroid so the arena has visual variety without changing gameplay behavior.
+
 They can:
 
 - Drift through the arena
@@ -539,6 +541,13 @@ They can:
 - Grant XP when destroyed
 - Drop scrap/minerals
 - Be pulled into black holes
+
+Future asteroid breakup rule:
+
+- Larger asteroids should break into smaller versions of themselves when destroyed.
+- Breakup fragments should preserve the parent asteroid's visual identity where practical.
+- Example: asteroid variant 2 should break into smaller asteroid variant 2 fragments, not unrelated random variants.
+- Breakup is planned for a later task and is not part of the current minimal asteroid implementation.
 
 ### Hazard Debris
 
@@ -1759,4 +1768,3 @@ These should be resolved in future design sessions.
 - Destroyed enemies create hazardous debris
 - Scrap/minerals become end-run currency
 - WIP content may appear visually but is not wired into active gameplay unless implemented
-

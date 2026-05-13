@@ -1,6 +1,10 @@
 import Phaser from 'phaser';
-import enemyShipUrl from '../../assets/spaceship_enemy_1.png';
-import playerShipUrl from '../../assets/spaceship_1.png';
+import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
+import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
+import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
+import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
+import enemyShipUrl from '../../assets/ships/spaceship_enemy_1.png';
+import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy } from '../data/enemies';
@@ -10,6 +14,12 @@ import { pulseCannon } from '../data/weapons';
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
+const ASTEROID_TEXTURES = [
+  { key: 'asteroid-variant-1', url: asteroidVariant1Url },
+  { key: 'asteroid-variant-2', url: asteroidVariant2Url },
+  { key: 'asteroid-variant-3', url: asteroidVariant3Url },
+  { key: 'asteroid-variant-4', url: asteroidVariant4Url }
+] as const;
 const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
 const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
 const BACKGROUND_TILE_SIZE = 1024;
@@ -26,6 +36,15 @@ const SECONDARY_THRUSTER_INTERVAL_MS = 42;
 const BASIC_ENEMY_COUNT = 6;
 const BASIC_ENEMY_DISPLAY_SIZE = 86;
 const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
+const BASIC_ASTEROID_COUNT = 9;
+const ASTEROID_MIN_DISPLAY_SIZE = 92;
+const ASTEROID_MAX_DISPLAY_SIZE = 148;
+const ASTEROID_MIN_DRIFT_SPEED = 18;
+const ASTEROID_MAX_DRIFT_SPEED = 46;
+const ASTEROID_MIN_ROTATION_SPEED = 0.08;
+const ASTEROID_MAX_ROTATION_SPEED = 0.26;
+const ASTEROID_HIT_RADIUS_SCALE = 0.38;
+const ASTEROID_SAFE_SPAWN_RADIUS = 520;
 const PROJECTILE_HIT_RADIUS = 8;
 
 interface PulseCannonProjectile {
@@ -40,6 +59,13 @@ interface BasicEnemy {
   body: Phaser.GameObjects.Container;
 }
 
+interface BasicAsteroid {
+  body: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  rotationSpeed: number;
+  hitRadius: number;
+}
+
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
@@ -52,6 +78,7 @@ export class GameScene extends Phaser.Scene {
   private fireKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
+  private basicAsteroids: BasicAsteroid[] = [];
   private nextPulseCannonFireAt = 0;
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
@@ -64,6 +91,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
+    for (const asteroidTexture of ASTEROID_TEXTURES) {
+      this.load.image(asteroidTexture.key, asteroidTexture.url);
+    }
+
     this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyShipUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
   }
@@ -78,6 +109,7 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.updatePlayerMovement(time, delta / 1000);
     this.updateBasicEnemies(delta / 1000);
+    this.updateBasicAsteroids(delta / 1000);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
     this.wrapPlayer();
@@ -108,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.playerVelocity.set(0, 0);
     this.pulseCannonProjectiles = [];
     this.basicEnemies = [];
+    this.basicAsteroids = [];
     this.nextPulseCannonFireAt = 0;
     this.nextForwardThrusterAt = 0;
     this.nextReverseThrusterAt = 0;
@@ -118,6 +151,7 @@ export class GameScene extends Phaser.Scene {
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
     this.createBasicEnemies(center);
+    this.createBasicAsteroids(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
 
@@ -272,6 +306,46 @@ export class GameScene extends Phaser.Scene {
     return enemy;
   }
 
+  private createBasicAsteroids(center: Phaser.Math.Vector2): void {
+    for (let index = 0; index < BASIC_ASTEROID_COUNT; index += 1) {
+      let x = Phaser.Math.Between(0, this.arena.width);
+      let y = Phaser.Math.Between(0, this.arena.height);
+      const offsetFromPlayer = this.getWrappedDirection(center.x, center.y, x, y);
+
+      if (offsetFromPlayer.length() < ASTEROID_SAFE_SPAWN_RADIUS) {
+        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+        x = wrapCoordinate(center.x + Math.cos(angle) * ASTEROID_SAFE_SPAWN_RADIUS, this.arena.width);
+        y = wrapCoordinate(center.y + Math.sin(angle) * ASTEROID_SAFE_SPAWN_RADIUS, this.arena.height);
+      }
+
+      const displaySize = Phaser.Math.Between(ASTEROID_MIN_DISPLAY_SIZE, ASTEROID_MAX_DISPLAY_SIZE);
+      const driftAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const driftSpeed = Phaser.Math.FloatBetween(ASTEROID_MIN_DRIFT_SPEED, ASTEROID_MAX_DRIFT_SPEED);
+
+      this.basicAsteroids.push({
+        body: this.createBasicAsteroid(x, y, displaySize),
+        velocity: new Phaser.Math.Vector2(Math.cos(driftAngle) * driftSpeed, Math.sin(driftAngle) * driftSpeed),
+        rotationSpeed:
+          Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
+          (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
+        hitRadius: displaySize * ASTEROID_HIT_RADIUS_SCALE
+      });
+    }
+  }
+
+  private createBasicAsteroid(x: number, y: number, displaySize: number): Phaser.GameObjects.Container {
+    const texture = ASTEROID_TEXTURES[Phaser.Math.Between(0, ASTEROID_TEXTURES.length - 1)];
+    const sprite = this.add.image(0, 0, texture.key);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(displaySize, displaySize);
+
+    const asteroid = this.add.container(x, y, [sprite]);
+    asteroid.setDepth(5);
+    asteroid.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+
+    return asteroid;
+  }
+
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
     if (!this.player) {
       return;
@@ -412,6 +486,14 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateBasicAsteroids(deltaSeconds: number): void {
+    for (const asteroid of this.basicAsteroids) {
+      asteroid.body.x = wrapCoordinate(asteroid.body.x + asteroid.velocity.x * deltaSeconds, this.arena.width);
+      asteroid.body.y = wrapCoordinate(asteroid.body.y + asteroid.velocity.y * deltaSeconds, this.arena.height);
+      asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
+    }
+  }
+
   private updatePulseCannon(time: number): void {
     const isFiring =
       this.fireKey.isDown || this.input.activePointer.leftButtonDown() || this.input.activePointer.rightButtonDown();
@@ -461,7 +543,7 @@ export class GameScene extends Phaser.Scene {
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
 
-      if (this.tryHitBasicEnemy(projectile)) {
+      if (this.tryHitBasicEnemy(projectile) || this.tryHitBasicAsteroid(projectile)) {
         projectile.body.destroy(true);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
@@ -514,6 +596,22 @@ export class GameScene extends Phaser.Scene {
       if (normalizedHit <= 1) {
         enemy.body.destroy(true);
         this.basicEnemies.splice(i, 1);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private tryHitBasicAsteroid(projectile: PulseCannonProjectile): boolean {
+    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
+      const asteroid = this.basicAsteroids[i];
+      const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, projectile.body.x, projectile.body.y);
+      const hitRadius = asteroid.hitRadius + PROJECTILE_HIT_RADIUS;
+
+      if (offset.lengthSq() <= hitRadius * hitRadius) {
+        asteroid.body.destroy(true);
+        this.basicAsteroids.splice(i, 1);
         return true;
       }
     }
@@ -583,7 +681,8 @@ export class GameScene extends Phaser.Scene {
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
-        `Enemies: ${this.basicEnemies.length} active`
+        `Enemies: ${this.basicEnemies.length} active\n` +
+        `Asteroids: ${this.basicAsteroids.length} active`
     );
   }
 
