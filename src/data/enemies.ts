@@ -4,7 +4,8 @@ import { basicEnemyBalance } from './balance';
 export interface EnemyRegistryEntry extends ContentRegistryEntry {
   displayName: string;
   moveSpeed: number;
-  hitRadius: number;
+  hitHalfWidth: number;
+  hitHalfLength: number;
 }
 
 export const basicEnemy: EnemyRegistryEntry = {
@@ -12,7 +13,8 @@ export const basicEnemy: EnemyRegistryEntry = {
   displayName: 'Basic Enemy',
   status: 'Implemented',
   moveSpeed: basicEnemyBalance.moveSpeed,
-  hitRadius: basicEnemyBalance.hitRadius
+  hitHalfWidth: basicEnemyBalance.hitHalfWidth,
+  hitHalfLength: basicEnemyBalance.hitHalfLength
 };
 
 export const enemyRegistry: EnemyRegistryEntry[] = [basicEnemy];

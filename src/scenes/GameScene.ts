@@ -499,14 +499,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryHitBasicEnemy(projectile: PulseCannonProjectile): boolean {
-    const hitRadius = basicEnemy.hitRadius + PROJECTILE_HIT_RADIUS;
-    const hitRadiusSq = hitRadius * hitRadius;
+    const hitHalfWidth = basicEnemy.hitHalfWidth + PROJECTILE_HIT_RADIUS;
+    const hitHalfLength = basicEnemy.hitHalfLength + PROJECTILE_HIT_RADIUS;
 
     for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.basicEnemies[i];
-      const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, enemy.body.x, enemy.body.y);
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const localX = offset.dot(enemyRight);
+      const localY = offset.dot(enemyForward);
+      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
 
-      if (offset.lengthSq() <= hitRadiusSq) {
+      if (normalizedHit <= 1) {
         enemy.body.destroy(true);
         this.basicEnemies.splice(i, 1);
         return true;

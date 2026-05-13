@@ -17,5 +17,6 @@ export const pulseCannonBalance = {
 
 export const basicEnemyBalance = {
   moveSpeed: 95,
-  hitRadius: 34
+  hitHalfWidth: 19,
+  hitHalfLength: 25
 };
