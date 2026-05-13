@@ -1,5 +1,7 @@
 export const interceptorMovement = {
   thrustAcceleration: 560,
+  reverseThrustAcceleration: 335,
+  strafeThrustAcceleration: 225,
   rotationSpeed: 3.6,
   brakeDamping: 0.9,
   lowFrictionDamping: 0.995,

@@ -83,6 +83,7 @@ export class GameScene extends Phaser.Scene {
       throw new Error('Keyboard input is required for the STARVIVORS scaffold.');
     }
 
+    this.input.mouse?.disableContextMenu();
     this.cursors = this.input.keyboard.createCursorKeys();
     this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as Record<
       'W' | 'A' | 'S' | 'D',
@@ -265,30 +266,50 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const rotateLeft = this.wasdKeys.A.isDown || this.cursors.left.isDown;
-    const rotateRight = this.wasdKeys.D.isDown || this.cursors.right.isDown;
+    this.updatePlayerFacing();
+
+    const strafeLeft = this.wasdKeys.A.isDown || this.cursors.left.isDown;
+    const strafeRight = this.wasdKeys.D.isDown || this.cursors.right.isDown;
     const thrustForward = this.wasdKeys.W.isDown || this.cursors.up.isDown;
-    const braking = this.wasdKeys.S.isDown || this.cursors.down.isDown;
-
-    if (rotateLeft) {
-      this.player.rotation -= interceptorMovement.rotationSpeed * deltaSeconds;
-    }
-
-    if (rotateRight) {
-      this.player.rotation += interceptorMovement.rotationSpeed * deltaSeconds;
-    }
+    const thrustReverse = this.wasdKeys.S.isDown || this.cursors.down.isDown;
+    const forward = this.getForwardDirection(this.player.rotation);
+    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
 
     if (thrustForward) {
-      this.playerVelocity.x += Math.sin(this.player.rotation) * interceptorMovement.thrustAcceleration * deltaSeconds;
-      this.playerVelocity.y -= Math.cos(this.player.rotation) * interceptorMovement.thrustAcceleration * deltaSeconds;
+      this.playerVelocity.x += forward.x * interceptorMovement.thrustAcceleration * deltaSeconds;
+      this.playerVelocity.y += forward.y * interceptorMovement.thrustAcceleration * deltaSeconds;
     }
 
-    const damping = braking ? interceptorMovement.brakeDamping : interceptorMovement.lowFrictionDamping;
-    this.playerVelocity.scale(Math.pow(damping, deltaSeconds * 60));
+    if (thrustReverse) {
+      this.playerVelocity.x -= forward.x * interceptorMovement.reverseThrustAcceleration * deltaSeconds;
+      this.playerVelocity.y -= forward.y * interceptorMovement.reverseThrustAcceleration * deltaSeconds;
+    }
+
+    if (strafeLeft) {
+      this.playerVelocity.x -= right.x * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+      this.playerVelocity.y -= right.y * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+    }
+
+    if (strafeRight) {
+      this.playerVelocity.x += right.x * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+      this.playerVelocity.y += right.y * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+    }
+
+    this.playerVelocity.scale(Math.pow(interceptorMovement.lowFrictionDamping, deltaSeconds * 60));
     this.playerVelocity.limit(interceptorMovement.maxSpeed);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
+  }
+
+  private updatePlayerFacing(): void {
+    const pointer = this.input.activePointer;
+    const pointerWorld = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const direction = this.getWrappedDirection(this.player.x, this.player.y, pointerWorld.x, pointerWorld.y);
+
+    if (direction.lengthSq() > 0) {
+      this.player.rotation = Math.atan2(direction.x, -direction.y);
+    }
   }
 
   private wrapPlayer(): void {
@@ -317,7 +338,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePulseCannon(time: number): void {
-    const isFiring = this.fireKey.isDown || this.input.activePointer.leftButtonDown();
+    const isFiring =
+      this.fireKey.isDown || this.input.activePointer.leftButtonDown() || this.input.activePointer.rightButtonDown();
 
     if (!isFiring || time < this.nextPulseCannonFireAt) {
       return;
@@ -328,7 +350,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private firePulseCannon(time: number): void {
-    const direction = new Phaser.Math.Vector2(Math.sin(this.player.rotation), -Math.cos(this.player.rotation));
+    const direction = this.getForwardDirection(this.player.rotation);
     const spawnX = this.player.x + direction.x * PULSE_CANNON_MUZZLE_OFFSET;
     const spawnY = this.player.y + direction.y * PULSE_CANNON_MUZZLE_OFFSET;
     const body = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
@@ -432,6 +454,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     return new Phaser.Math.Vector2(x, y);
+  }
+
+  private getForwardDirection(rotation: number): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(Math.sin(rotation), -Math.cos(rotation));
   }
 
   private updateBackgroundTiles(): void {
