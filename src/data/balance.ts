@@ -5,3 +5,10 @@ export const interceptorMovement = {
   lowFrictionDamping: 0.995,
   maxSpeed: 820
 };
+
+export const pulseCannonBalance = {
+  cooldownSeconds: 1.25,
+  projectileSpeed: 980,
+  projectileLifetimeSeconds: 1.4,
+  projectileRange: 1300
+};

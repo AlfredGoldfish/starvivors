@@ -2,12 +2,21 @@ import Phaser from 'phaser';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { interceptorMovement } from '../data/balance';
+import { pulseCannon } from '../data/weapons';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
 const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
 const BACKGROUND_TILE_SIZE = 1024;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
+const PULSE_CANNON_MUZZLE_OFFSET = 36;
+
+interface PulseCannonProjectile {
+  body: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  expiresAt: number;
+  distanceRemaining: number;
+}
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -18,6 +27,9 @@ export class GameScene extends Phaser.Scene {
   private grid!: Phaser.GameObjects.TileSprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
+  private fireKey!: Phaser.Input.Keyboard.Key;
+  private pulseCannonProjectiles: PulseCannonProjectile[] = [];
+  private nextPulseCannonFireAt = 0;
   private nextDebugUpdateAt = 0;
 
   constructor() {
@@ -33,6 +45,8 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     this.updatePlayerMovement(delta / 1000);
+    this.updatePulseCannon(time);
+    this.updatePulseCannonProjectiles(time, delta / 1000);
     this.wrapPlayer();
     this.updateBackgroundTiles();
     this.updateDebugText(time);
@@ -48,6 +62,7 @@ export class GameScene extends Phaser.Scene {
       'W' | 'A' | 'S' | 'D',
       Phaser.Input.Keyboard.Key
     >;
+    this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
   }
 
   private rebuildWorld(): void {
@@ -57,6 +72,8 @@ export class GameScene extends Phaser.Scene {
 
     this.children.removeAll(true);
     this.playerVelocity.set(0, 0);
+    this.pulseCannonProjectiles = [];
+    this.nextPulseCannonFireAt = 0;
     this.nextDebugUpdateAt = 0;
 
     this.createStarfield();
@@ -237,6 +254,59 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updatePulseCannon(time: number): void {
+    const isFiring = this.fireKey.isDown || this.input.activePointer.leftButtonDown();
+
+    if (!isFiring || time < this.nextPulseCannonFireAt) {
+      return;
+    }
+
+    this.firePulseCannon(time);
+    this.nextPulseCannonFireAt = time + pulseCannon.cooldownSeconds * 1000;
+  }
+
+  private firePulseCannon(time: number): void {
+    const direction = new Phaser.Math.Vector2(Math.sin(this.player.rotation), -Math.cos(this.player.rotation));
+    const spawnX = this.player.x + direction.x * PULSE_CANNON_MUZZLE_OFFSET;
+    const spawnY = this.player.y + direction.y * PULSE_CANNON_MUZZLE_OFFSET;
+    const body = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
+
+    this.pulseCannonProjectiles.push({
+      body,
+      velocity: direction.scale(pulseCannon.projectileSpeed),
+      expiresAt: time + pulseCannon.projectileLifetimeSeconds * 1000,
+      distanceRemaining: pulseCannon.projectileRange
+    });
+  }
+
+  private createPulseCannonProjectile(x: number, y: number, rotation: number): Phaser.GameObjects.Container {
+    const trail = this.add.rectangle(0, 10, 4, 24, 0x2b8cff, 0.62);
+    const core = this.add.circle(0, -7, 5, 0x73f2ff, 1);
+    const glow = this.add.circle(0, -7, 9, 0x42f5d7, 0.28);
+    const projectile = this.add.container(x, y, [trail, glow, core]);
+
+    projectile.setRotation(rotation);
+    projectile.setDepth(8);
+
+    return projectile;
+  }
+
+  private updatePulseCannonProjectiles(time: number, deltaSeconds: number): void {
+    for (let i = this.pulseCannonProjectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = this.pulseCannonProjectiles[i];
+      const travelDistance = pulseCannon.projectileSpeed * deltaSeconds;
+
+      projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
+      projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
+      projectile.distanceRemaining -= travelDistance;
+
+      if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
+        projectile.body.destroy(true);
+        this.pulseCannonProjectiles.splice(i, 1);
+      }
+    }
+  }
+
   private updateBackgroundTiles(): void {
     if (!this.starfield || !this.grid) {
       return;
@@ -269,7 +339,8 @@ export class GameScene extends Phaser.Scene {
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
-        `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}`
+        `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
+        `Pulse: ${this.pulseCannonProjectiles.length} active`
     );
   }
 
