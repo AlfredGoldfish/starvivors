@@ -1,11 +1,14 @@
 import Phaser from 'phaser';
+import enemyShipUrl from '../../assets/spaceship_enemy_1.png';
 import playerShipUrl from '../../assets/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
+import { basicEnemy } from '../data/enemies';
 import { interceptorMovement } from '../data/balance';
 import { pulseCannon } from '../data/weapons';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
+const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
 const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
 const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
@@ -17,6 +20,10 @@ const PULSE_TRAIL_FADE_MS = 220;
 const PULSE_TRAIL_INTERVAL_MS = 28;
 const PLAYER_SHIP_DISPLAY_SIZE = 118;
 const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
+const BASIC_ENEMY_COUNT = 6;
+const BASIC_ENEMY_DISPLAY_SIZE = 86;
+const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
+const PROJECTILE_HIT_RADIUS = 8;
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -24,6 +31,10 @@ interface PulseCannonProjectile {
   expiresAt: number;
   distanceRemaining: number;
   nextTrailAt: number;
+}
+
+interface BasicEnemy {
+  body: Phaser.GameObjects.Container;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -37,6 +48,7 @@ export class GameScene extends Phaser.Scene {
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
+  private basicEnemies: BasicEnemy[] = [];
   private nextPulseCannonFireAt = 0;
   private nextDebugUpdateAt = 0;
 
@@ -45,6 +57,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
+    this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyShipUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
   }
 
@@ -57,6 +70,7 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number): void {
     this.updatePlayerMovement(delta / 1000);
+    this.updateBasicEnemies(delta / 1000);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
     this.wrapPlayer();
@@ -85,11 +99,13 @@ export class GameScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.playerVelocity.set(0, 0);
     this.pulseCannonProjectiles = [];
+    this.basicEnemies = [];
     this.nextPulseCannonFireAt = 0;
     this.nextDebugUpdateAt = 0;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
+    this.createBasicEnemies(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
 
@@ -218,6 +234,32 @@ export class GameScene extends Phaser.Scene {
     return ship;
   }
 
+  private createBasicEnemies(center: Phaser.Math.Vector2): void {
+    const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.78;
+
+    for (let index = 0; index < BASIC_ENEMY_COUNT; index += 1) {
+      const angle = (Math.PI * 2 * index) / BASIC_ENEMY_COUNT + Math.PI / 8;
+      const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
+
+      this.basicEnemies.push({
+        body: this.createBasicEnemy(x, y)
+      });
+    }
+  }
+
+  private createBasicEnemy(x: number, y: number): Phaser.GameObjects.Container {
+    const sprite = this.add.image(0, 0, BASIC_ENEMY_TEXTURE_KEY);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(BASIC_ENEMY_DISPLAY_SIZE, BASIC_ENEMY_DISPLAY_SIZE);
+    sprite.setRotation(BASIC_ENEMY_VISUAL_ROTATION);
+
+    const enemy = this.add.container(x, y, [sprite]);
+    enemy.setDepth(9);
+
+    return enemy;
+  }
+
   private updatePlayerMovement(deltaSeconds: number): void {
     if (!this.player) {
       return;
@@ -258,6 +300,19 @@ export class GameScene extends Phaser.Scene {
 
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
+    }
+  }
+
+  private updateBasicEnemies(deltaSeconds: number): void {
+    for (const enemy of this.basicEnemies) {
+      const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+
+      if (direction.lengthSq() > 0) {
+        direction.normalize();
+        enemy.body.x = wrapCoordinate(enemy.body.x + direction.x * basicEnemy.moveSpeed * deltaSeconds, this.arena.width);
+        enemy.body.y = wrapCoordinate(enemy.body.y + direction.y * basicEnemy.moveSpeed * deltaSeconds, this.arena.height);
+        enemy.body.rotation = Math.atan2(direction.x, -direction.y);
+      }
     }
   }
 
@@ -309,7 +364,10 @@ export class GameScene extends Phaser.Scene {
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
 
-      if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
+      if (this.tryHitBasicEnemy(projectile)) {
+        projectile.body.destroy(true);
+        this.pulseCannonProjectiles.splice(i, 1);
+      } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
         projectile.body.destroy(true);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.nextTrailAt) {
@@ -341,6 +399,39 @@ export class GameScene extends Phaser.Scene {
       ease: 'Quad.easeOut',
       onComplete: () => particle.destroy()
     });
+  }
+
+  private tryHitBasicEnemy(projectile: PulseCannonProjectile): boolean {
+    const hitRadius = basicEnemy.hitRadius + PROJECTILE_HIT_RADIUS;
+    const hitRadiusSq = hitRadius * hitRadius;
+
+    for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.basicEnemies[i];
+      const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, enemy.body.x, enemy.body.y);
+
+      if (offset.lengthSq() <= hitRadiusSq) {
+        enemy.body.destroy(true);
+        this.basicEnemies.splice(i, 1);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private getWrappedDirection(fromX: number, fromY: number, toX: number, toY: number): Phaser.Math.Vector2 {
+    let x = toX - fromX;
+    let y = toY - fromY;
+
+    if (Math.abs(x) > this.arena.width / 2) {
+      x -= Math.sign(x) * this.arena.width;
+    }
+
+    if (Math.abs(y) > this.arena.height / 2) {
+      y -= Math.sign(y) * this.arena.height;
+    }
+
+    return new Phaser.Math.Vector2(x, y);
   }
 
   private updateBackgroundTiles(): void {
@@ -376,7 +467,8 @@ export class GameScene extends Phaser.Scene {
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
-        `Pulse: ${this.pulseCannonProjectiles.length} active`
+        `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
+        `Enemies: ${this.basicEnemies.length} active`
     );
   }
 

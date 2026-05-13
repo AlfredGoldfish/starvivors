@@ -12,3 +12,8 @@ export const pulseCannonBalance = {
   projectileLifetimeSeconds: 1.4,
   projectileRange: 1300
 };
+
+export const basicEnemyBalance = {
+  moveSpeed: 95,
+  hitRadius: 34
+};
