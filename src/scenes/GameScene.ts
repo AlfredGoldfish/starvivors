@@ -4,15 +4,21 @@ import { getViewportSize } from '../core/viewport';
 import { interceptorMovement } from '../data/balance';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
+const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
+const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
+const BACKGROUND_TILE_SIZE = 1024;
+const DEBUG_UPDATE_INTERVAL_MS = 150;
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
-  private starfield?: Phaser.GameObjects.Graphics;
+  private starfield!: Phaser.GameObjects.TileSprite;
+  private grid!: Phaser.GameObjects.TileSprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
+  private nextDebugUpdateAt = 0;
 
   constructor() {
     super('GameScene');
@@ -20,14 +26,16 @@ export class GameScene extends Phaser.Scene {
 
   create(): void {
     this.createInput();
+    this.createBackgroundTextures();
     this.rebuildWorld();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     this.updatePlayerMovement(delta / 1000);
     this.wrapPlayer();
-    this.updateDebugText();
+    this.updateBackgroundTiles();
+    this.updateDebugText(time);
   }
 
   private createInput(): void {
@@ -50,6 +58,7 @@ export class GameScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.cameras.main.setBounds(0, 0, this.arena.width, this.arena.height);
     this.playerVelocity.set(0, 0);
+    this.nextDebugUpdateAt = 0;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -67,50 +76,105 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
-    this.updateDebugText();
+    this.updateDebugText(0);
+  }
+
+  private createBackgroundTextures(): void {
+    if (!this.textures.exists(STARFIELD_TEXTURE_KEY)) {
+      const starTexture = this.textures.createCanvas(
+        STARFIELD_TEXTURE_KEY,
+        BACKGROUND_TILE_SIZE,
+        BACKGROUND_TILE_SIZE
+      );
+
+      if (starTexture) {
+        const context = starTexture.getContext();
+        const random = new Phaser.Math.RandomDataGenerator(['starvivors-starfield-tile']);
+
+        context.fillStyle = '#02040a';
+        context.fillRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
+
+        for (let i = 0; i < 220; i += 1) {
+          const x = random.between(0, BACKGROUND_TILE_SIZE);
+          const y = random.between(0, BACKGROUND_TILE_SIZE);
+          const radius = random.realInRange(0.5, 1.7);
+          const alpha = random.realInRange(0.35, 0.95);
+          const color = Phaser.Display.Color.IntegerToColor(Phaser.Utils.Array.GetRandom(STAR_COLORS));
+
+          context.globalAlpha = alpha;
+          context.fillStyle = color.rgba;
+          context.beginPath();
+          context.arc(x, y, radius, 0, Math.PI * 2);
+          context.fill();
+        }
+
+        context.globalAlpha = 1;
+        starTexture.refresh();
+      }
+    }
+
+    if (!this.textures.exists(GRID_TEXTURE_KEY)) {
+      const gridTexture = this.textures.createCanvas(GRID_TEXTURE_KEY, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
+
+      if (gridTexture) {
+        const context = gridTexture.getContext();
+        this.drawTacticalGridTexture(context);
+        gridTexture.refresh();
+      }
+    }
   }
 
   private createStarfield(): void {
-    const graphics = this.add.graphics();
-    graphics.fillStyle(0x02040a, 1);
-    graphics.fillRect(0, 0, this.arena.width, this.arena.height);
+    this.starfield = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_TEXTURE_KEY)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-20);
 
-    const random = new Phaser.Math.RandomDataGenerator(['starvivors-scaffold']);
-    const starCount = Math.floor((this.arena.width * this.arena.height) / 22000);
+    this.grid = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, GRID_TEXTURE_KEY)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-10);
 
-    for (let i = 0; i < starCount; i += 1) {
-      const x = random.between(0, this.arena.width);
-      const y = random.between(0, this.arena.height);
-      const radius = random.realInRange(0.6, 1.8);
-      const alpha = random.realInRange(0.35, 0.95);
-      const color = Phaser.Utils.Array.GetRandom(STAR_COLORS);
-
-      graphics.fillStyle(color, alpha);
-      graphics.fillCircle(x, y, radius);
-    }
-
-    this.drawTacticalGrid(graphics);
-    this.starfield = graphics;
+    this.updateBackgroundTiles();
   }
 
-  private drawTacticalGrid(graphics: Phaser.GameObjects.Graphics): void {
-    const majorLine = 960;
+  private drawTacticalGridTexture(context: CanvasRenderingContext2D): void {
+    const majorLine = 480;
     const minorLine = 240;
 
-    graphics.lineStyle(1, 0x12324a, 0.12);
-    for (let x = 0; x <= this.arena.width; x += minorLine) {
-      graphics.lineBetween(x, 0, x, this.arena.height);
-    }
-    for (let y = 0; y <= this.arena.height; y += minorLine) {
-      graphics.lineBetween(0, y, this.arena.width, y);
+    context.clearRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
+    context.lineWidth = 1;
+    context.strokeStyle = 'rgba(18, 50, 74, 0.28)';
+
+    for (let x = 0; x <= BACKGROUND_TILE_SIZE; x += minorLine) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, BACKGROUND_TILE_SIZE);
+      context.stroke();
     }
 
-    graphics.lineStyle(1, 0x1de0ff, 0.2);
-    for (let x = 0; x <= this.arena.width; x += majorLine) {
-      graphics.lineBetween(x, 0, x, this.arena.height);
+    for (let y = 0; y <= BACKGROUND_TILE_SIZE; y += minorLine) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(BACKGROUND_TILE_SIZE, y);
+      context.stroke();
     }
-    for (let y = 0; y <= this.arena.height; y += majorLine) {
-      graphics.lineBetween(0, y, this.arena.width, y);
+
+    context.strokeStyle = 'rgba(29, 224, 255, 0.34)';
+    for (let x = 0; x <= BACKGROUND_TILE_SIZE; x += majorLine) {
+      context.beginPath();
+      context.moveTo(x, 0);
+      context.lineTo(x, BACKGROUND_TILE_SIZE);
+      context.stroke();
+    }
+
+    for (let y = 0; y <= BACKGROUND_TILE_SIZE; y += majorLine) {
+      context.beginPath();
+      context.moveTo(0, y);
+      context.lineTo(BACKGROUND_TILE_SIZE, y);
+      context.stroke();
     }
   }
 
@@ -169,26 +233,43 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private updateDebugText(): void {
+  private updateBackgroundTiles(): void {
+    if (!this.starfield || !this.grid) {
+      return;
+    }
+
+    // Tile sprites replace the old full-arena live Graphics object, avoiding thousands of vector draws each frame.
+    this.starfield.tilePositionX = this.cameras.main.scrollX * 0.45;
+    this.starfield.tilePositionY = this.cameras.main.scrollY * 0.45;
+    this.grid.tilePositionX = this.cameras.main.scrollX;
+    this.grid.tilePositionY = this.cameras.main.scrollY;
+  }
+
+  private updateDebugText(time: number): void {
     if (!this.debugText || !this.player) {
       return;
     }
+
+    if (time < this.nextDebugUpdateAt) {
+      return;
+    }
+
+    this.nextDebugUpdateAt = time + DEBUG_UPDATE_INTERVAL_MS;
 
     const fps = Math.round(this.game.loop.actualFps);
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
 
-    this.debugText.setText([
-      `FPS: ${fps}`,
-      `Viewport: ${viewportWidth} x ${viewportHeight}`,
-      `Arena: ${this.arena.width} x ${this.arena.height}`,
-      `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)`,
-      `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}`
-    ]);
+    this.debugText.setText(
+      `FPS: ${fps}\n` +
+        `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
+        `Arena: ${this.arena.width} x ${this.arena.height}\n` +
+        `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
+        `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}`
+    );
   }
 
   private handleResize(): void {
-    this.starfield?.destroy();
     this.rebuildWorld();
   }
 }
