@@ -10,6 +10,8 @@ const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
 const BACKGROUND_TILE_SIZE = 1024;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
+const PULSE_TRAIL_OFFSET = 11;
+const PULSE_TRAIL_FADE_MS = 220;
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -195,17 +197,43 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
-    const body = this.add.triangle(0, 0, 0, -28, 22, 24, 0, 14, 0x73f2ff, 1);
-    body.setStrokeStyle(2, 0xf2fbff, 1);
+    const hullPoints = [
+      0,
+      -34,
+      18,
+      -12,
+      25,
+      18,
+      9,
+      27,
+      0,
+      16,
+      -9,
+      27,
+      -25,
+      18,
+      -18,
+      -12
+    ];
+    const hull = this.add.polygon(0, 0, hullPoints, 0x2b8cff, 0.92);
+    hull.setStrokeStyle(2, 0xc8f7ff, 1);
 
-    const leftWing = this.add.triangle(-14, 10, 0, -10, -24, 24, 2, 16, 0x2b8cff, 0.9);
-    leftWing.setStrokeStyle(1, 0x9fd8ff, 0.9);
+    const innerHull = this.add.polygon(0, 2, [0, -22, 10, -7, 7, 13, 0, 8, -7, 13, -10, -7], 0x73f2ff, 0.5);
+    innerHull.setStrokeStyle(1, 0x9fd8ff, 0.7);
 
-    const rightWing = this.add.triangle(14, 10, 0, -10, 24, 24, -2, 16, 0x2b8cff, 0.9);
-    rightWing.setStrokeStyle(1, 0x9fd8ff, 0.9);
+    const cockpit = this.add.ellipse(0, -7, 8, 14, 0xf2fbff, 0.95);
+    cockpit.setStrokeStyle(1, 0x42f5d7, 0.85);
 
-    const cockpit = this.add.circle(0, 2, 5, 0xffffff, 0.9);
-    const ship = this.add.container(x, y, [leftWing, rightWing, body, cockpit]);
+    const leftPanel = this.add.line(0, 0, -7, 5, -20, 17, 0x9fd8ff, 0.65);
+    leftPanel.setLineWidth(1, 1);
+
+    const rightPanel = this.add.line(0, 0, 7, 5, 20, 17, 0x9fd8ff, 0.65);
+    rightPanel.setLineWidth(1, 1);
+
+    const noseAccent = this.add.line(0, 0, 0, -29, 0, -18, 0xf2fbff, 0.78);
+    noseAccent.setLineWidth(2, 1);
+
+    const ship = this.add.container(x, y, [hull, innerHull, cockpit, leftPanel, rightPanel, noseAccent]);
     ship.setDepth(10);
 
     return ship;
@@ -280,10 +308,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPulseCannonProjectile(x: number, y: number, rotation: number): Phaser.GameObjects.Container {
-    const trail = this.add.rectangle(0, 10, 4, 24, 0x2b8cff, 0.62);
-    const core = this.add.circle(0, -7, 5, 0x73f2ff, 1);
-    const glow = this.add.circle(0, -7, 9, 0x42f5d7, 0.28);
-    const projectile = this.add.container(x, y, [trail, glow, core]);
+    const glow = this.add.ellipse(0, 0, 18, 24, 0x42f5d7, 0.3);
+    const body = this.add.ellipse(0, 0, 8, 15, 0x73f2ff, 1);
+    body.setStrokeStyle(1, 0xf2fbff, 0.95);
+
+    const projectile = this.add.container(x, y, [glow, body]);
 
     projectile.setRotation(rotation);
     projectile.setDepth(8);
@@ -303,8 +332,31 @@ export class GameScene extends Phaser.Scene {
       if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
         projectile.body.destroy(true);
         this.pulseCannonProjectiles.splice(i, 1);
+      } else {
+        this.emitPulseCannonTrail(projectile);
       }
     }
+  }
+
+  private emitPulseCannonTrail(projectile: PulseCannonProjectile): void {
+    const trailDirection = new Phaser.Math.Vector2(-Math.sin(projectile.body.rotation), Math.cos(projectile.body.rotation));
+    const sideDirection = new Phaser.Math.Vector2(Math.cos(projectile.body.rotation), Math.sin(projectile.body.rotation));
+    const jitter = Phaser.Math.FloatBetween(-2, 2);
+    const x = projectile.body.x + trailDirection.x * PULSE_TRAIL_OFFSET + sideDirection.x * jitter;
+    const y = projectile.body.y + trailDirection.y * PULSE_TRAIL_OFFSET + sideDirection.y * jitter;
+    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2, 4), 0x42f5d7, 0.62);
+
+    particle.setDepth(7);
+    particle.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: particle,
+      alpha: 0,
+      scale: 0.18,
+      duration: PULSE_TRAIL_FADE_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => particle.destroy()
+    });
   }
 
   private updateBackgroundTiles(): void {
