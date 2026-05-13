@@ -1,10 +1,12 @@
 import Phaser from 'phaser';
+import playerShipUrl from '../../assets/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { interceptorMovement } from '../data/balance';
 import { pulseCannon } from '../data/weapons';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
+const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
 const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
 const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
 const BACKGROUND_TILE_SIZE = 1024;
@@ -12,6 +14,7 @@ const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
 const PULSE_TRAIL_OFFSET = 11;
 const PULSE_TRAIL_FADE_MS = 220;
+const PLAYER_SHIP_DISPLAY_SIZE = 118;
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -36,6 +39,10 @@ export class GameScene extends Phaser.Scene {
 
   constructor() {
     super('GameScene');
+  }
+
+  preload(): void {
+    this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
   }
 
   create(): void {
@@ -197,43 +204,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
-    const hullPoints = [
-      0,
-      -34,
-      18,
-      -12,
-      25,
-      18,
-      9,
-      27,
-      0,
-      16,
-      -9,
-      27,
-      -25,
-      18,
-      -18,
-      -12
-    ];
-    const hull = this.add.polygon(0, 0, hullPoints, 0x2b8cff, 0.92);
-    hull.setStrokeStyle(2, 0xc8f7ff, 1);
+    const sprite = this.add.image(0, 0, PLAYER_SHIP_TEXTURE_KEY);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(PLAYER_SHIP_DISPLAY_SIZE, PLAYER_SHIP_DISPLAY_SIZE);
 
-    const innerHull = this.add.polygon(0, 2, [0, -22, 10, -7, 7, 13, 0, 8, -7, 13, -10, -7], 0x73f2ff, 0.5);
-    innerHull.setStrokeStyle(1, 0x9fd8ff, 0.7);
-
-    const cockpit = this.add.ellipse(0, -7, 8, 14, 0xf2fbff, 0.95);
-    cockpit.setStrokeStyle(1, 0x42f5d7, 0.85);
-
-    const leftPanel = this.add.line(0, 0, -7, 5, -20, 17, 0x9fd8ff, 0.65);
-    leftPanel.setLineWidth(1, 1);
-
-    const rightPanel = this.add.line(0, 0, 7, 5, 20, 17, 0x9fd8ff, 0.65);
-    rightPanel.setLineWidth(1, 1);
-
-    const noseAccent = this.add.line(0, 0, 0, -29, 0, -18, 0xf2fbff, 0.78);
-    noseAccent.setLineWidth(2, 1);
-
-    const ship = this.add.container(x, y, [hull, innerHull, cockpit, leftPanel, rightPanel, noseAccent]);
+    const ship = this.add.container(x, y, [sprite]);
     ship.setDepth(10);
 
     return ship;
