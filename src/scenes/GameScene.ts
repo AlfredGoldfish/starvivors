@@ -14,6 +14,7 @@ const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
 const PULSE_TRAIL_OFFSET = 11;
 const PULSE_TRAIL_FADE_MS = 220;
+const PULSE_TRAIL_INTERVAL_MS = 28;
 const PLAYER_SHIP_DISPLAY_SIZE = 118;
 const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
 
@@ -22,6 +23,7 @@ interface PulseCannonProjectile {
   velocity: Phaser.Math.Vector2;
   expiresAt: number;
   distanceRemaining: number;
+  nextTrailAt: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -280,7 +282,8 @@ export class GameScene extends Phaser.Scene {
       body,
       velocity: direction.scale(pulseCannon.projectileSpeed),
       expiresAt: time + pulseCannon.projectileLifetimeSeconds * 1000,
-      distanceRemaining: pulseCannon.projectileRange
+      distanceRemaining: pulseCannon.projectileRange,
+      nextTrailAt: time
     });
   }
 
@@ -309,25 +312,29 @@ export class GameScene extends Phaser.Scene {
       if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
         projectile.body.destroy(true);
         this.pulseCannonProjectiles.splice(i, 1);
-      } else {
+      } else if (time >= projectile.nextTrailAt) {
         this.emitPulseCannonTrail(projectile);
+        projectile.nextTrailAt = time + PULSE_TRAIL_INTERVAL_MS;
       }
     }
   }
 
   private emitPulseCannonTrail(projectile: PulseCannonProjectile): void {
-    const trailDirection = new Phaser.Math.Vector2(-Math.sin(projectile.body.rotation), Math.cos(projectile.body.rotation));
-    const sideDirection = new Phaser.Math.Vector2(Math.cos(projectile.body.rotation), Math.sin(projectile.body.rotation));
-    const jitter = Phaser.Math.FloatBetween(-2, 2);
+    const movementDirection = projectile.velocity.clone().normalize();
+    const trailDirection = movementDirection.clone().negate();
+    const sideDirection = new Phaser.Math.Vector2(-movementDirection.y, movementDirection.x);
+    const jitter = Phaser.Math.FloatBetween(-2.4, 2.4);
     const x = projectile.body.x + trailDirection.x * PULSE_TRAIL_OFFSET + sideDirection.x * jitter;
     const y = projectile.body.y + trailDirection.y * PULSE_TRAIL_OFFSET + sideDirection.y * jitter;
-    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2, 4), 0x42f5d7, 0.62);
+    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.2, 4.2), 0x42f5d7, 0.7);
 
     particle.setDepth(7);
     particle.setBlendMode(Phaser.BlendModes.ADD);
 
     this.tweens.add({
       targets: particle,
+      x: x + trailDirection.x * 12,
+      y: y + trailDirection.y * 12,
       alpha: 0,
       scale: 0.18,
       duration: PULSE_TRAIL_FADE_MS,
