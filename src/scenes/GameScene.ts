@@ -56,7 +56,6 @@ export class GameScene extends Phaser.Scene {
     const center = getArenaCenter(this.arena);
 
     this.children.removeAll(true);
-    this.cameras.main.setBounds(0, 0, this.arena.width, this.arena.height);
     this.playerVelocity.set(0, 0);
     this.nextDebugUpdateAt = 0;
 
@@ -227,10 +226,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private wrapPlayer(): void {
-    this.player.setPosition(
-      wrapCoordinate(this.player.x, this.arena.width),
-      wrapCoordinate(this.player.y, this.arena.height)
-    );
+    const wrappedX = wrapCoordinate(this.player.x, this.arena.width);
+    const wrappedY = wrapCoordinate(this.player.y, this.arena.height);
+    const didWrap = wrappedX !== this.player.x || wrappedY !== this.player.y;
+
+    this.player.setPosition(wrappedX, wrappedY);
+
+    if (didWrap) {
+      this.cameras.main.centerOn(wrappedX, wrappedY);
+    }
   }
 
   private updateBackgroundTiles(): void {
