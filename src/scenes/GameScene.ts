@@ -20,6 +20,9 @@ const PULSE_TRAIL_FADE_MS = 220;
 const PULSE_TRAIL_INTERVAL_MS = 28;
 const PLAYER_SHIP_DISPLAY_SIZE = 118;
 const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
+const THRUSTER_FADE_MS = 170;
+const FORWARD_THRUSTER_INTERVAL_MS = 26;
+const SECONDARY_THRUSTER_INTERVAL_MS = 42;
 const BASIC_ENEMY_COUNT = 6;
 const BASIC_ENEMY_DISPLAY_SIZE = 86;
 const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
@@ -50,6 +53,10 @@ export class GameScene extends Phaser.Scene {
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private nextPulseCannonFireAt = 0;
+  private nextForwardThrusterAt = 0;
+  private nextReverseThrusterAt = 0;
+  private nextLeftStrafeThrusterAt = 0;
+  private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
 
   constructor() {
@@ -69,7 +76,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    this.updatePlayerMovement(delta / 1000);
+    this.updatePlayerMovement(time, delta / 1000);
     this.updateBasicEnemies(delta / 1000);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
@@ -102,6 +109,10 @@ export class GameScene extends Phaser.Scene {
     this.pulseCannonProjectiles = [];
     this.basicEnemies = [];
     this.nextPulseCannonFireAt = 0;
+    this.nextForwardThrusterAt = 0;
+    this.nextReverseThrusterAt = 0;
+    this.nextLeftStrafeThrusterAt = 0;
+    this.nextRightStrafeThrusterAt = 0;
     this.nextDebugUpdateAt = 0;
 
     this.createStarfield();
@@ -261,7 +272,7 @@ export class GameScene extends Phaser.Scene {
     return enemy;
   }
 
-  private updatePlayerMovement(deltaSeconds: number): void {
+  private updatePlayerMovement(time: number, deltaSeconds: number): void {
     if (!this.player) {
       return;
     }
@@ -295,6 +306,8 @@ export class GameScene extends Phaser.Scene {
       this.playerVelocity.y += right.y * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
     }
 
+    this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
+
     this.playerVelocity.scale(Math.pow(interceptorMovement.lowFrictionDamping, deltaSeconds * 60));
     this.playerVelocity.limit(interceptorMovement.maxSpeed);
 
@@ -310,6 +323,68 @@ export class GameScene extends Phaser.Scene {
     if (direction.lengthSq() > 0) {
       this.player.rotation = Math.atan2(direction.x, -direction.y);
     }
+  }
+
+  private updateThrusterEffects(
+    time: number,
+    thrustForward: boolean,
+    thrustReverse: boolean,
+    strafeLeft: boolean,
+    strafeRight: boolean
+  ): void {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
+
+    if (thrustForward && time >= this.nextForwardThrusterAt) {
+      this.emitThrusterParticle({ x: -10, y: 39 }, forward.clone().negate(), 1, right);
+      this.emitThrusterParticle({ x: 10, y: 39 }, forward.clone().negate(), 1, right);
+      this.nextForwardThrusterAt = time + FORWARD_THRUSTER_INTERVAL_MS;
+    }
+
+    if (thrustReverse && time >= this.nextReverseThrusterAt) {
+      this.emitThrusterParticle({ x: -9, y: -34 }, forward, 0.62, right);
+      this.emitThrusterParticle({ x: 9, y: -34 }, forward, 0.62, right);
+      this.nextReverseThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+
+    if (strafeLeft && time >= this.nextLeftStrafeThrusterAt) {
+      this.emitThrusterParticle({ x: 35, y: 2 }, right, 0.48, right);
+      this.nextLeftStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+
+    if (strafeRight && time >= this.nextRightStrafeThrusterAt) {
+      this.emitThrusterParticle({ x: -35, y: 2 }, right.clone().negate(), 0.48, right);
+      this.nextRightStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+  }
+
+  private emitThrusterParticle(
+    localOffset: { x: number; y: number },
+    exhaustDirection: Phaser.Math.Vector2,
+    intensity: number,
+    right: Phaser.Math.Vector2
+  ): void {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const offset = this.getShipLocalOffset(localOffset.x, localOffset.y, forward, right);
+    const jitter = Phaser.Math.FloatBetween(-2.2, 2.2) * intensity;
+    const startX = this.player.x + offset.x + right.x * jitter;
+    const startY = this.player.y + offset.y + right.y * jitter;
+    const particle = this.add.circle(startX, startY, Phaser.Math.FloatBetween(2.2, 4.4) * intensity, 0x73f2ff, 0.75);
+    const travel = Phaser.Math.FloatBetween(14, 26) * intensity;
+
+    particle.setDepth(7);
+    particle.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: particle,
+      x: startX + exhaustDirection.x * travel,
+      y: startY + exhaustDirection.y * travel,
+      alpha: 0,
+      scale: 0.2,
+      duration: THRUSTER_FADE_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => particle.destroy()
+    });
   }
 
   private wrapPlayer(): void {
@@ -458,6 +533,15 @@ export class GameScene extends Phaser.Scene {
 
   private getForwardDirection(rotation: number): Phaser.Math.Vector2 {
     return new Phaser.Math.Vector2(Math.sin(rotation), -Math.cos(rotation));
+  }
+
+  private getShipLocalOffset(
+    localX: number,
+    localY: number,
+    forward: Phaser.Math.Vector2,
+    right: Phaser.Math.Vector2
+  ): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(right.x * localX - forward.x * localY, right.y * localX - forward.y * localY);
   }
 
   private updateBackgroundTiles(): void {
