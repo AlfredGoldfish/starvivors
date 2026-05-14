@@ -2008,8 +2008,8 @@ export class GameScene extends Phaser.Scene {
 
   private emitShipBulletImpactExplosion(x: number, y: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = 7;
-    const flash = this.add.circle(effectPosition.x, effectPosition.y, 7, 0xf2fbff, 0.52);
+    const particleCount = 10;
+    const flash = this.add.circle(effectPosition.x, effectPosition.y, 10, 0xf2fbff, 0.58);
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -2017,19 +2017,19 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: flash,
       alpha: 0,
-      scale: 1.8,
-      duration: 95,
+      scale: 2.1,
+      duration: 110,
       ease: 'Quad.easeOut',
       onComplete: () => flash.destroy()
     });
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(8, 20);
+      const distance = Phaser.Math.FloatBetween(12, 30);
       const particle = this.add.circle(
         effectPosition.x,
         effectPosition.y,
-        Phaser.Math.FloatBetween(1.4, 2.6),
+        Phaser.Math.FloatBetween(1.8, 3.4),
         Phaser.Utils.Array.GetRandom([0xf2fbff, 0xfff0b8, 0x73f2ff]),
         0.9
       );
@@ -2043,7 +2043,7 @@ export class GameScene extends Phaser.Scene {
         y: effectPosition.y + Math.sin(angle) * distance,
         alpha: 0,
         scale: 0.18,
-        duration: 120,
+        duration: 145,
         ease: 'Quad.easeOut',
         onComplete: () => particle.destroy()
       });
@@ -2052,15 +2052,15 @@ export class GameScene extends Phaser.Scene {
 
   private emitShipCollisionImpactExplosion(x: number, y: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = 6;
+    const particleCount = 9;
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(10, 28);
+      const distance = Phaser.Math.FloatBetween(16, 42);
       const particle = this.add.circle(
         effectPosition.x,
         effectPosition.y,
-        Phaser.Math.FloatBetween(1.6, 3),
+        Phaser.Math.FloatBetween(2.2, 4.2),
         Phaser.Utils.Array.GetRandom([0xff5964, 0xff8f4f, 0xffc857]),
         0.86
       );
