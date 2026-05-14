@@ -109,6 +109,8 @@ This uses the same toroidal arena wrapping helper as other world objects.
 
 Asteroids also maintain a render-only wrap mirror container. The normal asteroid body keeps the canonical gameplay position used for movement, collision, HP, impact, and breakup. The mirror is hidden unless the nearest toroidal visual copy is across an arena seam from the canonical position. This prevents living asteroids from appearing to disappear when the camera is near a wrapped arena edge.
 
+Enemies and Pulse Cannon projectiles use the same visual-only mirror approach. Their mirrors follow the source object's position, rotation, scale, alpha, visibility, and cleanup state, but they are not gameplay entities and do not participate in collision or damage.
+
 ## Projectile Hits
 
 Pulse Cannon projectiles check asteroids after enemy hit checks. A projectile hit:
@@ -130,6 +132,8 @@ asteroid.velocity.limit(tierConfig.maxVelocity);
 ```
 
 Higher-tier asteroids are harder to shove. Lower-tier asteroids are easier to shove.
+
+Asteroid hits emit a short spark burst at the nearest toroidal render position. This feedback is visual only and does not affect asteroid HP, velocity, collision, or breakup logic.
 
 ## Mass-Budgeted Breakup
 
@@ -179,6 +183,8 @@ velocity.limit(fragmentConfig.maxVelocity);
 ```
 
 Children inherit `62%` of parent velocity, add outward burst velocity, use random asteroid visual variants, and are pushed into the active `basicAsteroids` array as normal asteroids.
+
+Breakup emits a short ring and particle burst at the nearest toroidal render position. The effect scales modestly by parent tier and cleans itself up through tweens.
 
 ## Future Hooks
 

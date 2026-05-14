@@ -43,6 +43,8 @@ const ASTEROID_SAFE_SPAWN_RADIUS = 520;
 const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
 const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
 const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
+const ASTEROID_HIT_FEEDBACK_MS = 180;
+const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
 const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
 
@@ -118,6 +120,7 @@ const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   expiresAt: number;
   distanceRemaining: number;
@@ -126,6 +129,7 @@ interface PulseCannonProjectile {
 
 interface BasicEnemy {
   body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
 }
 
 interface BasicAsteroid {
@@ -374,9 +378,13 @@ export class GameScene extends Phaser.Scene {
       const angle = (Math.PI * 2 * index) / BASIC_ENEMY_COUNT + Math.PI / 8;
       const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
       const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
+      const body = this.createBasicEnemy(x, y);
+      const wrapMirrorBody = this.createBasicEnemy(x, y);
+      wrapMirrorBody.setVisible(false);
 
       this.basicEnemies.push({
-        body: this.createBasicEnemy(x, y)
+        body,
+        wrapMirrorBody
       });
     }
   }
@@ -388,6 +396,7 @@ export class GameScene extends Phaser.Scene {
     sprite.setRotation(BASIC_ENEMY_VISUAL_ROTATION);
 
     const enemy = this.add.container(x, y, [sprite]);
+    enemy.setSize(BASIC_ENEMY_DISPLAY_SIZE, BASIC_ENEMY_DISPLAY_SIZE);
     enemy.setDepth(9);
 
     return enemy;
@@ -620,6 +629,8 @@ export class GameScene extends Phaser.Scene {
         enemy.body.y = wrapCoordinate(enemy.body.y + direction.y * basicEnemy.moveSpeed * deltaSeconds, this.arena.height);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
+
+      this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, BASIC_ENEMY_DISPLAY_SIZE * 0.5);
     }
   }
 
@@ -654,9 +665,12 @@ export class GameScene extends Phaser.Scene {
     const spawnX = this.player.x + direction.x * PULSE_CANNON_MUZZLE_OFFSET;
     const spawnY = this.player.y + direction.y * PULSE_CANNON_MUZZLE_OFFSET;
     const body = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
+    const wrapMirrorBody = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
+    wrapMirrorBody.setVisible(false);
 
     this.pulseCannonProjectiles.push({
       body,
+      wrapMirrorBody,
       velocity: direction.scale(pulseCannon.projectileSpeed),
       expiresAt: time + pulseCannon.projectileLifetimeSeconds * 1000,
       distanceRemaining: pulseCannon.projectileRange,
@@ -671,6 +685,7 @@ export class GameScene extends Phaser.Scene {
 
     const projectile = this.add.container(x, y, [glow, body]);
 
+    projectile.setSize(18, 24);
     projectile.setRotation(rotation);
     projectile.setDepth(8);
 
@@ -685,12 +700,13 @@ export class GameScene extends Phaser.Scene {
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
+      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
 
       if (this.tryHitBasicEnemy(projectile) || this.tryHitBasicAsteroid(projectile)) {
-        projectile.body.destroy(true);
+        this.destroyPulseCannonProjectile(projectile);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-        projectile.body.destroy(true);
+        this.destroyPulseCannonProjectile(projectile);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.nextTrailAt) {
         this.emitPulseCannonTrail(projectile);
@@ -723,6 +739,80 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private destroyPulseCannonProjectile(projectile: PulseCannonProjectile): void {
+    projectile.body.destroy(true);
+    projectile.wrapMirrorBody.destroy(true);
+  }
+
+  private emitAsteroidHitFeedback(x: number, y: number, tier: AsteroidTier): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(x, y);
+    x = effectPosition.x;
+    y = effectPosition.y;
+    const particleCount = Phaser.Math.Clamp(tier + 2, 3, 7);
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(10, 24);
+      const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(1.7, 3.2), 0xf2fbff, 0.86);
+
+      particle.setDepth(11);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.25,
+        duration: ASTEROID_HIT_FEEDBACK_MS,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  private emitAsteroidBreakupFeedback(x: number, y: number, tier: AsteroidTier): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(x, y);
+    x = effectPosition.x;
+    y = effectPosition.y;
+    const tierConfig = ASTEROID_TIER_CONFIG[tier];
+    const ring = this.add.circle(x, y, tierConfig.hitRadius * 0.62, 0x9fd8ff, 0);
+    const particleCount = Phaser.Math.Clamp(tier * 5, 6, 25);
+
+    ring.setStrokeStyle(2, 0x73f2ff, 0.56);
+    ring.setDepth(6);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: ring,
+      alpha: 0,
+      scale: 1.75,
+      duration: ASTEROID_BREAKUP_FEEDBACK_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = (Math.PI * 2 * i) / particleCount + Phaser.Math.FloatBetween(-0.18, 0.18);
+      const distance = Phaser.Math.FloatBetween(tierConfig.hitRadius * 0.35, tierConfig.hitRadius * 1.18);
+      const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(1.8, 4.2), 0x8fb6c8, 0.72);
+
+      particle.setDepth(6);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * distance,
+        y: y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.2,
+        duration: Phaser.Math.Between(220, ASTEROID_BREAKUP_FEEDBACK_MS),
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
   private tryHitBasicEnemy(projectile: PulseCannonProjectile): boolean {
     const hitHalfWidth = basicEnemy.hitHalfWidth + PROJECTILE_HIT_RADIUS;
     const hitHalfLength = basicEnemy.hitHalfLength + PROJECTILE_HIT_RADIUS;
@@ -738,6 +828,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         enemy.body.destroy(true);
+        enemy.wrapMirrorBody.destroy(true);
         this.basicEnemies.splice(i, 1);
         return true;
       }
@@ -753,6 +844,7 @@ export class GameScene extends Phaser.Scene {
       const hitRadius = asteroid.hitRadius + PROJECTILE_HIT_RADIUS;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
+        this.emitAsteroidHitFeedback(projectile.body.x, projectile.body.y, asteroid.tier);
         asteroid.hp -= PULSE_CANNON_ASTEROID_DAMAGE;
 
         if (asteroid.hp <= 0) {
@@ -784,6 +876,7 @@ export class GameScene extends Phaser.Scene {
     const velocity = asteroid.velocity.clone();
     const fragmentTiers = this.createAsteroidFragmentTiers(asteroid.tier, asteroid.breakupProfile);
 
+    this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
     asteroid.body.destroy(true);
     asteroid.wrapMirrorBody.destroy(true);
     this.basicAsteroids.splice(index, 1);
@@ -914,30 +1007,42 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateAsteroidWrapMirror(asteroid: BasicAsteroid): void {
-    const camera = this.cameras.main;
-    const cameraCenterX = camera.scrollX + camera.width / 2;
-    const cameraCenterY = camera.scrollY + camera.height / 2;
-    const mirrorX = this.getNearestWrappedRenderCoordinate(asteroid.body.x, cameraCenterX, this.arena.width);
-    const mirrorY = this.getNearestWrappedRenderCoordinate(asteroid.body.y, cameraCenterY, this.arena.height);
-    const baseVisible = this.isCircleInCameraView(asteroid.body.x, asteroid.body.y, asteroid.hitRadius);
-    const mirrorVisible = this.isCircleInCameraView(mirrorX, mirrorY, asteroid.hitRadius);
-    const shouldShowMirror = (mirrorX !== asteroid.body.x || mirrorY !== asteroid.body.y) && mirrorVisible;
+    const mirrorState = this.updateToroidalRenderMirror(asteroid.body, asteroid.wrapMirrorBody, asteroid.hitRadius);
 
-    asteroid.wrapMirrorBody.setPosition(mirrorX, mirrorY);
-    asteroid.wrapMirrorBody.setRotation(asteroid.body.rotation);
-    asteroid.wrapMirrorBody.setVisible(shouldShowMirror);
-
-    if (baseVisible) {
+    if (mirrorState.baseVisible) {
       this.asteroidCameraViewCount += 1;
     }
 
-    if (baseVisible || mirrorVisible) {
+    if (mirrorState.baseVisible || mirrorState.mirrorVisible) {
       this.asteroidWrappedViewCount += 1;
     }
 
-    if (shouldShowMirror) {
+    if (mirrorState.showMirror) {
       this.asteroidWrapMirrorCount += 1;
     }
+  }
+
+  private updateToroidalRenderMirror(
+    source: Phaser.GameObjects.Container,
+    mirror: Phaser.GameObjects.Container,
+    viewRadius: number
+  ): { baseVisible: boolean; mirrorVisible: boolean; showMirror: boolean } {
+    const camera = this.cameras.main;
+    const cameraCenterX = camera.scrollX + camera.width / 2;
+    const cameraCenterY = camera.scrollY + camera.height / 2;
+    const mirrorX = this.getNearestWrappedRenderCoordinate(source.x, cameraCenterX, this.arena.width);
+    const mirrorY = this.getNearestWrappedRenderCoordinate(source.y, cameraCenterY, this.arena.height);
+    const baseVisible = this.isCircleInCameraView(source.x, source.y, viewRadius);
+    const mirrorVisible = this.isCircleInCameraView(mirrorX, mirrorY, viewRadius);
+    const showMirror = source.visible && (mirrorX !== source.x || mirrorY !== source.y) && mirrorVisible;
+
+    mirror.setPosition(mirrorX, mirrorY);
+    mirror.setRotation(source.rotation);
+    mirror.setScale(source.scaleX, source.scaleY);
+    mirror.setAlpha(source.alpha);
+    mirror.setVisible(showMirror);
+
+    return { baseVisible, mirrorVisible, showMirror };
   }
 
   private getNearestWrappedRenderCoordinate(value: number, cameraCenter: number, arenaSize: number): number {
@@ -952,6 +1057,17 @@ export class GameScene extends Phaser.Scene {
     }
 
     return value;
+  }
+
+  private getNearestWrappedRenderPosition(x: number, y: number): Phaser.Math.Vector2 {
+    const camera = this.cameras.main;
+    const cameraCenterX = camera.scrollX + camera.width / 2;
+    const cameraCenterY = camera.scrollY + camera.height / 2;
+
+    return new Phaser.Math.Vector2(
+      this.getNearestWrappedRenderCoordinate(x, cameraCenterX, this.arena.width),
+      this.getNearestWrappedRenderCoordinate(y, cameraCenterY, this.arena.height)
+    );
   }
 
   private isCircleInCameraView(x: number, y: number, radius: number): boolean {
