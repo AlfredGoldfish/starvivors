@@ -20,8 +20,9 @@ const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-3', url: asteroidVariant3Url },
   { key: 'asteroid-variant-4', url: asteroidVariant4Url }
 ] as const;
-const STARFIELD_TEXTURE_KEY = 'starvivors-starfield-tile';
-const GRID_TEXTURE_KEY = 'starvivors-grid-tile';
+const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
+const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
+const STARFIELD_NEAR_TEXTURE_KEY = 'starvivors-starfield-near-tile';
 const BACKGROUND_TILE_SIZE = 1024;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
@@ -70,6 +71,7 @@ const DEBUG_ELLIPSE_SEGMENTS = 28;
 const HUD_BAR_WIDTH = 360;
 const HUD_BAR_HEIGHT = 12;
 const HUD_MARGIN = 16;
+const HUD_RIGHT_BAR_Y = 174;
 const MINIMAP_WIDTH = 220;
 const MINIMAP_HEIGHT = 140;
 const MINIMAP_MARGIN = 16;
@@ -300,8 +302,9 @@ export class GameScene extends Phaser.Scene {
   private hullText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
-  private starfield!: Phaser.GameObjects.TileSprite;
-  private grid!: Phaser.GameObjects.TileSprite;
+  private farStarfield!: Phaser.GameObjects.TileSprite;
+  private midStarfield!: Phaser.GameObjects.TileSprite;
+  private nearStarfield!: Phaser.GameObjects.TileSprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
@@ -340,6 +343,8 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
   private isMinimapVisible = true;
+  private backgroundWrapOffsetX = 0;
+  private backgroundWrapOffsetY = 0;
 
   constructor() {
     super('GameScene');
@@ -366,7 +371,7 @@ export class GameScene extends Phaser.Scene {
     this.updateUpgradeOverlayInput(time);
 
     if (this.isUpgradeOverlayOpen) {
-      this.updateBackgroundTiles();
+      this.updateBackgroundTiles(time);
       this.updateGameplayHud(time);
       this.updateMinimap();
       this.updateDebugText(time);
@@ -382,7 +387,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePulseCannonProjectiles(time, delta / 1000);
     this.updatePlayerDamageVisuals(time);
     this.updateCollisionDebugOverlay();
-    this.updateBackgroundTiles();
+    this.updateBackgroundTiles(time);
     this.updateGameplayHud(time);
     this.updateMinimap();
     this.updateDebugText(time);
@@ -662,6 +667,8 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
     this.isMinimapVisible = true;
+    this.backgroundWrapOffsetX = 0;
+    this.backgroundWrapOffsetY = 0;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -704,102 +711,81 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createBackgroundTextures(): void {
-    if (!this.textures.exists(STARFIELD_TEXTURE_KEY)) {
-      const starTexture = this.textures.createCanvas(
-        STARFIELD_TEXTURE_KEY,
-        BACKGROUND_TILE_SIZE,
-        BACKGROUND_TILE_SIZE
-      );
+    this.createStarLayerTexture(STARFIELD_FAR_TEXTURE_KEY, 'starvivors-starfield-far-tile', 260, 0.45, 1.3, 0.18, 0.7);
+    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 150, 0.65, 2.1, 0.24, 0.82);
+    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 62, 0.9, 3.0, 0.34, 0.92);
+  }
 
-      if (starTexture) {
-        const context = starTexture.getContext();
-        const random = new Phaser.Math.RandomDataGenerator(['starvivors-starfield-tile']);
-
-        context.fillStyle = '#02040a';
-        context.fillRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
-
-        for (let i = 0; i < 220; i += 1) {
-          const x = random.between(0, BACKGROUND_TILE_SIZE);
-          const y = random.between(0, BACKGROUND_TILE_SIZE);
-          const radius = random.realInRange(0.5, 1.7);
-          const alpha = random.realInRange(0.35, 0.95);
-          const color = Phaser.Display.Color.IntegerToColor(Phaser.Utils.Array.GetRandom(STAR_COLORS));
-
-          context.globalAlpha = alpha;
-          context.fillStyle = color.rgba;
-          context.beginPath();
-          context.arc(x, y, radius, 0, Math.PI * 2);
-          context.fill();
-        }
-
-        context.globalAlpha = 1;
-        starTexture.refresh();
-      }
+  private createStarLayerTexture(
+    textureKey: string,
+    seed: string,
+    starCount: number,
+    minRadius: number,
+    maxRadius: number,
+    minAlpha: number,
+    maxAlpha: number
+  ): void {
+    if (this.textures.exists(textureKey)) {
+      return;
     }
 
-    if (!this.textures.exists(GRID_TEXTURE_KEY)) {
-      const gridTexture = this.textures.createCanvas(GRID_TEXTURE_KEY, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
+    const starTexture = this.textures.createCanvas(textureKey, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
 
-      if (gridTexture) {
-        const context = gridTexture.getContext();
-        this.drawTacticalGridTexture(context);
-        gridTexture.refresh();
-      }
+    if (!starTexture) {
+      return;
     }
+
+    const context = starTexture.getContext();
+    const random = new Phaser.Math.RandomDataGenerator([seed]);
+
+    context.clearRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
+
+    for (let i = 0; i < starCount; i += 1) {
+      const x = random.between(0, BACKGROUND_TILE_SIZE);
+      const y = random.between(0, BACKGROUND_TILE_SIZE);
+      const radius = random.realInRange(minRadius, maxRadius);
+      const alpha = random.realInRange(minAlpha, maxAlpha);
+      const color = Phaser.Display.Color.IntegerToColor(Phaser.Utils.Array.GetRandom(STAR_COLORS));
+      const glowRadius = radius * random.realInRange(1.8, 3.4);
+
+      context.globalAlpha = alpha * 0.22;
+      context.fillStyle = color.rgba;
+      context.beginPath();
+      context.arc(x, y, glowRadius, 0, Math.PI * 2);
+      context.fill();
+
+      context.globalAlpha = alpha;
+      context.beginPath();
+      context.arc(x, y, radius, 0, Math.PI * 2);
+      context.fill();
+    }
+
+    context.globalAlpha = 1;
+    starTexture.refresh();
   }
 
   private createStarfield(): void {
-    this.starfield = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_TEXTURE_KEY)
+    this.cameras.main.setBackgroundColor(0x02040a);
+
+    this.farStarfield = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_FAR_TEXTURE_KEY)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(-20);
 
-    this.grid = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, GRID_TEXTURE_KEY)
+    this.midStarfield = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_MID_TEXTURE_KEY)
       .setOrigin(0, 0)
       .setScrollFactor(0)
-      .setDepth(-10);
+      .setDepth(-19);
 
-    this.updateBackgroundTiles();
-  }
+    this.nearStarfield = this.add
+      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_NEAR_TEXTURE_KEY)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(-18);
 
-  private drawTacticalGridTexture(context: CanvasRenderingContext2D): void {
-    const majorLine = 480;
-    const minorLine = 240;
-
-    context.clearRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
-    context.lineWidth = 1;
-    context.strokeStyle = 'rgba(18, 50, 74, 0.28)';
-
-    for (let x = 0; x <= BACKGROUND_TILE_SIZE; x += minorLine) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, BACKGROUND_TILE_SIZE);
-      context.stroke();
-    }
-
-    for (let y = 0; y <= BACKGROUND_TILE_SIZE; y += minorLine) {
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(BACKGROUND_TILE_SIZE, y);
-      context.stroke();
-    }
-
-    context.strokeStyle = 'rgba(29, 224, 255, 0.34)';
-    for (let x = 0; x <= BACKGROUND_TILE_SIZE; x += majorLine) {
-      context.beginPath();
-      context.moveTo(x, 0);
-      context.lineTo(x, BACKGROUND_TILE_SIZE);
-      context.stroke();
-    }
-
-    for (let y = 0; y <= BACKGROUND_TILE_SIZE; y += majorLine) {
-      context.beginPath();
-      context.moveTo(0, y);
-      context.lineTo(BACKGROUND_TILE_SIZE, y);
-      context.stroke();
-    }
+    this.updateBackgroundTiles(0);
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
@@ -1194,11 +1180,15 @@ export class GameScene extends Phaser.Scene {
     const wrappedX = wrapCoordinate(this.player.x, this.arena.width);
     const wrappedY = wrapCoordinate(this.player.y, this.arena.height);
     const didWrap = wrappedX !== this.player.x || wrappedY !== this.player.y;
+    const previousScrollX = this.cameras.main.scrollX;
+    const previousScrollY = this.cameras.main.scrollY;
 
     this.player.setPosition(wrappedX, wrappedY);
 
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
+      this.backgroundWrapOffsetX += previousScrollX - this.cameras.main.scrollX;
+      this.backgroundWrapOffsetY += previousScrollY - this.cameras.main.scrollY;
     }
   }
 
@@ -2053,16 +2043,25 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(right.x * localX - forward.x * localY, right.y * localX - forward.y * localY);
   }
 
-  private updateBackgroundTiles(): void {
-    if (!this.starfield || !this.grid) {
+  private updateBackgroundTiles(time: number): void {
+    if (!this.farStarfield || !this.midStarfield || !this.nearStarfield) {
       return;
     }
 
-    // Tile sprites replace the old full-arena live Graphics object, avoiding thousands of vector draws each frame.
-    this.starfield.tilePositionX = this.cameras.main.scrollX * 0.45;
-    this.starfield.tilePositionY = this.cameras.main.scrollY * 0.45;
-    this.grid.tilePositionX = this.cameras.main.scrollX;
-    this.grid.tilePositionY = this.cameras.main.scrollY;
+    const scrollX = this.cameras.main.scrollX + this.backgroundWrapOffsetX;
+    const scrollY = this.cameras.main.scrollY + this.backgroundWrapOffsetY;
+    const twinkleTime = time * 0.001;
+
+    this.farStarfield.tilePositionX = scrollX * 0.18;
+    this.farStarfield.tilePositionY = scrollY * 0.18;
+    this.midStarfield.tilePositionX = scrollX * 0.34;
+    this.midStarfield.tilePositionY = scrollY * 0.34;
+    this.nearStarfield.tilePositionX = scrollX * 0.58;
+    this.nearStarfield.tilePositionY = scrollY * 0.58;
+
+    this.farStarfield.setAlpha(0.72 + Math.sin(twinkleTime * 0.7) * 0.035);
+    this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.95 + 1.8) * 0.045);
+    this.nearStarfield.setAlpha(0.72 + Math.sin(twinkleTime * 1.25 + 3.4) * 0.055);
   }
 
   private updateCollisionDebugOverlay(): void {
@@ -2288,7 +2287,7 @@ export class GameScene extends Phaser.Scene {
     const xpX = centerX - HUD_BAR_WIDTH / 2;
     const xpY = HUD_MARGIN;
     const hullX = this.scale.width - HUD_MARGIN - HUD_BAR_WIDTH;
-    const hullY = 132;
+    const hullY = HUD_RIGHT_BAR_Y;
     const pulseY = hullY + 26;
 
     this.hudGraphics.clear();
