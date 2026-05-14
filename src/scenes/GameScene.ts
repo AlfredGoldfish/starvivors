@@ -1460,7 +1460,9 @@ export class GameScene extends Phaser.Scene {
     this.applyPlayerEnemyKnockback(contact, time);
 
     if (time >= this.playerInvulnerableUntil) {
-      this.damagePlayer(contact.damage, time);
+      const impact = this.getPlayerContactImpactPoint(contact.normal);
+      this.emitEnemyImpactExplosion(contact.enemy.body, impact.x, impact.y);
+      this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
 
@@ -1468,7 +1470,9 @@ export class GameScene extends Phaser.Scene {
     this.applyPlayerAsteroidKnockback(contact, time);
 
     if (time >= this.playerInvulnerableUntil) {
-      this.damagePlayer(contact.damage, time);
+      const impact = this.getPlayerContactImpactPoint(contact.normal);
+      this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
+      this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
 
@@ -1563,10 +1567,17 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private damagePlayer(damage: number, time: number): void {
+  private getPlayerContactImpactPoint(normal: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(this.player.x - normal.x * PLAYER_HIT_RADIUS, this.arena.width),
+      wrapCoordinate(this.player.y - normal.y * PLAYER_HIT_RADIUS, this.arena.height)
+    );
+  }
+
+  private damagePlayer(damage: number, time: number, impactX = this.player.x, impactY = this.player.y): void {
     this.playerHull = Math.max(0, this.playerHull - damage);
     this.playerInvulnerableUntil = time + PLAYER_DAMAGE_INVULNERABILITY_MS;
-    this.emitPlayerDamageFeedback();
+    this.emitPlayerDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
 
     if (this.playerHull <= 0) {
@@ -1590,8 +1601,8 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
   }
 
-  private emitPlayerDamageFeedback(): void {
-    const effectPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+  private emitPlayerDamageFeedback(impactX = this.player.x, impactY = this.player.y): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(impactX, impactY);
     const particleCount = 10;
 
     this.playerSprite.setTint(0xff5964);
@@ -1806,7 +1817,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (time >= this.playerInvulnerableUntil) {
-      this.damagePlayer(projectile.damage, time);
+      this.damagePlayer(projectile.damage, time, projectile.body.x, projectile.body.y);
     }
 
     return true;
@@ -1994,8 +2005,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private emitEnemyImpactExplosion(enemy: Phaser.GameObjects.Container): void {
-    const effectPosition = this.getNearestWrappedRenderPosition(enemy.x, enemy.y);
+  private emitEnemyImpactExplosion(
+    enemy: Phaser.GameObjects.Container,
+    x = enemy.x,
+    y = enemy.y
+  ): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     const particleCount = 6;
 
     for (let i = 0; i < particleCount; i += 1) {
