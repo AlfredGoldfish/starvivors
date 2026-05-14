@@ -2031,23 +2031,31 @@ export class GameScene extends Phaser.Scene {
     x = effectPosition.x;
     y = effectPosition.y;
     const tierConfig = ASTEROID_TIER_CONFIG[tier];
-    const particleCount = Phaser.Math.Clamp(tier + 3, 4, 9);
-    const dust = this.add.circle(x, y, Math.max(8, tierConfig.hitRadius * 0.28), 0xc2ad8f, 0.16);
+    const particleCount = Phaser.Math.Clamp(tier * 2 + 5, 7, 15);
+    const flashRadius = Math.max(12, tierConfig.hitRadius * 0.34);
+    const flash = this.add.circle(x, y, flashRadius, 0xf2fbff, 0.18);
+    const ring = this.add.circle(x, y, flashRadius * 0.78, 0xf2fbff, 0);
+    const dust = this.add.circle(x, y, Math.max(14, tierConfig.hitRadius * 0.38), 0xc2ad8f, 0.34);
 
-    dust.setDepth(6);
+    flash.setDepth(12);
+    flash.setBlendMode(Phaser.BlendModes.ADD);
+    ring.setStrokeStyle(2, 0xf2fbff, 0.62);
+    ring.setDepth(12);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    dust.setDepth(11);
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(8, 18 + tier * 3);
+      const distance = Phaser.Math.FloatBetween(14, 28 + tier * 5);
       const particle = this.add.circle(
         x,
         y,
-        Phaser.Math.FloatBetween(1.5, 3.4),
-        Phaser.Utils.Array.GetRandom([0x9b8b75, 0xc2ad8f, 0xe4d6bd, 0xf2fbff]),
-        0.78
+        Phaser.Math.FloatBetween(2.2, 4.8),
+        Phaser.Utils.Array.GetRandom([0x9b8b75, 0xc2ad8f, 0xe4d6bd, 0xfff2d2, 0xf2fbff]),
+        0.92
       );
 
-      particle.setDepth(7);
+      particle.setDepth(12);
 
       this.tweens.add({
         targets: particle,
@@ -2062,10 +2070,28 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.35,
+      duration: ASTEROID_HIT_FEEDBACK_MS * 0.65,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    this.tweens.add({
+      targets: ring,
+      alpha: 0,
+      scale: 1.75,
+      duration: ASTEROID_HIT_FEEDBACK_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    this.tweens.add({
       targets: dust,
       alpha: 0,
-      scale: 1.55,
-      duration: ASTEROID_HIT_FEEDBACK_MS,
+      scale: 1.85,
+      duration: ASTEROID_HIT_FEEDBACK_MS * 1.15,
       ease: 'Quad.easeOut',
       onComplete: () => dust.destroy()
     });
