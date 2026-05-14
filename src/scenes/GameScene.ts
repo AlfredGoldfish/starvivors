@@ -110,6 +110,13 @@ const MINIMAP_PADDING = 8;
 const PULSE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
 const PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
 const PULSE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
+const PASSIVE_UPGRADE_MAX_LEVEL = 5;
+const HULL_PLATING_MAX_HULL_BONUS = 15;
+const HULL_PLATING_REPAIR = 15;
+const ENGINE_TUNING_ACCELERATION_MULTIPLIER = 0.08;
+const ENGINE_TUNING_MAX_SPEED_MULTIPLIER = 0.04;
+const DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS = 150;
+const DAMAGE_CONTROL_REPAIR = 10;
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX = 10;
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP = 0.5;
@@ -119,32 +126,61 @@ const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
 const DEBUG_PULSE_MIN_COOLDOWN_MS = 100;
 
 type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
+type PassiveUpgradeId = 'hull-plating' | 'engine-tuning' | 'damage-control';
+type UpgradeId = PulseUpgradeId | PassiveUpgradeId;
+type UpgradeCategory = 'pulse' | 'passive';
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 
-interface PulseUpgradeDefinition {
-  id: PulseUpgradeId;
+interface UpgradeDefinition {
+  id: UpgradeId;
+  category: UpgradeCategory;
   name: string;
   description: string;
+  maxLevel?: number;
 }
 
-const PULSE_UPGRADE_CHOICES: PulseUpgradeDefinition[] = [
+const UPGRADE_CHOICES: UpgradeDefinition[] = [
   {
     id: 'pulse-damage-1',
+    category: 'pulse',
     name: 'Pulse Damage I',
     description: '+25% projectile damage per level.'
   },
   {
     id: 'pulse-fire-rate-1',
+    category: 'pulse',
     name: 'Pulse Fire Rate I',
     description: 'Reduces cooldown by 12% per level.'
   },
   {
     id: 'pulse-velocity-1',
+    category: 'pulse',
     name: 'Pulse Velocity I',
     description: '+20% projectile speed per level.'
+  },
+  {
+    id: 'hull-plating',
+    category: 'passive',
+    name: 'Hull Plating',
+    description: '+15 max hull and repair 15 hull.',
+    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
+  },
+  {
+    id: 'engine-tuning',
+    category: 'passive',
+    name: 'Engine Tuning',
+    description: '+8% acceleration and +4% max speed.',
+    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
+  },
+  {
+    id: 'damage-control',
+    category: 'passive',
+    name: 'Damage Control',
+    description: '+0.15s hit invulnerability and repair 10 hull.',
+    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
   }
 ];
 
@@ -152,6 +188,12 @@ const INITIAL_PULSE_UPGRADE_LEVELS: Record<PulseUpgradeId, number> = {
   'pulse-damage-1': 0,
   'pulse-fire-rate-1': 0,
   'pulse-velocity-1': 0
+};
+
+const INITIAL_PASSIVE_UPGRADE_LEVELS: Record<PassiveUpgradeId, number> = {
+  'hull-plating': 0,
+  'engine-tuning': 0,
+  'damage-control': 0
 };
 
 const ENEMY_SPAWN_WEIGHTS_BY_STEP: Array<Record<EnemySpawnType, number>> = [
@@ -190,9 +232,15 @@ interface StarvivorsTestHarnessState {
   pulseDamageLevel: number;
   pulseFireRateLevel: number;
   pulseVelocityLevel: number;
+  hullPlatingLevel: number;
+  engineTuningLevel: number;
+  damageControlLevel: number;
   pulseDamageMultiplier: number;
   pulseCooldownMs: number;
   pulseProjectileSpeed: number;
+  playerAccelerationMultiplier: number;
+  playerMaxSpeed: number;
+  playerInvulnerabilityMs: number;
   isMinimapVisible: boolean;
   enemies: number;
   shooterEnemies: number;
@@ -216,6 +264,7 @@ interface StarvivorsTestHarness {
   openUpgradeOverlay: () => StarvivorsTestHarnessState;
   closeUpgradeOverlay: () => StarvivorsTestHarnessState;
   selectPulseUpgrade: (choiceNumber: number) => StarvivorsTestHarnessState;
+  clickUpgradeButton: () => StarvivorsTestHarnessState;
   toggleMinimap: () => StarvivorsTestHarnessState;
 }
 
@@ -380,6 +429,9 @@ export class GameScene extends Phaser.Scene {
   private debugText!: Phaser.GameObjects.Text;
   private hudGraphics!: Phaser.GameObjects.Graphics;
   private hullText!: Phaser.GameObjects.Text;
+  private upgradeButtonContainer!: Phaser.GameObjects.Container;
+  private upgradeButtonGraphics!: Phaser.GameObjects.Graphics;
+  private upgradeButtonText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
   private farStarfield!: Phaser.GameObjects.TileSprite;
@@ -428,6 +480,7 @@ export class GameScene extends Phaser.Scene {
   private runStartedAt = 0;
   private isCollisionDebugEnabled = false;
   private pulseUpgradeLevels: Record<PulseUpgradeId, number> = { ...INITIAL_PULSE_UPGRADE_LEVELS };
+  private passiveUpgradeLevels: Record<PassiveUpgradeId, number> = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
   private isUpgradeOverlayOpen = false;
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
@@ -526,7 +579,10 @@ export class GameScene extends Phaser.Scene {
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
-      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE)
+      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
+      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
+      this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX)
     ];
     this.upgradeCancelKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.minimapKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
@@ -603,7 +659,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       killPlayer: () => {
-        this.damagePlayer(PLAYER_MAX_HULL, this.time.now);
+        this.damagePlayer(this.getPlayerMaxHull(), this.time.now);
         return this.getTestHarnessState();
       },
       restartRun: () => {
@@ -622,16 +678,20 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       selectPulseUpgrade: (choiceNumber: number) => {
-        const upgrade = PULSE_UPGRADE_CHOICES[choiceNumber - 1];
+        const upgrade = UPGRADE_CHOICES[choiceNumber - 1];
 
         if (upgrade) {
           if (!this.isUpgradeOverlayOpen && this.bankedUpgrades > 0 && !this.isPlayerDead) {
             this.openUpgradeOverlay(this.time.now);
           }
 
-          this.selectPulseUpgrade(upgrade, this.time.now);
+          this.selectUpgrade(upgrade, this.time.now);
         }
 
+        return this.getTestHarnessState();
+      },
+      clickUpgradeButton: () => {
+        this.handleUpgradeButtonClick();
         return this.getTestHarnessState();
       },
       toggleMinimap: () => {
@@ -653,7 +713,7 @@ export class GameScene extends Phaser.Scene {
   private getTestHarnessState(): StarvivorsTestHarnessState {
     return {
       hull: this.playerHull,
-      maxHull: PLAYER_MAX_HULL,
+      maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
       playerXp: this.playerXp,
       nextXpThreshold: this.nextXpThreshold,
@@ -662,9 +722,15 @@ export class GameScene extends Phaser.Scene {
       pulseDamageLevel: this.pulseUpgradeLevels['pulse-damage-1'],
       pulseFireRateLevel: this.pulseUpgradeLevels['pulse-fire-rate-1'],
       pulseVelocityLevel: this.pulseUpgradeLevels['pulse-velocity-1'],
+      hullPlatingLevel: this.passiveUpgradeLevels['hull-plating'],
+      engineTuningLevel: this.passiveUpgradeLevels['engine-tuning'],
+      damageControlLevel: this.passiveUpgradeLevels['damage-control'],
       pulseDamageMultiplier: this.getPulseDamageMultiplier(),
       pulseCooldownMs: this.getPulseCooldownMs(),
       pulseProjectileSpeed: this.getPulseProjectileSpeed(),
+      playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
+      playerMaxSpeed: this.getPlayerMaxSpeed(),
+      playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
       isMinimapVisible: this.isMinimapVisible,
       enemies: this.basicEnemies.length,
       shooterEnemies: this.shooterEnemies.length,
@@ -688,11 +754,17 @@ export class GameScene extends Phaser.Scene {
     const enemyXp = harness.destroyFirstEnemy();
     const rollover = harness.grantXp(95);
     const multi = harness.grantXp(250);
+    const buttonOpened = harness.clickUpgradeButton();
+    harness.closeUpgradeOverlay();
     const opened = harness.openUpgradeOverlay();
     const damageUpgrade = harness.selectPulseUpgrade(1);
     const fireRateUpgrade = harness.selectPulseUpgrade(2);
     const rebanked = harness.grantXp(10);
     const velocityUpgrade = harness.selectPulseUpgrade(3);
+    const passiveBank = harness.grantXp(900);
+    const hullUpgrade = harness.selectPulseUpgrade(4);
+    const engineUpgrade = harness.selectPulseUpgrade(5);
+    const damageControlUpgrade = harness.selectPulseUpgrade(6);
     const minimapOff = harness.toggleMinimap();
     const minimapOn = harness.toggleMinimap();
     const dead = harness.killPlayer();
@@ -712,6 +784,7 @@ export class GameScene extends Phaser.Scene {
       multi.playerXp === 135 &&
       multi.nextXpThreshold === 144 &&
       multi.bankedUpgrades === 2 &&
+      buttonOpened.isUpgradeOverlayOpen &&
       opened.isUpgradeOverlayOpen &&
       damageUpgrade.bankedUpgrades === 1 &&
       !damageUpgrade.isUpgradeOverlayOpen &&
@@ -724,12 +797,25 @@ export class GameScene extends Phaser.Scene {
       velocityUpgrade.bankedUpgrades === 0 &&
       velocityUpgrade.pulseVelocityLevel === 1 &&
       velocityUpgrade.pulseProjectileSpeed === 1176 &&
+      passiveBank.bankedUpgrades === 3 &&
+      hullUpgrade.bankedUpgrades === 2 &&
+      hullUpgrade.hullPlatingLevel === 1 &&
+      hullUpgrade.maxHull === PLAYER_MAX_HULL + HULL_PLATING_MAX_HULL_BONUS &&
+      hullUpgrade.hull === PLAYER_MAX_HULL + HULL_PLATING_REPAIR &&
+      engineUpgrade.bankedUpgrades === 1 &&
+      engineUpgrade.engineTuningLevel === 1 &&
+      engineUpgrade.playerAccelerationMultiplier === 1.08 &&
+      engineUpgrade.playerMaxSpeed === Math.round(interceptorMovement.maxSpeed * 1.04) &&
+      damageControlUpgrade.bankedUpgrades === 0 &&
+      damageControlUpgrade.damageControlLevel === 1 &&
+      damageControlUpgrade.playerInvulnerabilityMs === PLAYER_DAMAGE_INVULNERABILITY_MS + DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS &&
       !minimapOff.isMinimapVisible &&
       minimapOn.isMinimapVisible &&
       dead.isPlayerDead &&
-      afterDeadXp.playerXp === velocityUpgrade.playerXp &&
-      afterDeadXp.bankedUpgrades === velocityUpgrade.bankedUpgrades &&
+      afterDeadXp.playerXp === damageControlUpgrade.playerXp &&
+      afterDeadXp.bankedUpgrades === damageControlUpgrade.bankedUpgrades &&
       restarted.hull === PLAYER_MAX_HULL &&
+      restarted.maxHull === PLAYER_MAX_HULL &&
       restarted.playerXp === 0 &&
       restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       restarted.bankedUpgrades === 0 &&
@@ -739,6 +825,9 @@ export class GameScene extends Phaser.Scene {
       restarted.pulseDamageLevel === 0 &&
       restarted.pulseFireRateLevel === 0 &&
       restarted.pulseVelocityLevel === 0 &&
+      restarted.hullPlatingLevel === 0 &&
+      restarted.engineTuningLevel === 0 &&
+      restarted.damageControlLevel === 0 &&
       !restarted.isPlayerDead;
 
     document.body.setAttribute('data-starvivors-harness', pass ? 'pass' : 'fail');
@@ -749,11 +838,16 @@ export class GameScene extends Phaser.Scene {
         enemyXp,
         rollover,
         multi,
+        buttonOpened,
         opened,
         damageUpgrade,
         fireRateUpgrade,
         rebanked,
         velocityUpgrade,
+        passiveBank,
+        hullUpgrade,
+        engineUpgrade,
+        damageControlUpgrade,
         minimapOff,
         minimapOn,
         dead,
@@ -796,6 +890,7 @@ export class GameScene extends Phaser.Scene {
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
     this.pulseUpgradeLevels = { ...INITIAL_PULSE_UPGRADE_LEVELS };
+    this.passiveUpgradeLevels = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
@@ -844,6 +939,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1000);
 
     this.createParallaxTuner();
+    this.createUpgradeButton();
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
@@ -1296,23 +1392,23 @@ export class GameScene extends Phaser.Scene {
     const right = new Phaser.Math.Vector2(-forward.y, forward.x);
 
     if (thrustForward) {
-      this.playerVelocity.x += forward.x * interceptorMovement.thrustAcceleration * deltaSeconds;
-      this.playerVelocity.y += forward.y * interceptorMovement.thrustAcceleration * deltaSeconds;
+      this.playerVelocity.x += forward.x * this.getPlayerThrustAcceleration() * deltaSeconds;
+      this.playerVelocity.y += forward.y * this.getPlayerThrustAcceleration() * deltaSeconds;
     }
 
     if (thrustReverse) {
-      this.playerVelocity.x -= forward.x * interceptorMovement.reverseThrustAcceleration * deltaSeconds;
-      this.playerVelocity.y -= forward.y * interceptorMovement.reverseThrustAcceleration * deltaSeconds;
+      this.playerVelocity.x -= forward.x * this.getPlayerReverseThrustAcceleration() * deltaSeconds;
+      this.playerVelocity.y -= forward.y * this.getPlayerReverseThrustAcceleration() * deltaSeconds;
     }
 
     if (strafeLeft) {
-      this.playerVelocity.x -= right.x * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
-      this.playerVelocity.y -= right.y * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+      this.playerVelocity.x -= right.x * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
+      this.playerVelocity.y -= right.y * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
     }
 
     if (strafeRight) {
-      this.playerVelocity.x += right.x * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
-      this.playerVelocity.y += right.y * interceptorMovement.strafeThrustAcceleration * deltaSeconds;
+      this.playerVelocity.x += right.x * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
+      this.playerVelocity.y += right.y * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
     }
 
     this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
@@ -1323,7 +1419,7 @@ export class GameScene extends Phaser.Scene {
       this.playerVelocity.set(0, 0);
     }
 
-    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+    this.playerVelocity.limit(this.getPlayerMaxSpeed());
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
@@ -1357,7 +1453,12 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < this.upgradeChoiceKeys.length; i += 1) {
       if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[i])) {
-        this.selectPulseUpgrade(PULSE_UPGRADE_CHOICES[i], time);
+        const upgrade = UPGRADE_CHOICES[i];
+
+        if (upgrade) {
+          this.selectUpgrade(upgrade, time);
+        }
+
         return;
       }
     }
@@ -1505,11 +1606,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openUpgradeOverlay(time: number): void {
+    if (this.isUpgradeOverlayOpen || this.bankedUpgrades <= 0 || this.isPlayerDead) {
+      return;
+    }
+
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
     this.upgradeOverlayGraphics.setVisible(true);
     this.upgradeOverlayText.setVisible(true);
+    this.updateUpgradeButton();
     this.updateParallaxTunerText();
   }
 
@@ -1525,18 +1631,141 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics.setVisible(false);
     this.upgradeOverlayText.setVisible(false);
     this.updateGameplayHud(time);
+    this.updateUpgradeButton();
     this.updateParallaxTunerText();
   }
 
-  private selectPulseUpgrade(upgrade: PulseUpgradeDefinition, time: number): void {
+  private selectUpgrade(upgrade: UpgradeDefinition, time: number): void {
     if (this.bankedUpgrades <= 0) {
       this.closeUpgradeOverlay(time);
       return;
     }
 
-    this.pulseUpgradeLevels[upgrade.id] += 1;
+    if (this.isUpgradeAtMaxLevel(upgrade)) {
+      this.refreshUpgradeOverlayText();
+      return;
+    }
+
+    if (upgrade.category === 'pulse') {
+      this.pulseUpgradeLevels[upgrade.id as PulseUpgradeId] += 1;
+    } else {
+      this.applyPassiveUpgrade(upgrade.id as PassiveUpgradeId);
+    }
+
     this.bankedUpgrades -= 1;
     this.closeUpgradeOverlay(time);
+  }
+
+  private applyPassiveUpgrade(upgradeId: PassiveUpgradeId): void {
+    this.passiveUpgradeLevels[upgradeId] += 1;
+
+    if (upgradeId === 'hull-plating') {
+      this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + HULL_PLATING_REPAIR);
+    } else if (upgradeId === 'damage-control') {
+      this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + DAMAGE_CONTROL_REPAIR);
+    }
+  }
+
+  private isUpgradeAtMaxLevel(upgrade: UpgradeDefinition): boolean {
+    if (!upgrade.maxLevel || upgrade.category !== 'passive') {
+      return false;
+    }
+
+    return this.passiveUpgradeLevels[upgrade.id as PassiveUpgradeId] >= upgrade.maxLevel;
+  }
+
+  private getUpgradeLevel(upgrade: UpgradeDefinition): number {
+    return upgrade.category === 'pulse'
+      ? this.pulseUpgradeLevels[upgrade.id as PulseUpgradeId]
+      : this.passiveUpgradeLevels[upgrade.id as PassiveUpgradeId];
+  }
+
+  private getPlayerMaxHull(): number {
+    return PLAYER_MAX_HULL + this.passiveUpgradeLevels['hull-plating'] * HULL_PLATING_MAX_HULL_BONUS;
+  }
+
+  private getPlayerAccelerationMultiplier(): number {
+    return 1 + this.passiveUpgradeLevels['engine-tuning'] * ENGINE_TUNING_ACCELERATION_MULTIPLIER;
+  }
+
+  private getPlayerThrustAcceleration(): number {
+    return interceptorMovement.thrustAcceleration * this.getPlayerAccelerationMultiplier();
+  }
+
+  private getPlayerReverseThrustAcceleration(): number {
+    return interceptorMovement.reverseThrustAcceleration * this.getPlayerAccelerationMultiplier();
+  }
+
+  private getPlayerStrafeThrustAcceleration(): number {
+    return interceptorMovement.strafeThrustAcceleration * this.getPlayerAccelerationMultiplier();
+  }
+
+  private getPlayerMaxSpeed(): number {
+    return Math.round(
+      interceptorMovement.maxSpeed *
+        (1 + this.passiveUpgradeLevels['engine-tuning'] * ENGINE_TUNING_MAX_SPEED_MULTIPLIER)
+    );
+  }
+
+  private getPlayerDamageInvulnerabilityMs(): number {
+    return (
+      PLAYER_DAMAGE_INVULNERABILITY_MS +
+      this.passiveUpgradeLevels['damage-control'] * DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS
+    );
+  }
+
+  private createUpgradeButton(): void {
+    this.upgradeButtonGraphics = this.add.graphics();
+    this.upgradeButtonText = this.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0.5);
+
+    this.upgradeButtonContainer = this.add
+      .container(this.scale.width / 2, this.scale.height - 42, [this.upgradeButtonGraphics, this.upgradeButtonText])
+      .setScrollFactor(0)
+      .setDepth(1002)
+      .setSize(190, 42)
+      .setInteractive({ useHandCursor: true });
+
+    this.upgradeButtonContainer.on('pointerdown', () => this.handleUpgradeButtonClick());
+    this.updateUpgradeButton();
+  }
+
+  private handleUpgradeButtonClick(): void {
+    if (this.bankedUpgrades <= 0 || this.isPlayerDead || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    this.openUpgradeOverlay(this.time.now);
+  }
+
+  private updateUpgradeButton(): void {
+    if (!this.upgradeButtonContainer || !this.upgradeButtonGraphics || !this.upgradeButtonText) {
+      return;
+    }
+
+    const isVisible = this.bankedUpgrades > 0 && !this.isPlayerDead && !this.isUpgradeOverlayOpen;
+    const label = this.bankedUpgrades > 1 ? `Upgrade (${this.bankedUpgrades})` : 'Upgrade';
+
+    this.upgradeButtonContainer
+      .setPosition(this.scale.width / 2, this.scale.height - 42)
+      .setVisible(isVisible)
+      .disableInteractive();
+
+    if (isVisible) {
+      this.upgradeButtonContainer.setInteractive({ useHandCursor: true });
+    }
+
+    this.upgradeButtonText.setText(label);
+    this.upgradeButtonGraphics.clear();
+    this.upgradeButtonGraphics.fillStyle(0x071018, 0.94);
+    this.upgradeButtonGraphics.fillRoundedRect(-95, -21, 190, 42, 6);
+    this.upgradeButtonGraphics.lineStyle(2, 0x42f5d7, 0.88);
+    this.upgradeButtonGraphics.strokeRoundedRect(-95, -21, 190, 42, 6);
   }
 
   private createUpgradeOverlay(): void {
@@ -1549,7 +1778,7 @@ export class GameScene extends Phaser.Scene {
     const panelY = Math.max(56, height / 2 - panelHeight / 2);
     const cardX = panelX + 28;
     const cardWidth = panelWidth - 56;
-    const cardHeight = 78;
+    const cardHeight = 40;
 
     this.upgradeOverlayGraphics = this.add.graphics().setScrollFactor(0).setDepth(1200);
     this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
@@ -1559,8 +1788,8 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
     this.upgradeOverlayGraphics.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
 
-    for (let i = 0; i < PULSE_UPGRADE_CHOICES.length; i += 1) {
-      const cardY = panelY + 106 + i * (cardHeight + 14);
+    for (let i = 0; i < UPGRADE_CHOICES.length; i += 1) {
+      const cardY = panelY + 96 + i * (cardHeight + 8);
       this.upgradeOverlayGraphics.fillStyle(0x111a24, 0.94);
       this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
       this.upgradeOverlayGraphics.lineStyle(1, 0x52627f, 0.82);
@@ -1570,11 +1799,11 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayText = this.add
       .text(centerX, panelY + 28, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
+        fontSize: '14px',
         color: '#f2fbff',
         align: 'left',
         fixedWidth: panelWidth - 56,
-        lineSpacing: 8,
+        lineSpacing: 4,
         wordWrap: { width: panelWidth - 56 }
       })
       .setOrigin(0.5, 0)
@@ -1589,17 +1818,21 @@ export class GameScene extends Phaser.Scene {
     const damageMultiplier = this.getPulseDamageMultiplier();
     const cooldownSeconds = this.getPulseCooldownMs() / 1000;
     const speed = Math.round(this.getPulseProjectileSpeed());
-    const choiceLines = PULSE_UPGRADE_CHOICES.map((upgrade, index) => {
-      const level = this.pulseUpgradeLevels[upgrade.id];
-      return `${index + 1}. ${upgrade.name}  Lv ${level}\n   ${upgrade.description}`;
+    const choiceLines = UPGRADE_CHOICES.map((upgrade, index) => {
+      const level = this.getUpgradeLevel(upgrade);
+      const maxLevel = upgrade.maxLevel ? `/${upgrade.maxLevel}` : '';
+      const maxLabel = this.isUpgradeAtMaxLevel(upgrade) ? '  MAX' : '';
+
+      return `${index + 1}. ${upgrade.name}  Lv ${level}${maxLevel}${maxLabel}\n   ${upgrade.description}`;
     }).join('\n\n');
 
     this.upgradeOverlayText.setText(
       `UPGRADE SELECTION\n` +
         `Banked upgrades: ${this.bankedUpgrades}\n` +
-        `Pulse: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n\n` +
+        `Pulse: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
+        `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames\n\n` +
         `${choiceLines}\n\n` +
-        `Press 1-3 to choose.  Esc closes without spending.`
+        `Press 1-6 to choose.  Esc closes without spending.`
     );
   }
 
@@ -1809,7 +2042,7 @@ export class GameScene extends Phaser.Scene {
 
     this.playerVelocity.x += normal.x * impulse * playerShare;
     this.playerVelocity.y += normal.y * impulse * playerShare;
-    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+    this.playerVelocity.limit(this.getPlayerMaxSpeed());
     contact.enemy.knockbackVelocity.x -= normal.x * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
     contact.enemy.knockbackVelocity.y -= normal.y * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
     contact.enemy.knockbackVelocity.limit(GAMEPLAY_MAX_VELOCITY);
@@ -1834,7 +2067,7 @@ export class GameScene extends Phaser.Scene {
 
     this.playerVelocity.x += normal.x * impulse * playerShare;
     this.playerVelocity.y += normal.y * impulse * playerShare;
-    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+    this.playerVelocity.limit(this.getPlayerMaxSpeed());
     contact.asteroid.velocity.x -= normal.x * impulse * asteroidShare;
     contact.asteroid.velocity.y -= normal.y * impulse * asteroidShare;
     contact.asteroid.velocity.limit(ASTEROID_TIER_CONFIG[contact.asteroid.tier].maxVelocity);
@@ -1892,7 +2125,7 @@ export class GameScene extends Phaser.Scene {
 
   private damagePlayer(damage: number, time: number, impactX = this.player.x, impactY = this.player.y): void {
     this.playerHull = Math.max(0, this.playerHull - damage);
-    this.playerInvulnerableUntil = time + PLAYER_DAMAGE_INVULNERABILITY_MS;
+    this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
     this.emitPlayerDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
 
@@ -3305,8 +3538,9 @@ export class GameScene extends Phaser.Scene {
     const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > time ? 'HIT' : 'STABLE';
     const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
     const survivalTime = this.formatSurvivalTime(elapsedSeconds);
+    const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
-    const hullProgress = this.playerHull / PLAYER_MAX_HULL;
+    const hullProgress = this.playerHull / maxHull;
     const pulseCooldownMs = this.getPulseCooldownMs();
     const pulseRemainingMs = Math.max(0, this.nextPulseCannonFireAt - time);
     const pulseProgress = pulseCooldownMs > 0 ? 1 - pulseRemainingMs / pulseCooldownMs : 1;
@@ -3316,7 +3550,7 @@ export class GameScene extends Phaser.Scene {
 
     this.hullText.setText(
       `Time ${survivalTime}\n` +
-        `Hull ${this.playerHull} / ${PLAYER_MAX_HULL}  ${status}\n` +
+        `Hull ${this.playerHull} / ${maxHull}  ${status}\n` +
         `XP ${this.playerXp} / ${this.nextXpThreshold}\n` +
         `Banked upgrades ${this.bankedUpgrades}\n` +
         `${upgradeStatus}\n` +
@@ -3325,6 +3559,7 @@ export class GameScene extends Phaser.Scene {
     );
 
     this.drawGameplayHudBars(hullProgress, xpProgress, pulseProgress);
+    this.updateUpgradeButton();
   }
 
   private drawGameplayHudBars(hullProgress: number, xpProgress: number, pulseProgress: number): void {
@@ -3392,9 +3627,9 @@ export class GameScene extends Phaser.Scene {
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
-        `Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}${this.isPlayerDead ? ' (dead)' : ''}\n` +
+        `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
-        `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
+        `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']} H${this.passiveUpgradeLevels['hull-plating']} E${this.passiveUpgradeLevels['engine-tuning']} C${this.passiveUpgradeLevels['damage-control']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
