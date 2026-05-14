@@ -67,6 +67,9 @@ const PLAYER_CONTACT_MAX_SEPARATION = 18;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
 const DEBUG_ELLIPSE_SEGMENTS = 28;
+const HUD_BAR_WIDTH = 360;
+const HUD_BAR_HEIGHT = 12;
+const HUD_MARGIN = 16;
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
@@ -240,6 +243,7 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
+  private hudGraphics!: Phaser.GameObjects.Graphics;
   private hullText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
@@ -269,6 +273,7 @@ export class GameScene extends Phaser.Scene {
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
   private nextPlayerContactImpulseAt = 0;
+  private runStartedAt = 0;
   private isCollisionDebugEnabled = false;
 
   constructor() {
@@ -303,7 +308,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayerDamageVisuals(time);
     this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles();
-    this.updateHullText();
+    this.updateGameplayHud(time);
     this.updateDebugText(time);
   }
 
@@ -341,7 +346,7 @@ export class GameScene extends Phaser.Scene {
       expireInvulnerability: () => {
         this.playerInvulnerableUntil = 0;
         this.player.setVisible(true);
-        this.updateHullText();
+        this.updateGameplayHud(this.time.now);
         return this.getTestHarnessState();
       },
       placeEnemyOnPlayer: () => {
@@ -491,6 +496,7 @@ export class GameScene extends Phaser.Scene {
     this.nextRightStrafeThrusterAt = 0;
     this.nextDebugUpdateAt = 0;
     this.nextPlayerContactImpulseAt = 0;
+    this.runStartedAt = this.time.now;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -510,12 +516,13 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
+    this.hudGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
     this.collisionDebugGraphics = this.add.graphics().setDepth(999);
 
     this.hullText = this.add
-      .text(this.scale.width - 16, 16, '', {
+      .text(this.scale.width - HUD_MARGIN, HUD_MARGIN, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
+        fontSize: '16px',
         color: '#f2fbff',
         backgroundColor: 'rgba(2, 4, 10, 0.72)',
         padding: { x: 10, y: 7 }
@@ -524,7 +531,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
-    this.updateHullText();
+    this.updateGameplayHud(this.time.now);
     this.updateDebugText(0);
   }
 
@@ -1071,7 +1078,7 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = Math.max(0, this.playerHull - damage);
     this.playerInvulnerableUntil = time + PLAYER_DAMAGE_INVULNERABILITY_MS;
     this.emitPlayerDamageFeedback();
-    this.updateHullText();
+    this.updateGameplayHud(time);
 
     if (this.playerHull <= 0) {
       this.killPlayer();
@@ -1091,7 +1098,7 @@ export class GameScene extends Phaser.Scene {
       this.nextXpThreshold = Math.ceil(this.nextXpThreshold * XP_THRESHOLD_GROWTH);
     }
 
-    this.updateHullText();
+    this.updateGameplayHud(this.time.now);
   }
 
   private emitPlayerDamageFeedback(): void {
@@ -1162,7 +1169,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setVisible(true);
     this.playerSprite.setTint(0xff5964);
     this.playerSprite.setAlpha(0.62);
-    this.updateHullText();
+    this.updateGameplayHud(this.time.now);
     this.showDeathText();
   }
 
@@ -1841,19 +1848,65 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateHullText(): void {
-    if (!this.hullText) {
+  private updateGameplayHud(time: number): void {
+    if (!this.hullText || !this.hudGraphics) {
       return;
     }
 
-    const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > this.time.now ? 'HIT' : 'STABLE';
+    const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > time ? 'HIT' : 'STABLE';
+    const elapsedSeconds = Math.max(0, Math.floor((time - this.runStartedAt) / 1000));
+    const survivalTime = this.formatSurvivalTime(elapsedSeconds);
+    const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
+    const hullProgress = this.playerHull / PLAYER_MAX_HULL;
+    const pulseCooldownMs = pulseCannon.cooldownSeconds * 1000;
+    const pulseRemainingMs = Math.max(0, this.nextPulseCannonFireAt - time);
+    const pulseProgress = pulseCooldownMs > 0 ? 1 - pulseRemainingMs / pulseCooldownMs : 1;
+    const pulseStatus = pulseRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(pulseRemainingMs / 1000)}s`;
+    const upgradeStatus =
+      this.bankedUpgrades > 0 ? `Upgrade available x${this.bankedUpgrades}` : 'No upgrade banked';
 
     this.hullText.setText(
-      `Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}\n` +
-        `XP: ${this.playerXp} / ${this.nextXpThreshold}\n` +
-        `Upgrades: ${this.bankedUpgrades}\n` +
-        `Status: ${status}`
+      `Time ${survivalTime}\n` +
+        `Hull ${this.playerHull} / ${PLAYER_MAX_HULL}  ${status}\n` +
+        `XP ${this.playerXp} / ${this.nextXpThreshold}\n` +
+        `Banked upgrades ${this.bankedUpgrades}\n` +
+        `${upgradeStatus}\n` +
+        `Pulse ${pulseStatus}`
     );
+
+    this.drawGameplayHudBars(hullProgress, xpProgress, pulseProgress);
+  }
+
+  private drawGameplayHudBars(hullProgress: number, xpProgress: number, pulseProgress: number): void {
+    const centerX = this.scale.width / 2;
+    const xpX = centerX - HUD_BAR_WIDTH / 2;
+    const xpY = HUD_MARGIN;
+    const hullX = this.scale.width - HUD_MARGIN - HUD_BAR_WIDTH;
+    const hullY = 132;
+    const pulseY = hullY + 26;
+
+    this.hudGraphics.clear();
+    this.drawHudBar(xpX, xpY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(xpProgress, 0, 1), 0x42f5d7);
+    this.drawHudBar(hullX, hullY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(hullProgress, 0, 1), 0xff5964);
+    this.drawHudBar(hullX, pulseY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(pulseProgress, 0, 1), 0xffc857);
+  }
+
+  private drawHudBar(x: number, y: number, width: number, height: number, progress: number, color: number): void {
+    this.hudGraphics.fillStyle(0x02040a, 0.76);
+    this.hudGraphics.fillRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
+    this.hudGraphics.lineStyle(1, 0x52627f, 0.78);
+    this.hudGraphics.strokeRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
+    this.hudGraphics.fillStyle(0x111a24, 0.92);
+    this.hudGraphics.fillRect(x, y, width, height);
+    this.hudGraphics.fillStyle(color, 0.88);
+    this.hudGraphics.fillRect(x, y, width * progress, height);
+  }
+
+  private formatSurvivalTime(totalSeconds: number): string {
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
   private updateDebugText(time: number): void {
