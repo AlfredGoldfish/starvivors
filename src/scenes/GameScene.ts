@@ -1461,7 +1461,7 @@ export class GameScene extends Phaser.Scene {
 
     if (time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
-      this.emitEnemyImpactExplosion(contact.enemy.body, impact.x, impact.y);
+      this.emitShipCollisionImpactExplosion(impact.x, impact.y);
       this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
@@ -1817,6 +1817,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (time >= this.playerInvulnerableUntil) {
+      this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
       this.damagePlayer(projectile.damage, time, projectile.body.x, projectile.body.y);
     }
 
@@ -2005,11 +2006,51 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private emitEnemyImpactExplosion(
-    enemy: Phaser.GameObjects.Container,
-    x = enemy.x,
-    y = enemy.y
-  ): void {
+  private emitShipBulletImpactExplosion(x: number, y: number): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(x, y);
+    const particleCount = 7;
+    const flash = this.add.circle(effectPosition.x, effectPosition.y, 7, 0xf2fbff, 0.52);
+
+    flash.setDepth(12);
+    flash.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.8,
+      duration: 95,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(8, 20);
+      const particle = this.add.circle(
+        effectPosition.x,
+        effectPosition.y,
+        Phaser.Math.FloatBetween(1.4, 2.6),
+        Phaser.Utils.Array.GetRandom([0xf2fbff, 0xfff0b8, 0x73f2ff]),
+        0.9
+      );
+
+      particle.setDepth(12);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: effectPosition.x + Math.cos(angle) * distance,
+        y: effectPosition.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.18,
+        duration: 120,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  private emitShipCollisionImpactExplosion(x: number, y: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     const particleCount = 6;
 
@@ -2170,14 +2211,14 @@ export class GameScene extends Phaser.Scene {
         enemy.hp -= projectile.damage;
 
         if (enemy.hp <= 0) {
-          this.emitEnemyImpactExplosion(enemy.body);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.basicEnemies.splice(i, 1);
           this.grantXp(BASIC_ENEMY_XP_REWARD);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
-          this.emitEnemyImpactExplosion(enemy.body);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
 
         return true;
@@ -2204,14 +2245,14 @@ export class GameScene extends Phaser.Scene {
         enemy.hp -= projectile.damage;
 
         if (enemy.hp <= 0) {
-          this.emitEnemyImpactExplosion(enemy.body);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.shooterEnemies.splice(i, 1);
           this.grantXp(shooterEnemyBalance.xpReward);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
-          this.emitEnemyImpactExplosion(enemy.body);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
 
         return true;
