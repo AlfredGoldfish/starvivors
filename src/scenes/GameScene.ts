@@ -24,9 +24,12 @@ const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
 const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
 const STARFIELD_NEAR_TEXTURE_KEY = 'starvivors-starfield-near-tile';
 const BACKGROUND_TILE_SIZE = 1024;
-const STARFIELD_FAR_PARALLAX = 0.25;
-const STARFIELD_MID_PARALLAX = 0.52;
-const STARFIELD_NEAR_PARALLAX = 0.82;
+const DEFAULT_STARFIELD_FAR_PARALLAX = 0.25;
+const DEFAULT_STARFIELD_MID_PARALLAX = 0.52;
+const DEFAULT_STARFIELD_NEAR_PARALLAX = 0.82;
+const STARFIELD_PARALLAX_STEP = 0.05;
+const STARFIELD_PARALLAX_MIN = 0;
+const STARFIELD_PARALLAX_MAX = 2;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
 const PULSE_TRAIL_OFFSET = 11;
@@ -316,6 +319,9 @@ export class GameScene extends Phaser.Scene {
   private fireKey!: Phaser.Input.Keyboard.Key;
   private restartKey!: Phaser.Input.Keyboard.Key;
   private collisionDebugKey!: Phaser.Input.Keyboard.Key;
+  private parallaxTunerKey!: Phaser.Input.Keyboard.Key;
+  private parallaxResetKey!: Phaser.Input.Keyboard.Key;
+  private shiftKey!: Phaser.Input.Keyboard.Key;
   private upgradeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
@@ -348,7 +354,12 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
+  private parallaxTunerText!: Phaser.GameObjects.Text;
   private isMinimapVisible = true;
+  private isParallaxTunerVisible = false;
+  private farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
+  private midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
+  private nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
   private backgroundScrollX = 0;
   private backgroundScrollY = 0;
   private previousBackgroundCameraCenterX?: number;
@@ -376,12 +387,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.updateParallaxTunerInput();
     this.updateUpgradeOverlayInput(time);
 
     if (this.isUpgradeOverlayOpen) {
       this.updateBackgroundTiles(time);
       this.updateGameplayHud(time);
       this.updateMinimap();
+      this.updateParallaxTunerText();
       this.updateDebugText(time);
       return;
     }
@@ -398,6 +411,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBackgroundTiles(time);
     this.updateGameplayHud(time);
     this.updateMinimap();
+    this.updateParallaxTunerText();
     this.updateDebugText(time);
   }
 
@@ -415,6 +429,9 @@ export class GameScene extends Phaser.Scene {
     this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
     this.collisionDebugKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2);
+    this.parallaxTunerKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3);
+    this.parallaxResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
+    this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
     this.upgradeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
@@ -715,9 +732,11 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
+    this.createParallaxTuner();
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
+    this.updateParallaxTunerText();
     this.updateDebugText(0);
   }
 
@@ -1025,12 +1044,103 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateParallaxTunerInput(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.parallaxTunerKey)) {
+      this.isParallaxTunerVisible = !this.isParallaxTunerVisible;
+      this.updateParallaxTunerText();
+    }
+
+    if (!this.isParallaxTunerVisible || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    const direction = this.shiftKey.isDown ? 1 : -1;
+
+    if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[0])) {
+      this.adjustStarfieldParallax('far', direction);
+    } else if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[1])) {
+      this.adjustStarfieldParallax('mid', direction);
+    } else if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[2])) {
+      this.adjustStarfieldParallax('near', direction);
+    } else if (Phaser.Input.Keyboard.JustDown(this.parallaxResetKey)) {
+      this.resetStarfieldParallax();
+    }
+  }
+
+  private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
+    const delta = direction * STARFIELD_PARALLAX_STEP;
+
+    if (layer === 'far') {
+      this.farStarfieldParallax = this.clampStarfieldParallax(this.farStarfieldParallax + delta);
+    } else if (layer === 'mid') {
+      this.midStarfieldParallax = this.clampStarfieldParallax(this.midStarfieldParallax + delta);
+    } else {
+      this.nearStarfieldParallax = this.clampStarfieldParallax(this.nearStarfieldParallax + delta);
+    }
+
+    this.applyBackgroundTilePositions();
+    this.updateParallaxTunerText();
+  }
+
+  private resetStarfieldParallax(): void {
+    this.farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
+    this.midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
+    this.nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
+    this.applyBackgroundTilePositions();
+    this.updateParallaxTunerText();
+  }
+
+  private clampStarfieldParallax(value: number): number {
+    return Number(Phaser.Math.Clamp(value, STARFIELD_PARALLAX_MIN, STARFIELD_PARALLAX_MAX).toFixed(2));
+  }
+
+  private createParallaxTuner(): void {
+    this.parallaxTunerText = this.add
+      .text(this.scale.width - HUD_MARGIN, HUD_MARGIN + 54, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '14px',
+        color: '#f2fbff',
+        backgroundColor: 'rgba(2, 4, 10, 0.82)',
+        padding: { x: 10, y: 8 },
+        align: 'left'
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(1001);
+  }
+
+  private updateParallaxTunerText(): void {
+    if (!this.parallaxTunerText) {
+      return;
+    }
+
+    const isVisible = this.isParallaxTunerVisible && !this.isUpgradeOverlayOpen;
+
+    this.parallaxTunerText.setVisible(isVisible);
+
+    if (!isVisible) {
+      return;
+    }
+
+    this.parallaxTunerText
+      .setPosition(this.scale.width - HUD_MARGIN, HUD_MARGIN + 54)
+      .setText(
+        `DEBUG PARALLAX TUNER\n` +
+          `Far:  ${this.farStarfieldParallax.toFixed(2)}  1 / Shift+1\n` +
+          `Mid:  ${this.midStarfieldParallax.toFixed(2)}  2 / Shift+2\n` +
+          `Near: ${this.nearStarfieldParallax.toFixed(2)}  3 / Shift+3\n` +
+          `0 reset   F3 hide\n` +
+          `Step ${STARFIELD_PARALLAX_STEP.toFixed(2)}  Range ${STARFIELD_PARALLAX_MIN.toFixed(2)}-${STARFIELD_PARALLAX_MAX.toFixed(2)}`
+      );
+  }
+
   private openUpgradeOverlay(time: number): void {
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
     this.upgradeOverlayGraphics.setVisible(true);
     this.upgradeOverlayText.setVisible(true);
+    this.updateParallaxTunerText();
   }
 
   private closeUpgradeOverlay(time: number): void {
@@ -1043,6 +1153,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics.setVisible(false);
     this.upgradeOverlayText.setVisible(false);
     this.updateGameplayHud(time);
+    this.updateParallaxTunerText();
   }
 
   private selectPulseUpgrade(upgrade: PulseUpgradeDefinition, time: number): void {
@@ -2064,12 +2175,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyBackgroundTilePositions(): void {
-    this.farStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_FAR_PARALLAX;
-    this.farStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_FAR_PARALLAX;
-    this.midStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_MID_PARALLAX;
-    this.midStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_MID_PARALLAX;
-    this.nearStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_NEAR_PARALLAX;
-    this.nearStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_NEAR_PARALLAX;
+    this.farStarfield.tilePositionX = this.backgroundScrollX * this.farStarfieldParallax;
+    this.farStarfield.tilePositionY = this.backgroundScrollY * this.farStarfieldParallax;
+    this.midStarfield.tilePositionX = this.backgroundScrollX * this.midStarfieldParallax;
+    this.midStarfield.tilePositionY = this.backgroundScrollY * this.midStarfieldParallax;
+    this.nearStarfield.tilePositionX = this.backgroundScrollX * this.nearStarfieldParallax;
+    this.nearStarfield.tilePositionY = this.backgroundScrollY * this.nearStarfieldParallax;
   }
 
   private updateBackgroundTiles(time: number): void {
