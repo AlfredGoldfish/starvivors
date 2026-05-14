@@ -362,8 +362,8 @@ export class GameScene extends Phaser.Scene {
   private nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
   private backgroundScrollX = 0;
   private backgroundScrollY = 0;
-  private previousBackgroundCameraCenterX?: number;
-  private previousBackgroundCameraCenterY?: number;
+  private previousBackgroundPlayerX?: number;
+  private previousBackgroundPlayerY?: number;
 
   constructor() {
     super('GameScene');
@@ -694,8 +694,8 @@ export class GameScene extends Phaser.Scene {
     this.isMinimapVisible = true;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
-    this.previousBackgroundCameraCenterX = undefined;
-    this.previousBackgroundCameraCenterY = undefined;
+    this.previousBackgroundPlayerX = undefined;
+    this.previousBackgroundPlayerY = undefined;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -703,7 +703,7 @@ export class GameScene extends Phaser.Scene {
     this.createBasicAsteroids(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
-    this.resetBackgroundCameraTracking();
+    this.resetBackgroundPlayerTracking();
 
     this.debugText = this.add
       .text(16, 16, '', {
@@ -1312,7 +1312,6 @@ export class GameScene extends Phaser.Scene {
 
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
-      this.resetBackgroundCameraTracking();
     }
   }
 
@@ -2167,11 +2166,9 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(right.x * localX - forward.x * localY, right.y * localX - forward.y * localY);
   }
 
-  private resetBackgroundCameraTracking(): void {
-    const camera = this.cameras.main;
-
-    this.previousBackgroundCameraCenterX = camera.scrollX + camera.width / 2;
-    this.previousBackgroundCameraCenterY = camera.scrollY + camera.height / 2;
+  private resetBackgroundPlayerTracking(): void {
+    this.previousBackgroundPlayerX = this.player.x;
+    this.previousBackgroundPlayerY = this.player.y;
   }
 
   private applyBackgroundTilePositions(): void {
@@ -2188,20 +2185,24 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const camera = this.cameras.main;
-    const cameraCenterX = camera.scrollX + camera.width / 2;
-    const cameraCenterY = camera.scrollY + camera.height / 2;
     const twinkleTime = time * 0.001;
 
-    if (this.previousBackgroundCameraCenterX === undefined || this.previousBackgroundCameraCenterY === undefined) {
-      this.previousBackgroundCameraCenterX = cameraCenterX;
-      this.previousBackgroundCameraCenterY = cameraCenterY;
+    if (this.previousBackgroundPlayerX === undefined || this.previousBackgroundPlayerY === undefined) {
+      this.previousBackgroundPlayerX = this.player.x;
+      this.previousBackgroundPlayerY = this.player.y;
     }
 
-    this.backgroundScrollX += cameraCenterX - this.previousBackgroundCameraCenterX;
-    this.backgroundScrollY += cameraCenterY - this.previousBackgroundCameraCenterY;
-    this.previousBackgroundCameraCenterX = cameraCenterX;
-    this.previousBackgroundCameraCenterY = cameraCenterY;
+    const playerDelta = this.getWrappedDirection(
+      this.previousBackgroundPlayerX,
+      this.previousBackgroundPlayerY,
+      this.player.x,
+      this.player.y
+    );
+
+    this.backgroundScrollX += playerDelta.x;
+    this.backgroundScrollY += playerDelta.y;
+    this.previousBackgroundPlayerX = this.player.x;
+    this.previousBackgroundPlayerY = this.player.y;
 
     this.applyBackgroundTilePositions();
 
