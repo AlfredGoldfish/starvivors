@@ -24,6 +24,9 @@ const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
 const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
 const STARFIELD_NEAR_TEXTURE_KEY = 'starvivors-starfield-near-tile';
 const BACKGROUND_TILE_SIZE = 1024;
+const STARFIELD_FAR_PARALLAX = 0.25;
+const STARFIELD_MID_PARALLAX = 0.52;
+const STARFIELD_NEAR_PARALLAX = 0.82;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
 const PULSE_CANNON_MUZZLE_OFFSET = 36;
 const PULSE_TRAIL_OFFSET = 11;
@@ -65,6 +68,7 @@ const PLAYER_CONTACT_MAX_IMPULSE = 460;
 const PLAYER_CONTACT_RELATIVE_SPEED_SCALE = 0.42;
 const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
 const PLAYER_CONTACT_MAX_SEPARATION = 18;
+const PLAYER_REST_SPEED = 2;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
 const DEBUG_ELLIPSE_SEGMENTS = 28;
@@ -345,8 +349,10 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
   private isMinimapVisible = true;
-  private backgroundWrapOffsetX = 0;
-  private backgroundWrapOffsetY = 0;
+  private backgroundScrollX = 0;
+  private backgroundScrollY = 0;
+  private previousBackgroundCameraCenterX?: number;
+  private previousBackgroundCameraCenterY?: number;
 
   constructor() {
     super('GameScene');
@@ -669,8 +675,10 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
     this.isMinimapVisible = true;
-    this.backgroundWrapOffsetX = 0;
-    this.backgroundWrapOffsetY = 0;
+    this.backgroundScrollX = 0;
+    this.backgroundScrollY = 0;
+    this.previousBackgroundCameraCenterX = undefined;
+    this.previousBackgroundCameraCenterY = undefined;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -678,6 +686,7 @@ export class GameScene extends Phaser.Scene {
     this.createBasicAsteroids(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
+    this.resetBackgroundCameraTracking();
 
     this.debugText = this.add
       .text(16, 16, '', {
@@ -787,7 +796,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(-18);
 
-    this.updateBackgroundTiles(0);
+    this.applyBackgroundTilePositions();
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
@@ -971,6 +980,11 @@ export class GameScene extends Phaser.Scene {
     this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
 
     this.playerVelocity.scale(Math.pow(interceptorMovement.lowFrictionDamping, deltaSeconds * 60));
+
+    if (this.playerVelocity.lengthSq() < PLAYER_REST_SPEED * PLAYER_REST_SPEED) {
+      this.playerVelocity.set(0, 0);
+    }
+
     this.playerVelocity.limit(interceptorMovement.maxSpeed);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
@@ -1182,15 +1196,12 @@ export class GameScene extends Phaser.Scene {
     const wrappedX = wrapCoordinate(this.player.x, this.arena.width);
     const wrappedY = wrapCoordinate(this.player.y, this.arena.height);
     const didWrap = wrappedX !== this.player.x || wrappedY !== this.player.y;
-    const previousScrollX = this.cameras.main.scrollX;
-    const previousScrollY = this.cameras.main.scrollY;
 
     this.player.setPosition(wrappedX, wrappedY);
 
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
-      this.backgroundWrapOffsetX += previousScrollX - this.cameras.main.scrollX;
-      this.backgroundWrapOffsetY += previousScrollY - this.cameras.main.scrollY;
+      this.resetBackgroundCameraTracking();
     }
   }
 
@@ -2045,21 +2056,43 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(right.x * localX - forward.x * localY, right.y * localX - forward.y * localY);
   }
 
+  private resetBackgroundCameraTracking(): void {
+    const camera = this.cameras.main;
+
+    this.previousBackgroundCameraCenterX = camera.scrollX + camera.width / 2;
+    this.previousBackgroundCameraCenterY = camera.scrollY + camera.height / 2;
+  }
+
+  private applyBackgroundTilePositions(): void {
+    this.farStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_FAR_PARALLAX;
+    this.farStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_FAR_PARALLAX;
+    this.midStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_MID_PARALLAX;
+    this.midStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_MID_PARALLAX;
+    this.nearStarfield.tilePositionX = this.backgroundScrollX * STARFIELD_NEAR_PARALLAX;
+    this.nearStarfield.tilePositionY = this.backgroundScrollY * STARFIELD_NEAR_PARALLAX;
+  }
+
   private updateBackgroundTiles(time: number): void {
     if (!this.farStarfield || !this.midStarfield || !this.nearStarfield) {
       return;
     }
 
-    const scrollX = this.cameras.main.scrollX + this.backgroundWrapOffsetX;
-    const scrollY = this.cameras.main.scrollY + this.backgroundWrapOffsetY;
+    const camera = this.cameras.main;
+    const cameraCenterX = camera.scrollX + camera.width / 2;
+    const cameraCenterY = camera.scrollY + camera.height / 2;
     const twinkleTime = time * 0.001;
 
-    this.farStarfield.tilePositionX = scrollX * 0.25;
-    this.farStarfield.tilePositionY = scrollY * 0.25;
-    this.midStarfield.tilePositionX = scrollX * 0.52;
-    this.midStarfield.tilePositionY = scrollY * 0.52;
-    this.nearStarfield.tilePositionX = scrollX * 0.82;
-    this.nearStarfield.tilePositionY = scrollY * 0.82;
+    if (this.previousBackgroundCameraCenterX === undefined || this.previousBackgroundCameraCenterY === undefined) {
+      this.previousBackgroundCameraCenterX = cameraCenterX;
+      this.previousBackgroundCameraCenterY = cameraCenterY;
+    }
+
+    this.backgroundScrollX += cameraCenterX - this.previousBackgroundCameraCenterX;
+    this.backgroundScrollY += cameraCenterY - this.previousBackgroundCameraCenterY;
+    this.previousBackgroundCameraCenterX = cameraCenterX;
+    this.previousBackgroundCameraCenterY = cameraCenterY;
+
+    this.applyBackgroundTilePositions();
 
     this.farStarfield.setAlpha(0.72);
     this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.32 + 1.8) * 0.012);
