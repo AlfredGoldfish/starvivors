@@ -5,16 +5,18 @@ import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
 import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
 import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
 import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
+import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
-import { basicEnemy, shooterEnemy } from '../data/enemies';
-import { interceptorMovement, shooterEnemyBalance } from '../data/balance';
+import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
+import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
 import { pulseCannon } from '../data/weapons';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
 const SHOOTER_ENEMY_TEXTURE_KEY = 'shooter-enemy-spaceship';
+const TANK_ENEMY_TEXTURE_KEY = 'tank-enemy-spaceship';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
@@ -49,6 +51,9 @@ const SHOOTER_ENEMY_COUNT = 2;
 const SHOOTER_ENEMY_DISPLAY_SIZE = 92;
 const SHOOTER_ENEMY_VISUAL_ROTATION = Math.PI;
 const SHOOTER_PROJECTILE_HIT_RADIUS = 9;
+const TANK_ENEMY_COUNT = 1;
+const TANK_ENEMY_DISPLAY_SIZE = 126;
+const TANK_ENEMY_VISUAL_ROTATION = Math.PI;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -165,6 +170,7 @@ interface StarvivorsTestHarnessState {
   isMinimapVisible: boolean;
   enemies: number;
   shooterEnemies: number;
+  tankEnemies: number;
   asteroids: number;
   projectiles: number;
   enemyProjectiles: number;
@@ -298,6 +304,14 @@ interface ShooterEnemy {
   hp: number;
 }
 
+interface TankEnemy {
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  knockbackVelocity: Phaser.Math.Vector2;
+  hp: number;
+}
+
 interface BasicAsteroid {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
@@ -318,10 +332,11 @@ interface AsteroidBreakupProfile {
 }
 
 interface PlayerEnemyContact {
-  enemy: BasicEnemy;
+  enemy: BasicEnemy | TankEnemy;
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;
+  mass: number;
 }
 
 interface PlayerAsteroidContact {
@@ -360,6 +375,7 @@ export class GameScene extends Phaser.Scene {
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private shooterEnemies: ShooterEnemy[] = [];
+  private tankEnemies: TankEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
   private playerHull = PLAYER_MAX_HULL;
   private playerInvulnerableUntil = 0;
@@ -408,6 +424,7 @@ export class GameScene extends Phaser.Scene {
 
     this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyChaserUrl);
     this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
+    this.load.image(TANK_ENEMY_TEXTURE_KEY, enemyTankUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
   }
 
@@ -435,6 +452,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayerMovement(time, delta / 1000);
     this.updateBasicEnemies(delta / 1000);
     this.updateShooterEnemies(time, delta / 1000);
+    this.updateTankEnemies(delta / 1000);
     this.updateBasicAsteroids(delta / 1000);
     this.wrapPlayer();
     this.updatePlayerContactDamage(time);
@@ -608,6 +626,7 @@ export class GameScene extends Phaser.Scene {
       isMinimapVisible: this.isMinimapVisible,
       enemies: this.basicEnemies.length,
       shooterEnemies: this.shooterEnemies.length,
+      tankEnemies: this.tankEnemies.length,
       asteroids: this.basicAsteroids.length,
       projectiles: this.pulseCannonProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length
@@ -642,6 +661,7 @@ export class GameScene extends Phaser.Scene {
       initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       initial.bankedUpgrades === 0 &&
       initial.shooterEnemies === SHOOTER_ENEMY_COUNT &&
+      initial.tankEnemies === TANK_ENEMY_COUNT &&
       initial.enemyProjectiles === 0 &&
       enemyXp.playerXp === BASIC_ENEMY_XP_REWARD &&
       rollover.playerXp === 5 &&
@@ -672,6 +692,7 @@ export class GameScene extends Phaser.Scene {
       restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       restarted.bankedUpgrades === 0 &&
       restarted.shooterEnemies === SHOOTER_ENEMY_COUNT &&
+      restarted.tankEnemies === TANK_ENEMY_COUNT &&
       restarted.enemyProjectiles === 0 &&
       restarted.pulseDamageLevel === 0 &&
       restarted.pulseFireRateLevel === 0 &&
@@ -718,6 +739,7 @@ export class GameScene extends Phaser.Scene {
     this.enemyProjectiles = [];
     this.basicEnemies = [];
     this.shooterEnemies = [];
+    this.tankEnemies = [];
     this.basicAsteroids = [];
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -744,6 +766,7 @@ export class GameScene extends Phaser.Scene {
     this.player = this.createPlayerShip(center.x, center.y);
     this.createBasicEnemies(center);
     this.createShooterEnemies(center);
+    this.createTankEnemies(center);
     this.createBasicAsteroids(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
@@ -938,6 +961,40 @@ export class GameScene extends Phaser.Scene {
 
     const enemy = this.add.container(x, y, [sprite]);
     enemy.setSize(SHOOTER_ENEMY_DISPLAY_SIZE, SHOOTER_ENEMY_DISPLAY_SIZE);
+    enemy.setDepth(9);
+
+    return enemy;
+  }
+
+  private createTankEnemies(center: Phaser.Math.Vector2): void {
+    const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.95;
+
+    for (let index = 0; index < TANK_ENEMY_COUNT; index += 1) {
+      const angle = (Math.PI * 2 * index) / TANK_ENEMY_COUNT + Math.PI * 1.25;
+      const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
+      const body = this.createTankEnemy(x, y);
+      const wrapMirrorBody = this.createTankEnemy(x, y);
+      wrapMirrorBody.setVisible(false);
+
+      this.tankEnemies.push({
+        body,
+        wrapMirrorBody,
+        velocity: new Phaser.Math.Vector2(0, 0),
+        knockbackVelocity: new Phaser.Math.Vector2(0, 0),
+        hp: tankEnemy.hp
+      });
+    }
+  }
+
+  private createTankEnemy(x: number, y: number): Phaser.GameObjects.Container {
+    const sprite = this.add.image(0, 0, TANK_ENEMY_TEXTURE_KEY);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(TANK_ENEMY_DISPLAY_SIZE, TANK_ENEMY_DISPLAY_SIZE);
+    sprite.setRotation(TANK_ENEMY_VISUAL_ROTATION);
+
+    const enemy = this.add.container(x, y, [sprite]);
+    enemy.setSize(TANK_ENEMY_DISPLAY_SIZE, TANK_ENEMY_DISPLAY_SIZE);
     enemy.setDepth(9);
 
     return enemy;
@@ -1430,7 +1487,30 @@ export class GameScene extends Phaser.Scene {
           enemy,
           normal: this.getCollisionNormal(offset),
           penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(hitHalfWidth, hitHalfLength),
-          damage: ENEMY_CONTACT_DAMAGE
+          damage: ENEMY_CONTACT_DAMAGE,
+          mass: BASIC_ENEMY_MASS
+        };
+      }
+    }
+
+    const tankHitHalfWidth = tankEnemy.hitHalfWidth + PLAYER_HIT_RADIUS;
+    const tankHitHalfLength = tankEnemy.hitHalfLength + PLAYER_HIT_RADIUS;
+
+    for (const enemy of this.tankEnemies) {
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const localX = offset.dot(enemyRight);
+      const localY = offset.dot(enemyForward);
+      const normalizedHit = (localX * localX) / (tankHitHalfWidth * tankHitHalfWidth) + (localY * localY) / (tankHitHalfLength * tankHitHalfLength);
+
+      if (normalizedHit <= 1) {
+        return {
+          enemy,
+          normal: this.getCollisionNormal(offset),
+          penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(tankHitHalfWidth, tankHitHalfLength),
+          damage: tankEnemyBalance.contactDamage,
+          mass: tankEnemyBalance.mass
         };
       }
     }
@@ -1478,8 +1558,8 @@ export class GameScene extends Phaser.Scene {
 
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
     const normal = contact.normal;
-    const playerShare = this.getMassResponseShare(BASIC_ENEMY_MASS, PLAYER_MASS);
-    const enemyShare = this.getMassResponseShare(PLAYER_MASS, BASIC_ENEMY_MASS);
+    const playerShare = this.getMassResponseShare(contact.mass, PLAYER_MASS);
+    const enemyShare = this.getMassResponseShare(PLAYER_MASS, contact.mass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -1750,6 +1830,26 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateTankEnemies(deltaSeconds: number): void {
+    for (const enemy of this.tankEnemies) {
+      const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+      enemy.velocity.set(0, 0);
+
+      if (direction.lengthSq() > 0) {
+        direction.normalize();
+        enemy.velocity.set(direction.x * tankEnemyBalance.moveSpeed, direction.y * tankEnemyBalance.moveSpeed);
+        enemy.body.rotation = Math.atan2(direction.x, -direction.y);
+      }
+
+      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).limit(GAMEPLAY_MAX_VELOCITY);
+
+      enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * deltaSeconds, this.arena.width);
+      enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * deltaSeconds, this.arena.height);
+      enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, deltaSeconds * 60));
+      this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, TANK_ENEMY_DISPLAY_SIZE * 0.5);
+    }
+  }
+
   private fireShooterProjectile(enemy: ShooterEnemy, direction: Phaser.Math.Vector2, time: number): void {
     const spawnDistance = SHOOTER_ENEMY_DISPLAY_SIZE * 0.42;
     const spawnX = wrapCoordinate(enemy.body.x + direction.x * spawnDistance, this.arena.width);
@@ -1937,7 +2037,12 @@ export class GameScene extends Phaser.Scene {
 
       if (
         !this.isPlayerDead &&
-        (this.tryHitBasicEnemy(projectile) || this.tryHitShooterEnemy(projectile) || this.tryHitBasicAsteroid(projectile))
+        (
+          this.tryHitBasicEnemy(projectile) ||
+          this.tryHitShooterEnemy(projectile) ||
+          this.tryHitTankEnemy(projectile) ||
+          this.tryHitBasicAsteroid(projectile)
+        )
       ) {
         this.destroyPulseCannonProjectile(projectile);
         this.pulseCannonProjectiles.splice(i, 1);
@@ -2250,6 +2355,40 @@ export class GameScene extends Phaser.Scene {
           enemy.wrapMirrorBody.destroy(true);
           this.shooterEnemies.splice(i, 1);
           this.grantXp(shooterEnemyBalance.xpReward);
+        } else {
+          this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+        }
+
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private tryHitTankEnemy(projectile: PulseCannonProjectile): boolean {
+    const hitHalfWidth = tankEnemy.hitHalfWidth + PROJECTILE_HIT_RADIUS;
+    const hitHalfLength = tankEnemy.hitHalfLength + PROJECTILE_HIT_RADIUS;
+
+    for (let i = this.tankEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.tankEnemies[i];
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const localX = offset.dot(enemyRight);
+      const localY = offset.dot(enemyForward);
+      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
+
+      if (normalizedHit <= 1) {
+        enemy.hp -= projectile.damage;
+
+        if (enemy.hp <= 0) {
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+          enemy.body.destroy(true);
+          enemy.wrapMirrorBody.destroy(true);
+          this.tankEnemies.splice(i, 1);
+          this.grantXp(tankEnemyBalance.xpReward);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -2732,6 +2871,36 @@ export class GameScene extends Phaser.Scene {
         0.8
       );
     }
+
+    for (const enemy of this.tankEnemies) {
+      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
+
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, TANK_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+        continue;
+      }
+
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+
+      this.strokeOrientedEllipse(
+        enemyPosition,
+        enemyRight,
+        enemyForward,
+        tankEnemy.hitHalfWidth,
+        tankEnemy.hitHalfLength,
+        0xb48cff,
+        0.84
+      );
+      this.strokeOrientedEllipse(
+        enemyPosition,
+        enemyRight,
+        enemyForward,
+        tankEnemy.hitHalfWidth + PLAYER_HIT_RADIUS,
+        tankEnemy.hitHalfLength + PLAYER_HIT_RADIUS,
+        0xff5964,
+        0.38
+      );
+    }
   }
 
   private drawAsteroidCollisionDebug(): void {
@@ -2853,6 +3022,15 @@ export class GameScene extends Phaser.Scene {
       this.minimapGraphics.fillRect(position.x - 2.8, position.y - 2.8, 5.6, 5.6);
     }
 
+    for (const enemy of this.tankEnemies) {
+      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
+
+      this.minimapGraphics.fillStyle(0xb48cff, 0.94);
+      this.minimapGraphics.fillCircle(position.x, position.y, 4.2);
+      this.minimapGraphics.lineStyle(1, 0xf2fbff, 0.78);
+      this.minimapGraphics.strokeCircle(position.x, position.y, 5.4);
+    }
+
     const playerPosition = this.getMinimapPosition(this.player.x, this.player.y, innerX, innerY, innerWidth, innerHeight);
 
     this.minimapGraphics.fillStyle(0x42f5d7, 1);
@@ -2966,7 +3144,7 @@ export class GameScene extends Phaser.Scene {
         `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
-        `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter\n` +
+        `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`

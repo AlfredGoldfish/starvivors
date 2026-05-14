@@ -1,5 +1,5 @@
 import type { ContentRegistryEntry } from './contentStatus';
-import { basicEnemyBalance, shooterEnemyBalance } from './balance';
+import { basicEnemyBalance, shooterEnemyBalance, tankEnemyBalance } from './balance';
 
 export interface EnemyRegistryEntry extends ContentRegistryEntry {
   displayName: string;
@@ -29,4 +29,14 @@ export const shooterEnemy: EnemyRegistryEntry = {
   hitHalfLength: shooterEnemyBalance.hitHalfLength
 };
 
-export const enemyRegistry: EnemyRegistryEntry[] = [basicEnemy, shooterEnemy];
+export const tankEnemy: EnemyRegistryEntry = {
+  id: 'tank-enemy',
+  displayName: 'Tank Enemy',
+  status: 'Implemented',
+  moveSpeed: tankEnemyBalance.moveSpeed,
+  hp: tankEnemyBalance.hp,
+  hitHalfWidth: tankEnemyBalance.hitHalfWidth,
+  hitHalfLength: tankEnemyBalance.hitHalfLength
+};
+
+export const enemyRegistry: EnemyRegistryEntry[] = [basicEnemy, shooterEnemy, tankEnemy];

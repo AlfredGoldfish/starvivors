@@ -37,3 +37,13 @@ export const shooterEnemyBalance = {
   hitHalfLength: 22,
   xpReward: 18
 };
+
+export const tankEnemyBalance = {
+  moveSpeed: 42,
+  hp: 10,
+  hitHalfWidth: 36,
+  hitHalfLength: 42,
+  contactDamage: 24,
+  mass: 9,
+  xpReward: 32
+};
