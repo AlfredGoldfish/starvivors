@@ -20,3 +20,17 @@ export const basicEnemyBalance = {
   hitHalfWidth: 19,
   hitHalfLength: 25
 };
+
+export const shooterEnemyBalance = {
+  moveSpeed: 72,
+  preferredRange: 620,
+  tooCloseRange: 360,
+  fireCooldownSeconds: 2.35,
+  projectileSpeed: 360,
+  projectileDamage: 12,
+  projectileLifetimeSeconds: 3.2,
+  projectileRange: 1150,
+  hitHalfWidth: 28,
+  hitHalfLength: 22,
+  xpReward: 18
+};

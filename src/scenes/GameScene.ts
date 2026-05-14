@@ -3,16 +3,18 @@ import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
 import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
 import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
 import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
-import enemyShipUrl from '../../assets/ships/spaceship_enemy_1.png';
+import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
+import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
-import { basicEnemy } from '../data/enemies';
-import { interceptorMovement } from '../data/balance';
+import { basicEnemy, shooterEnemy } from '../data/enemies';
+import { interceptorMovement, shooterEnemyBalance } from '../data/balance';
 import { pulseCannon } from '../data/weapons';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
+const SHOOTER_ENEMY_TEXTURE_KEY = 'shooter-enemy-spaceship';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
@@ -43,6 +45,10 @@ const SECONDARY_THRUSTER_INTERVAL_MS = 42;
 const BASIC_ENEMY_COUNT = 6;
 const BASIC_ENEMY_DISPLAY_SIZE = 86;
 const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
+const SHOOTER_ENEMY_COUNT = 2;
+const SHOOTER_ENEMY_DISPLAY_SIZE = 92;
+const SHOOTER_ENEMY_VISUAL_ROTATION = Math.PI;
+const SHOOTER_PROJECTILE_HIT_RADIUS = 9;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -156,8 +162,10 @@ interface StarvivorsTestHarnessState {
   pulseProjectileSpeed: number;
   isMinimapVisible: boolean;
   enemies: number;
+  shooterEnemies: number;
   asteroids: number;
   projectiles: number;
+  enemyProjectiles: number;
 }
 
 interface StarvivorsTestHarness {
@@ -261,11 +269,28 @@ interface PulseCannonProjectile {
   nextTrailAt: number;
 }
 
+interface EnemyProjectile {
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  speed: number;
+  damage: number;
+  expiresAt: number;
+  distanceRemaining: number;
+}
+
 interface BasicEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
+}
+
+interface ShooterEnemy {
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  nextFireAt: number;
 }
 
 interface BasicAsteroid {
@@ -327,7 +352,9 @@ export class GameScene extends Phaser.Scene {
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
   private minimapKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
+  private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
+  private shooterEnemies: ShooterEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
   private playerHull = PLAYER_MAX_HULL;
   private playerInvulnerableUntil = 0;
@@ -374,7 +401,8 @@ export class GameScene extends Phaser.Scene {
       this.load.image(asteroidTexture.key, asteroidTexture.url);
     }
 
-    this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyShipUrl);
+    this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyChaserUrl);
+    this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
   }
 
@@ -401,11 +429,13 @@ export class GameScene extends Phaser.Scene {
 
     this.updatePlayerMovement(time, delta / 1000);
     this.updateBasicEnemies(delta / 1000);
+    this.updateShooterEnemies(time, delta / 1000);
     this.updateBasicAsteroids(delta / 1000);
     this.wrapPlayer();
     this.updatePlayerContactDamage(time);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
+    this.updateEnemyProjectiles(time, delta / 1000);
     this.updatePlayerDamageVisuals(time);
     this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles(time);
@@ -572,8 +602,10 @@ export class GameScene extends Phaser.Scene {
       pulseProjectileSpeed: this.getPulseProjectileSpeed(),
       isMinimapVisible: this.isMinimapVisible,
       enemies: this.basicEnemies.length,
+      shooterEnemies: this.shooterEnemies.length,
       asteroids: this.basicAsteroids.length,
-      projectiles: this.pulseCannonProjectiles.length
+      projectiles: this.pulseCannonProjectiles.length,
+      enemyProjectiles: this.enemyProjectiles.length
     };
   }
 
@@ -604,6 +636,8 @@ export class GameScene extends Phaser.Scene {
       initial.playerXp === 0 &&
       initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       initial.bankedUpgrades === 0 &&
+      initial.shooterEnemies === SHOOTER_ENEMY_COUNT &&
+      initial.enemyProjectiles === 0 &&
       enemyXp.playerXp === BASIC_ENEMY_XP_REWARD &&
       rollover.playerXp === 5 &&
       rollover.nextXpThreshold === 120 &&
@@ -632,6 +666,8 @@ export class GameScene extends Phaser.Scene {
       restarted.playerXp === 0 &&
       restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       restarted.bankedUpgrades === 0 &&
+      restarted.shooterEnemies === SHOOTER_ENEMY_COUNT &&
+      restarted.enemyProjectiles === 0 &&
       restarted.pulseDamageLevel === 0 &&
       restarted.pulseFireRateLevel === 0 &&
       restarted.pulseVelocityLevel === 0 &&
@@ -674,7 +710,9 @@ export class GameScene extends Phaser.Scene {
     this.bankedUpgrades = 0;
     this.deathText = undefined;
     this.pulseCannonProjectiles = [];
+    this.enemyProjectiles = [];
     this.basicEnemies = [];
+    this.shooterEnemies = [];
     this.basicAsteroids = [];
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -700,6 +738,7 @@ export class GameScene extends Phaser.Scene {
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
     this.createBasicEnemies(center);
+    this.createShooterEnemies(center);
     this.createBasicAsteroids(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
@@ -859,6 +898,39 @@ export class GameScene extends Phaser.Scene {
 
     const enemy = this.add.container(x, y, [sprite]);
     enemy.setSize(BASIC_ENEMY_DISPLAY_SIZE, BASIC_ENEMY_DISPLAY_SIZE);
+    enemy.setDepth(9);
+
+    return enemy;
+  }
+
+  private createShooterEnemies(center: Phaser.Math.Vector2): void {
+    const spawnDistance = Math.max(this.scale.width, this.scale.height) * 1.12;
+
+    for (let index = 0; index < SHOOTER_ENEMY_COUNT; index += 1) {
+      const angle = (Math.PI * 2 * index) / SHOOTER_ENEMY_COUNT + Math.PI / 2;
+      const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
+      const body = this.createShooterEnemy(x, y);
+      const wrapMirrorBody = this.createShooterEnemy(x, y);
+      wrapMirrorBody.setVisible(false);
+
+      this.shooterEnemies.push({
+        body,
+        wrapMirrorBody,
+        velocity: new Phaser.Math.Vector2(0, 0),
+        nextFireAt: this.time.now + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000))
+      });
+    }
+  }
+
+  private createShooterEnemy(x: number, y: number): Phaser.GameObjects.Container {
+    const sprite = this.add.image(0, 0, SHOOTER_ENEMY_TEXTURE_KEY);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(SHOOTER_ENEMY_DISPLAY_SIZE, SHOOTER_ENEMY_DISPLAY_SIZE);
+    sprite.setRotation(SHOOTER_ENEMY_VISUAL_ROTATION);
+
+    const enemy = this.add.container(x, y, [sprite]);
+    enemy.setSize(SHOOTER_ENEMY_DISPLAY_SIZE, SHOOTER_ENEMY_DISPLAY_SIZE);
     enemy.setDepth(9);
 
     return enemy;
@@ -1624,6 +1696,120 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateShooterEnemies(time: number, deltaSeconds: number): void {
+    for (const enemy of this.shooterEnemies) {
+      const offsetToPlayer = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+      const distance = offsetToPlayer.length();
+
+      enemy.velocity.set(0, 0);
+
+      if (distance > 0) {
+        const directionToPlayer = offsetToPlayer.clone().scale(1 / distance);
+
+        enemy.body.rotation = Math.atan2(directionToPlayer.x, -directionToPlayer.y);
+
+        if (distance > shooterEnemyBalance.preferredRange) {
+          enemy.velocity.set(
+            directionToPlayer.x * shooterEnemyBalance.moveSpeed,
+            directionToPlayer.y * shooterEnemyBalance.moveSpeed
+          );
+        } else if (distance < shooterEnemyBalance.tooCloseRange) {
+          enemy.velocity.set(
+            -directionToPlayer.x * shooterEnemyBalance.moveSpeed * 0.72,
+            -directionToPlayer.y * shooterEnemyBalance.moveSpeed * 0.72
+          );
+        }
+
+        if (!this.isPlayerDead && time >= enemy.nextFireAt) {
+          this.fireShooterProjectile(enemy, directionToPlayer, time);
+          enemy.nextFireAt = time + shooterEnemyBalance.fireCooldownSeconds * 1000;
+        }
+      }
+
+      enemy.body.x = wrapCoordinate(enemy.body.x + enemy.velocity.x * deltaSeconds, this.arena.width);
+      enemy.body.y = wrapCoordinate(enemy.body.y + enemy.velocity.y * deltaSeconds, this.arena.height);
+      this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5);
+    }
+  }
+
+  private fireShooterProjectile(enemy: ShooterEnemy, direction: Phaser.Math.Vector2, time: number): void {
+    const spawnDistance = SHOOTER_ENEMY_DISPLAY_SIZE * 0.42;
+    const spawnX = wrapCoordinate(enemy.body.x + direction.x * spawnDistance, this.arena.width);
+    const spawnY = wrapCoordinate(enemy.body.y + direction.y * spawnDistance, this.arena.height);
+    const rotation = Math.atan2(direction.x, -direction.y);
+    const body = this.createEnemyProjectile(spawnX, spawnY, rotation);
+    const wrapMirrorBody = this.createEnemyProjectile(spawnX, spawnY, rotation);
+    wrapMirrorBody.setVisible(false);
+
+    this.enemyProjectiles.push({
+      body,
+      wrapMirrorBody,
+      velocity: direction.clone().scale(shooterEnemyBalance.projectileSpeed),
+      speed: shooterEnemyBalance.projectileSpeed,
+      damage: shooterEnemyBalance.projectileDamage,
+      expiresAt: time + shooterEnemyBalance.projectileLifetimeSeconds * 1000,
+      distanceRemaining: shooterEnemyBalance.projectileRange
+    });
+  }
+
+  private createEnemyProjectile(x: number, y: number, rotation: number): Phaser.GameObjects.Container {
+    const glow = this.add.ellipse(0, 0, 20, 20, 0xff5964, 0.28);
+    const body = this.add.ellipse(0, 0, 10, 16, 0xff8f4f, 0.94);
+    body.setStrokeStyle(1, 0xfff0b8, 0.86);
+
+    const projectile = this.add.container(x, y, [glow, body]);
+
+    projectile.setSize(20, 20);
+    projectile.setRotation(rotation);
+    projectile.setDepth(8);
+
+    return projectile;
+  }
+
+  private updateEnemyProjectiles(time: number, deltaSeconds: number): void {
+    for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = this.enemyProjectiles[i];
+      const travelDistance = projectile.speed * deltaSeconds;
+
+      projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
+      projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
+      projectile.distanceRemaining -= travelDistance;
+      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, SHOOTER_PROJECTILE_HIT_RADIUS);
+
+      if (this.tryHitPlayerWithEnemyProjectile(projectile, time)) {
+        this.destroyEnemyProjectile(projectile);
+        this.enemyProjectiles.splice(i, 1);
+      } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
+        this.destroyEnemyProjectile(projectile);
+        this.enemyProjectiles.splice(i, 1);
+      }
+    }
+  }
+
+  private tryHitPlayerWithEnemyProjectile(projectile: EnemyProjectile, time: number): boolean {
+    if (this.isPlayerDead) {
+      return false;
+    }
+
+    const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, this.player.x, this.player.y);
+    const hitRadius = PLAYER_HIT_RADIUS + SHOOTER_PROJECTILE_HIT_RADIUS;
+
+    if (offset.lengthSq() > hitRadius * hitRadius) {
+      return false;
+    }
+
+    if (time >= this.playerInvulnerableUntil) {
+      this.damagePlayer(projectile.damage, time);
+    }
+
+    return true;
+  }
+
+  private destroyEnemyProjectile(projectile: EnemyProjectile): void {
+    projectile.body.destroy(true);
+    projectile.wrapMirrorBody.destroy(true);
+  }
+
   private updateBasicAsteroids(deltaSeconds: number): void {
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -1730,7 +1916,10 @@ export class GameScene extends Phaser.Scene {
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
 
-      if (!this.isPlayerDead && (this.tryHitBasicEnemy(projectile) || this.tryHitBasicAsteroid(projectile))) {
+      if (
+        !this.isPlayerDead &&
+        (this.tryHitBasicEnemy(projectile) || this.tryHitShooterEnemy(projectile) || this.tryHitBasicAsteroid(projectile))
+      ) {
         this.destroyPulseCannonProjectile(projectile);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
@@ -1859,6 +2048,31 @@ export class GameScene extends Phaser.Scene {
         enemy.wrapMirrorBody.destroy(true);
         this.basicEnemies.splice(i, 1);
         this.grantXp(BASIC_ENEMY_XP_REWARD);
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private tryHitShooterEnemy(projectile: PulseCannonProjectile): boolean {
+    const hitHalfWidth = shooterEnemy.hitHalfWidth + PROJECTILE_HIT_RADIUS;
+    const hitHalfLength = shooterEnemy.hitHalfLength + PROJECTILE_HIT_RADIUS;
+
+    for (let i = this.shooterEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.shooterEnemies[i];
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const localX = offset.dot(enemyRight);
+      const localY = offset.dot(enemyForward);
+      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
+
+      if (normalizedHit <= 1) {
+        enemy.body.destroy(true);
+        enemy.wrapMirrorBody.destroy(true);
+        this.shooterEnemies.splice(i, 1);
+        this.grantXp(shooterEnemyBalance.xpReward);
         return true;
       }
     }
@@ -2313,6 +2527,27 @@ export class GameScene extends Phaser.Scene {
         0.42
       );
     }
+
+    for (const enemy of this.shooterEnemies) {
+      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
+
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+        continue;
+      }
+
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+
+      this.strokeOrientedEllipse(
+        enemyPosition,
+        enemyRight,
+        enemyForward,
+        shooterEnemy.hitHalfWidth,
+        shooterEnemy.hitHalfLength,
+        0xff5964,
+        0.8
+      );
+    }
   }
 
   private drawAsteroidCollisionDebug(): void {
@@ -2340,6 +2575,17 @@ export class GameScene extends Phaser.Scene {
 
       this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.55);
       this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, PROJECTILE_HIT_RADIUS);
+    }
+
+    for (const projectile of this.enemyProjectiles) {
+      const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
+
+      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, SHOOTER_PROJECTILE_HIT_RADIUS)) {
+        continue;
+      }
+
+      this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.62);
+      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, SHOOTER_PROJECTILE_HIT_RADIUS);
     }
   }
 
@@ -2414,6 +2660,13 @@ export class GameScene extends Phaser.Scene {
         position.x + 3,
         position.y + 2.8
       );
+    }
+
+    for (const enemy of this.shooterEnemies) {
+      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
+
+      this.minimapGraphics.fillStyle(0xff5964, 0.92);
+      this.minimapGraphics.fillRect(position.x - 2.8, position.y - 2.8, 5.6, 5.6);
     }
 
     const playerPosition = this.getMinimapPosition(this.player.x, this.player.y, innerX, innerY, innerWidth, innerHeight);
@@ -2528,8 +2781,8 @@ export class GameScene extends Phaser.Scene {
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
-        `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
-        `Enemies: ${this.basicEnemies.length} active\n` +
+        `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
+        `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter\n` +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
