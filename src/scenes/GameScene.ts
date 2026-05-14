@@ -55,6 +55,9 @@ const ENEMY_CONTACT_DAMAGE = 15;
 const BASIC_ENEMY_XP_REWARD = 10;
 const INITIAL_XP_THRESHOLD = 100;
 const XP_THRESHOLD_GROWTH = 1.2;
+const GAMEPLAY_MAX_VELOCITY = 500;
+const PLAYER_MASS = 3;
+const BASIC_ENEMY_MASS = 2;
 const PLAYER_CONTACT_IMPULSE_COOLDOWN_MS = 140;
 const PLAYER_CONTACT_MIN_IMPULSE = 120;
 const PLAYER_CONTACT_MAX_IMPULSE = 460;
@@ -82,14 +85,6 @@ const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
   3: 14,
   4: 24,
   5: 40
-};
-
-const ASTEROID_CONTACT_PUSH_SHARE_BY_TIER: Record<AsteroidTier, number> = {
-  1: 0.42,
-  2: 0.3,
-  3: 0.2,
-  4: 0.12,
-  5: 0.07
 };
 
 interface StarvivorsTestHarnessState {
@@ -143,7 +138,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
     minSpeed: 92,
     maxSpeed: 160,
     impactImpulse: 94,
-    maxVelocity: 245
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   2: {
     displaySize: 76,
@@ -153,7 +148,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
     minSpeed: 76,
     maxSpeed: 138,
     impactImpulse: 78,
-    maxVelocity: 220
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   3: {
     displaySize: 108,
@@ -163,7 +158,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
     minSpeed: 54,
     maxSpeed: 112,
     impactImpulse: 58,
-    maxVelocity: 190
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   4: {
     displaySize: 154,
@@ -173,7 +168,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
     minSpeed: 34,
     maxSpeed: 78,
     impactImpulse: 36,
-    maxVelocity: 155
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   5: {
     displaySize: 196,
@@ -183,7 +178,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
     minSpeed: 22,
     maxSpeed: 56,
     impactImpulse: 24,
-    maxVelocity: 125
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
   }
 };
 
@@ -983,10 +978,12 @@ export class GameScene extends Phaser.Scene {
 
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
     const normal = contact.normal;
+    const playerShare = this.getMassResponseShare(BASIC_ENEMY_MASS, PLAYER_MASS);
+    const enemyShare = this.getMassResponseShare(PLAYER_MASS, BASIC_ENEMY_MASS);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
-    this.nudgeWrappedObject(this.player, normal, separation * 0.5);
-    this.nudgeWrappedObject(contact.enemy.body, normal, -separation * 0.5);
+    this.nudgeWrappedObject(this.player, normal, separation * playerShare);
+    this.nudgeWrappedObject(contact.enemy.body, normal, -separation * enemyShare);
 
     if (time < this.nextPlayerContactImpulseAt) {
       return;
@@ -994,21 +991,24 @@ export class GameScene extends Phaser.Scene {
 
     const impulse = this.getContactImpulse(normal, contact.enemy.velocity.clone().add(contact.enemy.knockbackVelocity));
 
-    this.playerVelocity.x += normal.x * impulse;
-    this.playerVelocity.y += normal.y * impulse;
+    this.playerVelocity.x += normal.x * impulse * playerShare;
+    this.playerVelocity.y += normal.y * impulse * playerShare;
     this.playerVelocity.limit(interceptorMovement.maxSpeed);
-    contact.enemy.knockbackVelocity.x -= normal.x * impulse * ENEMY_CONTACT_RESTITUTION_SHARE;
-    contact.enemy.knockbackVelocity.y -= normal.y * impulse * ENEMY_CONTACT_RESTITUTION_SHARE;
+    contact.enemy.knockbackVelocity.x -= normal.x * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
+    contact.enemy.knockbackVelocity.y -= normal.y * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
+    contact.enemy.knockbackVelocity.limit(GAMEPLAY_MAX_VELOCITY);
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
   }
 
   private applyPlayerAsteroidKnockback(contact: PlayerAsteroidContact, time: number): void {
     const normal = contact.normal;
-    const asteroidPushShare = ASTEROID_CONTACT_PUSH_SHARE_BY_TIER[contact.asteroid.tier];
+    const asteroidMass = this.getAsteroidMass(contact.asteroid.tier);
+    const playerShare = this.getMassResponseShare(asteroidMass, PLAYER_MASS);
+    const asteroidShare = this.getMassResponseShare(PLAYER_MASS, asteroidMass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
-    this.nudgeWrappedObject(this.player, normal, separation * (1 - asteroidPushShare));
-    this.nudgeWrappedObject(contact.asteroid.body, normal, -separation * asteroidPushShare);
+    this.nudgeWrappedObject(this.player, normal, separation * playerShare);
+    this.nudgeWrappedObject(contact.asteroid.body, normal, -separation * asteroidShare);
 
     if (time < this.nextPlayerContactImpulseAt) {
       return;
@@ -1016,13 +1016,21 @@ export class GameScene extends Phaser.Scene {
 
     const impulse = this.getContactImpulse(normal, contact.asteroid.velocity);
 
-    this.playerVelocity.x += normal.x * impulse * (1 - asteroidPushShare * 0.35);
-    this.playerVelocity.y += normal.y * impulse * (1 - asteroidPushShare * 0.35);
+    this.playerVelocity.x += normal.x * impulse * playerShare;
+    this.playerVelocity.y += normal.y * impulse * playerShare;
     this.playerVelocity.limit(interceptorMovement.maxSpeed);
-    contact.asteroid.velocity.x -= normal.x * impulse * asteroidPushShare;
-    contact.asteroid.velocity.y -= normal.y * impulse * asteroidPushShare;
+    contact.asteroid.velocity.x -= normal.x * impulse * asteroidShare;
+    contact.asteroid.velocity.y -= normal.y * impulse * asteroidShare;
     contact.asteroid.velocity.limit(ASTEROID_TIER_CONFIG[contact.asteroid.tier].maxVelocity);
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
+  }
+
+  private getAsteroidMass(tier: AsteroidTier): number {
+    return ASTEROID_TIER_CONFIG[tier].massBudget;
+  }
+
+  private getMassResponseShare(otherMass: number, selfMass: number): number {
+    return otherMass / (selfMass + otherMass);
   }
 
   private getContactImpulse(normal: Phaser.Math.Vector2, otherVelocity: Phaser.Math.Vector2): number {
@@ -1184,12 +1192,14 @@ export class GameScene extends Phaser.Scene {
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
+      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).limit(GAMEPLAY_MAX_VELOCITY);
+
       enemy.body.x = wrapCoordinate(
-        enemy.body.x + (enemy.velocity.x + enemy.knockbackVelocity.x) * deltaSeconds,
+        enemy.body.x + totalVelocity.x * deltaSeconds,
         this.arena.width
       );
       enemy.body.y = wrapCoordinate(
-        enemy.body.y + (enemy.velocity.y + enemy.knockbackVelocity.y) * deltaSeconds,
+        enemy.body.y + totalVelocity.y * deltaSeconds,
         this.arena.height
       );
       enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, deltaSeconds * 60));

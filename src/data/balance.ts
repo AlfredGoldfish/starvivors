@@ -5,7 +5,7 @@ export const interceptorMovement = {
   rotationSpeed: 3.6,
   brakeDamping: 0.9,
   lowFrictionDamping: 0.995,
-  maxSpeed: 820
+  maxSpeed: 500
 };
 
 export const pulseCannonBalance = {
