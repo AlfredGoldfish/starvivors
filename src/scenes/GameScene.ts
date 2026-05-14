@@ -55,6 +55,14 @@ const ENEMY_CONTACT_DAMAGE = 15;
 const BASIC_ENEMY_XP_REWARD = 10;
 const INITIAL_XP_THRESHOLD = 100;
 const XP_THRESHOLD_GROWTH = 1.2;
+const PLAYER_CONTACT_IMPULSE_COOLDOWN_MS = 140;
+const PLAYER_CONTACT_MIN_IMPULSE = 120;
+const PLAYER_CONTACT_MAX_IMPULSE = 460;
+const PLAYER_CONTACT_RELATIVE_SPEED_SCALE = 0.42;
+const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
+const PLAYER_CONTACT_MAX_SEPARATION = 18;
+const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
+const ENEMY_KNOCKBACK_DAMPING = 0.88;
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
@@ -73,6 +81,14 @@ const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
   3: 14,
   4: 24,
   5: 40
+};
+
+const ASTEROID_CONTACT_PUSH_SHARE_BY_TIER: Record<AsteroidTier, number> = {
+  1: 0.42,
+  2: 0.3,
+  3: 0.2,
+  4: 0.12,
+  5: 0.07
 };
 
 interface StarvivorsTestHarnessState {
@@ -185,6 +201,8 @@ interface PulseCannonProjectile {
 interface BasicEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  knockbackVelocity: Phaser.Math.Vector2;
 }
 
 interface BasicAsteroid {
@@ -204,6 +222,20 @@ interface AsteroidBreakupProfile {
   preferredTier?: AsteroidTier;
   burstMultiplier: number;
   spreadMultiplier: number;
+}
+
+interface PlayerEnemyContact {
+  enemy: BasicEnemy;
+  normal: Phaser.Math.Vector2;
+  penetration: number;
+  damage: number;
+}
+
+interface PlayerAsteroidContact {
+  asteroid: BasicAsteroid;
+  normal: Phaser.Math.Vector2;
+  penetration: number;
+  damage: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -238,6 +270,7 @@ export class GameScene extends Phaser.Scene {
   private nextLeftStrafeThrusterAt = 0;
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
+  private nextPlayerContactImpulseAt = 0;
 
   constructor() {
     super('GameScene');
@@ -452,6 +485,7 @@ export class GameScene extends Phaser.Scene {
     this.nextLeftStrafeThrusterAt = 0;
     this.nextRightStrafeThrusterAt = 0;
     this.nextDebugUpdateAt = 0;
+    this.nextPlayerContactImpulseAt = 0;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -612,7 +646,9 @@ export class GameScene extends Phaser.Scene {
 
       this.basicEnemies.push({
         body,
-        wrapMirrorBody
+        wrapMirrorBody,
+        velocity: new Phaser.Math.Vector2(0, 0),
+        knockbackVelocity: new Phaser.Math.Vector2(0, 0)
       });
     }
   }
@@ -856,25 +892,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePlayerContactDamage(time: number): void {
-    if (this.isPlayerDead || time < this.playerInvulnerableUntil) {
+    if (this.isPlayerDead) {
       return;
     }
 
-    const enemyDamage = this.getEnemyContactDamage();
+    const enemyContact = this.getEnemyContact();
 
-    if (enemyDamage > 0) {
-      this.damagePlayer(enemyDamage, time);
+    if (enemyContact) {
+      this.resolvePlayerEnemyContact(enemyContact, time);
       return;
     }
 
-    const asteroidDamage = this.getAsteroidContactDamage();
+    const asteroidContact = this.getAsteroidContact();
 
-    if (asteroidDamage > 0) {
-      this.damagePlayer(asteroidDamage, time);
+    if (asteroidContact) {
+      this.resolvePlayerAsteroidContact(asteroidContact, time);
     }
   }
 
-  private getEnemyContactDamage(): number {
+  private getEnemyContact(): PlayerEnemyContact | undefined {
     const hitHalfWidth = basicEnemy.hitHalfWidth + PLAYER_HIT_RADIUS;
     const hitHalfLength = basicEnemy.hitHalfLength + PLAYER_HIT_RADIUS;
 
@@ -887,24 +923,128 @@ export class GameScene extends Phaser.Scene {
       const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
 
       if (normalizedHit <= 1) {
-        return ENEMY_CONTACT_DAMAGE;
+        return {
+          enemy,
+          normal: this.getCollisionNormal(offset),
+          penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(hitHalfWidth, hitHalfLength),
+          damage: ENEMY_CONTACT_DAMAGE
+        };
       }
     }
 
-    return 0;
+    return undefined;
   }
 
-  private getAsteroidContactDamage(): number {
+  private getAsteroidContact(): PlayerAsteroidContact | undefined {
     for (const asteroid of this.basicAsteroids) {
       const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, this.player.x, this.player.y);
       const hitRadius = asteroid.hitRadius + PLAYER_HIT_RADIUS;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
-        return ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier];
+        return {
+          asteroid,
+          normal: this.getCollisionNormal(offset),
+          penetration: hitRadius - offset.length(),
+          damage: ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier]
+        };
       }
     }
 
-    return 0;
+    return undefined;
+  }
+
+  private resolvePlayerEnemyContact(contact: PlayerEnemyContact, time: number): void {
+    this.applyPlayerEnemyKnockback(contact, time);
+
+    if (time >= this.playerInvulnerableUntil) {
+      this.damagePlayer(contact.damage, time);
+    }
+  }
+
+  private resolvePlayerAsteroidContact(contact: PlayerAsteroidContact, time: number): void {
+    this.applyPlayerAsteroidKnockback(contact, time);
+
+    if (time >= this.playerInvulnerableUntil) {
+      this.damagePlayer(contact.damage, time);
+    }
+  }
+
+  private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
+    const normal = contact.normal;
+    const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
+
+    this.nudgeWrappedObject(this.player, normal, separation * 0.5);
+    this.nudgeWrappedObject(contact.enemy.body, normal, -separation * 0.5);
+
+    if (time < this.nextPlayerContactImpulseAt) {
+      return;
+    }
+
+    const impulse = this.getContactImpulse(normal, contact.enemy.velocity.clone().add(contact.enemy.knockbackVelocity));
+
+    this.playerVelocity.x += normal.x * impulse;
+    this.playerVelocity.y += normal.y * impulse;
+    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+    contact.enemy.knockbackVelocity.x -= normal.x * impulse * ENEMY_CONTACT_RESTITUTION_SHARE;
+    contact.enemy.knockbackVelocity.y -= normal.y * impulse * ENEMY_CONTACT_RESTITUTION_SHARE;
+    this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
+  }
+
+  private applyPlayerAsteroidKnockback(contact: PlayerAsteroidContact, time: number): void {
+    const normal = contact.normal;
+    const asteroidPushShare = ASTEROID_CONTACT_PUSH_SHARE_BY_TIER[contact.asteroid.tier];
+    const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
+
+    this.nudgeWrappedObject(this.player, normal, separation * (1 - asteroidPushShare));
+    this.nudgeWrappedObject(contact.asteroid.body, normal, -separation * asteroidPushShare);
+
+    if (time < this.nextPlayerContactImpulseAt) {
+      return;
+    }
+
+    const impulse = this.getContactImpulse(normal, contact.asteroid.velocity);
+
+    this.playerVelocity.x += normal.x * impulse * (1 - asteroidPushShare * 0.35);
+    this.playerVelocity.y += normal.y * impulse * (1 - asteroidPushShare * 0.35);
+    this.playerVelocity.limit(interceptorMovement.maxSpeed);
+    contact.asteroid.velocity.x -= normal.x * impulse * asteroidPushShare;
+    contact.asteroid.velocity.y -= normal.y * impulse * asteroidPushShare;
+    contact.asteroid.velocity.limit(ASTEROID_TIER_CONFIG[contact.asteroid.tier].maxVelocity);
+    this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
+  }
+
+  private getContactImpulse(normal: Phaser.Math.Vector2, otherVelocity: Phaser.Math.Vector2): number {
+    const relativeVelocity = this.playerVelocity.clone().subtract(otherVelocity);
+    const closingSpeed = Math.max(0, -relativeVelocity.dot(normal));
+
+    return Phaser.Math.Clamp(
+      PLAYER_CONTACT_MIN_IMPULSE + closingSpeed * PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+      PLAYER_CONTACT_MIN_IMPULSE,
+      PLAYER_CONTACT_MAX_IMPULSE
+    );
+  }
+
+  private getCollisionNormal(offset: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    if (offset.lengthSq() > 0.0001) {
+      return offset.clone().normalize();
+    }
+
+    if (this.playerVelocity.lengthSq() > 0.0001) {
+      return this.playerVelocity.clone().normalize();
+    }
+
+    return new Phaser.Math.Vector2(1, 0);
+  }
+
+  private nudgeWrappedObject(
+    object: Phaser.GameObjects.Container,
+    normal: Phaser.Math.Vector2,
+    distance: number
+  ): void {
+    object.setPosition(
+      wrapCoordinate(object.x + normal.x * distance, this.arena.width),
+      wrapCoordinate(object.y + normal.y * distance, this.arena.height)
+    );
   }
 
   private damagePlayer(damage: number, time: number): void {
@@ -1024,14 +1164,23 @@ export class GameScene extends Phaser.Scene {
   private updateBasicEnemies(deltaSeconds: number): void {
     for (const enemy of this.basicEnemies) {
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+      enemy.velocity.set(0, 0);
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        enemy.body.x = wrapCoordinate(enemy.body.x + direction.x * basicEnemy.moveSpeed * deltaSeconds, this.arena.width);
-        enemy.body.y = wrapCoordinate(enemy.body.y + direction.y * basicEnemy.moveSpeed * deltaSeconds, this.arena.height);
+        enemy.velocity.set(direction.x * basicEnemy.moveSpeed, direction.y * basicEnemy.moveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
+      enemy.body.x = wrapCoordinate(
+        enemy.body.x + (enemy.velocity.x + enemy.knockbackVelocity.x) * deltaSeconds,
+        this.arena.width
+      );
+      enemy.body.y = wrapCoordinate(
+        enemy.body.y + (enemy.velocity.y + enemy.knockbackVelocity.y) * deltaSeconds,
+        this.arena.height
+      );
+      enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, deltaSeconds * 60));
       this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, BASIC_ENEMY_DISPLAY_SIZE * 0.5);
     }
   }
