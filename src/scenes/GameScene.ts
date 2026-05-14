@@ -52,6 +52,9 @@ const PLAYER_HIT_RADIUS = 32;
 const PLAYER_DAMAGE_INVULNERABILITY_MS = 1000;
 const PLAYER_DAMAGE_FLASH_MS = 130;
 const ENEMY_CONTACT_DAMAGE = 15;
+const BASIC_ENEMY_XP_REWARD = 10;
+const INITIAL_XP_THRESHOLD = 100;
+const XP_THRESHOLD_GROWTH = 1.2;
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
@@ -63,6 +66,45 @@ const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
   4: 22,
   5: 28
 };
+
+const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
+  1: 4,
+  2: 8,
+  3: 14,
+  4: 24,
+  5: 40
+};
+
+interface StarvivorsTestHarnessState {
+  hull: number;
+  maxHull: number;
+  isPlayerDead: boolean;
+  playerXp: number;
+  nextXpThreshold: number;
+  bankedUpgrades: number;
+  enemies: number;
+  asteroids: number;
+  projectiles: number;
+}
+
+interface StarvivorsTestHarness {
+  getState: () => StarvivorsTestHarnessState;
+  grantXp: (amount: number) => StarvivorsTestHarnessState;
+  damagePlayer: (damage?: number) => StarvivorsTestHarnessState;
+  expireInvulnerability: () => StarvivorsTestHarnessState;
+  placeEnemyOnPlayer: () => StarvivorsTestHarnessState;
+  placeAsteroidOnPlayer: (tier?: AsteroidTier) => StarvivorsTestHarnessState;
+  destroyFirstEnemy: () => StarvivorsTestHarnessState;
+  destroyFirstAsteroid: () => StarvivorsTestHarnessState;
+  killPlayer: () => StarvivorsTestHarnessState;
+  restartRun: () => StarvivorsTestHarnessState;
+}
+
+declare global {
+  interface Window {
+    starvivorsTestHarness?: StarvivorsTestHarness;
+  }
+}
 
 interface AsteroidTierConfig {
   displaySize: number;
@@ -184,6 +226,9 @@ export class GameScene extends Phaser.Scene {
   private playerHull = PLAYER_MAX_HULL;
   private playerInvulnerableUntil = 0;
   private isPlayerDead = false;
+  private playerXp = 0;
+  private nextXpThreshold = INITIAL_XP_THRESHOLD;
+  private bankedUpgrades = 0;
   private asteroidCameraViewCount = 0;
   private asteroidWrappedViewCount = 0;
   private asteroidWrapMirrorCount = 0;
@@ -211,6 +256,7 @@ export class GameScene extends Phaser.Scene {
     this.createInput();
     this.createBackgroundTextures();
     this.rebuildWorld();
+    this.installTestHarness();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
 
@@ -243,6 +289,143 @@ export class GameScene extends Phaser.Scene {
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
   }
 
+  private installTestHarness(): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    window.starvivorsTestHarness = {
+      getState: () => this.getTestHarnessState(),
+      grantXp: (amount: number) => {
+        this.grantXp(amount);
+        return this.getTestHarnessState();
+      },
+      damagePlayer: (damage = ENEMY_CONTACT_DAMAGE) => {
+        this.damagePlayer(damage, this.time.now);
+        return this.getTestHarnessState();
+      },
+      expireInvulnerability: () => {
+        this.playerInvulnerableUntil = 0;
+        this.player.setVisible(true);
+        this.updateHullText();
+        return this.getTestHarnessState();
+      },
+      placeEnemyOnPlayer: () => {
+        const enemy = this.basicEnemies[0];
+
+        if (enemy) {
+          enemy.body.setPosition(this.player.x, this.player.y);
+          enemy.wrapMirrorBody.setPosition(this.player.x, this.player.y);
+          this.playerInvulnerableUntil = 0;
+          this.updatePlayerContactDamage(this.time.now);
+        }
+
+        return this.getTestHarnessState();
+      },
+      placeAsteroidOnPlayer: (tier: AsteroidTier = 1) => {
+        const asteroid = this.basicAsteroids.find((candidate) => candidate.tier === tier) ?? this.basicAsteroids[0];
+
+        if (asteroid) {
+          asteroid.body.setPosition(this.player.x, this.player.y);
+          asteroid.wrapMirrorBody.setPosition(this.player.x, this.player.y);
+          asteroid.velocity.set(0, 0);
+          this.playerInvulnerableUntil = 0;
+          this.updatePlayerContactDamage(this.time.now);
+        }
+
+        return this.getTestHarnessState();
+      },
+      destroyFirstEnemy: () => {
+        const enemy = this.basicEnemies[0];
+
+        if (enemy && !this.isPlayerDead) {
+          enemy.body.destroy(true);
+          enemy.wrapMirrorBody.destroy(true);
+          this.basicEnemies.splice(0, 1);
+          this.grantXp(BASIC_ENEMY_XP_REWARD);
+        }
+
+        return this.getTestHarnessState();
+      },
+      destroyFirstAsteroid: () => {
+        if (this.basicAsteroids.length > 0 && !this.isPlayerDead) {
+          this.destroyBasicAsteroid(0);
+        }
+
+        return this.getTestHarnessState();
+      },
+      killPlayer: () => {
+        this.damagePlayer(PLAYER_MAX_HULL, this.time.now);
+        return this.getTestHarnessState();
+      },
+      restartRun: () => {
+        this.rebuildWorld();
+        return this.getTestHarnessState();
+      }
+    };
+
+    if (new URLSearchParams(window.location.search).get('testHarness') === 'smoke') {
+      this.time.delayedCall(100, () => this.runTestHarnessSmoke());
+    }
+  }
+
+  private getTestHarnessState(): StarvivorsTestHarnessState {
+    return {
+      hull: this.playerHull,
+      maxHull: PLAYER_MAX_HULL,
+      isPlayerDead: this.isPlayerDead,
+      playerXp: this.playerXp,
+      nextXpThreshold: this.nextXpThreshold,
+      bankedUpgrades: this.bankedUpgrades,
+      enemies: this.basicEnemies.length,
+      asteroids: this.basicAsteroids.length,
+      projectiles: this.pulseCannonProjectiles.length
+    };
+  }
+
+  private runTestHarnessSmoke(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-harness', 'fail');
+      document.body.setAttribute('data-starvivors-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    const initial = harness.getState();
+    const enemyXp = harness.destroyFirstEnemy();
+    const rollover = harness.grantXp(95);
+    const multi = harness.grantXp(250);
+    const dead = harness.killPlayer();
+    const afterDeadXp = harness.grantXp(1000);
+    const restarted = harness.restartRun();
+    const pass =
+      initial.playerXp === 0 &&
+      initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
+      initial.bankedUpgrades === 0 &&
+      enemyXp.playerXp === BASIC_ENEMY_XP_REWARD &&
+      rollover.playerXp === 5 &&
+      rollover.nextXpThreshold === 120 &&
+      rollover.bankedUpgrades === 1 &&
+      multi.playerXp === 135 &&
+      multi.nextXpThreshold === 144 &&
+      multi.bankedUpgrades === 2 &&
+      dead.isPlayerDead &&
+      afterDeadXp.playerXp === multi.playerXp &&
+      afterDeadXp.bankedUpgrades === multi.bankedUpgrades &&
+      restarted.hull === PLAYER_MAX_HULL &&
+      restarted.playerXp === 0 &&
+      restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
+      restarted.bankedUpgrades === 0 &&
+      !restarted.isPlayerDead;
+
+    document.body.setAttribute('data-starvivors-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-harness-details',
+      JSON.stringify({ initial, enemyXp, rollover, multi, dead, afterDeadXp, restarted })
+    );
+  }
+
   private rebuildWorld(): void {
     const viewport = getViewportSize(this);
     this.arena = createArenaSize(viewport);
@@ -253,6 +436,9 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = PLAYER_MAX_HULL;
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
+    this.playerXp = 0;
+    this.nextXpThreshold = INITIAL_XP_THRESHOLD;
+    this.bankedUpgrades = 0;
     this.deathText = undefined;
     this.pulseCannonProjectiles = [];
     this.basicEnemies = [];
@@ -732,6 +918,22 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private grantXp(amount: number): void {
+    if (this.isPlayerDead || amount <= 0) {
+      return;
+    }
+
+    this.playerXp += amount;
+
+    while (this.playerXp >= this.nextXpThreshold) {
+      this.playerXp -= this.nextXpThreshold;
+      this.bankedUpgrades += 1;
+      this.nextXpThreshold = Math.ceil(this.nextXpThreshold * XP_THRESHOLD_GROWTH);
+    }
+
+    this.updateHullText();
+  }
+
   private emitPlayerDamageFeedback(): void {
     const effectPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
     const particleCount = 10;
@@ -906,7 +1108,7 @@ export class GameScene extends Phaser.Scene {
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
 
-      if (this.tryHitBasicEnemy(projectile) || this.tryHitBasicAsteroid(projectile)) {
+      if (!this.isPlayerDead && (this.tryHitBasicEnemy(projectile) || this.tryHitBasicAsteroid(projectile))) {
         this.destroyPulseCannonProjectile(projectile);
         this.pulseCannonProjectiles.splice(i, 1);
       } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
@@ -1034,6 +1236,7 @@ export class GameScene extends Phaser.Scene {
         enemy.body.destroy(true);
         enemy.wrapMirrorBody.destroy(true);
         this.basicEnemies.splice(i, 1);
+        this.grantXp(BASIC_ENEMY_XP_REWARD);
         return true;
       }
     }
@@ -1080,6 +1283,7 @@ export class GameScene extends Phaser.Scene {
     const velocity = asteroid.velocity.clone();
     const fragmentTiers = this.createAsteroidFragmentTiers(asteroid.tier, asteroid.breakupProfile);
 
+    this.grantXp(ASTEROID_XP_REWARD_BY_TIER[asteroid.tier]);
     this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
     asteroid.body.destroy(true);
     asteroid.wrapMirrorBody.destroy(true);
@@ -1359,7 +1563,12 @@ export class GameScene extends Phaser.Scene {
 
     const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > this.time.now ? 'HIT' : 'STABLE';
 
-    this.hullText.setText(`Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}\nStatus: ${status}`);
+    this.hullText.setText(
+      `Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}\n` +
+        `XP: ${this.playerXp} / ${this.nextXpThreshold}\n` +
+        `Upgrades: ${this.bankedUpgrades}\n` +
+        `Status: ${status}`
+    );
   }
 
   private updateDebugText(time: number): void {
@@ -1383,6 +1592,7 @@ export class GameScene extends Phaser.Scene {
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}${this.isPlayerDead ? ' (dead)' : ''}\n` +
+        `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
         `Enemies: ${this.basicEnemies.length} active\n` +
