@@ -101,6 +101,13 @@ const MINIMAP_PADDING = 8;
 const PULSE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
 const PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
 const PULSE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
+const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
+const DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX = 10;
+const DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP = 0.5;
+const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 1;
+const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX = 12.5;
+const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
+const DEBUG_PULSE_MIN_COOLDOWN_MS = 100;
 
 type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
 
@@ -371,6 +378,11 @@ export class GameScene extends Phaser.Scene {
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
   private minimapKey!: Phaser.Input.Keyboard.Key;
+  private debugPulseDamageDecreaseKey!: Phaser.Input.Keyboard.Key;
+  private debugPulseDamageIncreaseKey!: Phaser.Input.Keyboard.Key;
+  private debugPulseFireRateDecreaseKey!: Phaser.Input.Keyboard.Key;
+  private debugPulseFireRateIncreaseKey!: Phaser.Input.Keyboard.Key;
+  private debugPulseResetKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
@@ -412,6 +424,9 @@ export class GameScene extends Phaser.Scene {
   private backgroundScrollY = 0;
   private previousBackgroundPlayerX?: number;
   private previousBackgroundPlayerY?: number;
+  // Debug/testing modifiers only. These are reset with each rebuilt run and never alter upgrade levels.
+  private debugPulseDamageMultiplier = 1;
+  private debugPulseFireRateMultiplier = 1;
 
   constructor() {
     super('GameScene');
@@ -439,6 +454,7 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.updateParallaxTunerInput();
     this.updateUpgradeOverlayInput(time);
+    this.updateDebugWeaponTuningInput();
 
     if (this.isUpgradeOverlayOpen) {
       this.updateBackgroundTiles(time);
@@ -493,6 +509,11 @@ export class GameScene extends Phaser.Scene {
     ];
     this.upgradeCancelKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.minimapKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+    this.debugPulseDamageDecreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET);
+    this.debugPulseDamageIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET);
+    this.debugPulseFireRateDecreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SEMICOLON);
+    this.debugPulseFireRateIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.QUOTES);
+    this.debugPulseResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
   }
 
   private installTestHarness(): void {
@@ -757,6 +778,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
     this.isMinimapVisible = true;
+    this.resetDebugWeaponTuning();
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
     this.previousBackgroundPlayerX = undefined;
@@ -1201,6 +1223,57 @@ export class GameScene extends Phaser.Scene {
     } else if (Phaser.Input.Keyboard.JustDown(this.parallaxResetKey)) {
       this.resetStarfieldParallax();
     }
+  }
+
+  private updateDebugWeaponTuningInput(): void {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageDecreaseKey)) {
+      this.adjustDebugPulseDamageMultiplier(-DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP);
+    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageIncreaseKey)) {
+      this.adjustDebugPulseDamageMultiplier(DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP);
+    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseFireRateDecreaseKey)) {
+      this.adjustDebugPulseFireRateMultiplier(-DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP);
+    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseFireRateIncreaseKey)) {
+      this.adjustDebugPulseFireRateMultiplier(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP);
+    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseResetKey)) {
+      this.resetDebugWeaponTuning();
+    }
+  }
+
+  private adjustDebugPulseDamageMultiplier(delta: number): void {
+    this.debugPulseDamageMultiplier = Number(
+      Phaser.Math.Clamp(
+        this.debugPulseDamageMultiplier + delta,
+        DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN,
+        DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX
+      ).toFixed(1)
+    );
+  }
+
+  private adjustDebugPulseFireRateMultiplier(delta: number): void {
+    this.debugPulseFireRateMultiplier = Number(
+      Phaser.Math.Clamp(
+        this.debugPulseFireRateMultiplier + delta,
+        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN,
+        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX
+      ).toFixed(1)
+    );
+  }
+
+  private resetDebugWeaponTuning(): void {
+    this.debugPulseDamageMultiplier = 1;
+    this.debugPulseFireRateMultiplier = 1;
+  }
+
+  private getActiveDebugPulseDamageMultiplier(): number {
+    return this.isCollisionDebugEnabled ? this.debugPulseDamageMultiplier : 1;
+  }
+
+  private getActiveDebugPulseFireRateMultiplier(): number {
+    return this.isCollisionDebugEnabled ? this.debugPulseFireRateMultiplier : 1;
   }
 
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
@@ -1948,11 +2021,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPulseDamage(): number {
-    return PULSE_CANNON_ASTEROID_DAMAGE * this.getPulseDamageMultiplier();
+    return PULSE_CANNON_ASTEROID_DAMAGE * this.getPulseDamageMultiplier() * this.getActiveDebugPulseDamageMultiplier();
   }
 
   private getPulseCooldownMs(): number {
-    return pulseCannon.cooldownSeconds * 1000 * Math.pow(PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER, this.pulseUpgradeLevels['pulse-fire-rate-1']);
+    const upgradedCooldownMs =
+      pulseCannon.cooldownSeconds *
+      1000 *
+      Math.pow(PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER, this.pulseUpgradeLevels['pulse-fire-rate-1']);
+
+    return Math.max(DEBUG_PULSE_MIN_COOLDOWN_MS, upgradedCooldownMs / this.getActiveDebugPulseFireRateMultiplier());
   }
 
   private getPulseProjectileSpeed(): number {
@@ -3133,6 +3211,10 @@ export class GameScene extends Phaser.Scene {
     const fps = Math.round(this.game.loop.actualFps);
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
+    const debugWeaponLine = this.isCollisionDebugEnabled
+      ? `Debug weapon: dmg x${this.debugPulseDamageMultiplier.toFixed(1)} / fire x${this.debugPulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
+        `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
+      : '';
 
     this.debugText.setText(
       `FPS: ${fps}\n` +
@@ -3147,6 +3229,7 @@ export class GameScene extends Phaser.Scene {
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
+        debugWeaponLine +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
     );
   }
