@@ -63,6 +63,7 @@ const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
 const PLAYER_CONTACT_MAX_SEPARATION = 18;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
+const DEBUG_ELLIPSE_SEGMENTS = 28;
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
@@ -245,6 +246,7 @@ export class GameScene extends Phaser.Scene {
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
   private hullText!: Phaser.GameObjects.Text;
+  private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
   private starfield!: Phaser.GameObjects.TileSprite;
   private grid!: Phaser.GameObjects.TileSprite;
@@ -252,6 +254,7 @@ export class GameScene extends Phaser.Scene {
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
   private restartKey!: Phaser.Input.Keyboard.Key;
+  private collisionDebugKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
@@ -271,6 +274,7 @@ export class GameScene extends Phaser.Scene {
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
   private nextPlayerContactImpulseAt = 0;
+  private isCollisionDebugEnabled = false;
 
   constructor() {
     super('GameScene');
@@ -302,6 +306,7 @@ export class GameScene extends Phaser.Scene {
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
     this.updatePlayerDamageVisuals(time);
+    this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles();
     this.updateHullText();
     this.updateDebugText(time);
@@ -320,6 +325,7 @@ export class GameScene extends Phaser.Scene {
     >;
     this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.collisionDebugKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2);
   }
 
   private installTestHarness(): void {
@@ -397,7 +403,11 @@ export class GameScene extends Phaser.Scene {
       }
     };
 
-    if (new URLSearchParams(window.location.search).get('testHarness') === 'smoke') {
+    const query = new URLSearchParams(window.location.search);
+
+    this.isCollisionDebugEnabled = query.get('collisionDebug') === '1';
+
+    if (query.get('testHarness') === 'smoke') {
       this.time.delayedCall(100, () => this.runTestHarnessSmoke());
     }
   }
@@ -504,6 +514,8 @@ export class GameScene extends Phaser.Scene {
       })
       .setScrollFactor(0)
       .setDepth(1000);
+
+    this.collisionDebugGraphics = this.add.graphics().setDepth(999);
 
     this.hullText = this.add
       .text(this.scale.width - 16, 16, '', {
@@ -1705,6 +1717,120 @@ export class GameScene extends Phaser.Scene {
     this.grid.tilePositionY = this.cameras.main.scrollY;
   }
 
+  private updateCollisionDebugOverlay(): void {
+    if (Phaser.Input.Keyboard.JustDown(this.collisionDebugKey)) {
+      this.isCollisionDebugEnabled = !this.isCollisionDebugEnabled;
+    }
+
+    if (!this.collisionDebugGraphics) {
+      return;
+    }
+
+    this.collisionDebugGraphics.clear();
+    this.collisionDebugGraphics.setVisible(this.isCollisionDebugEnabled);
+
+    if (!this.isCollisionDebugEnabled) {
+      return;
+    }
+
+    this.drawPlayerCollisionDebug();
+    this.drawEnemyCollisionDebug();
+    this.drawAsteroidCollisionDebug();
+    this.drawProjectileCollisionDebug();
+  }
+
+  private drawPlayerCollisionDebug(): void {
+    const playerPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+
+    this.collisionDebugGraphics.lineStyle(2, 0x73f2ff, 0.82);
+    this.collisionDebugGraphics.strokeCircle(playerPosition.x, playerPosition.y, PLAYER_HIT_RADIUS);
+  }
+
+  private drawEnemyCollisionDebug(): void {
+    for (const enemy of this.basicEnemies) {
+      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
+
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, BASIC_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+        continue;
+      }
+
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+
+      this.strokeOrientedEllipse(
+        enemyPosition,
+        enemyRight,
+        enemyForward,
+        basicEnemy.hitHalfWidth,
+        basicEnemy.hitHalfLength,
+        0xffc857,
+        0.8
+      );
+      this.strokeOrientedEllipse(
+        enemyPosition,
+        enemyRight,
+        enemyForward,
+        basicEnemy.hitHalfWidth + PLAYER_HIT_RADIUS,
+        basicEnemy.hitHalfLength + PLAYER_HIT_RADIUS,
+        0xff5964,
+        0.42
+      );
+    }
+  }
+
+  private drawAsteroidCollisionDebug(): void {
+    for (const asteroid of this.basicAsteroids) {
+      const asteroidPosition = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
+
+      if (!this.isCircleInCameraView(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + PLAYER_HIT_RADIUS)) {
+        continue;
+      }
+
+      this.collisionDebugGraphics.lineStyle(2, 0x9fd8ff, 0.78);
+      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius);
+      this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.38);
+      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + PLAYER_HIT_RADIUS);
+    }
+  }
+
+  private drawProjectileCollisionDebug(): void {
+    for (const projectile of this.pulseCannonProjectiles) {
+      const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
+
+      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, PROJECTILE_HIT_RADIUS)) {
+        continue;
+      }
+
+      this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.55);
+      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, PROJECTILE_HIT_RADIUS);
+    }
+  }
+
+  private strokeOrientedEllipse(
+    center: Phaser.Math.Vector2,
+    right: Phaser.Math.Vector2,
+    forward: Phaser.Math.Vector2,
+    halfWidth: number,
+    halfLength: number,
+    color: number,
+    alpha: number
+  ): void {
+    this.collisionDebugGraphics.lineStyle(1, color, alpha);
+
+    let previousX = center.x + right.x * halfWidth;
+    let previousY = center.y + right.y * halfWidth;
+
+    for (let i = 1; i <= DEBUG_ELLIPSE_SEGMENTS; i += 1) {
+      const angle = (Math.PI * 2 * i) / DEBUG_ELLIPSE_SEGMENTS;
+      const x = center.x + right.x * Math.cos(angle) * halfWidth + forward.x * Math.sin(angle) * halfLength;
+      const y = center.y + right.y * Math.cos(angle) * halfWidth + forward.y * Math.sin(angle) * halfLength;
+
+      this.collisionDebugGraphics.lineBetween(previousX, previousY, x, y);
+      previousX = x;
+      previousY = y;
+    }
+  }
+
   private updateHullText(): void {
     if (!this.hullText) {
       return;
@@ -1746,6 +1872,7 @@ export class GameScene extends Phaser.Scene {
         `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
         `Enemies: ${this.basicEnemies.length} active\n` +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
+        `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
     );
   }
