@@ -40,59 +40,81 @@ const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
 const ASTEROID_SAFE_SPAWN_RADIUS = 520;
-const ASTEROID_BREAKUP_MIN_FRAGMENTS = 2;
-const ASTEROID_BREAKUP_MAX_FRAGMENTS = 3;
-const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 42;
-const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 112;
+const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
+const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
+const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
 const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
 
-type AsteroidTier = 'large' | 'medium' | 'small';
+type AsteroidTier = 1 | 2 | 3 | 4 | 5;
+type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 
 interface AsteroidTierConfig {
   displaySize: number;
   hitRadius: number;
   hp: number;
+  massBudget: number;
   minSpeed: number;
   maxSpeed: number;
   impactImpulse: number;
   maxVelocity: number;
-  fragmentTier?: AsteroidTier;
 }
 
 const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
-  large: {
-    displaySize: 154,
-    hitRadius: 58,
-    hp: 3,
-    minSpeed: 28,
-    maxSpeed: 72,
-    impactImpulse: 38,
-    maxVelocity: 150,
-    fragmentTier: 'medium'
-  },
-  medium: {
-    displaySize: 108,
-    hitRadius: 42,
-    hp: 2,
-    minSpeed: 48,
-    maxSpeed: 108,
-    impactImpulse: 62,
-    maxVelocity: 190,
-    fragmentTier: 'small'
-  },
-  small: {
-    displaySize: 66,
-    hitRadius: 26,
+  1: {
+    displaySize: 52,
+    hitRadius: 20,
     hp: 1,
+    massBudget: 1,
+    minSpeed: 92,
+    maxSpeed: 160,
+    impactImpulse: 94,
+    maxVelocity: 245
+  },
+  2: {
+    displaySize: 76,
+    hitRadius: 30,
+    hp: 2,
+    massBudget: 4,
     minSpeed: 76,
     maxSpeed: 138,
-    impactImpulse: 88,
-    maxVelocity: 230
+    impactImpulse: 78,
+    maxVelocity: 220
+  },
+  3: {
+    displaySize: 108,
+    hitRadius: 42,
+    hp: 3,
+    massBudget: 8,
+    minSpeed: 54,
+    maxSpeed: 112,
+    impactImpulse: 58,
+    maxVelocity: 190
+  },
+  4: {
+    displaySize: 154,
+    hitRadius: 58,
+    hp: 5,
+    massBudget: 16,
+    minSpeed: 34,
+    maxSpeed: 78,
+    impactImpulse: 36,
+    maxVelocity: 155
+  },
+  5: {
+    displaySize: 196,
+    hitRadius: 74,
+    hp: 8,
+    massBudget: 32,
+    minSpeed: 22,
+    maxSpeed: 56,
+    impactImpulse: 24,
+    maxVelocity: 125
   }
 };
 
-const INITIAL_ASTEROID_TIERS: AsteroidTier[] = ['large', 'large', 'large', 'medium', 'medium', 'medium', 'small', 'small'];
+const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5];
+const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -111,9 +133,17 @@ interface BasicAsteroid {
   variant: string;
   tier: AsteroidTier;
   hp: number;
+  breakupProfile: AsteroidBreakupProfile;
   velocity: Phaser.Math.Vector2;
   rotationSpeed: number;
   hitRadius: number;
+}
+
+interface AsteroidBreakupProfile {
+  mode: AsteroidBreakupProfileMode;
+  preferredTier?: AsteroidTier;
+  burstMultiplier: number;
+  spreadMultiplier: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -387,6 +417,7 @@ export class GameScene extends Phaser.Scene {
       variant: texture.key,
       tier,
       hp: tierConfig.hp,
+      breakupProfile: this.createAsteroidBreakupProfile(tier),
       velocity,
       rotationSpeed:
         Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
@@ -422,6 +453,23 @@ export class GameScene extends Phaser.Scene {
     const driftSpeed = Phaser.Math.FloatBetween(tierConfig.minSpeed, tierConfig.maxSpeed);
 
     return new Phaser.Math.Vector2(Math.cos(driftAngle) * driftSpeed, Math.sin(driftAngle) * driftSpeed);
+  }
+
+  private createAsteroidBreakupProfile(tier: AsteroidTier): AsteroidBreakupProfile {
+    const modeRoll = Phaser.Math.Between(0, 3);
+    const mode: AsteroidBreakupProfileMode =
+      modeRoll === 0 ? 'many-small' : modeRoll === 1 ? 'balanced' : modeRoll === 2 ? 'few-large' : 'single-tier';
+    const lowerTiers = this.getLowerAsteroidTiers(tier);
+
+    return {
+      mode,
+      preferredTier:
+        mode === 'single-tier' && lowerTiers.length > 0
+          ? lowerTiers[Phaser.Math.Between(0, lowerTiers.length - 1)]
+          : undefined,
+      burstMultiplier: Phaser.Math.FloatBetween(0.85, 1.22),
+      spreadMultiplier: Phaser.Math.FloatBetween(0.82, 1.28)
+    };
   }
 
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
@@ -716,13 +764,14 @@ export class GameScene extends Phaser.Scene {
     const asteroid = this.basicAsteroids[index];
     const x = asteroid.body.x;
     const y = asteroid.body.y;
-    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+    const velocity = asteroid.velocity.clone();
+    const fragmentTiers = this.createAsteroidFragmentTiers(asteroid.tier, asteroid.breakupProfile);
 
     asteroid.body.destroy(true);
     this.basicAsteroids.splice(index, 1);
 
-    if (tierConfig.fragmentTier) {
-      this.spawnAsteroidFragments(x, y, asteroid.velocity, tierConfig.fragmentTier);
+    if (fragmentTiers.length > 0) {
+      this.spawnAsteroidFragments(x, y, velocity, asteroid.breakupProfile, fragmentTiers);
     }
   }
 
@@ -730,18 +779,26 @@ export class GameScene extends Phaser.Scene {
     x: number,
     y: number,
     parentVelocity: Phaser.Math.Vector2,
-    fragmentTier: AsteroidTier
+    breakupProfile: AsteroidBreakupProfile,
+    fragmentTiers: AsteroidTier[]
   ): void {
-    const fragmentCount = Phaser.Math.Between(ASTEROID_BREAKUP_MIN_FRAGMENTS, ASTEROID_BREAKUP_MAX_FRAGMENTS);
-    const fragmentConfig = ASTEROID_TIER_CONFIG[fragmentTier];
+    const baseAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
 
-    for (let i = 0; i < fragmentCount; i += 1) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const offsetDistance = Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * 0.34);
-      const burstSpeed = Phaser.Math.FloatBetween(ASTEROID_FRAGMENT_BURST_MIN_SPEED, ASTEROID_FRAGMENT_BURST_MAX_SPEED);
+    for (let i = 0; i < fragmentTiers.length; i += 1) {
+      const fragmentTier = fragmentTiers[i];
+      const fragmentConfig = ASTEROID_TIER_CONFIG[fragmentTier];
+      const angle =
+        baseAngle +
+        (Math.PI * 2 * i) / fragmentTiers.length +
+        Phaser.Math.FloatBetween(-0.22, 0.22);
+      const offsetDistance =
+        Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * 0.38) * breakupProfile.spreadMultiplier;
+      const burstSpeed =
+        Phaser.Math.FloatBetween(ASTEROID_FRAGMENT_BURST_MIN_SPEED, ASTEROID_FRAGMENT_BURST_MAX_SPEED) *
+        breakupProfile.burstMultiplier;
       const velocity = parentVelocity
         .clone()
-        .scale(0.62)
+        .scale(ASTEROID_PARENT_VELOCITY_INHERITANCE)
         .add(new Phaser.Math.Vector2(Math.cos(angle) * burstSpeed, Math.sin(angle) * burstSpeed));
 
       velocity.limit(fragmentConfig.maxVelocity);
@@ -755,6 +812,87 @@ export class GameScene extends Phaser.Scene {
         )
       );
     }
+  }
+
+  private createAsteroidFragmentTiers(
+    parentTier: AsteroidTier,
+    breakupProfile: AsteroidBreakupProfile
+  ): AsteroidTier[] {
+    if (parentTier === 1) {
+      return [];
+    }
+
+    if (breakupProfile.mode === 'single-tier' && breakupProfile.preferredTier) {
+      return this.createSingleTierAsteroidFragments(parentTier, breakupProfile.preferredTier);
+    }
+
+    const mixedMode = breakupProfile.mode === 'single-tier' ? 'balanced' : breakupProfile.mode;
+    const fragments: AsteroidTier[] = [];
+    let remainingMass = ASTEROID_TIER_CONFIG[parentTier].massBudget;
+
+    while (remainingMass > 0) {
+      const validTiers = this.getLowerAsteroidTiers(parentTier).filter(
+        (tier) => ASTEROID_TIER_CONFIG[tier].massBudget <= remainingMass
+      );
+
+      if (validTiers.length === 0) {
+        break;
+      }
+
+      const tier = this.pickAsteroidFragmentTier(validTiers, mixedMode);
+      fragments.push(tier);
+      remainingMass -= ASTEROID_TIER_CONFIG[tier].massBudget;
+    }
+
+    return fragments;
+  }
+
+  private createSingleTierAsteroidFragments(parentTier: AsteroidTier, fragmentTier: AsteroidTier): AsteroidTier[] {
+    const parentMass = ASTEROID_TIER_CONFIG[parentTier].massBudget;
+    const fragmentMass = ASTEROID_TIER_CONFIG[fragmentTier].massBudget;
+    const fragmentCount = Math.floor(parentMass / fragmentMass);
+
+    return Array.from({ length: fragmentCount }, () => fragmentTier);
+  }
+
+  private pickAsteroidFragmentTier(
+    validTiers: AsteroidTier[],
+    mode: Exclude<AsteroidBreakupProfileMode, 'single-tier'>
+  ): AsteroidTier {
+    const weightedTiers: AsteroidTier[] = [];
+
+    for (const tier of validTiers) {
+      const weight = this.getAsteroidFragmentTierWeight(tier, validTiers, mode);
+
+      for (let i = 0; i < weight; i += 1) {
+        weightedTiers.push(tier);
+      }
+    }
+
+    return weightedTiers[Phaser.Math.Between(0, weightedTiers.length - 1)];
+  }
+
+  private getAsteroidFragmentTierWeight(
+    tier: AsteroidTier,
+    validTiers: AsteroidTier[],
+    mode: Exclude<AsteroidBreakupProfileMode, 'single-tier'>
+  ): number {
+    const minTier = Math.min(...validTiers);
+    const maxTier = Math.max(...validTiers);
+
+    if (mode === 'many-small') {
+      return maxTier - tier + 1;
+    }
+
+    if (mode === 'few-large') {
+      return tier - minTier + 1;
+    }
+
+    return 1;
+  }
+
+  private getLowerAsteroidTiers(tier: AsteroidTier): AsteroidTier[] {
+    return ASTEROID_TIERS.filter((candidateTier) => candidateTier < tier);
   }
 
   private getWrappedDirection(fromX: number, fromY: number, toX: number, toY: number): Phaser.Math.Vector2 {

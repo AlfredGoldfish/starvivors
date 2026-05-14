@@ -531,19 +531,21 @@ Enemies should be readable shapes with distinct movement and attack behavior.
 
 Asteroids are natural drifting hazards.
 
-The prototype supports four asteroid visual variants. Asteroid visual variant is separate from asteroid size tier: visual variants provide art variety, while size tiers control gameplay behavior.
+The prototype supports four asteroid visual variants. Asteroid visual variant is separate from asteroid gameplay tier: visual variants provide art variety, while tiers control gameplay behavior. Any gameplay tier can use any available asteroid visual variant.
 
-Asteroids use three size tiers:
+Asteroids use five numbered gameplay tiers:
 
-- Large
-- Medium
-- Small
+- Tier 5: largest asteroid
+- Tier 4
+- Tier 3
+- Tier 2
+- Tier 1: smallest terminal asteroid
 
-Asteroid tiers control display size, health, collision size, spawn speed range, breakup behavior, and projectile impact response. Current health values are large asteroids at 3 HP, medium asteroids at 2 HP, and small asteroids at 1 HP. Pulse Cannon impacts deal 1 asteroid damage.
+Asteroid tiers control display size, health, collision size, spawn speed range, breakup behavior, projectile impact response, velocity cap, and mass budget. Current health values are tier 1 at 1 HP, tier 2 at 2 HP, tier 3 at 3 HP, tier 4 at 5 HP, and tier 5 at 8 HP. Pulse Cannon impacts deal 1 asteroid damage.
 
-Asteroids spawn with varied drift speeds. Large asteroids drift from slow to medium speeds, medium asteroids use moderate speeds, and small asteroids can drift noticeably faster while remaining readable and fair.
+Asteroids spawn with varied drift speeds. Higher-tier asteroids are generally slower and heavier, while lower-tier asteroids can drift faster and are easier to push while remaining readable and fair.
 
-If a projectile hits an asteroid and the asteroid survives, the impact can alter the asteroid's velocity in the projectile travel direction. Impact response is tiered: large asteroids receive smaller velocity changes, medium asteroids receive moderate changes, and small asteroids receive larger changes. Asteroid velocity is capped so repeated hits do not create uncontrollably fast hazards.
+If a projectile hits an asteroid and the asteroid survives, the impact can alter the asteroid's velocity in the projectile travel direction. Impact response is tiered: higher-tier asteroids receive smaller velocity changes, and lower-tier asteroids receive larger changes. Asteroid velocity is capped by tier so repeated hits do not create uncontrollably fast hazards.
 
 They can:
 
@@ -556,12 +558,20 @@ They can:
 
 Asteroid breakup is implemented:
 
-- Destroyed large asteroids break into medium asteroid debris/fragments.
-- Destroyed medium asteroids break into small asteroid debris/fragments.
-- Destroyed small asteroids disappear without further breakup.
-- Fragments must always be a smaller size tier than the destroyed asteroid.
+- "Fragment" is only a descriptive term for an asteroid created by breakup. Fragments are normal asteroids, not a separate object type.
+- Destroyed tier 5 asteroids can break into randomized mixes of tiers 1 through 4.
+- Destroyed tier 4 asteroids can break into randomized mixes of tiers 1 through 3.
+- Destroyed tier 3 asteroids can break into randomized mixes of tiers 1 through 2.
+- Destroyed tier 2 asteroids break into tier 1 asteroids.
+- Destroyed tier 1 asteroids disappear without further breakup.
+- Fragments must always be a lower gameplay tier than the destroyed asteroid.
 - Fragment visual variants may be random among the available asteroid variants.
 - The system does not need to preserve the parent asteroid's exact visual variant.
+- Breakup is mass-budgeted. Tier 1 has 1 mass unit, tier 2 has 4, tier 3 has 8, tier 4 has 16, and tier 5 has 32.
+- Higher-tier asteroids have more mass budget, and breakup creates a randomized mix of lower-tier asteroids whose total mass is roughly comparable to the destroyed asteroid's mass.
+- Lower-tier-heavy breakups create more fragments. Higher-tier-heavy breakups create fewer but larger fragments.
+- A tier 5 asteroid may break into a few high-tier fragments or many low-tier fragments, including 32 tier-1 asteroids, 8 tier-2 asteroids, 4 tier-3 asteroids, 2 tier-4 asteroids, or mixed lower-tier combinations that spend most or all of the 32 mass budget.
+- Later loot and drop behavior should trigger on asteroid destruction events, including destruction events that also spawn fragments. Loot and drops are not implemented yet.
 
 ### Hazard Debris
 
