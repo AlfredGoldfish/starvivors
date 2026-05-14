@@ -68,6 +68,8 @@ const PLAYER_CONTACT_MAX_SEPARATION = 18;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
 const DEBUG_ELLIPSE_SEGMENTS = 28;
+const DEBUG_GRID_MINOR_SPACING = 240;
+const DEBUG_GRID_MAJOR_SPACING = 480;
 const HUD_BAR_WIDTH = 360;
 const HUD_BAR_HEIGHT = 12;
 const HUD_MARGIN = 16;
@@ -712,8 +714,8 @@ export class GameScene extends Phaser.Scene {
 
   private createBackgroundTextures(): void {
     this.createStarLayerTexture(STARFIELD_FAR_TEXTURE_KEY, 'starvivors-starfield-far-tile', 260, 0.45, 1.3, 0.18, 0.7);
-    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 190, 0.65, 2.1, 0.24, 0.82);
-    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 140, 0.8, 2.8, 0.3, 0.86);
+    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 180, 0.65, 2.1, 0.24, 0.82);
+    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 118, 0.78, 2.6, 0.28, 0.82);
   }
 
   private createStarLayerTexture(
@@ -2052,12 +2054,12 @@ export class GameScene extends Phaser.Scene {
     const scrollY = this.cameras.main.scrollY + this.backgroundWrapOffsetY;
     const twinkleTime = time * 0.001;
 
-    this.farStarfield.tilePositionX = scrollX * 0.28;
-    this.farStarfield.tilePositionY = scrollY * 0.28;
-    this.midStarfield.tilePositionX = scrollX * 0.66;
-    this.midStarfield.tilePositionY = scrollY * 0.66;
-    this.nearStarfield.tilePositionX = scrollX * 1.05;
-    this.nearStarfield.tilePositionY = scrollY * 1.05;
+    this.farStarfield.tilePositionX = scrollX * 0.25;
+    this.farStarfield.tilePositionY = scrollY * 0.25;
+    this.midStarfield.tilePositionX = scrollX * 0.52;
+    this.midStarfield.tilePositionY = scrollY * 0.52;
+    this.nearStarfield.tilePositionX = scrollX * 0.82;
+    this.nearStarfield.tilePositionY = scrollY * 0.82;
 
     this.farStarfield.setAlpha(0.72);
     this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.32 + 1.8) * 0.012);
@@ -2080,10 +2082,53 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.drawDebugArenaGrid();
     this.drawPlayerCollisionDebug();
     this.drawEnemyCollisionDebug();
     this.drawAsteroidCollisionDebug();
     this.drawProjectileCollisionDebug();
+  }
+
+  private drawDebugArenaGrid(): void {
+    const camera = this.cameras.main;
+    const left = camera.scrollX;
+    const right = camera.scrollX + camera.width;
+    const top = camera.scrollY;
+    const bottom = camera.scrollY + camera.height;
+    const cameraCenterX = left + camera.width / 2;
+    const cameraCenterY = top + camera.height / 2;
+
+    this.drawDebugGridLines(left, right, top, bottom);
+
+    const seamX = this.getNearestWrappedRenderCoordinate(0, cameraCenterX, this.arena.width);
+    const seamY = this.getNearestWrappedRenderCoordinate(0, cameraCenterY, this.arena.height);
+
+    this.collisionDebugGraphics.lineStyle(2, 0x42f5d7, 0.62);
+
+    if (seamX >= left && seamX <= right) {
+      this.collisionDebugGraphics.lineBetween(seamX, top, seamX, bottom);
+    }
+
+    if (seamY >= top && seamY <= bottom) {
+      this.collisionDebugGraphics.lineBetween(left, seamY, right, seamY);
+    }
+  }
+
+  private drawDebugGridLines(left: number, right: number, top: number, bottom: number): void {
+    const firstMinorX = Math.floor(left / DEBUG_GRID_MINOR_SPACING) * DEBUG_GRID_MINOR_SPACING;
+    const firstMinorY = Math.floor(top / DEBUG_GRID_MINOR_SPACING) * DEBUG_GRID_MINOR_SPACING;
+
+    for (let x = firstMinorX; x <= right; x += DEBUG_GRID_MINOR_SPACING) {
+      const isMajor = Math.abs(x % DEBUG_GRID_MAJOR_SPACING) < 0.001;
+      this.collisionDebugGraphics.lineStyle(isMajor ? 1 : 1, isMajor ? 0x52627f : 0x24384f, isMajor ? 0.42 : 0.22);
+      this.collisionDebugGraphics.lineBetween(x, top, x, bottom);
+    }
+
+    for (let y = firstMinorY; y <= bottom; y += DEBUG_GRID_MINOR_SPACING) {
+      const isMajor = Math.abs(y % DEBUG_GRID_MAJOR_SPACING) < 0.001;
+      this.collisionDebugGraphics.lineStyle(isMajor ? 1 : 1, isMajor ? 0x52627f : 0x24384f, isMajor ? 0.42 : 0.22);
+      this.collisionDebugGraphics.lineBetween(left, y, right, y);
+    }
   }
 
   private drawPlayerCollisionDebug(): void {
