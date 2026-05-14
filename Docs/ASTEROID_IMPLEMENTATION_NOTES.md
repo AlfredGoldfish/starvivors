@@ -107,6 +107,8 @@ asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
 
 This uses the same toroidal arena wrapping helper as other world objects.
 
+Asteroids also maintain a render-only wrap mirror container. The normal asteroid body keeps the canonical gameplay position used for movement, collision, HP, impact, and breakup. The mirror is hidden unless the nearest toroidal visual copy is across an arena seam from the canonical position. This prevents living asteroids from appearing to disappear when the camera is near a wrapped arena edge.
+
 ## Projectile Hits
 
 Pulse Cannon projectiles check asteroids after enemy hit checks. A projectile hit:

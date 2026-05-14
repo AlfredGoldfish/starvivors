@@ -130,6 +130,7 @@ interface BasicEnemy {
 
 interface BasicAsteroid {
   body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
   variant: string;
   tier: AsteroidTier;
   hp: number;
@@ -159,6 +160,9 @@ export class GameScene extends Phaser.Scene {
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
+  private asteroidCameraViewCount = 0;
+  private asteroidWrappedViewCount = 0;
+  private asteroidWrapMirrorCount = 0;
   private nextPulseCannonFireAt = 0;
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
@@ -221,6 +225,9 @@ export class GameScene extends Phaser.Scene {
     this.pulseCannonProjectiles = [];
     this.basicEnemies = [];
     this.basicAsteroids = [];
+    this.asteroidCameraViewCount = 0;
+    this.asteroidWrappedViewCount = 0;
+    this.asteroidWrapMirrorCount = 0;
     this.nextPulseCannonFireAt = 0;
     this.nextForwardThrusterAt = 0;
     this.nextReverseThrusterAt = 0;
@@ -411,9 +418,12 @@ export class GameScene extends Phaser.Scene {
     const tierConfig = ASTEROID_TIER_CONFIG[tier];
     const texture = ASTEROID_TEXTURES[Phaser.Math.Between(0, ASTEROID_TEXTURES.length - 1)];
     const body = this.createBasicAsteroid(x, y, texture.key, tierConfig.displaySize);
+    const wrapMirrorBody = this.createBasicAsteroid(x, y, texture.key, tierConfig.displaySize);
+    wrapMirrorBody.setVisible(false);
 
     return {
       body,
+      wrapMirrorBody,
       variant: texture.key,
       tier,
       hp: tierConfig.hp,
@@ -437,6 +447,7 @@ export class GameScene extends Phaser.Scene {
     sprite.setDisplaySize(displaySize, displaySize);
 
     const asteroid = this.add.container(x, y, [sprite]);
+    asteroid.setSize(displaySize, displaySize);
     asteroid.setDepth(5);
     asteroid.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
 
@@ -613,10 +624,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBasicAsteroids(deltaSeconds: number): void {
+    this.asteroidCameraViewCount = 0;
+    this.asteroidWrappedViewCount = 0;
+    this.asteroidWrapMirrorCount = 0;
+
     for (const asteroid of this.basicAsteroids) {
+      this.validateAsteroidRenderState(asteroid);
       asteroid.body.x = wrapCoordinate(asteroid.body.x + asteroid.velocity.x * deltaSeconds, this.arena.width);
       asteroid.body.y = wrapCoordinate(asteroid.body.y + asteroid.velocity.y * deltaSeconds, this.arena.height);
       asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
+      this.updateAsteroidWrapMirror(asteroid);
     }
   }
 
@@ -768,6 +785,7 @@ export class GameScene extends Phaser.Scene {
     const fragmentTiers = this.createAsteroidFragmentTiers(asteroid.tier, asteroid.breakupProfile);
 
     asteroid.body.destroy(true);
+    asteroid.wrapMirrorBody.destroy(true);
     this.basicAsteroids.splice(index, 1);
 
     if (fragmentTiers.length > 0) {
@@ -895,6 +913,85 @@ export class GameScene extends Phaser.Scene {
     return ASTEROID_TIERS.filter((candidateTier) => candidateTier < tier);
   }
 
+  private updateAsteroidWrapMirror(asteroid: BasicAsteroid): void {
+    const camera = this.cameras.main;
+    const cameraCenterX = camera.scrollX + camera.width / 2;
+    const cameraCenterY = camera.scrollY + camera.height / 2;
+    const mirrorX = this.getNearestWrappedRenderCoordinate(asteroid.body.x, cameraCenterX, this.arena.width);
+    const mirrorY = this.getNearestWrappedRenderCoordinate(asteroid.body.y, cameraCenterY, this.arena.height);
+    const baseVisible = this.isCircleInCameraView(asteroid.body.x, asteroid.body.y, asteroid.hitRadius);
+    const mirrorVisible = this.isCircleInCameraView(mirrorX, mirrorY, asteroid.hitRadius);
+    const shouldShowMirror = (mirrorX !== asteroid.body.x || mirrorY !== asteroid.body.y) && mirrorVisible;
+
+    asteroid.wrapMirrorBody.setPosition(mirrorX, mirrorY);
+    asteroid.wrapMirrorBody.setRotation(asteroid.body.rotation);
+    asteroid.wrapMirrorBody.setVisible(shouldShowMirror);
+
+    if (baseVisible) {
+      this.asteroidCameraViewCount += 1;
+    }
+
+    if (baseVisible || mirrorVisible) {
+      this.asteroidWrappedViewCount += 1;
+    }
+
+    if (shouldShowMirror) {
+      this.asteroidWrapMirrorCount += 1;
+    }
+  }
+
+  private getNearestWrappedRenderCoordinate(value: number, cameraCenter: number, arenaSize: number): number {
+    const delta = cameraCenter - value;
+
+    if (delta > arenaSize / 2) {
+      return value + arenaSize;
+    }
+
+    if (delta < -arenaSize / 2) {
+      return value - arenaSize;
+    }
+
+    return value;
+  }
+
+  private isCircleInCameraView(x: number, y: number, radius: number): boolean {
+    const camera = this.cameras.main;
+    const left = camera.scrollX;
+    const top = camera.scrollY;
+    const right = left + camera.width;
+    const bottom = top + camera.height;
+
+    return x + radius >= left && x - radius <= right && y + radius >= top && y - radius <= bottom;
+  }
+
+  private validateAsteroidRenderState(asteroid: BasicAsteroid): void {
+    if (
+      Number.isNaN(asteroid.body.x) ||
+      Number.isNaN(asteroid.body.y) ||
+      Number.isNaN(asteroid.velocity.x) ||
+      Number.isNaN(asteroid.velocity.y)
+    ) {
+      console.warn('Invalid asteroid position or velocity.', {
+        x: asteroid.body.x,
+        y: asteroid.body.y,
+        velocityX: asteroid.velocity.x,
+        velocityY: asteroid.velocity.y,
+        tier: asteroid.tier,
+        variant: asteroid.variant
+      });
+    }
+
+    if (!asteroid.body.scene || asteroid.body.list.length === 0 || !asteroid.wrapMirrorBody.scene) {
+      console.warn('Invalid asteroid render object state.', {
+        hasBodyScene: Boolean(asteroid.body.scene),
+        childCount: asteroid.body.list.length,
+        hasMirrorScene: Boolean(asteroid.wrapMirrorBody.scene),
+        tier: asteroid.tier,
+        variant: asteroid.variant
+      });
+    }
+  }
+
   private getWrappedDirection(fromX: number, fromY: number, toX: number, toY: number): Phaser.Math.Vector2 {
     let x = toX - fromX;
     let y = toY - fromY;
@@ -958,7 +1055,8 @@ export class GameScene extends Phaser.Scene {
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
         `Enemies: ${this.basicEnemies.length} active\n` +
-        `Asteroids: ${this.basicAsteroids.length} active`
+        `Asteroids: ${this.basicAsteroids.length} active\n` +
+        `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
     );
   }
 
