@@ -56,8 +56,9 @@ const ASTEROID_SAFE_SPAWN_RADIUS = 520;
 const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
 const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
 const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
-const ENEMY_HIT_FEEDBACK_MS = 150;
-const ASTEROID_HIT_FEEDBACK_MS = 180;
+const DAMAGE_FLASH_MS = 90;
+const ENEMY_IMPACT_EXPLOSION_MS = 150;
+const ASTEROID_IMPACT_EXPLOSION_MS = 180;
 const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
 const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
@@ -1967,37 +1968,35 @@ export class GameScene extends Phaser.Scene {
     projectile.wrapMirrorBody.destroy(true);
   }
 
-  private emitEnemyHitFeedback(enemy: Phaser.GameObjects.Container): void {
-    const effectPosition = this.getNearestWrappedRenderPosition(enemy.x, enemy.y);
-    const particleCount = 6;
+  private flashDamageSprites(...containers: Phaser.GameObjects.Container[]): void {
+    for (const container of containers) {
+      if (!container.scene) {
+        continue;
+      }
 
-    enemy.setScale(1.08);
+      for (const child of container.list) {
+        if (child instanceof Phaser.GameObjects.Image) {
+          child.setTintFill(0xffffff);
 
-    this.tweens.add({
-      targets: enemy,
-      scaleX: 1,
-      scaleY: 1,
-      duration: ENEMY_HIT_FEEDBACK_MS,
-      ease: 'Back.easeOut'
-    });
-
-    for (const child of enemy.list) {
-      if (child instanceof Phaser.GameObjects.Image) {
-        child.setTint(0xff8f4f);
-
-        this.tweens.add({
-          targets: child,
-          alpha: 0.62,
-          yoyo: true,
-          duration: ENEMY_HIT_FEEDBACK_MS * 0.5,
-          ease: 'Quad.easeOut',
-          onComplete: () => {
-            child.clearTint();
-            child.setAlpha(1);
-          }
-        });
+          this.tweens.add({
+            targets: child,
+            alpha: 0.9,
+            yoyo: true,
+            duration: DAMAGE_FLASH_MS * 0.5,
+            ease: 'Quad.easeOut',
+            onComplete: () => {
+              child.clearTint();
+              child.setAlpha(1);
+            }
+          });
+        }
       }
     }
+  }
+
+  private emitEnemyImpactExplosion(enemy: Phaser.GameObjects.Container): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(enemy.x, enemy.y);
+    const particleCount = 6;
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -2019,14 +2018,14 @@ export class GameScene extends Phaser.Scene {
         y: effectPosition.y + Math.sin(angle) * distance,
         alpha: 0,
         scale: 0.2,
-        duration: ENEMY_HIT_FEEDBACK_MS,
+        duration: ENEMY_IMPACT_EXPLOSION_MS,
         ease: 'Quad.easeOut',
         onComplete: () => particle.destroy()
       });
     }
   }
 
-  private emitAsteroidHitFeedback(x: number, y: number, tier: AsteroidTier): void {
+  private emitAsteroidImpactExplosion(x: number, y: number, tier: AsteroidTier): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     x = effectPosition.x;
     y = effectPosition.y;
@@ -2063,7 +2062,7 @@ export class GameScene extends Phaser.Scene {
         y: y + Math.sin(angle) * distance,
         alpha: 0,
         scale: 0.25,
-        duration: ASTEROID_HIT_FEEDBACK_MS,
+        duration: ASTEROID_IMPACT_EXPLOSION_MS,
         ease: 'Quad.easeOut',
         onComplete: () => particle.destroy()
       });
@@ -2073,7 +2072,7 @@ export class GameScene extends Phaser.Scene {
       targets: flash,
       alpha: 0,
       scale: 1.35,
-      duration: ASTEROID_HIT_FEEDBACK_MS * 0.65,
+      duration: ASTEROID_IMPACT_EXPLOSION_MS * 0.65,
       ease: 'Quad.easeOut',
       onComplete: () => flash.destroy()
     });
@@ -2082,7 +2081,7 @@ export class GameScene extends Phaser.Scene {
       targets: ring,
       alpha: 0,
       scale: 1.75,
-      duration: ASTEROID_HIT_FEEDBACK_MS,
+      duration: ASTEROID_IMPACT_EXPLOSION_MS,
       ease: 'Quad.easeOut',
       onComplete: () => ring.destroy()
     });
@@ -2091,7 +2090,7 @@ export class GameScene extends Phaser.Scene {
       targets: dust,
       alpha: 0,
       scale: 1.85,
-      duration: ASTEROID_HIT_FEEDBACK_MS * 1.15,
+      duration: ASTEROID_IMPACT_EXPLOSION_MS * 1.15,
       ease: 'Quad.easeOut',
       onComplete: () => dust.destroy()
     });
@@ -2156,12 +2155,14 @@ export class GameScene extends Phaser.Scene {
         enemy.hp -= projectile.damage;
 
         if (enemy.hp <= 0) {
+          this.emitEnemyImpactExplosion(enemy.body);
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.basicEnemies.splice(i, 1);
           this.grantXp(BASIC_ENEMY_XP_REWARD);
         } else {
-          this.emitEnemyHitFeedback(enemy.body);
+          this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+          this.emitEnemyImpactExplosion(enemy.body);
         }
 
         return true;
@@ -2188,12 +2189,14 @@ export class GameScene extends Phaser.Scene {
         enemy.hp -= projectile.damage;
 
         if (enemy.hp <= 0) {
+          this.emitEnemyImpactExplosion(enemy.body);
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.shooterEnemies.splice(i, 1);
           this.grantXp(shooterEnemyBalance.xpReward);
         } else {
-          this.emitEnemyHitFeedback(enemy.body);
+          this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+          this.emitEnemyImpactExplosion(enemy.body);
         }
 
         return true;
@@ -2210,12 +2213,14 @@ export class GameScene extends Phaser.Scene {
       const hitRadius = asteroid.hitRadius + PROJECTILE_HIT_RADIUS;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
-        this.emitAsteroidHitFeedback(projectile.body.x, projectile.body.y, asteroid.tier);
         asteroid.hp -= projectile.damage;
 
         if (asteroid.hp <= 0) {
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
           this.destroyBasicAsteroid(i);
         } else {
+          this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
           this.applyAsteroidImpact(asteroid, projectile);
         }
 
