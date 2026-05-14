@@ -712,8 +712,8 @@ export class GameScene extends Phaser.Scene {
 
   private createBackgroundTextures(): void {
     this.createStarLayerTexture(STARFIELD_FAR_TEXTURE_KEY, 'starvivors-starfield-far-tile', 260, 0.45, 1.3, 0.18, 0.7);
-    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 150, 0.65, 2.1, 0.24, 0.82);
-    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 62, 0.9, 3.0, 0.34, 0.92);
+    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 190, 0.65, 2.1, 0.24, 0.82);
+    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 140, 0.8, 2.8, 0.3, 0.86);
   }
 
   private createStarLayerTexture(
@@ -2052,16 +2052,16 @@ export class GameScene extends Phaser.Scene {
     const scrollY = this.cameras.main.scrollY + this.backgroundWrapOffsetY;
     const twinkleTime = time * 0.001;
 
-    this.farStarfield.tilePositionX = scrollX * 0.18;
-    this.farStarfield.tilePositionY = scrollY * 0.18;
-    this.midStarfield.tilePositionX = scrollX * 0.34;
-    this.midStarfield.tilePositionY = scrollY * 0.34;
-    this.nearStarfield.tilePositionX = scrollX * 0.58;
-    this.nearStarfield.tilePositionY = scrollY * 0.58;
+    this.farStarfield.tilePositionX = scrollX * 0.28;
+    this.farStarfield.tilePositionY = scrollY * 0.28;
+    this.midStarfield.tilePositionX = scrollX * 0.66;
+    this.midStarfield.tilePositionY = scrollY * 0.66;
+    this.nearStarfield.tilePositionX = scrollX * 1.05;
+    this.nearStarfield.tilePositionY = scrollY * 1.05;
 
-    this.farStarfield.setAlpha(0.72 + Math.sin(twinkleTime * 0.7) * 0.035);
-    this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.95 + 1.8) * 0.045);
-    this.nearStarfield.setAlpha(0.72 + Math.sin(twinkleTime * 1.25 + 3.4) * 0.055);
+    this.farStarfield.setAlpha(0.72);
+    this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.32 + 1.8) * 0.012);
+    this.nearStarfield.setAlpha(0.78 + Math.sin(twinkleTime * 0.42 + 3.4) * 0.016);
   }
 
   private updateCollisionDebugOverlay(): void {
