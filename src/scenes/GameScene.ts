@@ -47,9 +47,22 @@ const ASTEROID_HIT_FEEDBACK_MS = 180;
 const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
 const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
+const PLAYER_MAX_HULL = 100;
+const PLAYER_HIT_RADIUS = 32;
+const PLAYER_DAMAGE_INVULNERABILITY_MS = 1000;
+const PLAYER_DAMAGE_FLASH_MS = 130;
+const ENEMY_CONTACT_DAMAGE = 15;
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
+
+const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
+  1: 8,
+  2: 12,
+  3: 16,
+  4: 22,
+  5: 28
+};
 
 interface AsteroidTierConfig {
   displaySize: number;
@@ -154,16 +167,23 @@ interface AsteroidBreakupProfile {
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
+  private playerSprite!: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
+  private hullText!: Phaser.GameObjects.Text;
+  private deathText?: Phaser.GameObjects.Text;
   private starfield!: Phaser.GameObjects.TileSprite;
   private grid!: Phaser.GameObjects.TileSprite;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
+  private restartKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
+  private playerHull = PLAYER_MAX_HULL;
+  private playerInvulnerableUntil = 0;
+  private isPlayerDead = false;
   private asteroidCameraViewCount = 0;
   private asteroidWrappedViewCount = 0;
   private asteroidWrapMirrorCount = 0;
@@ -198,10 +218,13 @@ export class GameScene extends Phaser.Scene {
     this.updatePlayerMovement(time, delta / 1000);
     this.updateBasicEnemies(delta / 1000);
     this.updateBasicAsteroids(delta / 1000);
+    this.wrapPlayer();
+    this.updatePlayerContactDamage(time);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
-    this.wrapPlayer();
+    this.updatePlayerDamageVisuals(time);
     this.updateBackgroundTiles();
+    this.updateHullText();
     this.updateDebugText(time);
   }
 
@@ -217,6 +240,7 @@ export class GameScene extends Phaser.Scene {
       Phaser.Input.Keyboard.Key
     >;
     this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
   }
 
   private rebuildWorld(): void {
@@ -226,6 +250,10 @@ export class GameScene extends Phaser.Scene {
 
     this.children.removeAll(true);
     this.playerVelocity.set(0, 0);
+    this.playerHull = PLAYER_MAX_HULL;
+    this.playerInvulnerableUntil = 0;
+    this.isPlayerDead = false;
+    this.deathText = undefined;
     this.pulseCannonProjectiles = [];
     this.basicEnemies = [];
     this.basicAsteroids = [];
@@ -257,6 +285,19 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
+    this.hullText = this.add
+      .text(this.scale.width - 16, 16, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '18px',
+        color: '#f2fbff',
+        backgroundColor: 'rgba(2, 4, 10, 0.72)',
+        padding: { x: 10, y: 7 }
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(1000);
+
+    this.updateHullText();
     this.updateDebugText(0);
   }
 
@@ -364,6 +405,7 @@ export class GameScene extends Phaser.Scene {
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplaySize(PLAYER_SHIP_DISPLAY_SIZE, PLAYER_SHIP_DISPLAY_SIZE);
     sprite.setRotation(PLAYER_SHIP_VISUAL_ROTATION);
+    this.playerSprite = sprite;
 
     const ship = this.add.container(x, y, [sprite]);
     ship.setDepth(10);
@@ -497,6 +539,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.isPlayerDead) {
+      if (Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+        this.rebuildWorld();
+      }
+
+      return;
+    }
+
     this.updatePlayerFacing();
 
     const strafeLeft = this.wasdKeys.A.isDown || this.cursors.left.isDown;
@@ -619,6 +669,156 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updatePlayerContactDamage(time: number): void {
+    if (this.isPlayerDead || time < this.playerInvulnerableUntil) {
+      return;
+    }
+
+    const enemyDamage = this.getEnemyContactDamage();
+
+    if (enemyDamage > 0) {
+      this.damagePlayer(enemyDamage, time);
+      return;
+    }
+
+    const asteroidDamage = this.getAsteroidContactDamage();
+
+    if (asteroidDamage > 0) {
+      this.damagePlayer(asteroidDamage, time);
+    }
+  }
+
+  private getEnemyContactDamage(): number {
+    const hitHalfWidth = basicEnemy.hitHalfWidth + PLAYER_HIT_RADIUS;
+    const hitHalfLength = basicEnemy.hitHalfLength + PLAYER_HIT_RADIUS;
+
+    for (const enemy of this.basicEnemies) {
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+      const enemyForward = this.getForwardDirection(enemy.body.rotation);
+      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const localX = offset.dot(enemyRight);
+      const localY = offset.dot(enemyForward);
+      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
+
+      if (normalizedHit <= 1) {
+        return ENEMY_CONTACT_DAMAGE;
+      }
+    }
+
+    return 0;
+  }
+
+  private getAsteroidContactDamage(): number {
+    for (const asteroid of this.basicAsteroids) {
+      const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, this.player.x, this.player.y);
+      const hitRadius = asteroid.hitRadius + PLAYER_HIT_RADIUS;
+
+      if (offset.lengthSq() <= hitRadius * hitRadius) {
+        return ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier];
+      }
+    }
+
+    return 0;
+  }
+
+  private damagePlayer(damage: number, time: number): void {
+    this.playerHull = Math.max(0, this.playerHull - damage);
+    this.playerInvulnerableUntil = time + PLAYER_DAMAGE_INVULNERABILITY_MS;
+    this.emitPlayerDamageFeedback();
+    this.updateHullText();
+
+    if (this.playerHull <= 0) {
+      this.killPlayer();
+    }
+  }
+
+  private emitPlayerDamageFeedback(): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+    const particleCount = 10;
+
+    this.playerSprite.setTint(0xff5964);
+
+    this.tweens.add({
+      targets: this.playerSprite,
+      alpha: 0.45,
+      yoyo: true,
+      repeat: 1,
+      duration: PLAYER_DAMAGE_FLASH_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        if (!this.isPlayerDead) {
+          this.playerSprite.clearTint();
+          this.playerSprite.setAlpha(1);
+        }
+      }
+    });
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(16, 42);
+      const particle = this.add.circle(
+        effectPosition.x,
+        effectPosition.y,
+        Phaser.Math.FloatBetween(2, 4),
+        0xff6f7f,
+        0.78
+      );
+
+      particle.setDepth(12);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: effectPosition.x + Math.cos(angle) * distance,
+        y: effectPosition.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.2,
+        duration: 240,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  private updatePlayerDamageVisuals(time: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    if (time >= this.playerInvulnerableUntil) {
+      this.player.setVisible(true);
+      return;
+    }
+
+    this.player.setVisible(Math.floor(time / 85) % 2 === 0);
+  }
+
+  private killPlayer(): void {
+    this.isPlayerDead = true;
+    this.playerHull = 0;
+    this.playerVelocity.set(0, 0);
+    this.player.setVisible(true);
+    this.playerSprite.setTint(0xff5964);
+    this.playerSprite.setAlpha(0.62);
+    this.updateHullText();
+    this.showDeathText();
+  }
+
+  private showDeathText(): void {
+    this.deathText = this.add
+      .text(this.scale.width / 2, this.scale.height / 2, 'HULL BREACHED\nPRESS R TO RESTART', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '30px',
+        color: '#f2fbff',
+        align: 'center',
+        backgroundColor: 'rgba(2, 4, 10, 0.78)',
+        padding: { x: 20, y: 16 }
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1001);
+  }
+
   private updateBasicEnemies(deltaSeconds: number): void {
     for (const enemy of this.basicEnemies) {
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
@@ -649,6 +849,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePulseCannon(time: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
     const isFiring =
       this.fireKey.isDown || this.input.activePointer.leftButtonDown() || this.input.activePointer.rightButtonDown();
 
@@ -1148,6 +1352,16 @@ export class GameScene extends Phaser.Scene {
     this.grid.tilePositionY = this.cameras.main.scrollY;
   }
 
+  private updateHullText(): void {
+    if (!this.hullText) {
+      return;
+    }
+
+    const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > this.time.now ? 'HIT' : 'STABLE';
+
+    this.hullText.setText(`Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}\nStatus: ${status}`);
+  }
+
   private updateDebugText(time: number): void {
     if (!this.debugText || !this.player) {
       return;
@@ -1168,6 +1382,7 @@ export class GameScene extends Phaser.Scene {
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
+        `Hull: ${this.playerHull} / ${PLAYER_MAX_HULL}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active\n` +
         `Enemies: ${this.basicEnemies.length} active\n` +
