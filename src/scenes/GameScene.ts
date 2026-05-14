@@ -63,6 +63,15 @@ const ENEMY_SPAWN_MAX_ACTIVE_INITIAL = 4;
 const ENEMY_SPAWN_MAX_ACTIVE_PER_STEP = 2;
 const ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP = 18;
 const ENEMY_SPAWN_DOUBLE_SPAWN_STEP = 5;
+const BLACK_HOLE_SPAWN_OFFSET_X = 700;
+const BLACK_HOLE_SPAWN_OFFSET_Y = 120;
+const BLACK_HOLE_SAFE_SPAWN_DISTANCE = 700;
+const BLACK_HOLE_DRIFT_SPEED = 24;
+const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
+const BLACK_HOLE_CORE_RADIUS = 82;
+const BLACK_HOLE_WARNING_RADIUS = 260;
+const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
+const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -399,6 +408,17 @@ interface BasicAsteroid {
   hitRadius: number;
 }
 
+interface BlackHoleHazard {
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  bodyGraphics: Phaser.GameObjects.Graphics;
+  wrapMirrorGraphics: Phaser.GameObjects.Graphics;
+  velocity: Phaser.Math.Vector2;
+  coreRadius: number;
+  warningRadius: number;
+  visualPhase: number;
+}
+
 interface AsteroidBreakupProfile {
   mode: AsteroidBreakupProfileMode;
   preferredTier?: AsteroidTier;
@@ -460,6 +480,7 @@ export class GameScene extends Phaser.Scene {
   private shooterEnemies: ShooterEnemy[] = [];
   private tankEnemies: TankEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
+  private blackHole?: BlackHoleHazard;
   private playerHull = PLAYER_MAX_HULL;
   private playerInvulnerableUntil = 0;
   private isPlayerDead = false;
@@ -544,7 +565,9 @@ export class GameScene extends Phaser.Scene {
     this.updateShooterEnemies(time, delta / 1000);
     this.updateTankEnemies(delta / 1000);
     this.updateBasicAsteroids(delta / 1000);
+    this.updateBlackHole(time, delta / 1000);
     this.wrapPlayer();
+    this.updateBlackHolePlayerCollision();
     this.updatePlayerContactDamage(time);
     this.updatePulseCannon(time);
     this.updatePulseCannonProjectiles(time, delta / 1000);
@@ -877,6 +900,7 @@ export class GameScene extends Phaser.Scene {
     this.shooterEnemies = [];
     this.tankEnemies = [];
     this.basicAsteroids = [];
+    this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
@@ -907,6 +931,7 @@ export class GameScene extends Phaser.Scene {
     this.createShooterEnemies(center);
     this.createTankEnemies(center);
     this.createBasicAsteroids(center);
+    this.blackHole = this.createBlackHoleHazard(center);
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
     this.resetBackgroundPlayerTracking();
@@ -1293,6 +1318,127 @@ export class GameScene extends Phaser.Scene {
 
       this.basicAsteroids.push(this.createAsteroidInstance(x, y, this.getRandomInitialAsteroidTier()));
     }
+  }
+
+  private createBlackHoleHazard(center: Phaser.Math.Vector2): BlackHoleHazard {
+    const position = this.getBlackHoleSpawnPosition(center);
+    const bodyGraphics = this.add.graphics();
+    const wrapMirrorGraphics = this.add.graphics();
+    const body = this.add.container(position.x, position.y, [bodyGraphics]).setDepth(6);
+    const wrapMirrorBody = this.add.container(position.x, position.y, [wrapMirrorGraphics]).setDepth(6);
+    const velocity = new Phaser.Math.Vector2(
+      Math.cos(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED,
+      Math.sin(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED
+    );
+    const blackHole: BlackHoleHazard = {
+      body,
+      wrapMirrorBody,
+      bodyGraphics,
+      wrapMirrorGraphics,
+      velocity,
+      coreRadius: BLACK_HOLE_CORE_RADIUS,
+      warningRadius: BLACK_HOLE_WARNING_RADIUS,
+      visualPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+    };
+
+    body.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
+    wrapMirrorBody.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
+    wrapMirrorBody.setVisible(false);
+    this.drawBlackHoleVisual(blackHole.bodyGraphics, blackHole, false);
+    this.drawBlackHoleVisual(blackHole.wrapMirrorGraphics, blackHole, true);
+
+    return blackHole;
+  }
+
+  private getBlackHoleSpawnPosition(center: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    const fixedX = wrapCoordinate(center.x + BLACK_HOLE_SPAWN_OFFSET_X, this.arena.width);
+    const fixedY = wrapCoordinate(center.y + BLACK_HOLE_SPAWN_OFFSET_Y, this.arena.height);
+    const fixedOffset = this.getWrappedDirection(center.x, center.y, fixedX, fixedY);
+
+    if (fixedOffset.length() >= BLACK_HOLE_SAFE_SPAWN_DISTANCE) {
+      return new Phaser.Math.Vector2(fixedX, fixedY);
+    }
+
+    for (let i = 0; i < 12; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(BLACK_HOLE_SAFE_SPAWN_DISTANCE, BLACK_HOLE_SAFE_SPAWN_DISTANCE * 1.45);
+      const x = wrapCoordinate(center.x + Math.cos(angle) * distance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * distance, this.arena.height);
+      const offset = this.getWrappedDirection(center.x, center.y, x, y);
+
+      if (offset.length() >= BLACK_HOLE_SAFE_SPAWN_DISTANCE) {
+        return new Phaser.Math.Vector2(x, y);
+      }
+    }
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(center.x + BLACK_HOLE_SAFE_SPAWN_DISTANCE, this.arena.width),
+      center.y
+    );
+  }
+
+  private updateBlackHole(time: number, deltaSeconds: number): void {
+    if (!this.blackHole || this.isPlayerDead) {
+      return;
+    }
+
+    this.blackHole.body.x = wrapCoordinate(
+      this.blackHole.body.x + this.blackHole.velocity.x * deltaSeconds,
+      this.arena.width
+    );
+    this.blackHole.body.y = wrapCoordinate(
+      this.blackHole.body.y + this.blackHole.velocity.y * deltaSeconds,
+      this.arena.height
+    );
+    this.blackHole.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
+    this.blackHole.body.rotation = this.blackHole.visualPhase;
+    this.drawBlackHoleVisual(this.blackHole.bodyGraphics, this.blackHole, false, time);
+    this.drawBlackHoleVisual(this.blackHole.wrapMirrorGraphics, this.blackHole, true, time);
+    this.updateToroidalRenderMirror(
+      this.blackHole.body,
+      this.blackHole.wrapMirrorBody,
+      this.blackHole.warningRadius
+    );
+  }
+
+  private updateBlackHolePlayerCollision(): void {
+    if (!this.blackHole || this.isPlayerDead) {
+      return;
+    }
+
+    const offset = this.getWrappedDirection(this.blackHole.body.x, this.blackHole.body.y, this.player.x, this.player.y);
+
+    if (offset.lengthSq() <= this.blackHole.coreRadius * this.blackHole.coreRadius) {
+      this.killPlayer();
+    }
+  }
+
+  private drawBlackHoleVisual(
+    graphics: Phaser.GameObjects.Graphics,
+    blackHole: BlackHoleHazard,
+    isMirror: boolean,
+    time = this.time.now
+  ): void {
+    const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + blackHole.visualPhase) * 0.5;
+    const warningAlpha = isMirror ? 0.09 : 0.13;
+    const ringAlpha = isMirror ? 0.46 : 0.62;
+    const coreAlpha = isMirror ? 0.78 : 0.96;
+
+    graphics.clear();
+    graphics.fillStyle(0x1d0f33, warningAlpha);
+    graphics.fillCircle(0, 0, blackHole.warningRadius);
+    graphics.lineStyle(2, 0xb48cff, 0.18 + pulse * 0.18);
+    graphics.strokeCircle(0, 0, blackHole.warningRadius);
+    graphics.lineStyle(3, 0x42f5d7, ringAlpha);
+    graphics.strokeCircle(0, 0, blackHole.coreRadius + 26 + pulse * 8);
+    graphics.lineStyle(2, 0xffc857, 0.34 + pulse * 0.18);
+    graphics.strokeEllipse(0, 0, (blackHole.coreRadius + 64) * 2, (blackHole.coreRadius + 20) * 2);
+    graphics.lineStyle(1, 0x9fd8ff, 0.18);
+    graphics.strokeCircle(0, 0, blackHole.coreRadius + 88);
+    graphics.fillStyle(0x010107, coreAlpha);
+    graphics.fillCircle(0, 0, blackHole.coreRadius);
+    graphics.fillStyle(0x000000, 1);
+    graphics.fillCircle(0, 0, blackHole.coreRadius * 0.72);
   }
 
   private createAsteroidInstance(
@@ -3242,6 +3388,7 @@ export class GameScene extends Phaser.Scene {
     this.drawPlayerCollisionDebug();
     this.drawEnemyCollisionDebug();
     this.drawAsteroidCollisionDebug();
+    this.drawBlackHoleCollisionDebug();
     this.drawProjectileCollisionDebug();
   }
 
@@ -3392,6 +3539,23 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawBlackHoleCollisionDebug(): void {
+    if (!this.blackHole) {
+      return;
+    }
+
+    const blackHolePosition = this.getNearestWrappedRenderPosition(this.blackHole.body.x, this.blackHole.body.y);
+
+    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, this.blackHole.warningRadius)) {
+      return;
+    }
+
+    this.collisionDebugGraphics.lineStyle(2, 0xb48cff, 0.82);
+    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.coreRadius);
+    this.collisionDebugGraphics.lineStyle(1, 0xb48cff, 0.34);
+    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.warningRadius);
+  }
+
   private drawProjectileCollisionDebug(): void {
     for (const projectile of this.pulseCannonProjectiles) {
       const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
@@ -3503,6 +3667,15 @@ export class GameScene extends Phaser.Scene {
       this.minimapGraphics.fillCircle(position.x, position.y, 4.2);
       this.minimapGraphics.lineStyle(1, 0xf2fbff, 0.78);
       this.minimapGraphics.strokeCircle(position.x, position.y, 5.4);
+    }
+
+    if (this.blackHole) {
+      const position = this.getMinimapPosition(this.blackHole.body.x, this.blackHole.body.y, innerX, innerY, innerWidth, innerHeight);
+
+      this.minimapGraphics.fillStyle(0x05030a, 0.96);
+      this.minimapGraphics.fillCircle(position.x, position.y, 5.6);
+      this.minimapGraphics.lineStyle(2, 0xb48cff, 0.9);
+      this.minimapGraphics.strokeCircle(position.x, position.y, 7.2);
     }
 
     const playerPosition = this.getMinimapPosition(this.player.x, this.player.y, innerX, innerY, innerWidth, innerHeight);
