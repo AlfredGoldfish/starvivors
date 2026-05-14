@@ -56,6 +56,7 @@ const ASTEROID_SAFE_SPAWN_RADIUS = 520;
 const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
 const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
 const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
+const ENEMY_HIT_FEEDBACK_MS = 150;
 const ASTEROID_HIT_FEEDBACK_MS = 180;
 const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
 const PULSE_CANNON_ASTEROID_DAMAGE = 1;
@@ -202,11 +203,12 @@ interface AsteroidTierConfig {
   maxVelocity: number;
 }
 
+// Temporary asteroid HP for damage-feedback visibility; revisit during balance/polish.
 const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   1: {
     displaySize: 52,
     hitRadius: 20,
-    hp: 1,
+    hp: 2,
     massBudget: 1,
     minSpeed: 92,
     maxSpeed: 160,
@@ -216,7 +218,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   2: {
     displaySize: 76,
     hitRadius: 30,
-    hp: 2,
+    hp: 4,
     massBudget: 4,
     minSpeed: 76,
     maxSpeed: 138,
@@ -226,7 +228,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   3: {
     displaySize: 108,
     hitRadius: 42,
-    hp: 3,
+    hp: 6,
     massBudget: 8,
     minSpeed: 54,
     maxSpeed: 112,
@@ -236,7 +238,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   4: {
     displaySize: 154,
     hitRadius: 58,
-    hp: 5,
+    hp: 9,
     massBudget: 16,
     minSpeed: 34,
     maxSpeed: 78,
@@ -246,7 +248,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   5: {
     displaySize: 196,
     hitRadius: 74,
-    hp: 8,
+    hp: 13,
     massBudget: 32,
     minSpeed: 22,
     maxSpeed: 56,
@@ -284,6 +286,7 @@ interface BasicEnemy {
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
+  hp: number;
 }
 
 interface ShooterEnemy {
@@ -291,6 +294,7 @@ interface ShooterEnemy {
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   nextFireAt: number;
+  hp: number;
 }
 
 interface BasicAsteroid {
@@ -885,7 +889,8 @@ export class GameScene extends Phaser.Scene {
         body,
         wrapMirrorBody,
         velocity: new Phaser.Math.Vector2(0, 0),
-        knockbackVelocity: new Phaser.Math.Vector2(0, 0)
+        knockbackVelocity: new Phaser.Math.Vector2(0, 0),
+        hp: basicEnemy.hp
       });
     }
   }
@@ -918,7 +923,8 @@ export class GameScene extends Phaser.Scene {
         body,
         wrapMirrorBody,
         velocity: new Phaser.Math.Vector2(0, 0),
-        nextFireAt: this.time.now + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000))
+        nextFireAt: this.time.now + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000)),
+        hp: shooterEnemy.hp
       });
     }
   }
@@ -1961,19 +1967,87 @@ export class GameScene extends Phaser.Scene {
     projectile.wrapMirrorBody.destroy(true);
   }
 
+  private emitEnemyHitFeedback(enemy: Phaser.GameObjects.Container): void {
+    const effectPosition = this.getNearestWrappedRenderPosition(enemy.x, enemy.y);
+    const particleCount = 6;
+
+    enemy.setScale(1.08);
+
+    this.tweens.add({
+      targets: enemy,
+      scaleX: 1,
+      scaleY: 1,
+      duration: ENEMY_HIT_FEEDBACK_MS,
+      ease: 'Back.easeOut'
+    });
+
+    for (const child of enemy.list) {
+      if (child instanceof Phaser.GameObjects.Image) {
+        child.setTint(0xff8f4f);
+
+        this.tweens.add({
+          targets: child,
+          alpha: 0.62,
+          yoyo: true,
+          duration: ENEMY_HIT_FEEDBACK_MS * 0.5,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            child.clearTint();
+            child.setAlpha(1);
+          }
+        });
+      }
+    }
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(10, 28);
+      const particle = this.add.circle(
+        effectPosition.x,
+        effectPosition.y,
+        Phaser.Math.FloatBetween(1.6, 3),
+        Phaser.Utils.Array.GetRandom([0xff5964, 0xff8f4f, 0xffc857]),
+        0.86
+      );
+
+      particle.setDepth(11);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: effectPosition.x + Math.cos(angle) * distance,
+        y: effectPosition.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.2,
+        duration: ENEMY_HIT_FEEDBACK_MS,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
   private emitAsteroidHitFeedback(x: number, y: number, tier: AsteroidTier): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     x = effectPosition.x;
     y = effectPosition.y;
-    const particleCount = Phaser.Math.Clamp(tier + 2, 3, 7);
+    const tierConfig = ASTEROID_TIER_CONFIG[tier];
+    const particleCount = Phaser.Math.Clamp(tier + 3, 4, 9);
+    const dust = this.add.circle(x, y, Math.max(8, tierConfig.hitRadius * 0.28), 0xc2ad8f, 0.16);
+
+    dust.setDepth(6);
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(10, 24);
-      const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(1.7, 3.2), 0xf2fbff, 0.86);
+      const distance = Phaser.Math.FloatBetween(8, 18 + tier * 3);
+      const particle = this.add.circle(
+        x,
+        y,
+        Phaser.Math.FloatBetween(1.5, 3.4),
+        Phaser.Utils.Array.GetRandom([0x9b8b75, 0xc2ad8f, 0xe4d6bd, 0xf2fbff]),
+        0.78
+      );
 
-      particle.setDepth(11);
-      particle.setBlendMode(Phaser.BlendModes.ADD);
+      particle.setDepth(7);
 
       this.tweens.add({
         targets: particle,
@@ -1986,6 +2060,15 @@ export class GameScene extends Phaser.Scene {
         onComplete: () => particle.destroy()
       });
     }
+
+    this.tweens.add({
+      targets: dust,
+      alpha: 0,
+      scale: 1.55,
+      duration: ASTEROID_HIT_FEEDBACK_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => dust.destroy()
+    });
   }
 
   private emitAsteroidBreakupFeedback(x: number, y: number, tier: AsteroidTier): void {
@@ -2044,10 +2127,17 @@ export class GameScene extends Phaser.Scene {
       const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
 
       if (normalizedHit <= 1) {
-        enemy.body.destroy(true);
-        enemy.wrapMirrorBody.destroy(true);
-        this.basicEnemies.splice(i, 1);
-        this.grantXp(BASIC_ENEMY_XP_REWARD);
+        enemy.hp -= projectile.damage;
+
+        if (enemy.hp <= 0) {
+          enemy.body.destroy(true);
+          enemy.wrapMirrorBody.destroy(true);
+          this.basicEnemies.splice(i, 1);
+          this.grantXp(BASIC_ENEMY_XP_REWARD);
+        } else {
+          this.emitEnemyHitFeedback(enemy.body);
+        }
+
         return true;
       }
     }
@@ -2069,10 +2159,17 @@ export class GameScene extends Phaser.Scene {
       const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
 
       if (normalizedHit <= 1) {
-        enemy.body.destroy(true);
-        enemy.wrapMirrorBody.destroy(true);
-        this.shooterEnemies.splice(i, 1);
-        this.grantXp(shooterEnemyBalance.xpReward);
+        enemy.hp -= projectile.damage;
+
+        if (enemy.hp <= 0) {
+          enemy.body.destroy(true);
+          enemy.wrapMirrorBody.destroy(true);
+          this.shooterEnemies.splice(i, 1);
+          this.grantXp(shooterEnemyBalance.xpReward);
+        } else {
+          this.emitEnemyHitFeedback(enemy.body);
+        }
+
         return true;
       }
     }

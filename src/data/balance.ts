@@ -15,14 +15,17 @@ export const pulseCannonBalance = {
   projectileRange: 1300
 };
 
+// Temporary durability for damage-feedback visibility; revisit during balance/polish.
 export const basicEnemyBalance = {
   moveSpeed: 95,
+  hp: 4,
   hitHalfWidth: 19,
   hitHalfLength: 25
 };
 
 export const shooterEnemyBalance = {
   moveSpeed: 72,
+  hp: 5,
   preferredRange: 620,
   tooCloseRange: 360,
   fireCooldownSeconds: 2.35,

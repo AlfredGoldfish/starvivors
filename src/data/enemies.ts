@@ -4,6 +4,7 @@ import { basicEnemyBalance, shooterEnemyBalance } from './balance';
 export interface EnemyRegistryEntry extends ContentRegistryEntry {
   displayName: string;
   moveSpeed: number;
+  hp: number;
   hitHalfWidth: number;
   hitHalfLength: number;
 }
@@ -13,6 +14,7 @@ export const basicEnemy: EnemyRegistryEntry = {
   displayName: 'Basic Enemy',
   status: 'Implemented',
   moveSpeed: basicEnemyBalance.moveSpeed,
+  hp: basicEnemyBalance.hp,
   hitHalfWidth: basicEnemyBalance.hitHalfWidth,
   hitHalfLength: basicEnemyBalance.hitHalfLength
 };
@@ -22,6 +24,7 @@ export const shooterEnemy: EnemyRegistryEntry = {
   displayName: 'Shooter Enemy',
   status: 'Implemented',
   moveSpeed: shooterEnemyBalance.moveSpeed,
+  hp: shooterEnemyBalance.hp,
   hitHalfWidth: shooterEnemyBalance.hitHalfWidth,
   hitHalfLength: shooterEnemyBalance.hitHalfLength
 };
