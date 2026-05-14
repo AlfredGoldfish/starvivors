@@ -44,16 +44,25 @@ const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
 const THRUSTER_FADE_MS = 170;
 const FORWARD_THRUSTER_INTERVAL_MS = 26;
 const SECONDARY_THRUSTER_INTERVAL_MS = 42;
-const BASIC_ENEMY_COUNT = 6;
+const BASIC_ENEMY_COUNT = 2;
 const BASIC_ENEMY_DISPLAY_SIZE = 86;
 const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
-const SHOOTER_ENEMY_COUNT = 2;
+const SHOOTER_ENEMY_COUNT = 0;
 const SHOOTER_ENEMY_DISPLAY_SIZE = 92;
 const SHOOTER_ENEMY_VISUAL_ROTATION = Math.PI;
 const SHOOTER_PROJECTILE_HIT_RADIUS = 9;
-const TANK_ENEMY_COUNT = 1;
+const TANK_ENEMY_COUNT = 0;
 const TANK_ENEMY_DISPLAY_SIZE = 126;
 const TANK_ENEMY_VISUAL_ROTATION = Math.PI;
+const ENEMY_SPAWN_INITIAL_DELAY_MS = 2500;
+const ENEMY_SPAWN_INTERVAL_MS = 5200;
+const ENEMY_SPAWN_MIN_INTERVAL_MS = 1800;
+const ENEMY_SPAWN_ESCALATION_INTERVAL_MS = 30000;
+const ENEMY_SPAWN_SAFE_DISTANCE = 620;
+const ENEMY_SPAWN_MAX_ACTIVE_INITIAL = 4;
+const ENEMY_SPAWN_MAX_ACTIVE_PER_STEP = 2;
+const ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP = 18;
+const ENEMY_SPAWN_DOUBLE_SPAWN_STEP = 5;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -113,6 +122,7 @@ type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1
 
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
+type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 
 interface PulseUpgradeDefinition {
   id: PulseUpgradeId;
@@ -143,6 +153,15 @@ const INITIAL_PULSE_UPGRADE_LEVELS: Record<PulseUpgradeId, number> = {
   'pulse-fire-rate-1': 0,
   'pulse-velocity-1': 0
 };
+
+const ENEMY_SPAWN_WEIGHTS_BY_STEP: Array<Record<EnemySpawnType, number>> = [
+  { chaser: 100, shooter: 0, tank: 0 },
+  { chaser: 92, shooter: 8, tank: 0 },
+  { chaser: 78, shooter: 22, tank: 0 },
+  { chaser: 66, shooter: 28, tank: 6 },
+  { chaser: 58, shooter: 34, tank: 8 },
+  { chaser: 52, shooter: 38, tank: 10 }
+];
 
 const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
   1: 8,
@@ -405,6 +424,7 @@ export class GameScene extends Phaser.Scene {
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
   private nextPlayerContactImpulseAt = 0;
+  private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
   private isCollisionDebugEnabled = false;
   private pulseUpgradeLevels: Record<PulseUpgradeId, number> = { ...INITIAL_PULSE_UPGRADE_LEVELS };
@@ -466,6 +486,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updatePlayerMovement(time, delta / 1000);
+    this.updateEnemySpawnDirector(time);
     this.updateBasicEnemies(delta / 1000);
     this.updateShooterEnemies(time, delta / 1000);
     this.updateTankEnemies(delta / 1000);
@@ -773,6 +794,7 @@ export class GameScene extends Phaser.Scene {
     this.nextDebugUpdateAt = 0;
     this.nextPlayerContactImpulseAt = 0;
     this.runStartedAt = this.time.now;
+    this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
     this.pulseUpgradeLevels = { ...INITIAL_PULSE_UPGRADE_LEVELS };
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
@@ -931,13 +953,7 @@ export class GameScene extends Phaser.Scene {
       const wrapMirrorBody = this.createBasicEnemy(x, y);
       wrapMirrorBody.setVisible(false);
 
-      this.basicEnemies.push({
-        body,
-        wrapMirrorBody,
-        velocity: new Phaser.Math.Vector2(0, 0),
-        knockbackVelocity: new Phaser.Math.Vector2(0, 0),
-        hp: basicEnemy.hp
-      });
+      this.basicEnemies.push(this.createBasicEnemyInstance(body, wrapMirrorBody));
     }
   }
 
@@ -965,13 +981,7 @@ export class GameScene extends Phaser.Scene {
       const wrapMirrorBody = this.createShooterEnemy(x, y);
       wrapMirrorBody.setVisible(false);
 
-      this.shooterEnemies.push({
-        body,
-        wrapMirrorBody,
-        velocity: new Phaser.Math.Vector2(0, 0),
-        nextFireAt: this.time.now + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000)),
-        hp: shooterEnemy.hp
-      });
+      this.shooterEnemies.push(this.createShooterEnemyInstance(body, wrapMirrorBody, this.time.now));
     }
   }
 
@@ -999,13 +1009,7 @@ export class GameScene extends Phaser.Scene {
       const wrapMirrorBody = this.createTankEnemy(x, y);
       wrapMirrorBody.setVisible(false);
 
-      this.tankEnemies.push({
-        body,
-        wrapMirrorBody,
-        velocity: new Phaser.Math.Vector2(0, 0),
-        knockbackVelocity: new Phaser.Math.Vector2(0, 0),
-        hp: tankEnemy.hp
-      });
+      this.tankEnemies.push(this.createTankEnemyInstance(body, wrapMirrorBody));
     }
   }
 
@@ -1020,6 +1024,163 @@ export class GameScene extends Phaser.Scene {
     enemy.setDepth(9);
 
     return enemy;
+  }
+
+  private createBasicEnemyInstance(
+    body: Phaser.GameObjects.Container,
+    wrapMirrorBody: Phaser.GameObjects.Container
+  ): BasicEnemy {
+    return {
+      body,
+      wrapMirrorBody,
+      velocity: new Phaser.Math.Vector2(0, 0),
+      knockbackVelocity: new Phaser.Math.Vector2(0, 0),
+      hp: basicEnemy.hp
+    };
+  }
+
+  private createShooterEnemyInstance(
+    body: Phaser.GameObjects.Container,
+    wrapMirrorBody: Phaser.GameObjects.Container,
+    time: number
+  ): ShooterEnemy {
+    return {
+      body,
+      wrapMirrorBody,
+      velocity: new Phaser.Math.Vector2(0, 0),
+      nextFireAt: time + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000)),
+      hp: shooterEnemy.hp
+    };
+  }
+
+  private createTankEnemyInstance(
+    body: Phaser.GameObjects.Container,
+    wrapMirrorBody: Phaser.GameObjects.Container
+  ): TankEnemy {
+    return {
+      body,
+      wrapMirrorBody,
+      velocity: new Phaser.Math.Vector2(0, 0),
+      knockbackVelocity: new Phaser.Math.Vector2(0, 0),
+      hp: tankEnemy.hp
+    };
+  }
+
+  private updateEnemySpawnDirector(time: number): void {
+    if (this.isPlayerDead || this.isUpgradeOverlayOpen || time < this.nextEnemySpawnAt) {
+      return;
+    }
+
+    const activeEnemyCount = this.getActiveEnemyCount();
+    const maxActiveEnemies = this.getEnemySpawnMaxActiveEnemies(time);
+
+    if (activeEnemyCount < maxActiveEnemies) {
+      const spawnCount =
+        this.getEnemySpawnDifficultyStep(time) >= ENEMY_SPAWN_DOUBLE_SPAWN_STEP &&
+        activeEnemyCount + 1 < maxActiveEnemies &&
+        Phaser.Math.FloatBetween(0, 1) < 0.25
+          ? 2
+          : 1;
+
+      for (let i = 0; i < spawnCount && this.getActiveEnemyCount() < maxActiveEnemies; i += 1) {
+        this.spawnDirectedEnemy(this.chooseDirectedEnemyType(time), time);
+      }
+    }
+
+    this.nextEnemySpawnAt = time + this.getEnemySpawnIntervalMs(time);
+  }
+
+  private spawnDirectedEnemy(enemyType: EnemySpawnType, time: number): void {
+    const position = this.getEnemyDirectorSpawnPosition();
+    const body =
+      enemyType === 'shooter'
+        ? this.createShooterEnemy(position.x, position.y)
+        : enemyType === 'tank'
+          ? this.createTankEnemy(position.x, position.y)
+          : this.createBasicEnemy(position.x, position.y);
+    const wrapMirrorBody =
+      enemyType === 'shooter'
+        ? this.createShooterEnemy(position.x, position.y)
+        : enemyType === 'tank'
+          ? this.createTankEnemy(position.x, position.y)
+          : this.createBasicEnemy(position.x, position.y);
+
+    wrapMirrorBody.setVisible(false);
+
+    if (enemyType === 'shooter') {
+      this.shooterEnemies.push(this.createShooterEnemyInstance(body, wrapMirrorBody, time));
+    } else if (enemyType === 'tank') {
+      this.tankEnemies.push(this.createTankEnemyInstance(body, wrapMirrorBody));
+    } else {
+      this.basicEnemies.push(this.createBasicEnemyInstance(body, wrapMirrorBody));
+    }
+  }
+
+  private getEnemyDirectorSpawnPosition(): Phaser.Math.Vector2 {
+    const safeDistance = Math.min(
+      ENEMY_SPAWN_SAFE_DISTANCE,
+      Math.max(PLAYER_HIT_RADIUS * 4, Math.min(this.arena.width, this.arena.height) * 0.45)
+    );
+
+    for (let i = 0; i < 12; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(safeDistance, safeDistance * 1.55);
+      const x = wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width);
+      const y = wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height);
+      const offsetFromPlayer = this.getWrappedDirection(this.player.x, this.player.y, x, y);
+
+      if (offsetFromPlayer.length() >= safeDistance) {
+        return new Phaser.Math.Vector2(x, y);
+      }
+    }
+
+    const fallbackAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(this.player.x + Math.cos(fallbackAngle) * safeDistance, this.arena.width),
+      wrapCoordinate(this.player.y + Math.sin(fallbackAngle) * safeDistance, this.arena.height)
+    );
+  }
+
+  private chooseDirectedEnemyType(time: number): EnemySpawnType {
+    const weights = this.getEnemySpawnWeights(time);
+    const totalWeight = weights.chaser + weights.shooter + weights.tank;
+    let roll = Phaser.Math.FloatBetween(0, totalWeight);
+
+    roll -= weights.chaser;
+    if (roll <= 0) {
+      return 'chaser';
+    }
+
+    roll -= weights.shooter;
+    return roll <= 0 ? 'shooter' : 'tank';
+  }
+
+  private getEnemySpawnWeights(time: number): Record<EnemySpawnType, number> {
+    const step = Math.min(this.getEnemySpawnDifficultyStep(time), ENEMY_SPAWN_WEIGHTS_BY_STEP.length - 1);
+
+    return ENEMY_SPAWN_WEIGHTS_BY_STEP[step];
+  }
+
+  private getEnemySpawnDifficultyStep(time: number): number {
+    return Math.floor(this.getSurvivalElapsedMs(time) / ENEMY_SPAWN_ESCALATION_INTERVAL_MS);
+  }
+
+  private getEnemySpawnIntervalMs(time: number): number {
+    const step = this.getEnemySpawnDifficultyStep(time);
+
+    return Math.max(ENEMY_SPAWN_MIN_INTERVAL_MS, ENEMY_SPAWN_INTERVAL_MS - step * 420);
+  }
+
+  private getEnemySpawnMaxActiveEnemies(time: number): number {
+    return Math.min(
+      ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP,
+      ENEMY_SPAWN_MAX_ACTIVE_INITIAL + this.getEnemySpawnDifficultyStep(time) * ENEMY_SPAWN_MAX_ACTIVE_PER_STEP
+    );
+  }
+
+  private getActiveEnemyCount(): number {
+    return this.basicEnemies.length + this.shooterEnemies.length + this.tankEnemies.length;
   }
 
   private createBasicAsteroids(center: Phaser.Math.Vector2): void {
@@ -1354,7 +1515,9 @@ export class GameScene extends Phaser.Scene {
 
   private closeUpgradeOverlay(time: number): void {
     if (this.isUpgradeOverlayOpen) {
-      this.totalUpgradePauseMs += Math.max(0, time - this.upgradeOverlayOpenedAt);
+      const pauseDurationMs = Math.max(0, time - this.upgradeOverlayOpenedAt);
+      this.totalUpgradePauseMs += pauseDurationMs;
+      this.nextEnemySpawnAt += pauseDurationMs;
     }
 
     this.isUpgradeOverlayOpen = false;
@@ -3140,8 +3303,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > time ? 'HIT' : 'STABLE';
-    const activePauseMs = this.isUpgradeOverlayOpen ? Math.max(0, time - this.upgradeOverlayOpenedAt) : 0;
-    const elapsedSeconds = Math.max(0, Math.floor((time - this.runStartedAt - this.totalUpgradePauseMs - activePauseMs) / 1000));
+    const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
     const survivalTime = this.formatSurvivalTime(elapsedSeconds);
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / PLAYER_MAX_HULL;
@@ -3197,6 +3359,12 @@ export class GameScene extends Phaser.Scene {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
+  private getSurvivalElapsedMs(time: number): number {
+    const activePauseMs = this.isUpgradeOverlayOpen ? Math.max(0, time - this.upgradeOverlayOpenedAt) : 0;
+
+    return Math.max(0, time - this.runStartedAt - this.totalUpgradePauseMs - activePauseMs);
+  }
+
   private updateDebugText(time: number): void {
     if (!this.debugText || !this.player) {
       return;
@@ -3211,6 +3379,9 @@ export class GameScene extends Phaser.Scene {
     const fps = Math.round(this.game.loop.actualFps);
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
+    const spawnDirectorLine = this.isCollisionDebugEnabled
+      ? `Spawn director: step ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n`
+      : '';
     const debugWeaponLine = this.isCollisionDebugEnabled
       ? `Debug weapon: dmg x${this.debugPulseDamageMultiplier.toFixed(1)} / fire x${this.debugPulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
@@ -3227,6 +3398,7 @@ export class GameScene extends Phaser.Scene {
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
+        spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         debugWeaponLine +
