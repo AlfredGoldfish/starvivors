@@ -531,7 +531,19 @@ Enemies should be readable shapes with distinct movement and attack behavior.
 
 Asteroids are natural drifting hazards.
 
-The prototype supports four asteroid visual variants. Current spawning should choose a random visual variant for each asteroid so the arena has visual variety without changing gameplay behavior.
+The prototype supports four asteroid visual variants. Asteroid visual variant is separate from asteroid size tier: visual variants provide art variety, while size tiers control gameplay behavior.
+
+Asteroids use three size tiers:
+
+- Large
+- Medium
+- Small
+
+Asteroid tiers control display size, health, collision size, spawn speed range, breakup behavior, and projectile impact response. Current health values are large asteroids at 3 HP, medium asteroids at 2 HP, and small asteroids at 1 HP. Pulse Cannon impacts deal 1 asteroid damage.
+
+Asteroids spawn with varied drift speeds. Large asteroids drift from slow to medium speeds, medium asteroids use moderate speeds, and small asteroids can drift noticeably faster while remaining readable and fair.
+
+If a projectile hits an asteroid and the asteroid survives, the impact can alter the asteroid's velocity in the projectile travel direction. Impact response is tiered: large asteroids receive smaller velocity changes, medium asteroids receive moderate changes, and small asteroids receive larger changes. Asteroid velocity is capped so repeated hits do not create uncontrollably fast hazards.
 
 They can:
 
@@ -542,12 +554,14 @@ They can:
 - Drop scrap/minerals
 - Be pulled into black holes
 
-Future asteroid breakup rule:
+Asteroid breakup is implemented:
 
-- Larger asteroids should break into smaller versions of themselves when destroyed.
-- Breakup fragments should preserve the parent asteroid's visual identity where practical.
-- Example: asteroid variant 2 should break into smaller asteroid variant 2 fragments, not unrelated random variants.
-- Breakup is planned for a later task and is not part of the current minimal asteroid implementation.
+- Destroyed large asteroids break into medium asteroid debris/fragments.
+- Destroyed medium asteroids break into small asteroid debris/fragments.
+- Destroyed small asteroids disappear without further breakup.
+- Fragments must always be a smaller size tier than the destroyed asteroid.
+- Fragment visual variants may be random among the available asteroid variants.
+- The system does not need to preserve the parent asteroid's exact visual variant.
 
 ### Hazard Debris
 

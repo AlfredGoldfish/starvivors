@@ -37,15 +37,62 @@ const BASIC_ENEMY_COUNT = 6;
 const BASIC_ENEMY_DISPLAY_SIZE = 86;
 const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
 const BASIC_ASTEROID_COUNT = 9;
-const ASTEROID_MIN_DISPLAY_SIZE = 92;
-const ASTEROID_MAX_DISPLAY_SIZE = 148;
-const ASTEROID_MIN_DRIFT_SPEED = 18;
-const ASTEROID_MAX_DRIFT_SPEED = 46;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
-const ASTEROID_HIT_RADIUS_SCALE = 0.38;
 const ASTEROID_SAFE_SPAWN_RADIUS = 520;
+const ASTEROID_BREAKUP_MIN_FRAGMENTS = 2;
+const ASTEROID_BREAKUP_MAX_FRAGMENTS = 3;
+const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 42;
+const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 112;
+const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
+
+type AsteroidTier = 'large' | 'medium' | 'small';
+
+interface AsteroidTierConfig {
+  displaySize: number;
+  hitRadius: number;
+  hp: number;
+  minSpeed: number;
+  maxSpeed: number;
+  impactImpulse: number;
+  maxVelocity: number;
+  fragmentTier?: AsteroidTier;
+}
+
+const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
+  large: {
+    displaySize: 154,
+    hitRadius: 58,
+    hp: 3,
+    minSpeed: 28,
+    maxSpeed: 72,
+    impactImpulse: 38,
+    maxVelocity: 150,
+    fragmentTier: 'medium'
+  },
+  medium: {
+    displaySize: 108,
+    hitRadius: 42,
+    hp: 2,
+    minSpeed: 48,
+    maxSpeed: 108,
+    impactImpulse: 62,
+    maxVelocity: 190,
+    fragmentTier: 'small'
+  },
+  small: {
+    displaySize: 66,
+    hitRadius: 26,
+    hp: 1,
+    minSpeed: 76,
+    maxSpeed: 138,
+    impactImpulse: 88,
+    maxVelocity: 230
+  }
+};
+
+const INITIAL_ASTEROID_TIERS: AsteroidTier[] = ['large', 'large', 'large', 'medium', 'medium', 'medium', 'small', 'small'];
 
 interface PulseCannonProjectile {
   body: Phaser.GameObjects.Container;
@@ -61,6 +108,9 @@ interface BasicEnemy {
 
 interface BasicAsteroid {
   body: Phaser.GameObjects.Container;
+  variant: string;
+  tier: AsteroidTier;
+  hp: number;
   velocity: Phaser.Math.Vector2;
   rotationSpeed: number;
   hitRadius: number;
@@ -318,24 +368,40 @@ export class GameScene extends Phaser.Scene {
         y = wrapCoordinate(center.y + Math.sin(angle) * ASTEROID_SAFE_SPAWN_RADIUS, this.arena.height);
       }
 
-      const displaySize = Phaser.Math.Between(ASTEROID_MIN_DISPLAY_SIZE, ASTEROID_MAX_DISPLAY_SIZE);
-      const driftAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const driftSpeed = Phaser.Math.FloatBetween(ASTEROID_MIN_DRIFT_SPEED, ASTEROID_MAX_DRIFT_SPEED);
-
-      this.basicAsteroids.push({
-        body: this.createBasicAsteroid(x, y, displaySize),
-        velocity: new Phaser.Math.Vector2(Math.cos(driftAngle) * driftSpeed, Math.sin(driftAngle) * driftSpeed),
-        rotationSpeed:
-          Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
-          (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
-        hitRadius: displaySize * ASTEROID_HIT_RADIUS_SCALE
-      });
+      this.basicAsteroids.push(this.createAsteroidInstance(x, y, this.getRandomInitialAsteroidTier()));
     }
   }
 
-  private createBasicAsteroid(x: number, y: number, displaySize: number): Phaser.GameObjects.Container {
+  private createAsteroidInstance(
+    x: number,
+    y: number,
+    tier: AsteroidTier,
+    velocity = this.createAsteroidVelocity(tier)
+  ): BasicAsteroid {
+    const tierConfig = ASTEROID_TIER_CONFIG[tier];
     const texture = ASTEROID_TEXTURES[Phaser.Math.Between(0, ASTEROID_TEXTURES.length - 1)];
-    const sprite = this.add.image(0, 0, texture.key);
+    const body = this.createBasicAsteroid(x, y, texture.key, tierConfig.displaySize);
+
+    return {
+      body,
+      variant: texture.key,
+      tier,
+      hp: tierConfig.hp,
+      velocity,
+      rotationSpeed:
+        Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
+        (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
+      hitRadius: tierConfig.hitRadius
+    };
+  }
+
+  private createBasicAsteroid(
+    x: number,
+    y: number,
+    textureKey: string,
+    displaySize: number
+  ): Phaser.GameObjects.Container {
+    const sprite = this.add.image(0, 0, textureKey);
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplaySize(displaySize, displaySize);
 
@@ -344,6 +410,18 @@ export class GameScene extends Phaser.Scene {
     asteroid.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
 
     return asteroid;
+  }
+
+  private getRandomInitialAsteroidTier(): AsteroidTier {
+    return INITIAL_ASTEROID_TIERS[Phaser.Math.Between(0, INITIAL_ASTEROID_TIERS.length - 1)];
+  }
+
+  private createAsteroidVelocity(tier: AsteroidTier): Phaser.Math.Vector2 {
+    const tierConfig = ASTEROID_TIER_CONFIG[tier];
+    const driftAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const driftSpeed = Phaser.Math.FloatBetween(tierConfig.minSpeed, tierConfig.maxSpeed);
+
+    return new Phaser.Math.Vector2(Math.cos(driftAngle) * driftSpeed, Math.sin(driftAngle) * driftSpeed);
   }
 
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
@@ -610,13 +688,73 @@ export class GameScene extends Phaser.Scene {
       const hitRadius = asteroid.hitRadius + PROJECTILE_HIT_RADIUS;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
-        asteroid.body.destroy(true);
-        this.basicAsteroids.splice(i, 1);
+        asteroid.hp -= PULSE_CANNON_ASTEROID_DAMAGE;
+
+        if (asteroid.hp <= 0) {
+          this.destroyBasicAsteroid(i);
+        } else {
+          this.applyAsteroidImpact(asteroid, projectile);
+        }
+
         return true;
       }
     }
 
     return false;
+  }
+
+  private applyAsteroidImpact(asteroid: BasicAsteroid, projectile: PulseCannonProjectile): void {
+    const impactDirection = projectile.velocity.clone().normalize();
+    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+
+    asteroid.velocity.x += impactDirection.x * tierConfig.impactImpulse;
+    asteroid.velocity.y += impactDirection.y * tierConfig.impactImpulse;
+    asteroid.velocity.limit(tierConfig.maxVelocity);
+  }
+
+  private destroyBasicAsteroid(index: number): void {
+    const asteroid = this.basicAsteroids[index];
+    const x = asteroid.body.x;
+    const y = asteroid.body.y;
+    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+
+    asteroid.body.destroy(true);
+    this.basicAsteroids.splice(index, 1);
+
+    if (tierConfig.fragmentTier) {
+      this.spawnAsteroidFragments(x, y, asteroid.velocity, tierConfig.fragmentTier);
+    }
+  }
+
+  private spawnAsteroidFragments(
+    x: number,
+    y: number,
+    parentVelocity: Phaser.Math.Vector2,
+    fragmentTier: AsteroidTier
+  ): void {
+    const fragmentCount = Phaser.Math.Between(ASTEROID_BREAKUP_MIN_FRAGMENTS, ASTEROID_BREAKUP_MAX_FRAGMENTS);
+    const fragmentConfig = ASTEROID_TIER_CONFIG[fragmentTier];
+
+    for (let i = 0; i < fragmentCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const offsetDistance = Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * 0.34);
+      const burstSpeed = Phaser.Math.FloatBetween(ASTEROID_FRAGMENT_BURST_MIN_SPEED, ASTEROID_FRAGMENT_BURST_MAX_SPEED);
+      const velocity = parentVelocity
+        .clone()
+        .scale(0.62)
+        .add(new Phaser.Math.Vector2(Math.cos(angle) * burstSpeed, Math.sin(angle) * burstSpeed));
+
+      velocity.limit(fragmentConfig.maxVelocity);
+
+      this.basicAsteroids.push(
+        this.createAsteroidInstance(
+          wrapCoordinate(x + Math.cos(angle) * offsetDistance, this.arena.width),
+          wrapCoordinate(y + Math.sin(angle) * offsetDistance, this.arena.height),
+          fragmentTier,
+          velocity
+        )
+      );
+    }
   }
 
   private getWrappedDirection(fromX: number, fromY: number, toX: number, toY: number): Phaser.Math.Vector2 {
