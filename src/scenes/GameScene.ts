@@ -70,6 +70,10 @@ const DEBUG_ELLIPSE_SEGMENTS = 28;
 const HUD_BAR_WIDTH = 360;
 const HUD_BAR_HEIGHT = 12;
 const HUD_MARGIN = 16;
+const MINIMAP_WIDTH = 220;
+const MINIMAP_HEIGHT = 140;
+const MINIMAP_MARGIN = 16;
+const MINIMAP_PADDING = 8;
 const PULSE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
 const PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
 const PULSE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
@@ -139,6 +143,7 @@ interface StarvivorsTestHarnessState {
   pulseDamageMultiplier: number;
   pulseCooldownMs: number;
   pulseProjectileSpeed: number;
+  isMinimapVisible: boolean;
   enemies: number;
   asteroids: number;
   projectiles: number;
@@ -158,6 +163,7 @@ interface StarvivorsTestHarness {
   openUpgradeOverlay: () => StarvivorsTestHarnessState;
   closeUpgradeOverlay: () => StarvivorsTestHarnessState;
   selectPulseUpgrade: (choiceNumber: number) => StarvivorsTestHarnessState;
+  toggleMinimap: () => StarvivorsTestHarnessState;
 }
 
 declare global {
@@ -304,6 +310,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
+  private minimapKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
@@ -331,6 +338,8 @@ export class GameScene extends Phaser.Scene {
   private totalUpgradePauseMs = 0;
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
+  private minimapGraphics!: Phaser.GameObjects.Graphics;
+  private isMinimapVisible = true;
 
   constructor() {
     super('GameScene');
@@ -359,6 +368,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isUpgradeOverlayOpen) {
       this.updateBackgroundTiles();
       this.updateGameplayHud(time);
+      this.updateMinimap();
       this.updateDebugText(time);
       return;
     }
@@ -374,6 +384,7 @@ export class GameScene extends Phaser.Scene {
     this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles();
     this.updateGameplayHud(time);
+    this.updateMinimap();
     this.updateDebugText(time);
   }
 
@@ -398,6 +409,7 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE)
     ];
     this.upgradeCancelKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
+    this.minimapKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
   }
 
   private installTestHarness(): void {
@@ -496,6 +508,11 @@ export class GameScene extends Phaser.Scene {
         }
 
         return this.getTestHarnessState();
+      },
+      toggleMinimap: () => {
+        this.isMinimapVisible = !this.isMinimapVisible;
+        this.updateMinimap();
+        return this.getTestHarnessState();
       }
     };
 
@@ -523,6 +540,7 @@ export class GameScene extends Phaser.Scene {
       pulseDamageMultiplier: this.getPulseDamageMultiplier(),
       pulseCooldownMs: this.getPulseCooldownMs(),
       pulseProjectileSpeed: this.getPulseProjectileSpeed(),
+      isMinimapVisible: this.isMinimapVisible,
       enemies: this.basicEnemies.length,
       asteroids: this.basicAsteroids.length,
       projectiles: this.pulseCannonProjectiles.length
@@ -547,6 +565,8 @@ export class GameScene extends Phaser.Scene {
     const fireRateUpgrade = harness.selectPulseUpgrade(2);
     const rebanked = harness.grantXp(10);
     const velocityUpgrade = harness.selectPulseUpgrade(3);
+    const minimapOff = harness.toggleMinimap();
+    const minimapOn = harness.toggleMinimap();
     const dead = harness.killPlayer();
     const afterDeadXp = harness.grantXp(1000);
     const restarted = harness.restartRun();
@@ -573,6 +593,8 @@ export class GameScene extends Phaser.Scene {
       velocityUpgrade.bankedUpgrades === 0 &&
       velocityUpgrade.pulseVelocityLevel === 1 &&
       velocityUpgrade.pulseProjectileSpeed === 1176 &&
+      !minimapOff.isMinimapVisible &&
+      minimapOn.isMinimapVisible &&
       dead.isPlayerDead &&
       afterDeadXp.playerXp === velocityUpgrade.playerXp &&
       afterDeadXp.bankedUpgrades === velocityUpgrade.bankedUpgrades &&
@@ -598,6 +620,8 @@ export class GameScene extends Phaser.Scene {
         fireRateUpgrade,
         rebanked,
         velocityUpgrade,
+        minimapOff,
+        minimapOn,
         dead,
         afterDeadXp,
         restarted
@@ -637,6 +661,7 @@ export class GameScene extends Phaser.Scene {
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
+    this.isMinimapVisible = true;
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -657,6 +682,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1000);
 
     this.hudGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
     this.collisionDebugGraphics = this.add.graphics().setDepth(999);
 
     this.hullText = this.add
@@ -673,6 +699,7 @@ export class GameScene extends Phaser.Scene {
 
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
+    this.updateMinimap();
     this.updateDebugText(0);
   }
 
@@ -963,6 +990,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateUpgradeOverlayInput(time: number): void {
+    if (Phaser.Input.Keyboard.JustDown(this.minimapKey)) {
+      this.isMinimapVisible = !this.isMinimapVisible;
+    }
+
     if (this.isPlayerDead) {
       if (this.isUpgradeOverlayOpen) {
         this.closeUpgradeOverlay(time);
@@ -2146,6 +2177,79 @@ export class GameScene extends Phaser.Scene {
       previousX = x;
       previousY = y;
     }
+  }
+
+  private updateMinimap(): void {
+    if (!this.minimapGraphics || !this.player) {
+      return;
+    }
+
+    this.minimapGraphics.clear();
+    this.minimapGraphics.setVisible(this.isMinimapVisible && !this.isUpgradeOverlayOpen);
+
+    if (!this.isMinimapVisible || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    const mapX = MINIMAP_MARGIN;
+    const mapY = this.scale.height - MINIMAP_MARGIN - MINIMAP_HEIGHT;
+    const innerX = mapX + MINIMAP_PADDING;
+    const innerY = mapY + MINIMAP_PADDING;
+    const innerWidth = MINIMAP_WIDTH - MINIMAP_PADDING * 2;
+    const innerHeight = MINIMAP_HEIGHT - MINIMAP_PADDING * 2;
+
+    this.minimapGraphics.fillStyle(0x02040a, 0.72);
+    this.minimapGraphics.fillRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
+    this.minimapGraphics.lineStyle(1, 0x52627f, 0.86);
+    this.minimapGraphics.strokeRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
+    this.minimapGraphics.lineStyle(1, 0x42f5d7, 0.42);
+    this.minimapGraphics.strokeRect(innerX, innerY, innerWidth, innerHeight);
+
+    for (const asteroid of this.basicAsteroids) {
+      const position = this.getMinimapPosition(asteroid.body.x, asteroid.body.y, innerX, innerY, innerWidth, innerHeight);
+      const markerRadius = 1.3 + asteroid.tier * 0.55;
+
+      this.minimapGraphics.fillStyle(0x9fd8ff, 0.68);
+      this.minimapGraphics.fillCircle(position.x, position.y, markerRadius);
+    }
+
+    for (const enemy of this.basicEnemies) {
+      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
+
+      this.minimapGraphics.fillStyle(0xffc857, 0.88);
+      this.minimapGraphics.fillTriangle(
+        position.x,
+        position.y - 3.4,
+        position.x - 3,
+        position.y + 2.8,
+        position.x + 3,
+        position.y + 2.8
+      );
+    }
+
+    const playerPosition = this.getMinimapPosition(this.player.x, this.player.y, innerX, innerY, innerWidth, innerHeight);
+
+    this.minimapGraphics.fillStyle(0x42f5d7, 1);
+    this.minimapGraphics.fillCircle(playerPosition.x, playerPosition.y, 4.2);
+    this.minimapGraphics.lineStyle(1, 0xf2fbff, 0.95);
+    this.minimapGraphics.strokeCircle(playerPosition.x, playerPosition.y, 5.6);
+  }
+
+  private getMinimapPosition(
+    worldX: number,
+    worldY: number,
+    mapX: number,
+    mapY: number,
+    mapWidth: number,
+    mapHeight: number
+  ): { x: number; y: number } {
+    const wrappedX = wrapCoordinate(worldX, this.arena.width);
+    const wrappedY = wrapCoordinate(worldY, this.arena.height);
+
+    return {
+      x: mapX + (wrappedX / this.arena.width) * mapWidth,
+      y: mapY + (wrappedY / this.arena.height) * mapHeight
+    };
   }
 
   private updateGameplayHud(time: number): void {
