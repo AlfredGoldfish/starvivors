@@ -10,22 +10,82 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-const BLACK_HOLE_LENSING_ARC_COUNT = 20;
-const BLACK_HOLE_LENSING_ARC_MIN_RADIUS = 184;
-const BLACK_HOLE_LENSING_ARC_MAX_RADIUS = 286;
+const BLACK_HOLE_LENSING_ARC_COUNT = 24;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_RING_SEGMENTS = 112;
+
+interface BlackHoleLensingLayer {
+  minRadius: number;
+  maxRadius: number;
+  resetRadius: number;
+  inwardSpeedMin: number;
+  inwardSpeedMax: number;
+  angularDriftMin: number;
+  angularDriftMax: number;
+  alpha: number;
+  thickness: [number, number];
+  arcLength: [number, number];
+  squash: [number, number];
+}
+
+const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
+  {
+    minRadius: 246,
+    maxRadius: 318,
+    resetRadius: 226,
+    inwardSpeedMin: 3.8,
+    inwardSpeedMax: 7.2,
+    angularDriftMin: -0.018,
+    angularDriftMax: 0.026,
+    alpha: 0.34,
+    thickness: [0.8, 1.4],
+    arcLength: [0.06, 0.16],
+    squash: [0.76, 0.9]
+  },
+  {
+    minRadius: 206,
+    maxRadius: 270,
+    resetRadius: 168,
+    inwardSpeedMin: 6.8,
+    inwardSpeedMax: 11.2,
+    angularDriftMin: -0.026,
+    angularDriftMax: 0.038,
+    alpha: 0.48,
+    thickness: [1, 2],
+    arcLength: [0.09, 0.24],
+    squash: [0.7, 0.84]
+  },
+  {
+    minRadius: 154,
+    maxRadius: 222,
+    resetRadius: 112,
+    inwardSpeedMin: 10,
+    inwardSpeedMax: 15.5,
+    angularDriftMin: -0.042,
+    angularDriftMax: 0.052,
+    alpha: 0.28,
+    thickness: [0.8, 1.5],
+    arcLength: [0.05, 0.17],
+    squash: [0.62, 0.76]
+  }
+];
 
 export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 'white';
 
 interface BlackHoleLensingArc {
+  layer: number;
   angle: number;
   radius: number;
+  outerRadius: number;
+  resetRadius: number;
   arcLength: number;
+  baseArcLength: number;
   thickness: number;
+  baseAlpha: number;
   alpha: number;
   color: number;
-  driftSpeed: number;
+  inwardSpeed: number;
+  angularDriftSpeed: number;
   pulsePhase: number;
   pulseAmount: number;
   squash: number;
@@ -95,6 +155,7 @@ export class BlackHoleSystem {
     this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
+    this.updateLensingArcs(deltaSeconds);
     this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
   }
@@ -160,29 +221,58 @@ export class BlackHoleSystem {
   }
 
   private createLensingArcs(): BlackHoleLensingArc[] {
-    return Array.from({ length: BLACK_HOLE_LENSING_ARC_COUNT }, (_, index) => {
-      const clusterOffset = index % 5 === 0 ? Phaser.Math.FloatBetween(-0.18, 0.18) : Phaser.Math.FloatBetween(-0.44, 0.44);
-      const baseAngle =
-        index < BLACK_HOLE_LENSING_ARC_COUNT * 0.45
-          ? Math.PI * 0.08 + clusterOffset
-          : (index / BLACK_HOLE_LENSING_ARC_COUNT) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.22, 0.22);
-      const outerBias = Math.pow(Phaser.Math.FloatBetween(0, 1), 0.42);
+    return Array.from({ length: BLACK_HOLE_LENSING_ARC_COUNT }, (_, index) =>
+      this.createLensingArc(index % BLACK_HOLE_LENSING_LAYERS.length, index, false)
+    );
+  }
 
-      return {
-        angle: baseAngle,
-        radius: Phaser.Math.Linear(BLACK_HOLE_LENSING_ARC_MIN_RADIUS, BLACK_HOLE_LENSING_ARC_MAX_RADIUS, outerBias),
-        arcLength: Phaser.Math.FloatBetween(0.08, index % 6 === 0 ? 0.34 : 0.22),
-        thickness: Phaser.Math.FloatBetween(1, index % 7 === 0 ? 2.6 : 1.7),
-        alpha: Phaser.Math.FloatBetween(0.22, index % 5 === 0 ? 0.78 : 0.52),
-        color: BLACK_HOLE_LENSING_ARC_COLORS[Phaser.Math.Between(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)],
-        driftSpeed: Phaser.Math.FloatBetween(-0.026, 0.032),
-        pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
-        pulseAmount: Phaser.Math.FloatBetween(0.08, 0.24),
-        squash: Phaser.Math.FloatBetween(0.7, 0.86),
-        brokenness: Phaser.Math.FloatBetween(0.18, 0.38),
-        foreground: index % 6 === 0
-      };
-    });
+  private createLensingArc(layerIndex: number, index: number, startAtOuter: boolean): BlackHoleLensingArc {
+    const layer = BLACK_HOLE_LENSING_LAYERS[layerIndex];
+    const isDenseBandArc = index % 5 === 0;
+    const clusterOffset = isDenseBandArc ? Phaser.Math.FloatBetween(-0.2, 0.2) : Phaser.Math.FloatBetween(-0.48, 0.48);
+    const baseAngle =
+      index < BLACK_HOLE_LENSING_ARC_COUNT * 0.42
+        ? Math.PI * 0.08 + clusterOffset
+        : (index / BLACK_HOLE_LENSING_ARC_COUNT) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.26, 0.26);
+    const outerBias = Math.pow(Phaser.Math.FloatBetween(0, 1), 0.44);
+    const radius = startAtOuter
+      ? Phaser.Math.FloatBetween(layer.maxRadius - 12, layer.maxRadius + 12)
+      : Phaser.Math.Linear(layer.minRadius, layer.maxRadius, outerBias);
+    const baseArcLength = Phaser.Math.FloatBetween(layer.arcLength[0], isDenseBandArc ? layer.arcLength[1] * 1.28 : layer.arcLength[1]);
+    const baseAlpha = layer.alpha * Phaser.Math.FloatBetween(0.7, isDenseBandArc ? 1.42 : 1.08);
+
+    return {
+      layer: layerIndex,
+      angle: baseAngle,
+      radius,
+      outerRadius: layer.maxRadius,
+      resetRadius: layer.resetRadius,
+      arcLength: baseArcLength,
+      baseArcLength,
+      thickness: Phaser.Math.FloatBetween(layer.thickness[0], isDenseBandArc ? layer.thickness[1] * 1.22 : layer.thickness[1]),
+      baseAlpha,
+      alpha: baseAlpha,
+      color: BLACK_HOLE_LENSING_ARC_COLORS[Phaser.Math.Between(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)],
+      inwardSpeed: Phaser.Math.FloatBetween(layer.inwardSpeedMin, layer.inwardSpeedMax),
+      angularDriftSpeed: Phaser.Math.FloatBetween(layer.angularDriftMin, layer.angularDriftMax),
+      pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
+      pulseAmount: Phaser.Math.FloatBetween(0.06, 0.18),
+      squash: Phaser.Math.FloatBetween(layer.squash[0], layer.squash[1]),
+      brokenness: Phaser.Math.FloatBetween(0.2, 0.44),
+      foreground: layerIndex === 1 && index % 7 === 0
+    };
+  }
+
+  private updateLensingArcs(deltaSeconds: number): void {
+    for (let i = 0; i < this.lensingArcs.length; i += 1) {
+      const arc = this.lensingArcs[i];
+      arc.radius -= arc.inwardSpeed * deltaSeconds;
+      arc.angle += arc.angularDriftSpeed * deltaSeconds;
+
+      if (arc.radius <= arc.resetRadius) {
+        this.lensingArcs[i] = this.createLensingArc(arc.layer, i, true);
+      }
+    }
   }
 
   private createRingPlanes(): BlackHoleRingPlane[] {
@@ -271,16 +361,28 @@ export class BlackHoleSystem {
         continue;
       }
 
-      const driftedAngle = arc.angle + time * 0.001 * arc.driftSpeed + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.018;
-      const radius = arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * 5;
+      const inwardProgress = Phaser.Math.Clamp(
+        (arc.outerRadius - arc.radius) / Math.max(1, arc.outerRadius - arc.resetRadius),
+        0,
+        1
+      );
+      const fadeIn = Phaser.Math.Clamp((arc.outerRadius - arc.radius) / 24, 0, 1);
+      const fadeOut = Phaser.Math.Clamp((arc.radius - arc.resetRadius) / 42, 0, 1);
+      const stretch = 1 + inwardProgress * (arc.layer === 2 ? 0.52 : 0.34);
+      const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
+      const radius = arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * (1.5 + inwardProgress * 2.2);
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.36 + arc.pulsePhase) * arc.pulseAmount;
-      const alpha = arc.alpha * mirrorAlpha * brightness * (foreground ? 0.76 : 1);
-      const firstLength = arc.arcLength * (0.52 - arc.brokenness * 0.22);
-      const secondLength = arc.arcLength * (0.28 + arc.brokenness * 0.18);
-      const gap = arc.arcLength * (0.18 + arc.brokenness * 0.22);
+      const alpha = arc.baseAlpha * fadeIn * fadeOut * mirrorAlpha * brightness * (foreground ? 0.76 : 1);
+      const arcLength = arc.baseArcLength * stretch;
+      const firstLength = arcLength * (0.52 - arc.brokenness * 0.22);
+      const secondLength = arcLength * (0.28 + arc.brokenness * 0.18);
+      const gap = arcLength * (0.18 + arc.brokenness * 0.22);
 
-      this.drawLensingArcSegment(graphics, arc, driftedAngle - arc.arcLength * 0.5, firstLength, radius, alpha);
-      this.drawLensingArcSegment(graphics, arc, driftedAngle - arc.arcLength * 0.5 + firstLength + gap, secondLength, radius, alpha * 0.72);
+      arc.alpha = alpha;
+      arc.arcLength = arcLength;
+
+      this.drawLensingArcSegment(graphics, arc, driftedAngle - arcLength * 0.5, firstLength, radius, alpha);
+      this.drawLensingArcSegment(graphics, arc, driftedAngle - arcLength * 0.5 + firstLength + gap, secondLength, radius, alpha * 0.72);
     }
   }
 
