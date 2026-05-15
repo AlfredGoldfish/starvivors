@@ -13,8 +13,8 @@ const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_
 const BLACK_HOLE_HORIZON_RIM_WIDTH = 2;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 1100;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1400;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 1350;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1700;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
 export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
@@ -72,9 +72,9 @@ const BLACK_HOLE_LENS_ARC_ALPHA_MAX = 0.72;
 const BLACK_HOLE_LENS_ARC_THICKNESS_MIN = 0.72;
 const BLACK_HOLE_LENS_ARC_THICKNESS_MAX = 1.95;
 const BLACK_HOLE_LENS_ARC_LENGTH_MIN = 0.045;
-const BLACK_HOLE_LENS_ARC_LENGTH_MAX = 0.22;
-const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.7;
-const BLACK_HOLE_LENS_ARC_SQUASH_MAX = 0.98;
+const BLACK_HOLE_LENS_ARC_LENGTH_MAX = 0.16;
+const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.96;
+const BLACK_HOLE_LENS_ARC_SQUASH_MAX = 1;
 
 export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 'white';
 
@@ -94,7 +94,6 @@ interface BlackHoleLensingArc {
   pulsePhase: number;
   pulseAmount: number;
   squash: number;
-  spiralBias: number;
 }
 
 interface BlackHoleRingPlane {
@@ -731,7 +730,6 @@ export class BlackHoleSystem {
         BLACK_HOLE_LENS_ARC_SQUASH_MAX,
         Phaser.Math.FloatBetween(0, 1)
       ),
-      spiralBias: Phaser.Math.FloatBetween(0.18, 0.42)
     };
   }
 
@@ -838,17 +836,17 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    graphics.lineStyle(26, 0x42f5d7, glowAlpha * 0.09);
+    graphics.lineStyle(26, 0xffffff, glowAlpha * 0.08);
     graphics.strokeCircle(0, 0, rimRadius + 10);
-    graphics.lineStyle(18, 0x9fd8ff, glowAlpha * 0.16);
+    graphics.lineStyle(18, 0xffffff, glowAlpha * 0.14);
     graphics.strokeCircle(0, 0, rimRadius + 6);
-    graphics.lineStyle(10, 0xc8f7ff, glowAlpha * 0.22);
+    graphics.lineStyle(10, 0xf8fbff, glowAlpha * 0.2);
     graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(7, 0xf2fbff, glowAlpha * 0.32);
+    graphics.lineStyle(7, 0xffffff, glowAlpha * 0.3);
     graphics.beginPath();
     graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
     graphics.strokePath();
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xb8dce8, (isMirror ? 0.26 : 0.42));
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.24 : 0.4));
     graphics.strokeCircle(0, 0, rimRadius);
   }
 
@@ -868,7 +866,7 @@ export class BlackHoleSystem {
       const edgeFade = Phaser.Math.Clamp((BLACK_HOLE_LENS_ARC_OUTER_RADIUS - arc.radius) / 0.045, 0, 1);
       const ageProgress = Phaser.Math.Clamp(arc.age / arc.lifetime, 0, 1);
       const ageFade = Phaser.Math.Linear(1, 0.78, ageProgress);
-      const stretch = 0.72 + densityCurve * 1.12;
+      const stretch = 0.76 + densityCurve * 0.58;
       const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.24 + arc.pulsePhase) * arc.pulseAmount;
       const proximityAlpha = Phaser.Math.Linear(0.42, 1, Math.pow(proximity, 0.75));
@@ -880,7 +878,7 @@ export class BlackHoleSystem {
       const arcLength =
         arc.baseArcLength *
         stretch *
-        Phaser.Math.Linear(1.04, 0.78, Math.pow(proximity, 0.9)) *
+        Phaser.Math.Linear(1.04, 0.48, Math.pow(proximity, 1.05)) *
         Math.sqrt(this.lensLengthMultiplier);
 
       arc.alpha = alpha;
@@ -909,8 +907,7 @@ export class BlackHoleSystem {
       const segmentProgress = i / segments;
       const segmentOffset = segmentProgress - 0.5;
       const angle = startAngle + arcLength * segmentProgress;
-      const spiralRadius = radius - this.influenceRadius * arc.spiralBias * densityCurve * segmentOffset * 0.018;
-      const point = this.getLensingArcPoint(angle, spiralRadius, arc.squash);
+      const point = this.getLensingArcPoint(angle, radius, arc.squash);
       const midY = (previous.y + point.y) * 0.5;
       const isFrontSegment = midY >= -this.coreRadius * 0.08;
 
