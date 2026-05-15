@@ -13,12 +13,15 @@ import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
 import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
 import { pulseCannon } from '../data/weapons';
 import {
+  BLACK_HOLE_CAPTURE_RADIUS,
+  BLACK_HOLE_DAMAGE_RADIUS,
+  BLACK_HOLE_EVENT_HORIZON_RADIUS,
+  BLACK_HOLE_INFLUENCE_RADIUS,
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
-  BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS,
-  BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS,
   BlackHoleSystem,
-  type BlackHoleCapturedProjectileState
+  type BlackHoleCapturedProjectileState,
+  type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
 import { DebugState } from '../systems/debug/debugState';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
@@ -139,6 +142,74 @@ const DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH = 220;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT = 54;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH = 176;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_GAP = 62;
+const BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS = 650;
+const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS = 900;
+const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE = 0.45;
+const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA = 2.2;
+const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE = 0.35;
+const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA = 1.7;
+const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE = 2;
+const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA = 5;
+const BLACK_HOLE_ENEMY_FIELD_DAMPING = 0.988;
+const BLACK_HOLE_PLAYER_FIELD_MASS = 4.8;
+
+const BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER: Record<number, number> = {
+  1: 1,
+  2: 2.6,
+  3: 4.8,
+  4: 8.4,
+  5: 13
+};
+
+const BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 110,
+  radialExtraAcceleration: 1160,
+  swirlBaseAcceleration: 95,
+  swirlExtraAcceleration: 1020,
+  maxSpeed: 620,
+  mass: 1,
+  massResistance: 0.42
+};
+
+const BLACK_HOLE_CHASER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 125,
+  radialExtraAcceleration: 1220,
+  swirlBaseAcceleration: 105,
+  swirlExtraAcceleration: 1080,
+  maxSpeed: 440,
+  mass: 2.2,
+  massResistance: 0.34
+};
+
+const BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 115,
+  radialExtraAcceleration: 1040,
+  swirlBaseAcceleration: 95,
+  swirlExtraAcceleration: 920,
+  maxSpeed: 380,
+  mass: 3.2,
+  massResistance: 0.38
+};
+
+const BLACK_HOLE_TANK_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 95,
+  radialExtraAcceleration: 880,
+  swirlBaseAcceleration: 76,
+  swirlExtraAcceleration: 720,
+  maxSpeed: 320,
+  mass: tankEnemyBalance.mass,
+  massResistance: 0.44
+};
+
+const BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 72,
+  radialExtraAcceleration: 720,
+  swirlBaseAcceleration: 64,
+  swirlExtraAcceleration: 650,
+  maxSpeed: 640,
+  mass: BLACK_HOLE_PLAYER_FIELD_MASS,
+  massResistance: 0.42
+};
 
 type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
 type PassiveUpgradeId = 'hull-plating' | 'engine-tuning' | 'damage-control';
@@ -383,15 +454,19 @@ interface BasicEnemy {
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
+  blackHoleVelocity: Phaser.Math.Vector2;
   hp: number;
+  nextBlackHoleDamageAt: number;
 }
 
 interface ShooterEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
+  blackHoleVelocity: Phaser.Math.Vector2;
   nextFireAt: number;
   hp: number;
+  nextBlackHoleDamageAt: number;
 }
 
 interface TankEnemy {
@@ -399,7 +474,9 @@ interface TankEnemy {
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
+  blackHoleVelocity: Phaser.Math.Vector2;
   hp: number;
+  nextBlackHoleDamageAt: number;
 }
 
 interface BasicAsteroid {
@@ -412,6 +489,7 @@ interface BasicAsteroid {
   velocity: Phaser.Math.Vector2;
   rotationSpeed: number;
   hitRadius: number;
+  nextBlackHoleDamageAt: number;
 }
 
 interface AsteroidBreakupProfile {
@@ -496,6 +574,7 @@ export class GameScene extends Phaser.Scene {
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
   private nextPlayerContactImpulseAt = 0;
+  private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
   private readonly debugState = new DebugState();
@@ -1007,6 +1086,7 @@ export class GameScene extends Phaser.Scene {
     this.nextRightStrafeThrusterAt = 0;
     this.nextDebugUpdateAt = 0;
     this.nextPlayerContactImpulseAt = 0;
+    this.nextBlackHolePlayerDamageAt = 0;
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
     this.pulseUpgradeLevels = { ...INITIAL_PULSE_UPGRADE_LEVELS };
@@ -1257,7 +1337,9 @@ export class GameScene extends Phaser.Scene {
       wrapMirrorBody,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: basicEnemy.hp
+      blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
+      hp: basicEnemy.hp,
+      nextBlackHoleDamageAt: 0
     };
   }
 
@@ -1270,8 +1352,10 @@ export class GameScene extends Phaser.Scene {
       body,
       wrapMirrorBody,
       velocity: new Phaser.Math.Vector2(0, 0),
+      blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
       nextFireAt: time + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000)),
-      hp: shooterEnemy.hp
+      hp: shooterEnemy.hp,
+      nextBlackHoleDamageAt: 0
     };
   }
 
@@ -1284,7 +1368,9 @@ export class GameScene extends Phaser.Scene {
       wrapMirrorBody,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: tankEnemy.hp
+      blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
+      hp: tankEnemy.hp,
+      nextBlackHoleDamageAt: 0
     };
   }
 
@@ -1516,6 +1602,180 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private applyBlackHoleToPlayer(time: number, deltaSeconds: number): void {
+    if (!this.blackHole || this.isPlayerDead) {
+      return;
+    }
+
+    const result = this.blackHole.applyWhirlpoolToVelocity(
+      this.player.x,
+      this.player.y,
+      this.playerVelocity,
+      deltaSeconds,
+      BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING,
+      this.arena
+    );
+
+    if (result.isInsideEventHorizon) {
+      return;
+    }
+
+    if (result.isInsideDamage && time >= this.nextBlackHolePlayerDamageAt) {
+      const damage = this.getBlackHoleTidalDamage(
+        result.proximity,
+        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE,
+        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA,
+        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS
+      );
+
+      this.damagePlayer(damage, time);
+      this.nextBlackHolePlayerDamageAt = time + BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS;
+    }
+  }
+
+  private applyBlackHoleToAsteroid(asteroid: BasicAsteroid, index: number, deltaSeconds: number, time: number): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+    const result = this.blackHole.applyWhirlpoolToVelocity(
+      asteroid.body.x,
+      asteroid.body.y,
+      asteroid.velocity,
+      deltaSeconds,
+      {
+        ...BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING,
+        mass: BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER[asteroid.tier],
+        maxSpeed: Math.max(tierConfig.maxVelocity, BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING.maxSpeed)
+      },
+      this.arena
+    );
+
+    if (result.isInsideEventHorizon) {
+      this.consumeBasicAsteroid(index);
+      return true;
+    }
+
+    if (result.isInsideDamage && time >= asteroid.nextBlackHoleDamageAt) {
+      asteroid.hp -= this.getBlackHoleTidalDamage(
+        result.proximity,
+        BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE,
+        BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA,
+        BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
+      );
+      asteroid.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
+
+      if (asteroid.hp <= 0) {
+        this.destroyBasicAsteroid(index, false);
+        return true;
+      }
+
+      this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+    }
+
+    return false;
+  }
+
+  private applyBlackHoleToBasicEnemy(enemy: BasicEnemy, index: number, deltaSeconds: number, time: number): boolean {
+    return this.applyBlackHoleToEnemy(
+      enemy,
+      this.basicEnemies,
+      index,
+      deltaSeconds,
+      time,
+      BLACK_HOLE_CHASER_WHIRLPOOL_TUNING
+    );
+  }
+
+  private applyBlackHoleToShooterEnemy(enemy: ShooterEnemy, index: number, deltaSeconds: number, time: number): boolean {
+    return this.applyBlackHoleToEnemy(
+      enemy,
+      this.shooterEnemies,
+      index,
+      deltaSeconds,
+      time,
+      BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING
+    );
+  }
+
+  private applyBlackHoleToTankEnemy(enemy: TankEnemy, index: number, deltaSeconds: number, time: number): boolean {
+    return this.applyBlackHoleToEnemy(
+      enemy,
+      this.tankEnemies,
+      index,
+      deltaSeconds,
+      time,
+      BLACK_HOLE_TANK_WHIRLPOOL_TUNING
+    );
+  }
+
+  private applyBlackHoleToEnemy<T extends BasicEnemy | ShooterEnemy | TankEnemy>(
+    enemy: T,
+    enemies: T[],
+    index: number,
+    deltaSeconds: number,
+    time: number,
+    tuning: BlackHoleWhirlpoolTuning
+  ): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    const result = this.blackHole.applyWhirlpoolToVelocity(
+      enemy.body.x,
+      enemy.body.y,
+      enemy.blackHoleVelocity,
+      deltaSeconds,
+      tuning,
+      this.arena
+    );
+
+    enemy.blackHoleVelocity.scale(Math.pow(BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds * 60));
+
+    if (result.isInsideEventHorizon) {
+      this.destroyEnemyWithoutRewards(enemy);
+      enemies.splice(index, 1);
+      return true;
+    }
+
+    if (result.isInsideDamage && time >= enemy.nextBlackHoleDamageAt) {
+      enemy.hp -= this.getBlackHoleTidalDamage(
+        result.proximity,
+        BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
+        BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
+        BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
+      );
+      enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
+
+      if (enemy.hp <= 0) {
+        this.destroyEnemyWithoutRewards(enemy);
+        enemies.splice(index, 1);
+        return true;
+      }
+
+      this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+    }
+
+    return false;
+  }
+
+  private getBlackHoleTidalDamage(
+    proximity: number,
+    baseDamagePerSecond: number,
+    extraDamagePerSecond: number,
+    intervalMs: number
+  ): number {
+    const damagePerSecond = baseDamagePerSecond + proximity * proximity * extraDamagePerSecond;
+
+    return damagePerSecond * (intervalMs / 1000);
+  }
+
+  private destroyEnemyWithoutRewards(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
+    enemy.body.destroy(true);
+    enemy.wrapMirrorBody.destroy(true);
+  }
+
   private createAsteroidInstance(
     x: number,
     y: number,
@@ -1539,7 +1799,8 @@ export class GameScene extends Phaser.Scene {
       rotationSpeed:
         Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
         (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
-      hitRadius: tierConfig.hitRadius
+      hitRadius: tierConfig.hitRadius,
+      nextBlackHoleDamageAt: 0
     };
   }
 
@@ -1640,7 +1901,12 @@ export class GameScene extends Phaser.Scene {
       this.playerVelocity.set(0, 0);
     }
 
-    this.playerVelocity.limit(this.getPlayerMaxSpeed());
+    this.applyBlackHoleToPlayer(time, deltaSeconds);
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    this.playerVelocity.limit(Math.max(this.getPlayerMaxSpeed(), BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING.maxSpeed));
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
@@ -2884,7 +3150,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBasicEnemies(deltaSeconds: number): void {
-    for (const enemy of this.basicEnemies) {
+    for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.basicEnemies[i];
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       enemy.velocity.set(0, 0);
 
@@ -2894,7 +3161,11 @@ export class GameScene extends Phaser.Scene {
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
-      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).limit(GAMEPLAY_MAX_VELOCITY);
+      if (this.applyBlackHoleToBasicEnemy(enemy, i, deltaSeconds, this.time.now)) {
+        continue;
+      }
+
+      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity).limit(GAMEPLAY_MAX_VELOCITY);
 
       enemy.body.x = wrapCoordinate(
         enemy.body.x + totalVelocity.x * deltaSeconds,
@@ -2910,7 +3181,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateShooterEnemies(time: number, deltaSeconds: number): void {
-    for (const enemy of this.shooterEnemies) {
+    for (let i = this.shooterEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.shooterEnemies[i];
       const offsetToPlayer = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       const distance = offsetToPlayer.length();
 
@@ -2939,14 +3211,21 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
-      enemy.body.x = wrapCoordinate(enemy.body.x + enemy.velocity.x * deltaSeconds, this.arena.width);
-      enemy.body.y = wrapCoordinate(enemy.body.y + enemy.velocity.y * deltaSeconds, this.arena.height);
+      if (this.applyBlackHoleToShooterEnemy(enemy, i, deltaSeconds, time)) {
+        continue;
+      }
+
+      const totalVelocity = enemy.velocity.clone().add(enemy.blackHoleVelocity).limit(GAMEPLAY_MAX_VELOCITY);
+
+      enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * deltaSeconds, this.arena.width);
+      enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * deltaSeconds, this.arena.height);
       this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5);
     }
   }
 
   private updateTankEnemies(deltaSeconds: number): void {
-    for (const enemy of this.tankEnemies) {
+    for (let i = this.tankEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.tankEnemies[i];
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       enemy.velocity.set(0, 0);
 
@@ -2956,7 +3235,11 @@ export class GameScene extends Phaser.Scene {
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
-      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).limit(GAMEPLAY_MAX_VELOCITY);
+      if (this.applyBlackHoleToTankEnemy(enemy, i, deltaSeconds, this.time.now)) {
+        continue;
+      }
+
+      const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity).limit(GAMEPLAY_MAX_VELOCITY);
 
       enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * deltaSeconds, this.arena.width);
       enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * deltaSeconds, this.arena.height);
@@ -3063,8 +3346,14 @@ export class GameScene extends Phaser.Scene {
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
 
-    for (const asteroid of this.basicAsteroids) {
+    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
+      const asteroid = this.basicAsteroids[i];
       this.validateAsteroidRenderState(asteroid);
+
+      if (this.applyBlackHoleToAsteroid(asteroid, i, deltaSeconds, this.time.now)) {
+        continue;
+      }
+
       asteroid.body.x = wrapCoordinate(asteroid.body.x + asteroid.velocity.x * deltaSeconds, this.arena.width);
       asteroid.body.y = wrapCoordinate(asteroid.body.y + asteroid.velocity.y * deltaSeconds, this.arena.height);
       asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
@@ -3625,14 +3914,17 @@ export class GameScene extends Phaser.Scene {
     asteroid.velocity.limit(tierConfig.maxVelocity);
   }
 
-  private destroyBasicAsteroid(index: number): void {
+  private destroyBasicAsteroid(index: number, grantReward = true): void {
     const asteroid = this.basicAsteroids[index];
     const x = asteroid.body.x;
     const y = asteroid.body.y;
     const velocity = asteroid.velocity.clone();
     const fragmentTiers = this.createAsteroidFragmentTiers(asteroid.tier, asteroid.breakupProfile);
 
-    this.grantXp(ASTEROID_XP_REWARD_BY_TIER[asteroid.tier]);
+    if (grantReward) {
+      this.grantXp(ASTEROID_XP_REWARD_BY_TIER[asteroid.tier]);
+    }
+
     this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
     asteroid.body.destroy(true);
     asteroid.wrapMirrorBody.destroy(true);
@@ -3641,6 +3933,14 @@ export class GameScene extends Phaser.Scene {
     if (fragmentTiers.length > 0) {
       this.spawnAsteroidFragments(x, y, velocity, asteroid.breakupProfile, fragmentTiers);
     }
+  }
+
+  private consumeBasicAsteroid(index: number): void {
+    const asteroid = this.basicAsteroids[index];
+
+    asteroid.body.destroy(true);
+    asteroid.wrapMirrorBody.destroy(true);
+    this.basicAsteroids.splice(index, 1);
   }
 
   private clearAsteroids(): void {
@@ -4131,25 +4431,25 @@ export class GameScene extends Phaser.Scene {
 
     const blackHolePosition = this.getNearestWrappedRenderPosition(this.blackHole.body.x, this.blackHole.body.y);
 
-    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS)) {
+    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, BLACK_HOLE_INFLUENCE_RADIUS)) {
       return;
     }
 
-    this.collisionDebugGraphics.lineStyle(2, 0xb48cff, 0.82);
-    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.coreRadius);
-    this.collisionDebugGraphics.lineStyle(1, 0xb48cff, 0.34);
-    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.warningRadius);
+    this.collisionDebugGraphics.lineStyle(2, 0xff5964, 0.9);
+    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, BLACK_HOLE_EVENT_HORIZON_RADIUS);
+    this.collisionDebugGraphics.lineStyle(1, 0xffc857, 0.44);
+    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, BLACK_HOLE_DAMAGE_RADIUS);
     this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.42);
     this.collisionDebugGraphics.strokeCircle(
       blackHolePosition.x,
       blackHolePosition.y,
-      BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS
+      BLACK_HOLE_CAPTURE_RADIUS
     );
     this.collisionDebugGraphics.lineStyle(1, 0x9fd8ff, 0.22);
     this.collisionDebugGraphics.strokeCircle(
       blackHolePosition.x,
       blackHolePosition.y,
-      BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS
+      BLACK_HOLE_INFLUENCE_RADIUS
     );
   }
 
