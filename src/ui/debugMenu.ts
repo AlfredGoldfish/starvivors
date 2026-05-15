@@ -26,16 +26,24 @@ const COLUMN_WIDTH = 286;
 const BUTTON_HEIGHT = 28;
 const BUTTON_GAP = 8;
 const ROW_GAP = 10;
+const VALUE_LINE_HEIGHT = 18;
+const SECTION_TITLE_HEIGHT = 24;
 
 export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): DebugMenuController {
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
   const valuesTextByKey = new Map<string, Phaser.GameObjects.Text>();
   const buttonsByKey = new Map<string, DebugButton>();
-  const buttonInputs: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text> = [];
+  const buttonHitAreas: Phaser.GameObjects.Zone[] = [];
   let open = false;
 
   const panelX = Math.max(12, (scene.scale.width - PANEL_WIDTH) / 2);
   const panelY = Math.max(12, (scene.scale.height - PANEL_HEIGHT) / 2);
+  const blocker = scene.add
+    .zone(0, 0, scene.scale.width, scene.scale.height)
+    .setOrigin(0, 0)
+    .setInteractive()
+    .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+    .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
   const background = scene.add.graphics();
   background.fillStyle(0x02040a, 0.9);
   background.fillRect(0, 0, scene.scale.width, scene.scale.height);
@@ -43,7 +51,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   background.fillRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
   background.lineStyle(2, 0x42f5d7, 0.8);
   background.strokeRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
-  container.add(background);
+  container.add([blocker, background]);
 
   const title = scene.add
     .text(panelX + PANEL_PADDING, panelY + 14, 'DEBUG MENU', {
@@ -67,7 +75,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   leftY = addSection(columnXs[0], leftY, 'Spawn Control');
   addValue('spawn-state', columnXs[0], leftY);
-  leftY += 24;
+  leftY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   addButton('enemy-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Enemy spawning', config.callbacks.toggleEnemySpawning);
   leftY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('spawn-chaser', columnXs[0], leftY, 88, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
@@ -79,7 +87,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   leftY = addSection(columnXs[0], leftY, 'Asteroid Testing');
   addValue('asteroid-state', columnXs[0], leftY);
-  leftY += 24;
+  leftY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   addButton('asteroid-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Asteroid spawning unavailable', config.callbacks.toggleAsteroidSpawning);
   leftY += BUTTON_HEIGHT + BUTTON_GAP;
   for (let tier = 1; tier <= 5; tier += 1) {
@@ -92,7 +100,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   midY = addSection(columnXs[1], midY, 'Projectile Cleanup');
   addValue('projectiles', columnXs[1], midY);
-  midY += 24;
+  midY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   addButton('clear-player-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear player projectiles', config.callbacks.clearPlayerProjectiles);
   midY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('clear-enemy-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear enemy projectiles', config.callbacks.clearEnemyProjectiles);
@@ -100,7 +108,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   midY = addSection(columnXs[1], midY, 'Player Testing');
   addValue('player', columnXs[1], midY);
-  midY += 24;
+  midY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   addButton('restore-hull', columnXs[1], midY, COLUMN_WIDTH, 'Restore hull', config.callbacks.restorePlayerHull);
   midY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('player-invuln', columnXs[1], midY, COLUMN_WIDTH, 'Debug invulnerability', config.callbacks.togglePlayerInvulnerability);
@@ -109,7 +117,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   rightY = addSection(columnXs[2], rightY, 'Weapon Testing');
   addValue('weapon', columnXs[2], rightY);
-  rightY += 44;
+  rightY += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
   addButton('damage-down', columnXs[2], rightY, 64, 'Dmg -', () => config.callbacks.adjustPulseDamage(-0.5));
   addButton('damage-up', columnXs[2] + 74, rightY, 64, 'Dmg +', () => config.callbacks.adjustPulseDamage(0.5));
   addButton('fire-down', columnXs[2] + 148, rightY, 64, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
@@ -120,7 +128,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   rightY = addSection(columnXs[2], rightY, 'Black Hole Debug');
   addValue('black-hole', columnXs[2], rightY);
-  rightY += 44;
+  rightY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   addButton('ring-color', columnXs[2], rightY, COLUMN_WIDTH, 'Cycle ring color', config.callbacks.cycleBlackHoleRingDebugColor);
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('black-hole-radii', columnXs[2], rightY, COLUMN_WIDTH, 'Black hole radii', config.callbacks.toggleBlackHoleRadii);
@@ -136,7 +144,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       })
       .setOrigin(0, 0);
     container.add(text);
-    return y + 24;
+    return y + SECTION_TITLE_HEIGHT;
   }
 
   function addValue(key: string, x: number, y: number): void {
@@ -145,7 +153,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '13px',
         color: '#c8f7ff',
-        lineSpacing: 4
+        lineSpacing: 2
       })
       .setOrigin(0, 0);
     valuesTextByKey.set(key, text);
@@ -168,26 +176,23 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       })
       .setOrigin(0.5, 0.5);
 
-    const trigger = (pointer: Phaser.Input.Pointer) => {
-      pointer.event?.stopPropagation();
-      callback();
-    };
-
     background
-      .setInteractive({ useHandCursor: true })
-      .on('pointerup', trigger)
       .on('pointerover', () => background.setFillStyle(0x182434, 0.98))
       .on('pointerout', () => background.setFillStyle(0x111a24, 0.96));
 
-    text
+    const hitArea = scene.add
+      .zone(x, y, width, BUTTON_HEIGHT)
+      .setOrigin(0, 0)
       .setInteractive({ useHandCursor: true })
-      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         pointer.event?.stopPropagation();
-        callback();
+        if (open) {
+          callback();
+        }
       });
 
-    container.add([background, text]);
-    buttonInputs.push(background, text);
+    container.add([background, text, hitArea]);
+    buttonHitAreas.push(hitArea);
 
     const button = {
       text,
@@ -207,11 +212,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function setButtonInputEnabled(isEnabled: boolean): void {
-    for (const input of buttonInputs) {
+    for (const hitArea of buttonHitAreas) {
       if (isEnabled) {
-        input.setInteractive({ useHandCursor: true });
+        hitArea.setInteractive({ useHandCursor: true });
       } else {
-        input.disableInteractive();
+        hitArea.disableInteractive();
       }
     }
   }
