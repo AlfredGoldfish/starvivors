@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_HORIZON_RIM_WIDTH = 10;
+const BLACK_HOLE_VISUAL_HORIZON_SCALE = 1.5;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 2600;
@@ -825,26 +825,14 @@ export class BlackHoleSystem {
 
     this.drawProjectedRings(graphics, isMirror, ringColor, true, isDebugEnabled);
     this.drawLensingArcs(graphics, isMirror, time, true);
-    this.drawEventHorizonRim(graphics, isMirror, pulse);
+    this.drawEventHorizonMask(graphics, isMirror);
   }
 
-  private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
-    const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
-    const shadowAlpha = (isMirror ? 0.42 : 1) * (0.18 + pulse * 0.04);
+  private drawEventHorizonMask(graphics: Phaser.GameObjects.Graphics, isMirror: boolean): void {
+    const radius = (this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET) * BLACK_HOLE_VISUAL_HORIZON_SCALE;
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
-    graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
-
-    graphics.lineStyle(6, 0xffffff, shadowAlpha * 0.72);
-    graphics.strokeCircle(0, 0, rimRadius + BLACK_HOLE_HORIZON_RIM_WIDTH * 0.72);
-    graphics.lineStyle(3, 0xffffff, shadowAlpha * 0.42);
-    graphics.strokeCircle(0, 0, rimRadius + BLACK_HOLE_HORIZON_RIM_WIDTH * 1.2);
-    graphics.lineStyle(5, 0xffffff, shadowAlpha * 0.58);
-    graphics.strokeCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.72);
-    graphics.lineStyle(3, 0xffffff, shadowAlpha * 0.32);
-    graphics.strokeCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 1.16);
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, isMirror ? 0.65 : 1);
-    graphics.strokeCircle(0, 0, rimRadius);
+    graphics.fillCircle(0, 0, radius);
   }
 
   private drawLensingArcs(
