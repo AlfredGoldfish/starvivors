@@ -130,6 +130,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('fire-down', columnXs[2] + 148, rightY, 64, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
   addButton('fire-up', columnXs[2] + 222, rightY, 64, 'Fire +', () => config.callbacks.adjustPulseFireRate(0.5));
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('cooldown-down', columnXs[2], rightY, 138, 'Cooldown -0.05s', () =>
+    config.callbacks.adjustPulseCooldownSeconds(-0.05)
+  );
+  addButton('cooldown-up', columnXs[2] + 148, rightY, 138, 'Cooldown +0.05s', () =>
+    config.callbacks.adjustPulseCooldownSeconds(0.05)
+  );
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('weapon-reset', columnXs[2], rightY, COLUMN_WIDTH, 'Reset weapon tuning', config.callbacks.resetWeaponTuning);
   rightY += BUTTON_HEIGHT + ROW_GAP;
 

@@ -1,11 +1,9 @@
-import Phaser from 'phaser';
 import type { BlackHoleRingDebugColorMode } from '../blackHole';
 import type { DebugMenuValues } from './debugTypes';
 
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
-const DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX = 10;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 1;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX = 12.5;
+const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 0.1;
+const DEBUG_PULSE_COOLDOWN_MIN_SECONDS = 0.01;
 
 export class DebugState {
   collisionDebugEnabled = false;
@@ -28,22 +26,20 @@ export class DebugState {
   }
 
   adjustPulseDamageMultiplier(delta: number): void {
-    this.pulseDamageMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.pulseDamageMultiplier + delta,
-        DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN,
-        DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX
-      ).toFixed(1)
-    );
+    this.pulseDamageMultiplier = Number(Math.max(DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN, this.pulseDamageMultiplier + delta).toFixed(1));
   }
 
   adjustPulseFireRateMultiplier(delta: number): void {
     this.pulseFireRateMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.pulseFireRateMultiplier + delta,
-        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN,
-        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX
-      ).toFixed(1)
+      Math.max(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN, this.pulseFireRateMultiplier + delta).toFixed(1)
+    );
+  }
+
+  adjustPulseCooldownSeconds(baseCooldownSeconds: number, currentCooldownSeconds: number, deltaSeconds: number): void {
+    const nextCooldownSeconds = Math.max(DEBUG_PULSE_COOLDOWN_MIN_SECONDS, currentCooldownSeconds + deltaSeconds);
+
+    this.pulseFireRateMultiplier = Number(
+      Math.max(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN, baseCooldownSeconds / nextCooldownSeconds).toFixed(2)
     );
   }
 

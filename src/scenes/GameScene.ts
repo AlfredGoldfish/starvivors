@@ -131,7 +131,6 @@ const DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS = 150;
 const DAMAGE_CONTROL_REPAIR = 10;
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP = 0.5;
 const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
-const DEBUG_PULSE_MIN_COOLDOWN_MS = 100;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 0.7;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 8;
@@ -686,6 +685,14 @@ export class GameScene extends Phaser.Scene {
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
         adjustPulseDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseDamageMultiplier(delta)),
         adjustPulseFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseFireRateMultiplier(delta)),
+        adjustPulseCooldownSeconds: (deltaSeconds) =>
+          this.runDebugMenuAction(() =>
+            this.debugState.adjustPulseCooldownSeconds(
+              this.getPulseBaseCooldownMs() / 1000,
+              this.getPulseCooldownMs() / 1000,
+              deltaSeconds
+            )
+          ),
         resetWeaponTuning: () => this.runDebugMenuAction(() => this.debugState.resetWeaponTuning()),
         cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.debugState.cycleBlackHoleRingDebugColorMode()),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
@@ -3163,12 +3170,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPulseCooldownMs(): number {
-    const upgradedCooldownMs =
+    return this.getPulseBaseCooldownMs() / this.getActiveDebugPulseFireRateMultiplier();
+  }
+
+  private getPulseBaseCooldownMs(): number {
+    return (
       pulseCannon.cooldownSeconds *
       1000 *
-      Math.pow(PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER, this.pulseUpgradeLevels['pulse-fire-rate-1']);
-
-    return Math.max(DEBUG_PULSE_MIN_COOLDOWN_MS, upgradedCooldownMs / this.getActiveDebugPulseFireRateMultiplier());
+      Math.pow(PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER, this.pulseUpgradeLevels['pulse-fire-rate-1'])
+    );
   }
 
   private getPulseProjectileSpeed(): number {

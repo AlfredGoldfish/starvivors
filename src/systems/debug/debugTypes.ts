@@ -38,6 +38,7 @@ export interface DebugMenuCallbacks {
   killPlayer: () => void;
   adjustPulseDamage: (delta: number) => void;
   adjustPulseFireRate: (delta: number) => void;
+  adjustPulseCooldownSeconds: (deltaSeconds: number) => void;
   resetWeaponTuning: () => void;
   cycleBlackHoleRingDebugColor: () => void;
   toggleBlackHoleRadii: () => void;
