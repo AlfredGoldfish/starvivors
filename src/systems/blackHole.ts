@@ -836,21 +836,21 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    graphics.lineStyle(38, 0xffffff, glowAlpha * 0.07);
+    graphics.lineStyle(114, 0xffffff, glowAlpha * 0.21);
     graphics.strokeCircle(0, 0, rimRadius + 16);
-    graphics.lineStyle(24, 0xffffff, glowAlpha * 0.16);
+    graphics.lineStyle(72, 0xffffff, glowAlpha * 0.48);
     graphics.strokeCircle(0, 0, rimRadius + 8);
-    graphics.lineStyle(30, 0xffffff, glowAlpha * 0.1);
+    graphics.lineStyle(90, 0xffffff, glowAlpha * 0.3);
     graphics.strokeCircle(0, 0, rimRadius + 10);
-    graphics.lineStyle(21, 0xffffff, glowAlpha * 0.18);
+    graphics.lineStyle(63, 0xffffff, glowAlpha * 0.54);
     graphics.strokeCircle(0, 0, rimRadius + 6);
-    graphics.lineStyle(12, 0xf8fbff, glowAlpha * 0.28);
+    graphics.lineStyle(36, 0xffffff, glowAlpha * 0.84);
     graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(9, 0xffffff, glowAlpha * 0.4);
+    graphics.lineStyle(27, 0xffffff, Math.min(1, glowAlpha * 1.2));
     graphics.beginPath();
     graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
     graphics.strokePath();
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.3 : 0.52));
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, isMirror ? 0.65 : 1);
     graphics.strokeCircle(0, 0, rimRadius);
   }
 
