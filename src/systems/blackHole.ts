@@ -744,11 +744,22 @@ export class BlackHoleSystem {
 
     for (let i = 0; i < this.activeLensingArcCount; i += 1) {
       const arc = this.lensingArcs[i];
+      const isInnerEdgeArc = i < BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT;
       const proximity = Phaser.Math.Clamp(1 - arc.radius, 0, 1);
 
       arc.age += deltaSeconds;
-      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.18, Math.pow(proximity, 1.15)) * deltaSeconds;
       arc.angle += arc.angularDriftSpeed * (0.92 + proximity * 1.28) * orbitMultiplier * deltaSeconds;
+
+      if (isInnerEdgeArc) {
+        arc.radius = Phaser.Math.Clamp(
+          arc.radius,
+          BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN,
+          BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX
+        );
+        continue;
+      }
+
+      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.18, Math.pow(proximity, 1.15)) * deltaSeconds;
 
       if (arc.radius <= BLACK_HOLE_LENS_ARC_RESET_RADIUS) {
         this.lensingArcs[i] = this.createLensingArc(i, true);
