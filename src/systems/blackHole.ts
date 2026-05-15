@@ -194,7 +194,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
   {
     key: 'starvivors-black-hole-lens-projection-horizontal',
     isProjectionLayer: true,
-    strokeCount: 1200,
+    strokeCount: 1600,
     minRadius: 176,
     maxRadius: 438,
     squash: 0.34,
@@ -204,48 +204,6 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     rotationSpeed: 0.042,
     scalePulse: 0.01,
     scalePulseSpeed: 0.26
-  },
-  {
-    key: 'starvivors-black-hole-lens-projection-diagonal-a',
-    isProjectionLayer: true,
-    strokeCount: 1100,
-    minRadius: 156,
-    maxRadius: 406,
-    squash: 0.46,
-    nodeAngle: Math.PI * 0.24,
-    alpha: 0.18,
-    mirrorAlpha: 0.1,
-    rotationSpeed: 0.052,
-    scalePulse: 0.012,
-    scalePulseSpeed: 0.31
-  },
-  {
-    key: 'starvivors-black-hole-lens-projection-vertical',
-    isProjectionLayer: true,
-    strokeCount: 950,
-    minRadius: 132,
-    maxRadius: 382,
-    squash: 0.28,
-    nodeAngle: Math.PI * 0.48,
-    alpha: 0.16,
-    mirrorAlpha: 0.09,
-    rotationSpeed: 0.066,
-    scalePulse: 0.014,
-    scalePulseSpeed: 0.36
-  },
-  {
-    key: 'starvivors-black-hole-lens-projection-diagonal-b',
-    isProjectionLayer: true,
-    strokeCount: 1000,
-    minRadius: 172,
-    maxRadius: 462,
-    squash: 0.52,
-    nodeAngle: Math.PI * 0.72,
-    alpha: 0.15,
-    mirrorAlpha: 0.08,
-    rotationSpeed: 0.035,
-    scalePulse: 0.01,
-    scalePulseSpeed: 0.28
   }
 ];
 
