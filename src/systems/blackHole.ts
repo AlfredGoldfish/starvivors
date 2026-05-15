@@ -27,6 +27,20 @@ export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS = [
   'black-hole-event-horizon-lines-2',
   BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY
 ] as const;
+export const BLACK_HOLE_PNG_TEXTURE_KEYS = [
+  ...BLACK_HOLE_FULL_TEXTURE_KEYS,
+  ...BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS
+] as const;
+export const BLACK_HOLE_PNG_TEXTURE_LABELS: Record<BlackHolePngTextureKey, string> = {
+  [BLACK_HOLE_FULL_TEXTURE_KEYS[0]]: 'full1',
+  [BLACK_HOLE_FULL_TEXTURE_KEYS[1]]: 'full2',
+  [BLACK_HOLE_FULL_TEXTURE_KEYS[2]]: 'full3',
+  [BLACK_HOLE_FULL_TEXTURE_KEYS[3]]: 'full4',
+  [BLACK_HOLE_FULL_TEXTURE_KEYS[4]]: 'full5',
+  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0]]: 'horizon1',
+  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1]]: 'horizon2',
+  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2]]: 'horizon3'
+};
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 450;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 700;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
@@ -41,7 +55,6 @@ export const BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS = BLACK_HOLE_EVENT_HOR
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xffffff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
-const BLACK_HOLE_RING_SEGMENTS = 112;
 const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MIN = 1;
 const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX = 20;
 const BLACK_HOLE_CORE_GROWTH_PER_SCALE = 0.08;
@@ -90,7 +103,7 @@ const BLACK_HOLE_LENS_ARC_LENGTH = 0.18;
 const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.96;
 const BLACK_HOLE_LENS_ARC_SQUASH_MAX = 1;
 
-export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 'white';
+export type BlackHolePngTextureKey = (typeof BLACK_HOLE_PNG_TEXTURE_KEYS)[number];
 
 interface BlackHoleLensingArc {
   angle: number;
@@ -109,16 +122,6 @@ interface BlackHoleLensingArc {
   squash: number;
 }
 
-interface BlackHoleRingPlane {
-  radius: number;
-  tilt: number;
-  nodeAngle: number;
-  precessionSpeed: number;
-  lineWidth: number;
-  frontAlpha: number;
-  backAlpha: number;
-}
-
 interface BlackHoleLensTextureLayer {
   key: string;
   isProjectionLayer: boolean;
@@ -133,68 +136,30 @@ interface BlackHoleLensTextureLayer {
   scalePulseSpeed: number;
 }
 
-interface BlackHoleWhirlpoolImageLayer {
-  key: string;
-  rotationSpeed: number;
-  alpha: number;
-  initialRotation: number;
+export interface BlackHolePngLayerConfig {
+  textureKey: BlackHolePngTextureKey;
+  speedRps: number;
   sizeMultiplier: number;
+  alpha: number;
+  enabled: boolean;
+  initialRotation: number;
+}
+
+export interface BlackHolePngLayerDebugSummary extends BlackHolePngLayerConfig {
+  index: number;
+  textureLabel: string;
 }
 
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
-const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: Math.PI * 2 * 0.18, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96 },
-  {
-    key: BLACK_HOLE_FULL_TEXTURE_KEYS[1],
-    rotationSpeed: Math.PI * 2 * 0.24,
-    alpha: 1,
-    initialRotation: Math.PI * 0.18,
-    sizeMultiplier: 1.03
-  },
-  {
-    key: BLACK_HOLE_FULL_TEXTURE_KEYS[2],
-    rotationSpeed: Math.PI * 2 * 0.31,
-    alpha: 1,
-    initialRotation: Math.PI * 0.37,
-    sizeMultiplier: 1
-  },
-  {
-    key: BLACK_HOLE_FULL_TEXTURE_KEYS[3],
-    rotationSpeed: Math.PI * 2 * 0.38,
-    alpha: 1,
-    initialRotation: Math.PI * 0.53,
-    sizeMultiplier: 1.07
-  },
-  {
-    key: BLACK_HOLE_FULL_TEXTURE_KEYS[4],
-    rotationSpeed: Math.PI * 2 * 0.46,
-    alpha: 1,
-    initialRotation: Math.PI * 0.71,
-    sizeMultiplier: 0.91
-  }
-];
-const BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
-  {
-    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0],
-    rotationSpeed: Math.PI * 2 * 0.55,
-    alpha: 1,
-    initialRotation: Math.PI * 0.08,
-    sizeMultiplier: 0.94
-  },
-  {
-    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1],
-    rotationSpeed: Math.PI * 2 * 0.72,
-    alpha: 1,
-    initialRotation: Math.PI * 0.34,
-    sizeMultiplier: 1.04
-  },
-  {
-    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2],
-    rotationSpeed: Math.PI * 2 * 0.9,
-    alpha: 1,
-    initialRotation: Math.PI * 0.62,
-    sizeMultiplier: 0.99
-  }
+const BLACK_HOLE_DEFAULT_PNG_LAYERS: BlackHolePngLayerConfig[] = [
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.18, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.24, alpha: 1, initialRotation: Math.PI * 0.18, sizeMultiplier: 1.03, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[2], speedRps: 0.31, alpha: 1, initialRotation: Math.PI * 0.37, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[3], speedRps: 0.38, alpha: 1, initialRotation: Math.PI * 0.53, sizeMultiplier: 1.07, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[4], speedRps: 0.46, alpha: 1, initialRotation: Math.PI * 0.71, sizeMultiplier: 0.91, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.55, alpha: 1, initialRotation: Math.PI * 0.08, sizeMultiplier: 0.39, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1], speedRps: 0.72, alpha: 1, initialRotation: Math.PI * 0.34, sizeMultiplier: 0.43, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2], speedRps: 0.9, alpha: 1, initialRotation: Math.PI * 0.62, sizeMultiplier: 0.41, enabled: true }
 ];
 
 export interface BlackHoleState {
@@ -232,15 +197,13 @@ export class BlackHoleSystem {
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
-  private readonly fullLensImages: Phaser.GameObjects.Image[];
-  private readonly eventHorizonLensImages: Phaser.GameObjects.Image[];
-  private readonly wrapMirrorFullLensImages: Phaser.GameObjects.Image[];
-  private readonly wrapMirrorEventHorizonLensImages: Phaser.GameObjects.Image[];
+  private readonly pngLayerImages: Phaser.GameObjects.Image[] = [];
+  private readonly wrapMirrorPngLayerImages: Phaser.GameObjects.Image[] = [];
   private readonly lensTextureImages: Phaser.GameObjects.Image[];
   private readonly wrapMirrorLensTextureImages: Phaser.GameObjects.Image[];
   private readonly velocity: Phaser.Math.Vector2;
   private readonly lensingArcs: BlackHoleLensingArc[];
-  private readonly ringPlanes: BlackHoleRingPlane[];
+  private readonly pngLayers: BlackHolePngLayerConfig[];
   private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private lensLengthMultiplier = 1;
   private fieldRadiusMultiplier = 1;
@@ -252,25 +215,18 @@ export class BlackHoleSystem {
     this.ensureLensTextureLayers();
     this.lensTextureImages = this.createLensTextureImages(false);
     this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
-    this.fullLensImages = this.createWhirlpoolImages(BLACK_HOLE_FULL_IMAGE_LAYERS, false);
-    this.eventHorizonLensImages = this.createWhirlpoolImages(BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS, false);
-    this.wrapMirrorFullLensImages = this.createWhirlpoolImages(BLACK_HOLE_FULL_IMAGE_LAYERS, true);
-    this.wrapMirrorEventHorizonLensImages = this.createWhirlpoolImages(BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS, true);
+    this.pngLayers = BLACK_HOLE_DEFAULT_PNG_LAYERS.map((layer) => ({ ...layer }));
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
     this.body = scene.add
       .container(position.x, position.y, [
         ...this.lensTextureImages,
-        ...this.fullLensImages,
-        ...this.eventHorizonLensImages,
         this.bodyGraphics
       ])
       .setDepth(6);
     this.wrapMirrorBody = scene.add
       .container(position.x, position.y, [
         ...this.wrapMirrorLensTextureImages,
-        ...this.wrapMirrorFullLensImages,
-        ...this.wrapMirrorEventHorizonLensImages,
         this.wrapMirrorGraphics
       ])
       .setDepth(6);
@@ -279,21 +235,20 @@ export class BlackHoleSystem {
       Math.sin(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED
     );
     this.lensingArcs = this.createLensingArcs();
-    this.ringPlanes = this.createRingPlanes();
     this.visualPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    this.syncPngLayerImages();
 
     this.body.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
     this.wrapMirrorBody.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
     this.wrapMirrorBody.setVisible(false);
-    this.draw(this.bodyGraphics, false, 'normal', false);
-    this.draw(this.wrapMirrorGraphics, true, 'normal', false);
+    this.draw(this.bodyGraphics, false, false);
+    this.draw(this.wrapMirrorGraphics, true, false);
   }
 
   update(
     time: number,
     deltaSeconds: number,
     arena: ArenaSize,
-    ringDebugColorMode: BlackHoleRingDebugColorMode,
     isDebugEnabled: boolean,
     lensOrbitSpeedMultiplier = 1,
     activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
@@ -323,8 +278,8 @@ export class BlackHoleSystem {
     this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.updateWhirlpoolImages(deltaSeconds, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
-    this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
-    this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
+    this.draw(this.bodyGraphics, false, isDebugEnabled, time);
+    this.draw(this.wrapMirrorGraphics, true, isDebugEnabled, time);
   }
 
   wouldConsumePlayer(playerX: number, playerY: number, arena: ArenaSize): boolean {
@@ -653,18 +608,181 @@ export class BlackHoleSystem {
     );
   }
 
-  private createWhirlpoolImages(
-    layers: BlackHoleWhirlpoolImageLayer[],
-    isMirror: boolean
-  ): Phaser.GameObjects.Image[] {
-    return layers.map((layer) =>
-      this.scene.add
-        .image(0, 0, layer.key)
-        .setOrigin(0.5)
+  getPngLayerCount(): number {
+    return this.pngLayers.length;
+  }
+
+  getPngLayerSummary(index: number): BlackHolePngLayerDebugSummary | undefined {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return undefined;
+    }
+
+    return {
+      ...layer,
+      index,
+      textureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[layer.textureKey]
+    };
+  }
+
+  getPngLayerSummaries(): BlackHolePngLayerDebugSummary[] {
+    return this.pngLayers.map((_, index) => this.getPngLayerSummary(index)).filter((layer): layer is BlackHolePngLayerDebugSummary => Boolean(layer));
+  }
+
+  adjustPngLayerSpeed(index: number, deltaRps: number): void {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return;
+    }
+
+    layer.speedRps = Number(Phaser.Math.Clamp(layer.speedRps + deltaRps, 0, 5).toFixed(2));
+  }
+
+  adjustPngLayerSize(index: number, delta: number): void {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return;
+    }
+
+    layer.sizeMultiplier = Number(Phaser.Math.Clamp(layer.sizeMultiplier + delta, 0.05, 3).toFixed(2));
+  }
+
+  adjustPngLayerAlpha(index: number, delta: number): void {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return;
+    }
+
+    layer.alpha = Number(Phaser.Math.Clamp(layer.alpha + delta, 0, 1).toFixed(2));
+  }
+
+  cyclePngLayerTexture(index: number, direction: number): void {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return;
+    }
+
+    const textureIndex = BLACK_HOLE_PNG_TEXTURE_KEYS.indexOf(layer.textureKey);
+    const nextIndex = Phaser.Math.Wrap(textureIndex + direction, 0, BLACK_HOLE_PNG_TEXTURE_KEYS.length);
+    layer.textureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[nextIndex];
+    this.replacePngLayerImage(index, false);
+    this.replacePngLayerImage(index, true);
+  }
+
+  togglePngLayer(index: number): void {
+    const layer = this.pngLayers[index];
+
+    if (layer) {
+      layer.enabled = !layer.enabled;
+    }
+  }
+
+  addPngLayer(textureKey: BlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[0]): number {
+    this.pngLayers.push({
+      textureKey,
+      speedRps: 0.25,
+      sizeMultiplier: 1,
+      alpha: 1,
+      enabled: true,
+      initialRotation: Phaser.Math.FloatBetween(0, Math.PI * 2)
+    });
+    this.syncPngLayerImages();
+
+    return this.pngLayers.length - 1;
+  }
+
+  duplicatePngLayer(index: number): number {
+    const layer = this.pngLayers[index];
+
+    if (!layer) {
+      return this.addPngLayer();
+    }
+
+    this.pngLayers.splice(index + 1, 0, {
+      ...layer,
+      initialRotation: layer.initialRotation + Math.PI * 0.13
+    });
+    this.syncPngLayerImages();
+
+    return index + 1;
+  }
+
+  removePngLayer(index: number): number {
+    if (this.pngLayers.length <= 1 || !this.pngLayers[index]) {
+      return Phaser.Math.Clamp(index, 0, Math.max(0, this.pngLayers.length - 1));
+    }
+
+    this.pngLayers.splice(index, 1);
+    this.syncPngLayerImages();
+
+    return Phaser.Math.Clamp(index, 0, this.pngLayers.length - 1);
+  }
+
+  resetPngLayers(): void {
+    this.pngLayers.splice(0, this.pngLayers.length, ...BLACK_HOLE_DEFAULT_PNG_LAYERS.map((layer) => ({ ...layer })));
+    this.syncPngLayerImages();
+  }
+
+  private syncPngLayerImages(): void {
+    this.syncPngLayerImageGroup(false);
+    this.syncPngLayerImageGroup(true);
+  }
+
+  private syncPngLayerImageGroup(isMirror: boolean): void {
+    const images = isMirror ? this.wrapMirrorPngLayerImages : this.pngLayerImages;
+    const container = isMirror ? this.wrapMirrorBody : this.body;
+    const graphics = isMirror ? this.wrapMirrorGraphics : this.bodyGraphics;
+
+    while (images.length > this.pngLayers.length) {
+      images.pop()?.destroy();
+    }
+
+    while (images.length < this.pngLayers.length) {
+      const layer = this.pngLayers[images.length];
+      const image = this.createPngLayerImage(layer, isMirror);
+      const graphicsIndex = container.getIndex(graphics);
+
+      images.push(image);
+      container.addAt(image, Math.max(0, graphicsIndex));
+    }
+
+    for (let i = 0; i < images.length; i += 1) {
+      const layer = this.pngLayers[i];
+      const image = images[i];
+
+      if (image.texture.key !== layer.textureKey) {
+        image.setTexture(layer.textureKey);
+      }
+
+      image
         .setRotation(layer.initialRotation)
         .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
-        .setBlendMode(Phaser.BlendModes.ADD)
-    );
+        .setVisible(layer.enabled);
+    }
+  }
+
+  private replacePngLayerImage(index: number, isMirror: boolean): void {
+    const images = isMirror ? this.wrapMirrorPngLayerImages : this.pngLayerImages;
+    const layer = this.pngLayers[index];
+    const image = images[index];
+
+    if (layer && image) {
+      image.setTexture(layer.textureKey);
+    }
+  }
+
+  private createPngLayerImage(layer: BlackHolePngLayerConfig, isMirror: boolean): Phaser.GameObjects.Image {
+    return this.scene.add
+      .image(0, 0, layer.textureKey)
+      .setOrigin(0.5)
+      .setRotation(layer.initialRotation)
+      .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
+      .setBlendMode(Phaser.BlendModes.ADD);
   }
 
   private updateWhirlpoolImages(
@@ -673,59 +791,30 @@ export class BlackHoleSystem {
     areLayersEnabled: boolean
   ): void {
     const fullDisplaySize = this.influenceRadius * 2 * this.lensLengthMultiplier;
-    const eventHorizonDisplaySize = (this.coreRadius + 230) * 2 * this.lensLengthMultiplier;
 
-    this.updateWhirlpoolImageGroup(
-      this.fullLensImages,
-      BLACK_HOLE_FULL_IMAGE_LAYERS,
-      fullDisplaySize,
-      deltaSeconds,
-      lensOrbitSpeedMultiplier,
-      areLayersEnabled
-    );
-    this.updateWhirlpoolImageGroup(
-      this.wrapMirrorFullLensImages,
-      BLACK_HOLE_FULL_IMAGE_LAYERS,
-      fullDisplaySize,
-      deltaSeconds,
-      lensOrbitSpeedMultiplier,
-      areLayersEnabled
-    );
-    this.updateWhirlpoolImageGroup(
-      this.eventHorizonLensImages,
-      BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
-      eventHorizonDisplaySize,
-      deltaSeconds,
-      lensOrbitSpeedMultiplier,
-      areLayersEnabled
-    );
-    this.updateWhirlpoolImageGroup(
-      this.wrapMirrorEventHorizonLensImages,
-      BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
-      eventHorizonDisplaySize,
-      deltaSeconds,
-      lensOrbitSpeedMultiplier,
-      areLayersEnabled
-    );
+    this.updateWhirlpoolImageGroup(this.pngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, false);
+    this.updateWhirlpoolImageGroup(this.wrapMirrorPngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, true);
   }
 
   private updateWhirlpoolImageGroup(
     images: Phaser.GameObjects.Image[],
-    layers: BlackHoleWhirlpoolImageLayer[],
     displaySize: number,
     deltaSeconds: number,
     lensOrbitSpeedMultiplier: number,
-    areLayersEnabled: boolean
+    areLayersEnabled: boolean,
+    isMirror: boolean
   ): void {
     for (let i = 0; i < images.length; i += 1) {
       const image = images[i];
-      const rotation = layers[i].rotationSpeed * lensOrbitSpeedMultiplier * deltaSeconds;
-      const layerDisplaySize = displaySize * layers[i].sizeMultiplier;
+      const layer = this.pngLayers[i];
+      const rotation = Math.PI * 2 * layer.speedRps * lensOrbitSpeedMultiplier * deltaSeconds;
+      const layerDisplaySize = displaySize * layer.sizeMultiplier;
 
       image
         .setDisplaySize(layerDisplaySize, layerDisplaySize)
         .setRotation(image.rotation + rotation)
-        .setVisible(areLayersEnabled);
+        .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
+        .setVisible(areLayersEnabled && layer.enabled);
     }
   }
 
@@ -844,64 +933,19 @@ export class BlackHoleSystem {
     }
   }
 
-  private createRingPlanes(): BlackHoleRingPlane[] {
-    return [
-      {
-        radius: this.coreRadius + 120,
-        tilt: 1.18,
-        nodeAngle: Math.PI * 0.02,
-        precessionSpeed: 0.08,
-        lineWidth: 3,
-        frontAlpha: 0.9,
-        backAlpha: 0.28
-      },
-      {
-        radius: this.coreRadius + 136,
-        tilt: 0.72,
-        nodeAngle: Math.PI * 0.32,
-        precessionSpeed: -0.055,
-        lineWidth: 2,
-        frontAlpha: 0.74,
-        backAlpha: 0.22
-      },
-      {
-        radius: this.coreRadius + 108,
-        tilt: 1.42,
-        nodeAngle: Math.PI * 0.62,
-        precessionSpeed: 0.038,
-        lineWidth: 2,
-        frontAlpha: 0.68,
-        backAlpha: 0.18
-      },
-      {
-        radius: this.coreRadius + 154,
-        tilt: 0.94,
-        nodeAngle: Math.PI * 0.86,
-        precessionSpeed: -0.03,
-        lineWidth: 1,
-        frontAlpha: 0.52,
-        backAlpha: 0.16
-      }
-    ];
-  }
-
   private draw(
     graphics: Phaser.GameObjects.Graphics,
     isMirror: boolean,
-    ringDebugColorMode: BlackHoleRingDebugColorMode,
     isDebugEnabled: boolean,
     time = this.scene.time.now
   ): void {
     const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + this.visualPhase) * 0.5;
     const bodyAlpha = isMirror ? 0.56 : 0.82;
-    const ringColor = this.getRingColor(ringDebugColorMode, isDebugEnabled);
     const coreAlpha = isMirror ? 0.84 : 1;
 
     graphics.clear();
     graphics.fillStyle(0x000006, isMirror ? 0.11 : 0.18);
     graphics.fillCircle(0, 0, this.warningRadius);
-
-    this.drawProjectedRings(graphics, isMirror, ringColor, false, isDebugEnabled);
 
     graphics.fillStyle(0x000003, bodyAlpha);
     graphics.fillCircle(0, 0, this.coreRadius + 36 + pulse * 6);
@@ -916,7 +960,6 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, 1);
     graphics.fillCircle(0, 0, this.coreRadius * 0.72);
 
-    this.drawProjectedRings(graphics, isMirror, ringColor, true, isDebugEnabled);
     this.drawEventHorizonMask(graphics, isMirror);
   }
 
@@ -993,80 +1036,4 @@ export class BlackHoleSystem {
     return Phaser.Math.Linear(this.coreRadius + 28, this.influenceRadius, Phaser.Math.Clamp(normalizedRadius, 0, 1));
   }
 
-  private drawProjectedRings(
-    graphics: Phaser.GameObjects.Graphics,
-    isMirror: boolean,
-    color: number,
-    frontPass: boolean,
-    isDebugEnabled: boolean
-  ): void {
-    if (!isDebugEnabled || color === 0x000000) {
-      return;
-    }
-
-    for (const ring of this.ringPlanes) {
-      this.drawProjectedRingPass(graphics, ring, isMirror, color, frontPass, isDebugEnabled);
-    }
-  }
-
-  private drawProjectedRingPass(
-    graphics: Phaser.GameObjects.Graphics,
-    ring: BlackHoleRingPlane,
-    isMirror: boolean,
-    color: number,
-    frontPass: boolean,
-    isDebugEnabled: boolean
-  ): void {
-    const nodeAngle = ring.nodeAngle + this.visualPhase * ring.precessionSpeed;
-    const alphaBase = frontPass ? ring.frontAlpha : ring.backAlpha;
-    const alpha = alphaBase * (isMirror ? 0.56 : 1) * (isDebugEnabled && color !== 0x000000 ? 1 : 0.82);
-
-    for (let i = 0; i < BLACK_HOLE_RING_SEGMENTS; i += 1) {
-      const startAngle = (Math.PI * 2 * i) / BLACK_HOLE_RING_SEGMENTS;
-      const endAngle = (Math.PI * 2 * (i + 1)) / BLACK_HOLE_RING_SEGMENTS;
-      const midAngle = (startAngle + endAngle) * 0.5;
-      const midDepth = Math.sin(midAngle) * Math.sin(ring.tilt);
-      const isFrontSegment = midDepth >= 0;
-
-      if (isFrontSegment !== frontPass) {
-        continue;
-      }
-
-      const start = this.projectRingPoint(startAngle, ring.radius, ring.tilt, nodeAngle);
-      const end = this.projectRingPoint(endAngle, ring.radius, ring.tilt, nodeAngle);
-
-      graphics.lineStyle(ring.lineWidth, color, alpha);
-      graphics.lineBetween(start.x, start.y, end.x, end.y);
-    }
-  }
-
-  private projectRingPoint(angle: number, radius: number, tilt: number, nodeAngle: number): { x: number; y: number } {
-    const localX = Math.cos(angle) * radius;
-    const localY = Math.sin(angle) * radius * Math.cos(tilt);
-
-    return {
-      x: localX * Math.cos(nodeAngle) - localY * Math.sin(nodeAngle),
-      y: localX * Math.sin(nodeAngle) + localY * Math.cos(nodeAngle)
-    };
-  }
-
-  private getRingColor(ringDebugColorMode: BlackHoleRingDebugColorMode, isDebugEnabled: boolean): number {
-    if (!isDebugEnabled) {
-      return 0x000000;
-    }
-
-    switch (ringDebugColorMode) {
-      case 'red':
-        return 0xff5964;
-      case 'green':
-        return 0x7cff6b;
-      case 'cyan':
-        return 0x42f5d7;
-      case 'white':
-        return 0xf2fbff;
-      case 'normal':
-      default:
-        return 0x000000;
-    }
-  }
 }

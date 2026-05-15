@@ -125,26 +125,37 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   y = addSection(columnX, y, 'Black Hole');
   addValue('black-hole', columnX, y);
   y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('ring-color', columnX, y, 154, 'Ring color', config.callbacks.cycleBlackHoleRingDebugColor);
-  addButton('black-hole-radii', columnX + 162, y, 154, 'Radii', config.callbacks.toggleBlackHoleRadii);
+  addButton('black-hole-radii', columnX, y, 154, 'Radii', config.callbacks.toggleBlackHoleRadii);
+  addButton('black-hole-field-damage', columnX + 162, y, 154, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('black-hole-field-damage', columnX, y, 154, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
-  addButton('collision-debug', columnX + 162, y, 154, 'Collision visuals', config.callbacks.toggleCollisionDebug);
+  addButton('collision-debug', columnX, y, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
   y += BUTTON_HEIGHT + ROW_GAP;
 
-  y = addSection(columnX, y, 'Black Hole PNG');
+  y = addSection(columnX, y, 'Black Hole PNG Layers');
   addValue('black-hole-lenses', columnX, y);
-  y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
-  addButton('lens-orbit-down', columnX, y, 74, 'Spin -', () => config.callbacks.adjustBlackHoleLensOrbit(-0.1));
-  addButton('lens-orbit-up', columnX + 80, y, 74, 'Spin +', () => config.callbacks.adjustBlackHoleLensOrbit(0.1));
-  addButton('lens-length-down', columnX + 162, y, 74, 'Size -', () => config.callbacks.adjustBlackHoleLensLength(-0.1));
-  addButton('lens-length-up', columnX + 242, y, 74, 'Size +', () => config.callbacks.adjustBlackHoleLensLength(0.1));
+  y += VALUE_LINE_HEIGHT * 6 + BUTTON_GAP;
+  addButton('png-layer-prev', columnX, y, 74, 'Layer -', config.callbacks.selectPreviousBlackHolePngLayer);
+  addButton('png-layer-next', columnX + 80, y, 74, 'Layer +', config.callbacks.selectNextBlackHolePngLayer);
+  addButton('png-image-prev', columnX + 162, y, 74, 'Image -', () => config.callbacks.cycleBlackHolePngLayerImage(-1));
+  addButton('png-image-next', columnX + 242, y, 74, 'Image +', () => config.callbacks.cycleBlackHolePngLayerImage(1));
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('field-scale-down', columnX, y, 154, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
-  addButton('field-scale-up', columnX + 162, y, 154, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
+  addButton('png-speed-down', columnX, y, 74, 'Speed -', () => config.callbacks.adjustBlackHolePngLayerSpeed(-0.05));
+  addButton('png-speed-up', columnX + 80, y, 74, 'Speed +', () => config.callbacks.adjustBlackHolePngLayerSpeed(0.05));
+  addButton('png-size-down', columnX + 162, y, 74, 'Size -', () => config.callbacks.adjustBlackHolePngLayerSize(-0.05));
+  addButton('png-size-up', columnX + 242, y, 74, 'Size +', () => config.callbacks.adjustBlackHolePngLayerSize(0.05));
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('projection-lenses', columnX, y, 154, 'PNG layers', config.callbacks.toggleBlackHoleProjectionLenses);
-  addButton('lens-reset', columnX + 162, y, 154, 'Reset black hole', config.callbacks.resetBlackHoleLensTuning);
+  addButton('png-alpha-down', columnX, y, 74, 'Alpha -', () => config.callbacks.adjustBlackHolePngLayerAlpha(-0.05));
+  addButton('png-alpha-up', columnX + 80, y, 74, 'Alpha +', () => config.callbacks.adjustBlackHolePngLayerAlpha(0.05));
+  addButton('png-toggle-layer', columnX + 162, y, 74, 'Toggle', config.callbacks.toggleBlackHolePngLayer);
+  addButton('projection-lenses', columnX + 242, y, 74, 'All', config.callbacks.toggleBlackHoleProjectionLenses);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('png-add-layer', columnX, y, 101, 'Add +', config.callbacks.addBlackHolePngLayer);
+  addButton('png-duplicate-layer', columnX + 108, y, 101, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
+  addButton('png-remove-layer', columnX + 216, y, 100, 'Remove -', config.callbacks.removeBlackHolePngLayer);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-scale-down', columnX, y, 101, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
+  addButton('field-scale-up', columnX + 108, y, 101, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
+  addButton('lens-reset', columnX + 216, y, 100, 'Reset', config.callbacks.resetBlackHoleLensTuning);
   y += BUTTON_HEIGHT + ROW_GAP;
 
   y = addSection(columnX, y, 'Weapon');
@@ -369,15 +380,18 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue(
         'black-hole',
-        `Ring color: ${values.blackHoleRingDebugColorMode}\nRadii: ${
-          values.blackHoleRadiiVisible ? 'shown' : 'hidden'
-        } / damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'} / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+        `Radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}\nDamage: ${
+          values.blackHoleFieldDamageEnabled ? 'on' : 'off'
+        } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
       );
+      const pngLayer = values.blackHoleSelectedPngLayer;
       setValue(
         'black-hole-lenses',
-        `Spin x${values.blackHoleLensOrbitSpeedMultiplier.toFixed(1)}\nVisual size x${values.blackHoleLensLengthMultiplier.toFixed(1)}\nPNG layers ${
-          values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-        }\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
+        pngLayer
+          ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
+              values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
+            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / field x${values.blackHoleFieldScaleMultiplier.toFixed(1)}\nAdd uses selected image`
+          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
       );
       setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
@@ -392,7 +406,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
       setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
       setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
-      setButtonLabel('projection-lenses', `PNG layers: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
+      setButtonLabel('projection-lenses', `All: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
+      setButtonLabel('png-toggle-layer', `Layer: ${pngLayer?.enabled ? 'on' : 'off'}`);
     },
     destroy: () => {
       panelBlocker.destroy();

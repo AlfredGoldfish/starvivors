@@ -1,4 +1,4 @@
-import type { BlackHoleRingDebugColorMode } from '../blackHole';
+import type { BlackHolePngLayerDebugSummary } from '../blackHole';
 import type { DebugMenuValues } from './debugTypes';
 
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
@@ -15,7 +15,6 @@ export class DebugState {
   debugGamePaused = false;
   pulseDamageMultiplier = 1;
   pulseFireRateMultiplier = 1;
-  blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
 
   resetForRun(): void {
     this.enemySpawningEnabled = true;
@@ -26,7 +25,6 @@ export class DebugState {
     this.debugGamePaused = false;
     this.pulseDamageMultiplier = 1;
     this.pulseFireRateMultiplier = 1;
-    this.blackHoleRingDebugColorMode = 'normal';
   }
 
   adjustPulseDamageMultiplier(delta: number): void {
@@ -52,14 +50,6 @@ export class DebugState {
     this.pulseFireRateMultiplier = 1;
   }
 
-  cycleBlackHoleRingDebugColorMode(): void {
-    const modes: BlackHoleRingDebugColorMode[] = ['normal', 'red', 'green', 'cyan', 'white'];
-    const currentIndex = modes.indexOf(this.blackHoleRingDebugColorMode);
-    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % modes.length;
-
-    this.blackHoleRingDebugColorMode = modes[nextIndex];
-  }
-
   createMenuValues(snapshot: {
     pulseCooldownSeconds: number;
     backgroundStarsVisible: boolean;
@@ -71,6 +61,9 @@ export class DebugState {
     blackHoleLensLengthMultiplier: number;
     blackHoleFieldScaleMultiplier: number;
     blackHoleProjectionLensLayersEnabled: boolean;
+    blackHoleSelectedPngLayerIndex: number;
+    blackHolePngLayerCount: number;
+    blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
     debugGamePaused: boolean;
     activeEnemies: number;
     activeAsteroids: number;
@@ -88,7 +81,6 @@ export class DebugState {
       collisionDebugEnabled: this.collisionDebugEnabled,
       blackHoleRadiiVisible: this.showBlackHoleRadii || this.collisionDebugEnabled,
       blackHoleFieldDamageEnabled: this.blackHoleFieldDamageEnabled,
-      blackHoleRingDebugColorMode: this.blackHoleRingDebugColorMode,
       pulseDamageMultiplier: this.pulseDamageMultiplier,
       pulseFireRateMultiplier: this.pulseFireRateMultiplier,
       pulseCooldownSeconds: snapshot.pulseCooldownSeconds,
@@ -101,6 +93,9 @@ export class DebugState {
       blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
       blackHoleFieldScaleMultiplier: snapshot.blackHoleFieldScaleMultiplier,
       blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
+      blackHoleSelectedPngLayerIndex: snapshot.blackHoleSelectedPngLayerIndex,
+      blackHolePngLayerCount: snapshot.blackHolePngLayerCount,
+      blackHoleSelectedPngLayer: snapshot.blackHoleSelectedPngLayer,
       debugGamePaused: snapshot.debugGamePaused,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,

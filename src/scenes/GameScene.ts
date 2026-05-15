@@ -629,6 +629,7 @@ export class GameScene extends Phaser.Scene {
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   private debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
   private areDebugBlackHoleProjectionLensLayersEnabled = true;
+  private debugSelectedBlackHolePngLayerIndex = 0;
 
   constructor() {
     super('GameScene');
@@ -771,7 +772,6 @@ export class GameScene extends Phaser.Scene {
         adjustStarfieldParallax: (layer, direction) => this.runDebugMenuAction(() => this.adjustStarfieldParallax(layer, direction)),
         toggleBackgroundStars: () => this.runDebugMenuAction(() => this.toggleBackgroundStars()),
         resetStarfieldParallax: () => this.runDebugMenuAction(() => this.resetStarfieldParallax()),
-        cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.debugState.cycleBlackHoleRingDebugColorMode()),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
           this.debugState.showBlackHoleRadii = !this.debugState.showBlackHoleRadii;
         }),
@@ -787,6 +787,16 @@ export class GameScene extends Phaser.Scene {
         toggleBlackHoleProjectionLenses: () => this.runDebugMenuAction(() => {
           this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
         }),
+        selectPreviousBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(-1)),
+        selectNextBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(1)),
+        cycleBlackHolePngLayerImage: (direction) => this.runDebugMenuAction(() => this.cycleBlackHolePngLayerImage(direction)),
+        adjustBlackHolePngLayerSpeed: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSpeed(delta)),
+        adjustBlackHolePngLayerSize: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSize(delta)),
+        adjustBlackHolePngLayerAlpha: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerAlpha(delta)),
+        toggleBlackHolePngLayer: () => this.runDebugMenuAction(() => this.toggleBlackHolePngLayer()),
+        addBlackHolePngLayer: () => this.runDebugMenuAction(() => this.addBlackHolePngLayer()),
+        duplicateBlackHolePngLayer: () => this.runDebugMenuAction(() => this.duplicateBlackHolePngLayer()),
+        removeBlackHolePngLayer: () => this.runDebugMenuAction(() => this.removeBlackHolePngLayer()),
         resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
       }
     });
@@ -835,6 +845,9 @@ export class GameScene extends Phaser.Scene {
       blackHoleLensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
       blackHoleFieldScaleMultiplier: this.debugBlackHoleFieldScaleMultiplier,
       blackHoleProjectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
+      blackHoleSelectedPngLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
+      blackHolePngLayerCount: this.blackHole?.getPngLayerCount() ?? 0,
+      blackHoleSelectedPngLayer: this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex),
       debugGamePaused: this.debugState.debugGamePaused,
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
@@ -1159,6 +1172,7 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
+    this.debugSelectedBlackHolePngLayerIndex = 0;
     this.backgroundStarsVisible = true;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
@@ -1642,7 +1656,6 @@ export class GameScene extends Phaser.Scene {
       time,
       deltaSeconds,
       this.arena,
-      this.debugState.blackHoleRingDebugColorMode,
       this.debugState.collisionDebugEnabled,
       this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier(),
       this.getActiveDebugBlackHoleLensDensity(),
@@ -2291,12 +2304,81 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private clampSelectedBlackHolePngLayer(): void {
+    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
+    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
+      this.debugSelectedBlackHolePngLayerIndex,
+      0,
+      Math.max(0, layerCount - 1)
+    );
+  }
+
+  private selectBlackHolePngLayer(direction: number): void {
+    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
+
+    if (layerCount <= 0) {
+      this.debugSelectedBlackHolePngLayerIndex = 0;
+      return;
+    }
+
+    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Wrap(
+      this.debugSelectedBlackHolePngLayerIndex + direction,
+      0,
+      layerCount
+    );
+  }
+
+  private cycleBlackHolePngLayerImage(direction: number): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.blackHole?.cyclePngLayerTexture(this.debugSelectedBlackHolePngLayerIndex, direction);
+  }
+
+  private adjustBlackHolePngLayerSpeed(delta: number): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.blackHole?.adjustPngLayerSpeed(this.debugSelectedBlackHolePngLayerIndex, delta);
+  }
+
+  private adjustBlackHolePngLayerSize(delta: number): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.blackHole?.adjustPngLayerSize(this.debugSelectedBlackHolePngLayerIndex, delta);
+  }
+
+  private adjustBlackHolePngLayerAlpha(delta: number): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.blackHole?.adjustPngLayerAlpha(this.debugSelectedBlackHolePngLayerIndex, delta);
+  }
+
+  private toggleBlackHolePngLayer(): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.blackHole?.togglePngLayer(this.debugSelectedBlackHolePngLayerIndex);
+  }
+
+  private addBlackHolePngLayer(): void {
+    const selected = this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex);
+
+    this.debugSelectedBlackHolePngLayerIndex = this.blackHole?.addPngLayer(selected?.textureKey) ?? 0;
+  }
+
+  private duplicateBlackHolePngLayer(): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.debugSelectedBlackHolePngLayerIndex =
+      this.blackHole?.duplicatePngLayer(this.debugSelectedBlackHolePngLayerIndex) ?? 0;
+  }
+
+  private removeBlackHolePngLayer(): void {
+    this.clampSelectedBlackHolePngLayer();
+    this.debugSelectedBlackHolePngLayerIndex =
+      this.blackHole?.removePngLayer(this.debugSelectedBlackHolePngLayerIndex) ?? 0;
+  }
+
   private resetBlackHoleLensTuning(): void {
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
+    this.debugSelectedBlackHolePngLayerIndex = 0;
+    this.blackHole?.resetPngLayers();
   }
 
   private createBlackHoleLensOrbitSlider(): void {
@@ -4913,8 +4995,7 @@ export class GameScene extends Phaser.Scene {
         `Debug weapon tuning: F3 menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
-      ? `Black hole rings: ${this.debugState.blackHoleRingDebugColorMode}  F3 menu\n` +
-        `Black hole PNG: spin x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / visual size x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)} / field x${this.debugBlackHoleFieldScaleMultiplier.toFixed(1)} / layers ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
+      ? `Black hole PNG layers: selected ${this.debugSelectedBlackHolePngLayerIndex + 1} / ${this.blackHole?.getPngLayerCount() ?? 0} / field x${this.debugBlackHoleFieldScaleMultiplier.toFixed(1)} / layers ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
       : '';
 
     this.debugText.setText(

@@ -1,4 +1,4 @@
-import type { BlackHoleRingDebugColorMode } from '../blackHole';
+import type { BlackHolePngLayerDebugSummary } from '../blackHole';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
@@ -11,7 +11,6 @@ export interface DebugMenuValues {
   collisionDebugEnabled: boolean;
   blackHoleRadiiVisible: boolean;
   blackHoleFieldDamageEnabled: boolean;
-  blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode;
   pulseDamageMultiplier: number;
   pulseFireRateMultiplier: number;
   pulseCooldownSeconds: number;
@@ -24,6 +23,9 @@ export interface DebugMenuValues {
   blackHoleLensLengthMultiplier: number;
   blackHoleFieldScaleMultiplier: number;
   blackHoleProjectionLensLayersEnabled: boolean;
+  blackHoleSelectedPngLayerIndex: number;
+  blackHolePngLayerCount: number;
+  blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
   debugGamePaused: boolean;
   activeEnemies: number;
   activeAsteroids: number;
@@ -55,7 +57,6 @@ export interface DebugMenuCallbacks {
   adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
   toggleBackgroundStars: () => void;
   resetStarfieldParallax: () => void;
-  cycleBlackHoleRingDebugColor: () => void;
   toggleBlackHoleRadii: () => void;
   toggleBlackHoleFieldDamage: () => void;
   toggleCollisionDebug: () => void;
@@ -63,5 +64,15 @@ export interface DebugMenuCallbacks {
   adjustBlackHoleLensLength: (delta: number) => void;
   adjustBlackHoleFieldScale: (delta: number) => void;
   toggleBlackHoleProjectionLenses: () => void;
+  selectPreviousBlackHolePngLayer: () => void;
+  selectNextBlackHolePngLayer: () => void;
+  cycleBlackHolePngLayerImage: (direction: number) => void;
+  adjustBlackHolePngLayerSpeed: (delta: number) => void;
+  adjustBlackHolePngLayerSize: (delta: number) => void;
+  adjustBlackHolePngLayerAlpha: (delta: number) => void;
+  toggleBlackHolePngLayer: () => void;
+  addBlackHolePngLayer: () => void;
+  duplicateBlackHolePngLayer: () => void;
+  removeBlackHolePngLayer: () => void;
   resetBlackHoleLensTuning: () => void;
 }
