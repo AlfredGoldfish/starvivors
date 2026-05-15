@@ -1,49 +1,5 @@
 import Phaser from 'phaser';
-import type { BlackHoleRingDebugColorMode } from '../systems/blackHole';
-
-export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
-export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
-
-export interface DebugMenuValues {
-  enemySpawningEnabled: boolean;
-  asteroidSpawningAvailable: boolean;
-  asteroidSpawningEnabled: boolean;
-  playerInvulnerable: boolean;
-  collisionDebugEnabled: boolean;
-  blackHoleRadiiVisible: boolean;
-  blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode;
-  pulseDamageMultiplier: number;
-  pulseFireRateMultiplier: number;
-  pulseCooldownSeconds: number;
-  activeEnemies: number;
-  activeAsteroids: number;
-  playerProjectiles: number;
-  enemyProjectiles: number;
-  playerHull: number;
-  playerMaxHull: number;
-  spawnDirectorSummary: string;
-}
-
-export interface DebugMenuCallbacks {
-  close: () => void;
-  toggleEnemySpawning: () => void;
-  spawnEnemy: (type: DebugEnemyType) => void;
-  clearEnemies: () => void;
-  toggleAsteroidSpawning: () => void;
-  spawnAsteroid: (tier: DebugAsteroidTier) => void;
-  clearAsteroids: () => void;
-  clearPlayerProjectiles: () => void;
-  clearEnemyProjectiles: () => void;
-  restorePlayerHull: () => void;
-  togglePlayerInvulnerability: () => void;
-  killPlayer: () => void;
-  adjustPulseDamage: (delta: number) => void;
-  adjustPulseFireRate: (delta: number) => void;
-  resetWeaponTuning: () => void;
-  cycleBlackHoleRingDebugColor: () => void;
-  toggleBlackHoleRadii: () => void;
-  toggleCollisionDebug: () => void;
-}
+import type { DebugAsteroidTier, DebugMenuCallbacks, DebugMenuValues } from '../systems/debug/debugTypes';
 
 export interface DebugMenuConfig {
   callbacks: DebugMenuCallbacks;
@@ -75,7 +31,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
   const valuesTextByKey = new Map<string, Phaser.GameObjects.Text>();
   const buttonsByKey = new Map<string, DebugButton>();
-  const hitAreas: Phaser.GameObjects.Zone[] = [];
+  const buttonInputs: Array<Phaser.GameObjects.Rectangle | Phaser.GameObjects.Text> = [];
   let open = false;
 
   const panelX = Math.max(12, (scene.scale.width - PANEL_WIDTH) / 2);
@@ -197,11 +153,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function addButton(key: string, x: number, y: number, width: number, label: string, callback: () => void): DebugButton {
-    const graphics = scene.add.graphics();
-    graphics.fillStyle(0x111a24, 0.96);
-    graphics.fillRoundedRect(x, y, width, BUTTON_HEIGHT, 5);
-    graphics.lineStyle(1, 0x52627f, 0.9);
-    graphics.strokeRoundedRect(x, y, width, BUTTON_HEIGHT, 5);
+    const background = scene.add
+      .rectangle(x, y, width, BUTTON_HEIGHT, 0x111a24, 0.96)
+      .setOrigin(0, 0)
+      .setStrokeStyle(1, 0x52627f, 0.9);
 
     const text = scene.add
       .text(x + width / 2, y + BUTTON_HEIGHT / 2, label, {
@@ -213,17 +168,26 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       })
       .setOrigin(0.5, 0.5);
 
-    const hitArea = scene.add
-      .zone(x, y, width, BUTTON_HEIGHT)
-      .setOrigin(0, 0)
+    const trigger = (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      callback();
+    };
+
+    background
       .setInteractive({ useHandCursor: true })
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-        pointer.event.stopPropagation();
+      .on('pointerup', trigger)
+      .on('pointerover', () => background.setFillStyle(0x182434, 0.98))
+      .on('pointerout', () => background.setFillStyle(0x111a24, 0.96));
+
+    text
+      .setInteractive({ useHandCursor: true })
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event?.stopPropagation();
         callback();
       });
 
-    container.add([graphics, text, hitArea]);
-    hitAreas.push(hitArea);
+    container.add([background, text]);
+    buttonInputs.push(background, text);
 
     const button = {
       text,
@@ -243,11 +207,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function setButtonInputEnabled(isEnabled: boolean): void {
-    for (const hitArea of hitAreas) {
+    for (const input of buttonInputs) {
       if (isEnabled) {
-        hitArea.setInteractive({ useHandCursor: true });
+        input.setInteractive({ useHandCursor: true });
       } else {
-        hitArea.disableInteractive();
+        input.disableInteractive();
       }
     }
   }

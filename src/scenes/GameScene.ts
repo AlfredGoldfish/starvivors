@@ -18,16 +18,12 @@ import {
   BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS,
   BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS,
   BlackHoleSystem,
-  type BlackHoleCapturedProjectileState,
-  type BlackHoleRingDebugColorMode
+  type BlackHoleCapturedProjectileState
 } from '../systems/blackHole';
-import {
-  createDebugMenu,
-  type DebugAsteroidTier,
-  type DebugEnemyType,
-  type DebugMenuController,
-  type DebugMenuValues
-} from '../ui/debugMenu';
+import { DebugState } from '../systems/debug/debugState';
+import { updateDebugWeaponHotkeys } from '../systems/debug/debugHotkeys';
+import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
+import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
@@ -133,11 +129,7 @@ const ENGINE_TUNING_ACCELERATION_MULTIPLIER = 0.08;
 const ENGINE_TUNING_MAX_SPEED_MULTIPLIER = 0.04;
 const DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS = 150;
 const DAMAGE_CONTROL_REPAIR = 10;
-const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
-const DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX = 10;
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP = 0.5;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 1;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX = 12.5;
 const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
 const DEBUG_PULSE_MIN_COOLDOWN_MS = 100;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 0.7;
@@ -519,7 +511,7 @@ export class GameScene extends Phaser.Scene {
   private nextPlayerContactImpulseAt = 0;
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
-  private isCollisionDebugEnabled = false;
+  private readonly debugState = new DebugState();
   private pulseUpgradeLevels: Record<PulseUpgradeId, number> = { ...INITIAL_PULSE_UPGRADE_LEVELS };
   private passiveUpgradeLevels: Record<PassiveUpgradeId, number> = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
   private isUpgradeOverlayOpen = false;
@@ -541,18 +533,10 @@ export class GameScene extends Phaser.Scene {
   private backgroundScrollY = 0;
   private previousBackgroundPlayerX?: number;
   private previousBackgroundPlayerY?: number;
-  // Debug/testing modifiers only. These are reset with each rebuilt run and never alter upgrade levels.
-  private debugPulseDamageMultiplier = 1;
-  private debugPulseFireRateMultiplier = 1;
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   private areDebugBlackHoleProjectionLensLayersEnabled = true;
-  private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
-  private debugEnemySpawningEnabled = true;
-  private debugAsteroidSpawningEnabled = false;
-  private debugPlayerInvulnerable = false;
-  private debugShowBlackHoleRadii = false;
 
   constructor() {
     super('GameScene');
@@ -679,12 +663,12 @@ export class GameScene extends Phaser.Scene {
       callbacks: {
         close: () => this.closeDebugMenu(this.time.now),
         toggleEnemySpawning: () => this.runDebugMenuAction(() => {
-          this.debugEnemySpawningEnabled = !this.debugEnemySpawningEnabled;
+          this.debugState.enemySpawningEnabled = !this.debugState.enemySpawningEnabled;
         }),
         spawnEnemy: (type) => this.runDebugMenuAction(() => this.spawnDebugEnemy(type)),
         clearEnemies: () => this.runDebugMenuAction(() => this.clearEnemies()),
         toggleAsteroidSpawning: () => this.runDebugMenuAction(() => {
-          this.debugAsteroidSpawningEnabled = false;
+          this.debugState.asteroidSpawningEnabled = false;
         }),
         spawnAsteroid: (tier) => this.runDebugMenuAction(() => this.spawnDebugAsteroid(tier)),
         clearAsteroids: () => this.runDebugMenuAction(() => this.clearAsteroids()),
@@ -692,23 +676,23 @@ export class GameScene extends Phaser.Scene {
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
         togglePlayerInvulnerability: () => this.runDebugMenuAction(() => {
-          this.debugPlayerInvulnerable = !this.debugPlayerInvulnerable;
-          if (this.debugPlayerInvulnerable) {
+          this.debugState.playerInvulnerable = !this.debugState.playerInvulnerable;
+          if (this.debugState.playerInvulnerable) {
             this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
           } else {
             this.playerInvulnerableUntil = 0;
           }
         }),
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
-        adjustPulseDamage: (delta) => this.runDebugMenuAction(() => this.adjustDebugPulseDamageMultiplier(delta)),
-        adjustPulseFireRate: (delta) => this.runDebugMenuAction(() => this.adjustDebugPulseFireRateMultiplier(delta)),
-        resetWeaponTuning: () => this.runDebugMenuAction(() => this.resetDebugWeaponTuning()),
-        cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.cycleBlackHoleRingDebugColorMode()),
+        adjustPulseDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseDamageMultiplier(delta)),
+        adjustPulseFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseFireRateMultiplier(delta)),
+        resetWeaponTuning: () => this.runDebugMenuAction(() => this.debugState.resetWeaponTuning()),
+        cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.debugState.cycleBlackHoleRingDebugColorMode()),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
-          this.debugShowBlackHoleRadii = !this.debugShowBlackHoleRadii;
+          this.debugState.showBlackHoleRadii = !this.debugState.showBlackHoleRadii;
         }),
         toggleCollisionDebug: () => this.runDebugMenuAction(() => {
-          this.isCollisionDebugEnabled = !this.isCollisionDebugEnabled;
+          this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
         })
       }
     });
@@ -729,19 +713,10 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu.update(this.getDebugMenuValues());
   }
 
-  private getDebugMenuValues(): DebugMenuValues {
+  private getDebugMenuValues() {
     const time = this.time.now;
 
-    return {
-      enemySpawningEnabled: this.debugEnemySpawningEnabled,
-      asteroidSpawningAvailable: false,
-      asteroidSpawningEnabled: this.debugAsteroidSpawningEnabled,
-      playerInvulnerable: this.debugPlayerInvulnerable,
-      collisionDebugEnabled: this.isCollisionDebugEnabled,
-      blackHoleRadiiVisible: this.debugShowBlackHoleRadii || this.isCollisionDebugEnabled,
-      blackHoleRingDebugColorMode: this.blackHoleRingDebugColorMode,
-      pulseDamageMultiplier: this.debugPulseDamageMultiplier,
-      pulseFireRateMultiplier: this.debugPulseFireRateMultiplier,
+    return this.debugState.createMenuValues({
       pulseCooldownSeconds: this.getPulseCooldownMs() / 1000,
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
@@ -749,10 +724,8 @@ export class GameScene extends Phaser.Scene {
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
       playerMaxHull: this.getPlayerMaxHull(),
-      spawnDirectorSummary: `Spawner ${this.debugEnemySpawningEnabled ? 'on' : 'off'} / next ${(
-        Math.max(0, this.nextEnemySpawnAt - time) / 1000
-      ).toFixed(1)}s`
-    };
+      nextEnemySpawnSeconds: Math.max(0, this.nextEnemySpawnAt - time) / 1000
+    });
   }
 
   private installTestHarness(): void {
@@ -865,7 +838,7 @@ export class GameScene extends Phaser.Scene {
 
     const query = new URLSearchParams(window.location.search);
 
-    this.isCollisionDebugEnabled = query.get('collisionDebug') === '1';
+    this.debugState.collisionDebugEnabled = query.get('collisionDebug') === '1';
 
     if (query.get('testHarness') === 'smoke') {
       this.runTestHarnessSmoke();
@@ -1061,16 +1034,11 @@ export class GameScene extends Phaser.Scene {
     this.debugMenuOpenedAt = 0;
     this.totalDebugPauseMs = 0;
     this.isMinimapVisible = true;
-    this.resetDebugWeaponTuning();
+    this.debugState.resetForRun();
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
-    this.blackHoleRingDebugColorMode = 'normal';
-    this.debugEnemySpawningEnabled = true;
-    this.debugAsteroidSpawningEnabled = false;
-    this.debugPlayerInvulnerable = false;
-    this.debugShowBlackHoleRadii = false;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
     this.previousBackgroundPlayerX = undefined;
@@ -1352,7 +1320,7 @@ export class GameScene extends Phaser.Scene {
       this.isPlayerDead ||
       this.isUpgradeOverlayOpen ||
       this.debugMenu?.isOpen() ||
-      !this.debugEnemySpawningEnabled ||
+      !this.debugState.enemySpawningEnabled ||
       time < this.nextEnemySpawnAt
     ) {
       return;
@@ -1551,8 +1519,8 @@ export class GameScene extends Phaser.Scene {
       time,
       deltaSeconds,
       this.arena,
-      this.blackHoleRingDebugColorMode,
-      this.isCollisionDebugEnabled,
+      this.debugState.blackHoleRingDebugColorMode,
+      this.debugState.collisionDebugEnabled,
       this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier(),
       this.getActiveDebugBlackHoleLensDensity(),
       this.getActiveDebugBlackHoleLensLengthMultiplier(),
@@ -1729,7 +1697,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isDebugMenuAvailable(): boolean {
-    return import.meta.env.DEV || this.isCollisionDebugEnabled;
+    return import.meta.env.DEV || this.debugState.collisionDebugEnabled;
   }
 
   private openDebugMenu(time: number): void {
@@ -1827,89 +1795,53 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDebugWeaponTuningInput(): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen) {
+    if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen) {
       return;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.blackHoleRingDebugColorKey)) {
-      this.cycleBlackHoleRingDebugColorMode();
-      return;
-    }
-
-    if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageDecreaseKey)) {
-      this.adjustDebugPulseDamageMultiplier(-DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP);
-    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageIncreaseKey)) {
-      this.adjustDebugPulseDamageMultiplier(DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP);
-    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseFireRateDecreaseKey)) {
-      this.adjustDebugPulseFireRateMultiplier(-DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP);
-    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseFireRateIncreaseKey)) {
-      this.adjustDebugPulseFireRateMultiplier(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP);
-    } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseResetKey)) {
-      this.resetDebugWeaponTuning();
-    }
-  }
-
-  private cycleBlackHoleRingDebugColorMode(): void {
-    const modes: BlackHoleRingDebugColorMode[] = ['normal', 'red', 'green', 'cyan', 'white'];
-    const currentIndex = modes.indexOf(this.blackHoleRingDebugColorMode);
-    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % modes.length;
-
-    this.blackHoleRingDebugColorMode = modes[nextIndex];
-  }
-
-  private adjustDebugPulseDamageMultiplier(delta: number): void {
-    this.debugPulseDamageMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.debugPulseDamageMultiplier + delta,
-        DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN,
-        DEBUG_PULSE_DAMAGE_MULTIPLIER_MAX
-      ).toFixed(1)
+    updateDebugWeaponHotkeys(
+      this.debugState,
+      {
+        ringColor: this.blackHoleRingDebugColorKey,
+        pulseDamageDecrease: this.debugPulseDamageDecreaseKey,
+        pulseDamageIncrease: this.debugPulseDamageIncreaseKey,
+        pulseFireRateDecrease: this.debugPulseFireRateDecreaseKey,
+        pulseFireRateIncrease: this.debugPulseFireRateIncreaseKey,
+        pulseReset: this.debugPulseResetKey
+      },
+      DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP,
+      DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP
     );
-  }
-
-  private adjustDebugPulseFireRateMultiplier(delta: number): void {
-    this.debugPulseFireRateMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.debugPulseFireRateMultiplier + delta,
-        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN,
-        DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX
-      ).toFixed(1)
-    );
-  }
-
-  private resetDebugWeaponTuning(): void {
-    this.debugPulseDamageMultiplier = 1;
-    this.debugPulseFireRateMultiplier = 1;
   }
 
   private getActiveDebugPulseDamageMultiplier(): number {
-    return this.isCollisionDebugEnabled ? this.debugPulseDamageMultiplier : 1;
+    return this.debugState.collisionDebugEnabled ? this.debugState.pulseDamageMultiplier : 1;
   }
 
   private getActiveDebugPulseFireRateMultiplier(): number {
-    return this.isCollisionDebugEnabled ? this.debugPulseFireRateMultiplier : 1;
+    return this.debugState.collisionDebugEnabled ? this.debugState.pulseFireRateMultiplier : 1;
   }
 
   private getActiveDebugBlackHoleLensOrbitSpeedMultiplier(): number {
-    return this.isCollisionDebugEnabled
+    return this.debugState.collisionDebugEnabled
       ? this.debugBlackHoleLensOrbitSpeedMultiplier
       : DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   }
 
   private getActiveDebugBlackHoleLensDensity(): number {
-    return this.isCollisionDebugEnabled
+    return this.debugState.collisionDebugEnabled
       ? this.debugBlackHoleLensDensity
       : BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   }
 
   private getActiveDebugBlackHoleLensLengthMultiplier(): number {
-    return this.isCollisionDebugEnabled
+    return this.debugState.collisionDebugEnabled
       ? this.debugBlackHoleLensLengthMultiplier
       : DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   }
 
   private getActiveDebugBlackHoleProjectionLensLayerState(): boolean {
-    return this.isCollisionDebugEnabled ? this.areDebugBlackHoleProjectionLensLayersEnabled : true;
+    return this.debugState.collisionDebugEnabled ? this.areDebugBlackHoleProjectionLensLayersEnabled : true;
   }
 
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
@@ -2115,7 +2047,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensOrbitSliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
+    if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -2144,7 +2076,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const isVisible =
-      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
+      this.debugState.collisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330);
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -2221,7 +2153,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensDensitySliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
+    if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -2250,7 +2182,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const isVisible =
-      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
+      this.debugState.collisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP;
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -2325,7 +2257,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensLengthSliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
+    if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -2354,7 +2286,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const isVisible =
-      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
+      this.debugState.collisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 2;
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -2422,7 +2354,7 @@ export class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     this.blackHoleProjectionLensToggleContainer.on('pointerdown', () => {
-      if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
+      if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
         return;
       }
 
@@ -2442,7 +2374,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const isVisible =
-      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
+      this.debugState.collisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 3;
     const boxX = -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2 + 12;
@@ -2897,7 +2829,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damagePlayer(damage: number, time: number, impactX = this.player.x, impactY = this.player.y): void {
-    if (this.debugPlayerInvulnerable) {
+    if (this.debugState.playerInvulnerable) {
       this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
       return;
     }
@@ -3007,7 +2939,7 @@ export class GameScene extends Phaser.Scene {
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
 
-    if (this.debugPlayerInvulnerable) {
+    if (this.debugState.playerInvulnerable) {
       this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
     } else {
       this.playerInvulnerableUntil = 0;
@@ -4099,7 +4031,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateCollisionDebugOverlay(): void {
     if (Phaser.Input.Keyboard.JustDown(this.collisionDebugKey)) {
-      this.isCollisionDebugEnabled = !this.isCollisionDebugEnabled;
+      this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
     }
 
     if (!this.collisionDebugGraphics) {
@@ -4107,14 +4039,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.collisionDebugGraphics.clear();
-    const shouldShowBlackHoleRadii = this.debugShowBlackHoleRadii && Boolean(this.blackHole);
-    this.collisionDebugGraphics.setVisible(this.isCollisionDebugEnabled || shouldShowBlackHoleRadii);
+    const shouldShowBlackHoleRadii = this.debugState.showBlackHoleRadii && Boolean(this.blackHole);
+    this.collisionDebugGraphics.setVisible(this.debugState.collisionDebugEnabled || shouldShowBlackHoleRadii);
 
-    if (!this.isCollisionDebugEnabled && !shouldShowBlackHoleRadii) {
+    if (!this.debugState.collisionDebugEnabled && !shouldShowBlackHoleRadii) {
       return;
     }
 
-    if (this.isCollisionDebugEnabled) {
+    if (this.debugState.collisionDebugEnabled) {
       this.drawDebugArenaGrid();
       this.drawPlayerCollisionDebug();
       this.drawEnemyCollisionDebug();
@@ -4123,7 +4055,7 @@ export class GameScene extends Phaser.Scene {
 
     this.drawBlackHoleCollisionDebug();
 
-    if (this.isCollisionDebugEnabled) {
+    if (this.debugState.collisionDebugEnabled) {
       this.drawProjectileCollisionDebug();
     }
   }
@@ -4458,7 +4390,7 @@ export class GameScene extends Phaser.Scene {
 
     const status = this.isPlayerDead
       ? 'CRITICAL'
-      : this.debugPlayerInvulnerable
+      : this.debugState.playerInvulnerable
         ? 'DEBUG INVULN'
         : this.playerInvulnerableUntil > time
           ? 'HIT'
@@ -4542,15 +4474,15 @@ export class GameScene extends Phaser.Scene {
     const fps = Math.round(this.game.loop.actualFps);
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
-    const spawnDirectorLine = this.isCollisionDebugEnabled
+    const spawnDirectorLine = this.debugState.collisionDebugEnabled
       ? `Spawn director: step ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n`
       : '';
-    const debugWeaponLine = this.isCollisionDebugEnabled
-      ? `Debug weapon: dmg x${this.debugPulseDamageMultiplier.toFixed(1)} / fire x${this.debugPulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
+    const debugWeaponLine = this.debugState.collisionDebugEnabled
+      ? `Debug weapon: dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
       : '';
-    const blackHoleDebugLine = this.isCollisionDebugEnabled
-      ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n` +
+    const blackHoleDebugLine = this.debugState.collisionDebugEnabled
+      ? `Black hole rings: ${this.debugState.blackHoleRingDebugColorMode}  B cycle\n` +
         `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity} / length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)} / projection ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
       : '';
 
@@ -4567,8 +4499,8 @@ export class GameScene extends Phaser.Scene {
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
-        `Debug menu: F3 ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / enemy spawning ${this.debugEnemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugPlayerInvulnerable ? 'on' : 'off'}\n` +
-        `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
+        `Debug menu: F3 ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
+        `Collision debug: ${this.debugState.collisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
@@ -4579,3 +4511,4 @@ export class GameScene extends Phaser.Scene {
     this.rebuildWorld();
   }
 }
+
