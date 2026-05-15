@@ -11,8 +11,6 @@ const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
 const BLACK_HOLE_HORIZON_RIM_WIDTH = 4;
-const BLACK_HOLE_LENS_FIELD_OFFSET_X = -10;
-const BLACK_HOLE_LENS_FIELD_OFFSET_Y = 4;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
@@ -121,7 +119,6 @@ interface BlackHoleLensingArc {
   pulseAmount: number;
   squash: number;
   brokenness: number;
-  foreground: boolean;
 }
 
 interface BlackHoleRingPlane {
@@ -554,7 +551,7 @@ export class BlackHoleSystem {
   private createLensTextureImages(isMirror: boolean): Phaser.GameObjects.Image[] {
     return BLACK_HOLE_LENS_TEXTURE_LAYERS.map((layer) =>
       this.scene.add
-        .image(BLACK_HOLE_LENS_FIELD_OFFSET_X, BLACK_HOLE_LENS_FIELD_OFFSET_Y, layer.key)
+        .image(0, 0, layer.key)
         .setOrigin(0.5)
         .setDisplaySize(BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE, BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE)
         .setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha)
@@ -630,8 +627,7 @@ export class BlackHoleSystem {
       pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       pulseAmount: Phaser.Math.FloatBetween(0.06, 0.18),
       squash: Phaser.Math.FloatBetween(layer.squash[0], layer.squash[1]),
-      brokenness: Phaser.Math.FloatBetween(0.2, 0.44),
-      foreground: layerIndex === 1 && index % 7 === 0
+      brokenness: Phaser.Math.FloatBetween(0.2, 0.44)
     };
   }
 
@@ -728,19 +724,19 @@ export class BlackHoleSystem {
   }
 
   private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
-    const mirrorAlpha = isMirror ? 0.62 : 1;
+    const mirrorAlpha = isMirror ? 0.5 : 1;
     const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
-    const glowAlpha = (0.22 + pulse * 0.08) * mirrorAlpha;
+    const glowAlpha = (0.12 + pulse * 0.04) * mirrorAlpha;
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
-    graphics.lineStyle(12, 0x9fd8ff, glowAlpha * 0.36);
+    graphics.lineStyle(11, 0x9fd8ff, glowAlpha * 0.26);
     graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(7, 0xf2fbff, glowAlpha);
+    graphics.lineStyle(6, 0xc8f7ff, glowAlpha);
     graphics.strokeCircle(0, 0, rimRadius + 1);
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.72 : 0.96));
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xc8f7ff, (isMirror ? 0.42 : 0.62));
     graphics.strokeCircle(0, 0, rimRadius);
-    graphics.lineStyle(1, 0x42f5d7, (isMirror ? 0.18 : 0.34));
+    graphics.lineStyle(1, 0x42f5d7, (isMirror ? 0.1 : 0.2));
     graphics.strokeCircle(0, 0, rimRadius + 6);
   }
 
@@ -754,10 +750,6 @@ export class BlackHoleSystem {
 
     for (let i = 0; i < this.activeLensingArcCount; i += 1) {
       const arc = this.lensingArcs[i];
-
-      if (arc.foreground !== foreground) {
-        continue;
-      }
 
       const inwardProgress = Phaser.Math.Clamp(
         (arc.outerRadius - arc.radius) / Math.max(1, arc.outerRadius - arc.resetRadius),
@@ -775,12 +767,14 @@ export class BlackHoleSystem {
       const firstLength = arcLength * (0.52 - arc.brokenness * 0.22);
       const secondLength = arcLength * (0.28 + arc.brokenness * 0.18);
       const gap = arcLength * (0.18 + arc.brokenness * 0.22);
+      const firstStartAngle = driftedAngle - arcLength * 0.5;
+      const secondStartAngle = firstStartAngle + firstLength + gap;
 
       arc.alpha = alpha;
       arc.arcLength = arcLength;
 
-      this.drawLensingArcSegment(graphics, arc, driftedAngle - arcLength * 0.5, firstLength, radius, alpha);
-      this.drawLensingArcSegment(graphics, arc, driftedAngle - arcLength * 0.5 + firstLength + gap, secondLength, radius, alpha * 0.72);
+      this.drawLensingArcSegment(graphics, arc, firstStartAngle, firstLength, radius, alpha, foreground);
+      this.drawLensingArcSegment(graphics, arc, secondStartAngle, secondLength, radius, alpha * 0.72, foreground);
     }
   }
 
@@ -790,7 +784,8 @@ export class BlackHoleSystem {
     startAngle: number,
     arcLength: number,
     radius: number,
-    alpha: number
+    alpha: number,
+    foreground: boolean
   ): void {
     const segments = 8;
     let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
@@ -800,16 +795,21 @@ export class BlackHoleSystem {
     for (let i = 1; i <= segments; i += 1) {
       const angle = startAngle + (arcLength * i) / segments;
       const point = this.getLensingArcPoint(angle, radius, arc.squash);
+      const midY = (previous.y + point.y) * 0.5;
+      const isFrontSegment = midY >= -this.coreRadius * 0.08;
 
-      graphics.lineBetween(previous.x, previous.y, point.x, point.y);
+      if (isFrontSegment === foreground) {
+        graphics.lineBetween(previous.x, previous.y, point.x, point.y);
+      }
+
       previous = point;
     }
   }
 
   private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
     return {
-      x: BLACK_HOLE_LENS_FIELD_OFFSET_X + Math.cos(angle) * radius,
-      y: BLACK_HOLE_LENS_FIELD_OFFSET_Y + Math.sin(angle) * radius * squash
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * squash
     };
   }
 
