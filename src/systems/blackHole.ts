@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_HORIZON_RIM_WIDTH = 3;
+const BLACK_HOLE_HORIZON_RIM_WIDTH = 5;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 2600;
@@ -836,6 +836,10 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
+    graphics.lineStyle(38, 0xffffff, glowAlpha * 0.07);
+    graphics.strokeCircle(0, 0, rimRadius + 16);
+    graphics.lineStyle(24, 0xffffff, glowAlpha * 0.16);
+    graphics.strokeCircle(0, 0, rimRadius + 8);
     graphics.lineStyle(30, 0xffffff, glowAlpha * 0.1);
     graphics.strokeCircle(0, 0, rimRadius + 10);
     graphics.lineStyle(21, 0xffffff, glowAlpha * 0.18);
@@ -925,7 +929,7 @@ export class BlackHoleSystem {
       if (isFrontSegment === foreground) {
         const segmentFade = Phaser.Math.Linear(0.76, 1, 1 - Math.abs(segmentOffset) * 2);
         const segmentAlpha = alpha * segmentFade;
-        const innerThicknessBoost = Phaser.Math.Linear(0, 0.38, Math.pow(densityCurve, 2.2));
+        const innerThicknessBoost = Phaser.Math.Linear(0, 0.78, Math.pow(densityCurve, 1.35));
         const thicknessScale = Phaser.Math.Linear(0.68, 0.82, densityCurve) + innerThicknessBoost;
         graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, segmentAlpha);
         graphics.lineBetween(previous.x, previous.y, point.x, point.y);
