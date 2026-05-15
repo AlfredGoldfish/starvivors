@@ -72,6 +72,11 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
+const BLACK_HOLE_WARNING_STAR_COUNT = 42;
+const BLACK_HOLE_WARNING_STAR_MIN_RADIUS = 176;
+const BLACK_HOLE_WARNING_STAR_MAX_RADIUS = 256;
+const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN = 0.12;
+const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX = 0.34;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -417,6 +422,16 @@ interface BlackHoleHazard {
   coreRadius: number;
   warningRadius: number;
   visualPhase: number;
+  warningStars: BlackHoleWarningStar[];
+}
+
+interface BlackHoleWarningStar {
+  angle: number;
+  radius: number;
+  radiusPulse: number;
+  size: number;
+  speed: number;
+  alpha: number;
 }
 
 interface AsteroidBreakupProfile {
@@ -1338,7 +1353,8 @@ export class GameScene extends Phaser.Scene {
       velocity,
       coreRadius: BLACK_HOLE_CORE_RADIUS,
       warningRadius: BLACK_HOLE_WARNING_RADIUS,
-      visualPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+      visualPhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
+      warningStars: this.createBlackHoleWarningStars()
     };
 
     body.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
@@ -1391,7 +1407,6 @@ export class GameScene extends Phaser.Scene {
       this.arena.height
     );
     this.blackHole.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
-    this.blackHole.body.rotation = this.blackHole.visualPhase;
     this.drawBlackHoleVisual(this.blackHole.bodyGraphics, this.blackHole, false, time);
     this.drawBlackHoleVisual(this.blackHole.wrapMirrorGraphics, this.blackHole, true, time);
     this.updateToroidalRenderMirror(
@@ -1413,6 +1428,22 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private createBlackHoleWarningStars(): BlackHoleWarningStar[] {
+    return Array.from({ length: BLACK_HOLE_WARNING_STAR_COUNT }, (_, index) => {
+      const ringShare = index / BLACK_HOLE_WARNING_STAR_COUNT;
+      const bandOffset = (index % 4) / 3;
+
+      return {
+        angle: ringShare * Math.PI * 2 + Phaser.Math.FloatBetween(-0.18, 0.18),
+        radius: Phaser.Math.Linear(BLACK_HOLE_WARNING_STAR_MIN_RADIUS, BLACK_HOLE_WARNING_STAR_MAX_RADIUS, bandOffset),
+        radiusPulse: Phaser.Math.FloatBetween(4, 18),
+        size: Phaser.Math.FloatBetween(1.1, 2.7),
+        speed: Phaser.Math.FloatBetween(BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN, BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX),
+        alpha: Phaser.Math.FloatBetween(0.58, 0.95)
+      };
+    });
+  }
+
   private drawBlackHoleVisual(
     graphics: Phaser.GameObjects.Graphics,
     blackHole: BlackHoleHazard,
@@ -1420,25 +1451,69 @@ export class GameScene extends Phaser.Scene {
     time = this.time.now
   ): void {
     const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + blackHole.visualPhase) * 0.5;
-    const warningAlpha = isMirror ? 0.09 : 0.13;
-    const ringAlpha = isMirror ? 0.46 : 0.62;
-    const coreAlpha = isMirror ? 0.78 : 0.96;
+    const mirrorAlpha = isMirror ? 0.62 : 1;
+    const bodyAlpha = isMirror ? 0.56 : 0.82;
+    const ringAlpha = isMirror ? 0.52 : 0.86;
+    const coreAlpha = isMirror ? 0.84 : 1;
 
     graphics.clear();
-    graphics.fillStyle(0x1d0f33, warningAlpha);
+
+    graphics.fillStyle(0x000006, isMirror ? 0.11 : 0.18);
     graphics.fillCircle(0, 0, blackHole.warningRadius);
-    graphics.lineStyle(2, 0xb48cff, 0.18 + pulse * 0.18);
-    graphics.strokeCircle(0, 0, blackHole.warningRadius);
-    graphics.lineStyle(3, 0x42f5d7, ringAlpha);
-    graphics.strokeCircle(0, 0, blackHole.coreRadius + 26 + pulse * 8);
-    graphics.lineStyle(2, 0xffc857, 0.34 + pulse * 0.18);
-    graphics.strokeEllipse(0, 0, (blackHole.coreRadius + 64) * 2, (blackHole.coreRadius + 20) * 2);
-    graphics.lineStyle(1, 0x9fd8ff, 0.18);
-    graphics.strokeCircle(0, 0, blackHole.coreRadius + 88);
+    graphics.fillStyle(0x000003, bodyAlpha);
+    graphics.fillCircle(0, 0, blackHole.coreRadius + 36 + pulse * 6);
+    graphics.fillStyle(0x030307, isMirror ? 0.48 : 0.74);
+    graphics.fillCircle(0, 0, blackHole.coreRadius + 16);
+
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 116, blackHole.coreRadius + 34, blackHole.visualPhase * 0.62, ringAlpha * 0.72, 3);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 138, blackHole.coreRadius + 48, -blackHole.visualPhase * 0.44 + Math.PI * 0.34, ringAlpha * 0.58, 2);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 104, blackHole.coreRadius + 72, blackHole.visualPhase * 0.28 + Math.PI * 0.68, ringAlpha * 0.52, 2);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 156, blackHole.coreRadius + 26, -blackHole.visualPhase * 0.2 + Math.PI * 0.92, ringAlpha * 0.44, 1);
+
+    for (const star of blackHole.warningStars) {
+      const starAngle = star.angle + time * 0.001 * star.speed + blackHole.visualPhase * 0.12;
+      const starRadius = star.radius + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.82 + star.angle) * star.radiusPulse;
+      const x = Math.cos(starAngle) * starRadius;
+      const y = Math.sin(starAngle) * starRadius * 0.74;
+      const alpha = star.alpha * mirrorAlpha * (0.68 + pulse * 0.32);
+
+      graphics.fillStyle(0xf2fbff, alpha);
+      graphics.fillCircle(x, y, star.size);
+      graphics.fillStyle(0xffffff, alpha * 0.42);
+      graphics.fillCircle(x + Math.cos(starAngle + Math.PI * 0.5) * 2.2, y + Math.sin(starAngle + Math.PI * 0.5) * 1.4, star.size * 0.45);
+    }
+
     graphics.fillStyle(0x010107, coreAlpha);
     graphics.fillCircle(0, 0, blackHole.coreRadius);
     graphics.fillStyle(0x000000, 1);
     graphics.fillCircle(0, 0, blackHole.coreRadius * 0.72);
+  }
+
+  private drawBlackHoleOrbitRing(
+    graphics: Phaser.GameObjects.Graphics,
+    halfWidth: number,
+    halfHeight: number,
+    rotation: number,
+    alpha: number,
+    lineWidth: number
+  ): void {
+    const segments = 96;
+    let previousX = Math.cos(rotation) * halfWidth;
+    let previousY = Math.sin(rotation) * halfWidth;
+
+    graphics.lineStyle(lineWidth, 0x000000, alpha);
+
+    for (let i = 1; i <= segments; i += 1) {
+      const angle = (Math.PI * 2 * i) / segments;
+      const localX = Math.cos(angle) * halfWidth;
+      const localY = Math.sin(angle) * halfHeight;
+      const x = localX * Math.cos(rotation) - localY * Math.sin(rotation);
+      const y = localX * Math.sin(rotation) + localY * Math.cos(rotation);
+
+      graphics.lineBetween(previousX, previousY, x, y);
+      previousX = x;
+      previousY = y;
+    }
   }
 
   private createAsteroidInstance(
@@ -3674,7 +3749,7 @@ export class GameScene extends Phaser.Scene {
 
       this.minimapGraphics.fillStyle(0x05030a, 0.96);
       this.minimapGraphics.fillCircle(position.x, position.y, 5.6);
-      this.minimapGraphics.lineStyle(2, 0xb48cff, 0.9);
+      this.minimapGraphics.lineStyle(2, 0xf2fbff, 0.82);
       this.minimapGraphics.strokeCircle(position.x, position.y, 7.2);
     }
 
