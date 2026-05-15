@@ -3,8 +3,14 @@ import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
 import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
 import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
 import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
+import blackHoleEventHorizonLines1Url from '../../assets/blackhole/blackhole_eventhorizon1.png';
+import blackHoleEventHorizonLines2Url from '../../assets/blackhole/blackhole_eventhorizon2.png';
 import blackHoleEventHorizonLinesUrl from '../../assets/blackhole/blackhole_eventhorizon3.png';
+import blackHoleFullLines1Url from '../../assets/blackhole/blackwhole_full1.png';
+import blackHoleFullLines2Url from '../../assets/blackhole/blackhole_full2.png';
 import blackHoleFullLinesUrl from '../../assets/blackhole/blackhole_full3.png';
+import blackHoleFullLines4Url from '../../assets/blackhole/blackhole_full4.png';
+import blackHoleFullLines5Url from '../../assets/blackhole/blackhole_full5.png';
 import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
 import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
 import enemyTankUrl from '../../assets/ships/enemy_tank.png';
@@ -18,7 +24,9 @@ import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
   BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY,
+  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS,
   BLACK_HOLE_FULL_TEXTURE_KEY,
+  BLACK_HOLE_FULL_TEXTURE_KEYS,
   BlackHoleSystem,
   type BlackHoleCapturedProjectileState,
   type BlackHoleWhirlpoolTuning
@@ -37,6 +45,18 @@ const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-2', url: asteroidVariant2Url },
   { key: 'asteroid-variant-3', url: asteroidVariant3Url },
   { key: 'asteroid-variant-4', url: asteroidVariant4Url }
+] as const;
+const BLACK_HOLE_FULL_TEXTURES = [
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], url: blackHoleFullLines1Url },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[1], url: blackHoleFullLines2Url },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEY, url: blackHoleFullLinesUrl },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[3], url: blackHoleFullLines4Url },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[4], url: blackHoleFullLines5Url }
+] as const;
+const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
+  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], url: blackHoleEventHorizonLines1Url },
+  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1], url: blackHoleEventHorizonLines2Url },
+  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, url: blackHoleEventHorizonLinesUrl }
 ] as const;
 const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
 const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
@@ -623,8 +643,13 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
     this.load.image(TANK_ENEMY_TEXTURE_KEY, enemyTankUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
-    this.load.image(BLACK_HOLE_FULL_TEXTURE_KEY, blackHoleFullLinesUrl);
-    this.load.image(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, blackHoleEventHorizonLinesUrl);
+    for (const blackHoleTexture of BLACK_HOLE_FULL_TEXTURES) {
+      this.load.image(blackHoleTexture.key, blackHoleTexture.url);
+    }
+
+    for (const blackHoleTexture of BLACK_HOLE_EVENT_HORIZON_TEXTURES) {
+      this.load.image(blackHoleTexture.key, blackHoleTexture.url);
+    }
   }
 
   create(): void {

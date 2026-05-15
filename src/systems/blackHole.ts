@@ -15,10 +15,18 @@ const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_FULL_TEXTURE_KEY = 'black-hole-full-lines';
 export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY = 'black-hole-event-horizon-lines';
-const BLACK_HOLE_FULL_TEXTURE_ROTATION_SPEED = 0.055;
-const BLACK_HOLE_EVENT_HORIZON_TEXTURE_ROTATION_SPEED = 0.16;
-const BLACK_HOLE_FULL_TEXTURE_ALPHA = 0.92;
-const BLACK_HOLE_EVENT_HORIZON_TEXTURE_ALPHA = 0.95;
+export const BLACK_HOLE_FULL_TEXTURE_KEYS = [
+  'black-hole-full-lines-1',
+  'black-hole-full-lines-2',
+  BLACK_HOLE_FULL_TEXTURE_KEY,
+  'black-hole-full-lines-4',
+  'black-hole-full-lines-5'
+] as const;
+export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS = [
+  'black-hole-event-horizon-lines-1',
+  'black-hole-event-horizon-lines-2',
+  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY
+] as const;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 450;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 700;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
@@ -125,7 +133,69 @@ interface BlackHoleLensTextureLayer {
   scalePulseSpeed: number;
 }
 
+interface BlackHoleWhirlpoolImageLayer {
+  key: string;
+  rotationSpeed: number;
+  alpha: number;
+  initialRotation: number;
+  sizeMultiplier: number;
+}
+
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
+const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: 0.041, alpha: 0.34, initialRotation: 0, sizeMultiplier: 0.96 },
+  {
+    key: BLACK_HOLE_FULL_TEXTURE_KEYS[1],
+    rotationSpeed: 0.049,
+    alpha: 0.32,
+    initialRotation: Math.PI * 0.18,
+    sizeMultiplier: 1.03
+  },
+  {
+    key: BLACK_HOLE_FULL_TEXTURE_KEYS[2],
+    rotationSpeed: 0.055,
+    alpha: 0.3,
+    initialRotation: Math.PI * 0.37,
+    sizeMultiplier: 1
+  },
+  {
+    key: BLACK_HOLE_FULL_TEXTURE_KEYS[3],
+    rotationSpeed: 0.064,
+    alpha: 0.28,
+    initialRotation: Math.PI * 0.53,
+    sizeMultiplier: 1.07
+  },
+  {
+    key: BLACK_HOLE_FULL_TEXTURE_KEYS[4],
+    rotationSpeed: 0.073,
+    alpha: 0.26,
+    initialRotation: Math.PI * 0.71,
+    sizeMultiplier: 0.91
+  }
+];
+const BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
+  {
+    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0],
+    rotationSpeed: 0.12,
+    alpha: 0.44,
+    initialRotation: Math.PI * 0.08,
+    sizeMultiplier: 0.94
+  },
+  {
+    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1],
+    rotationSpeed: 0.155,
+    alpha: 0.4,
+    initialRotation: Math.PI * 0.34,
+    sizeMultiplier: 1.04
+  },
+  {
+    key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2],
+    rotationSpeed: 0.19,
+    alpha: 0.36,
+    initialRotation: Math.PI * 0.62,
+    sizeMultiplier: 0.99
+  }
+];
 
 export interface BlackHoleState {
   body: Phaser.GameObjects.Container;
@@ -162,10 +232,10 @@ export class BlackHoleSystem {
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
-  private readonly fullLensImage: Phaser.GameObjects.Image;
-  private readonly eventHorizonLensImage: Phaser.GameObjects.Image;
-  private readonly wrapMirrorFullLensImage: Phaser.GameObjects.Image;
-  private readonly wrapMirrorEventHorizonLensImage: Phaser.GameObjects.Image;
+  private readonly fullLensImages: Phaser.GameObjects.Image[];
+  private readonly eventHorizonLensImages: Phaser.GameObjects.Image[];
+  private readonly wrapMirrorFullLensImages: Phaser.GameObjects.Image[];
+  private readonly wrapMirrorEventHorizonLensImages: Phaser.GameObjects.Image[];
   private readonly lensTextureImages: Phaser.GameObjects.Image[];
   private readonly wrapMirrorLensTextureImages: Phaser.GameObjects.Image[];
   private readonly velocity: Phaser.Math.Vector2;
@@ -182,25 +252,25 @@ export class BlackHoleSystem {
     this.ensureLensTextureLayers();
     this.lensTextureImages = this.createLensTextureImages(false);
     this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
-    this.fullLensImage = this.createWhirlpoolImage(BLACK_HOLE_FULL_TEXTURE_KEY, false, false);
-    this.eventHorizonLensImage = this.createWhirlpoolImage(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, true, false);
-    this.wrapMirrorFullLensImage = this.createWhirlpoolImage(BLACK_HOLE_FULL_TEXTURE_KEY, false, true);
-    this.wrapMirrorEventHorizonLensImage = this.createWhirlpoolImage(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, true, true);
+    this.fullLensImages = this.createWhirlpoolImages(BLACK_HOLE_FULL_IMAGE_LAYERS, false);
+    this.eventHorizonLensImages = this.createWhirlpoolImages(BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS, false);
+    this.wrapMirrorFullLensImages = this.createWhirlpoolImages(BLACK_HOLE_FULL_IMAGE_LAYERS, true);
+    this.wrapMirrorEventHorizonLensImages = this.createWhirlpoolImages(BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS, true);
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
     this.body = scene.add
       .container(position.x, position.y, [
         ...this.lensTextureImages,
-        this.fullLensImage,
-        this.eventHorizonLensImage,
+        ...this.fullLensImages,
+        ...this.eventHorizonLensImages,
         this.bodyGraphics
       ])
       .setDepth(6);
     this.wrapMirrorBody = scene.add
       .container(position.x, position.y, [
         ...this.wrapMirrorLensTextureImages,
-        this.wrapMirrorFullLensImage,
-        this.wrapMirrorEventHorizonLensImage,
+        ...this.wrapMirrorFullLensImages,
+        ...this.wrapMirrorEventHorizonLensImages,
         this.wrapMirrorGraphics
       ])
       .setDepth(6);
@@ -580,34 +650,68 @@ export class BlackHoleSystem {
     );
   }
 
-  private createWhirlpoolImage(textureKey: string, isEventHorizonLayer: boolean, isMirror: boolean): Phaser.GameObjects.Image {
-    const image = this.scene.add.image(0, 0, textureKey).setOrigin(0.5);
-    const alpha = isEventHorizonLayer ? BLACK_HOLE_EVENT_HORIZON_TEXTURE_ALPHA : BLACK_HOLE_FULL_TEXTURE_ALPHA;
-
-    image.setAlpha(alpha * (isMirror ? 0.56 : 1));
-    image.setBlendMode(Phaser.BlendModes.ADD);
-
-    return image;
+  private createWhirlpoolImages(
+    layers: BlackHoleWhirlpoolImageLayer[],
+    isMirror: boolean
+  ): Phaser.GameObjects.Image[] {
+    return layers.map((layer) =>
+      this.scene.add
+        .image(0, 0, layer.key)
+        .setOrigin(0.5)
+        .setRotation(layer.initialRotation)
+        .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
+        .setBlendMode(Phaser.BlendModes.ADD)
+    );
   }
 
   private updateWhirlpoolImages(deltaSeconds: number, lensOrbitSpeedMultiplier: number): void {
     const fullDisplaySize = this.influenceRadius * 2;
     const eventHorizonDisplaySize = (this.coreRadius + 230) * 2;
-    const fullRotation = BLACK_HOLE_FULL_TEXTURE_ROTATION_SPEED * lensOrbitSpeedMultiplier * deltaSeconds;
-    const eventHorizonRotation = BLACK_HOLE_EVENT_HORIZON_TEXTURE_ROTATION_SPEED * lensOrbitSpeedMultiplier * deltaSeconds;
 
-    this.fullLensImage
-      .setDisplaySize(fullDisplaySize, fullDisplaySize)
-      .setRotation(this.fullLensImage.rotation + fullRotation);
-    this.wrapMirrorFullLensImage
-      .setDisplaySize(fullDisplaySize, fullDisplaySize)
-      .setRotation(this.wrapMirrorFullLensImage.rotation + fullRotation);
-    this.eventHorizonLensImage
-      .setDisplaySize(eventHorizonDisplaySize, eventHorizonDisplaySize)
-      .setRotation(this.eventHorizonLensImage.rotation + eventHorizonRotation);
-    this.wrapMirrorEventHorizonLensImage
-      .setDisplaySize(eventHorizonDisplaySize, eventHorizonDisplaySize)
-      .setRotation(this.wrapMirrorEventHorizonLensImage.rotation + eventHorizonRotation);
+    this.updateWhirlpoolImageGroup(
+      this.fullLensImages,
+      BLACK_HOLE_FULL_IMAGE_LAYERS,
+      fullDisplaySize,
+      deltaSeconds,
+      lensOrbitSpeedMultiplier
+    );
+    this.updateWhirlpoolImageGroup(
+      this.wrapMirrorFullLensImages,
+      BLACK_HOLE_FULL_IMAGE_LAYERS,
+      fullDisplaySize,
+      deltaSeconds,
+      lensOrbitSpeedMultiplier
+    );
+    this.updateWhirlpoolImageGroup(
+      this.eventHorizonLensImages,
+      BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
+      eventHorizonDisplaySize,
+      deltaSeconds,
+      lensOrbitSpeedMultiplier
+    );
+    this.updateWhirlpoolImageGroup(
+      this.wrapMirrorEventHorizonLensImages,
+      BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
+      eventHorizonDisplaySize,
+      deltaSeconds,
+      lensOrbitSpeedMultiplier
+    );
+  }
+
+  private updateWhirlpoolImageGroup(
+    images: Phaser.GameObjects.Image[],
+    layers: BlackHoleWhirlpoolImageLayer[],
+    displaySize: number,
+    deltaSeconds: number,
+    lensOrbitSpeedMultiplier: number
+  ): void {
+    for (let i = 0; i < images.length; i += 1) {
+      const image = images[i];
+      const rotation = layers[i].rotationSpeed * lensOrbitSpeedMultiplier * deltaSeconds;
+      const layerDisplaySize = displaySize * layers[i].sizeMultiplier;
+
+      image.setDisplaySize(layerDisplaySize, layerDisplaySize).setRotation(image.rotation + rotation);
+    }
   }
 
   private updateLensTextureImages(
