@@ -13,8 +13,8 @@ const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_
 const BLACK_HOLE_HORIZON_RIM_WIDTH = 2;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 1350;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1700;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 2600;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 3200;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
 export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
@@ -683,10 +683,10 @@ export class BlackHoleSystem {
       : Phaser.Math.Linear(
           BLACK_HOLE_LENS_ARC_INNER_RADIUS,
           BLACK_HOLE_LENS_ARC_OUTER_RADIUS,
-          Math.pow(Phaser.Math.FloatBetween(0, 1), 1.9)
+          Math.pow(Phaser.Math.FloatBetween(0, 1), 2.15)
         );
     const proximity = 1 - radius;
-    const densityCurve = Math.pow(proximity, 1.45);
+    const densityCurve = Math.pow(proximity, 1.36);
     const baseArcLength = Phaser.Math.Linear(
       BLACK_HOLE_LENS_ARC_LENGTH_MIN,
       isDenseBandArc ? BLACK_HOLE_LENS_ARC_LENGTH_MAX * 1.12 : BLACK_HOLE_LENS_ARC_LENGTH_MAX,
@@ -729,7 +729,7 @@ export class BlackHoleSystem {
         BLACK_HOLE_LENS_ARC_SQUASH_MIN,
         BLACK_HOLE_LENS_ARC_SQUASH_MAX,
         Phaser.Math.FloatBetween(0, 1)
-      ),
+      )
     };
   }
 
@@ -870,7 +870,18 @@ export class BlackHoleSystem {
       const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.24 + arc.pulsePhase) * arc.pulseAmount;
       const proximityAlpha = Phaser.Math.Linear(0.42, 1, Math.pow(proximity, 0.75));
-      const alpha = arc.baseAlpha * 1.35 * proximityAlpha * ageFade * fadeIn * edgeFade * mirrorAlpha * brightness * (foreground ? 0.9 : 1);
+      const innerBlendAlpha = Phaser.Math.Linear(1, 1.22, Math.pow(proximity, 3.2));
+      const alpha =
+        arc.baseAlpha *
+        1.22 *
+        proximityAlpha *
+        innerBlendAlpha *
+        ageFade *
+        fadeIn *
+        edgeFade *
+        mirrorAlpha *
+        brightness *
+        (foreground ? 0.9 : 1);
       const radius = this.getLensingRenderRadius(
         arc.radius + (Math.sin(time * 0.00031 + arc.pulsePhase) * (0.7 + densityCurve * 1.2)) /
           BLACK_HOLE_BASE_LENS_FIELD_RADIUS
