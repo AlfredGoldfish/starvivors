@@ -59,6 +59,9 @@ export interface BlackHoleWhirlpoolResult extends BlackHoleWhirlpoolSample {
 const BLACK_HOLE_LENS_ARC_INNER_RADIUS = 0.025;
 const BLACK_HOLE_LENS_ARC_OUTER_RADIUS = 1;
 const BLACK_HOLE_LENS_ARC_RESET_RADIUS = 0.035;
+const BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT = 100;
+const BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN = 0.045;
+const BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX = 0.18;
 const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN = 0.84;
 const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX = 0.985;
 const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN = 0.004;
@@ -674,17 +677,20 @@ export class BlackHoleSystem {
 
   private createLensingArc(index: number, startAtOuter: boolean): BlackHoleLensingArc {
     const isDenseBandArc = index % 5 === 0;
+    const isInnerEdgeArc = index < BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT;
     const clusterOffset = isDenseBandArc ? Phaser.Math.FloatBetween(-0.16, 0.16) : Phaser.Math.FloatBetween(-0.32, 0.32);
     const baseAngle = isDenseBandArc
       ? Math.PI * 0.08 + clusterOffset
       : index * 2.399963229728653 + Phaser.Math.FloatBetween(-0.26, 0.26);
-    const radius = startAtOuter
-      ? Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN, BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX)
-      : Phaser.Math.Linear(
-          BLACK_HOLE_LENS_ARC_INNER_RADIUS,
-          BLACK_HOLE_LENS_ARC_OUTER_RADIUS,
-          Math.pow(Phaser.Math.FloatBetween(0, 1), 2.15)
-        );
+    const radius = isInnerEdgeArc
+      ? Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN, BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX)
+      : startAtOuter
+        ? Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN, BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX)
+        : Phaser.Math.Linear(
+            BLACK_HOLE_LENS_ARC_INNER_RADIUS,
+            BLACK_HOLE_LENS_ARC_OUTER_RADIUS,
+            Math.pow(Phaser.Math.FloatBetween(0, 1), 2.15)
+          );
     const proximity = 1 - radius;
     const densityCurve = Math.pow(proximity, 1.36);
     const baseArcLength = Phaser.Math.Linear(
