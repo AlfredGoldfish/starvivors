@@ -13,6 +13,8 @@ const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 104;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 5000;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
+const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
+const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
 const BLACK_HOLE_RING_SEGMENTS = 112;
 
 interface BlackHoleLensingLayer {
@@ -104,6 +106,70 @@ interface BlackHoleRingPlane {
   backAlpha: number;
 }
 
+interface BlackHoleLensTextureLayer {
+  key: string;
+  strokeCount: number;
+  minRadius: number;
+  maxRadius: number;
+  squash: number;
+  alpha: number;
+  mirrorAlpha: number;
+  rotationSpeed: number;
+  scalePulse: number;
+  scalePulseSpeed: number;
+}
+
+const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
+  {
+    key: 'starvivors-black-hole-lens-field-outer',
+    strokeCount: 2600,
+    minRadius: 280,
+    maxRadius: 500,
+    squash: 0.84,
+    alpha: 0.52,
+    mirrorAlpha: 0.28,
+    rotationSpeed: 0.034,
+    scalePulse: 0.012,
+    scalePulseSpeed: 0.29
+  },
+  {
+    key: 'starvivors-black-hole-lens-field-mid',
+    strokeCount: 3400,
+    minRadius: 205,
+    maxRadius: 420,
+    squash: 0.72,
+    alpha: 0.62,
+    mirrorAlpha: 0.34,
+    rotationSpeed: 0.058,
+    scalePulse: 0.016,
+    scalePulseSpeed: 0.37
+  },
+  {
+    key: 'starvivors-black-hole-lens-field-inner',
+    strokeCount: 2400,
+    minRadius: 142,
+    maxRadius: 318,
+    squash: 0.58,
+    alpha: 0.46,
+    mirrorAlpha: 0.25,
+    rotationSpeed: 0.092,
+    scalePulse: 0.018,
+    scalePulseSpeed: 0.43
+  },
+  {
+    key: 'starvivors-black-hole-lens-field-bright',
+    strokeCount: 1600,
+    minRadius: 220,
+    maxRadius: 455,
+    squash: 0.78,
+    alpha: 0.38,
+    mirrorAlpha: 0.2,
+    rotationSpeed: 0.071,
+    scalePulse: 0.01,
+    scalePulseSpeed: 0.33
+  }
+];
+
 export interface BlackHoleState {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
@@ -119,6 +185,8 @@ export class BlackHoleSystem {
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
+  private readonly lensTextureImages: Phaser.GameObjects.Image[];
+  private readonly wrapMirrorLensTextureImages: Phaser.GameObjects.Image[];
   private readonly velocity: Phaser.Math.Vector2;
   private readonly lensingArcs: BlackHoleLensingArc[];
   private readonly ringPlanes: BlackHoleRingPlane[];
@@ -128,10 +196,15 @@ export class BlackHoleSystem {
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
     const position = this.getSpawnPosition(arena, center);
 
+    this.ensureLensTextureLayers();
+    this.lensTextureImages = this.createLensTextureImages(false);
+    this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
-    this.body = scene.add.container(position.x, position.y, [this.bodyGraphics]).setDepth(6);
-    this.wrapMirrorBody = scene.add.container(position.x, position.y, [this.wrapMirrorGraphics]).setDepth(6);
+    this.body = scene.add.container(position.x, position.y, [...this.lensTextureImages, this.bodyGraphics]).setDepth(6);
+    this.wrapMirrorBody = scene.add
+      .container(position.x, position.y, [...this.wrapMirrorLensTextureImages, this.wrapMirrorGraphics])
+      .setDepth(6);
     this.velocity = new Phaser.Math.Vector2(
       Math.cos(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED,
       Math.sin(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED
@@ -165,6 +238,8 @@ export class BlackHoleSystem {
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
     this.updateLensingArcs(deltaSeconds, lensOrbitSpeedMultiplier);
+    this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier);
+    this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier);
     this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
   }
@@ -229,6 +304,103 @@ export class BlackHoleSystem {
     return new Phaser.Math.Vector2(x, y);
   }
 
+  private ensureLensTextureLayers(): void {
+    for (const layer of BLACK_HOLE_LENS_TEXTURE_LAYERS) {
+      if (this.scene.textures.exists(layer.key)) {
+        continue;
+      }
+
+      const texture = this.scene.textures.createCanvas(
+        layer.key,
+        BLACK_HOLE_LENS_TEXTURE_SIZE,
+        BLACK_HOLE_LENS_TEXTURE_SIZE
+      );
+
+      if (!texture) {
+        continue;
+      }
+
+      const context = texture.getContext();
+      this.drawLensTextureLayer(context, layer);
+      texture.refresh();
+    }
+  }
+
+  private drawLensTextureLayer(context: CanvasRenderingContext2D, layer: BlackHoleLensTextureLayer): void {
+    const center = BLACK_HOLE_LENS_TEXTURE_SIZE / 2;
+    const random = new Phaser.Math.RandomDataGenerator([layer.key]);
+
+    context.clearRect(0, 0, BLACK_HOLE_LENS_TEXTURE_SIZE, BLACK_HOLE_LENS_TEXTURE_SIZE);
+    context.lineCap = 'round';
+
+    for (let i = 0; i < layer.strokeCount; i += 1) {
+      const band = i % 7 === 0 ? 0.68 : i % 5 === 0 ? 0.44 : random.frac();
+      const radius = Phaser.Math.Linear(layer.minRadius, layer.maxRadius, Math.pow(random.frac() * 0.68 + band * 0.32, 0.86));
+      const angle = random.frac() * Math.PI * 2;
+      const length = Phaser.Math.Linear(5, i % 11 === 0 ? 34 : 22, random.frac());
+      const thickness = Phaser.Math.Linear(0.45, i % 13 === 0 ? 1.35 : 0.9, random.frac());
+      const radialProgress = Phaser.Math.Clamp(
+        (radius - layer.minRadius) / Math.max(1, layer.maxRadius - layer.minRadius),
+        0,
+        1
+      );
+      const innerFade = Phaser.Math.Clamp((radius - layer.minRadius) / 54, 0, 1);
+      const outerFade = Phaser.Math.Clamp((layer.maxRadius - radius) / 74, 0, 1);
+      const alpha = Phaser.Math.Linear(0.08, i % 17 === 0 ? 0.58 : 0.28, random.frac()) * innerFade * outerFade;
+      const color = BLACK_HOLE_LENSING_ARC_COLORS[random.integerInRange(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)];
+      const x = center + Math.cos(angle) * radius;
+      const y = center + Math.sin(angle) * radius * layer.squash;
+      const tangentX = -Math.sin(angle);
+      const tangentY = Math.cos(angle) * layer.squash;
+      const tangentLength = Math.max(0.001, Math.hypot(tangentX, tangentY));
+      const halfLength = length * (0.72 + radialProgress * 0.42) * 0.5;
+
+      context.globalAlpha = alpha;
+      context.strokeStyle = this.toRgba(color, 1);
+      context.lineWidth = thickness;
+      context.beginPath();
+      context.moveTo(x - (tangentX / tangentLength) * halfLength, y - (tangentY / tangentLength) * halfLength);
+      context.lineTo(x + (tangentX / tangentLength) * halfLength, y + (tangentY / tangentLength) * halfLength);
+      context.stroke();
+    }
+
+    context.globalAlpha = 1;
+  }
+
+  private toRgba(color: number, alpha: number): string {
+    const red = (color >> 16) & 0xff;
+    const green = (color >> 8) & 0xff;
+    const blue = color & 0xff;
+
+    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+  }
+
+  private createLensTextureImages(isMirror: boolean): Phaser.GameObjects.Image[] {
+    return BLACK_HOLE_LENS_TEXTURE_LAYERS.map((layer) =>
+      this.scene.add
+        .image(0, 0, layer.key)
+        .setOrigin(0.5)
+        .setDisplaySize(BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE, BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE)
+        .setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha)
+    );
+  }
+
+  private updateLensTextureImages(time: number, isMirror: boolean, lensOrbitSpeedMultiplier: number): void {
+    const images = isMirror ? this.wrapMirrorLensTextureImages : this.lensTextureImages;
+    const orbitMultiplier = Math.max(0, lensOrbitSpeedMultiplier);
+
+    for (let i = 0; i < images.length; i += 1) {
+      const image = images[i];
+      const layer = BLACK_HOLE_LENS_TEXTURE_LAYERS[i];
+      const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
+      const inwardPulse = 1 - ((time * 0.000025 * (i + 1)) % 0.035);
+
+      image.setRotation(time * 0.001 * layer.rotationSpeed * orbitMultiplier);
+      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * inwardPulse);
+      image.setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha);
+    }
+  }
+
   private createLensingArcs(): BlackHoleLensingArc[] {
     return Array.from({ length: BLACK_HOLE_LENSING_ARC_MAX_COUNT }, (_, index) =>
       this.createLensingArc(index % BLACK_HOLE_LENSING_LAYERS.length, index, false)
@@ -274,7 +446,7 @@ export class BlackHoleSystem {
   private updateLensingArcs(deltaSeconds: number, lensOrbitSpeedMultiplier: number): void {
     const orbitMultiplier = Math.max(0, lensOrbitSpeedMultiplier);
 
-    for (let i = 0; i < this.lensingArcs.length; i += 1) {
+    for (let i = 0; i < this.activeLensingArcCount; i += 1) {
       const arc = this.lensingArcs[i];
       arc.radius -= arc.inwardSpeed * deltaSeconds;
       arc.angle += arc.angularDriftSpeed * orbitMultiplier * deltaSeconds;
