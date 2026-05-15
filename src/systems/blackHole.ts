@@ -8,6 +8,7 @@ const BLACK_HOLE_DRIFT_SPEED = 24;
 const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
+const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
@@ -538,6 +539,10 @@ export class BlackHoleSystem {
 
     graphics.fillStyle(0x000003, bodyAlpha);
     graphics.fillCircle(0, 0, this.coreRadius + 36 + pulse * 6);
+    graphics.lineStyle(5, 0x000000, isMirror ? 0.44 : 0.72);
+    graphics.strokeCircle(0, 0, this.coreRadius + BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET);
+    graphics.lineStyle(1, 0x1b2436, isMirror ? 0.16 : 0.28);
+    graphics.strokeCircle(0, 0, this.coreRadius + BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 2);
     graphics.fillStyle(0x030307, isMirror ? 0.48 : 0.74);
     graphics.fillCircle(0, 0, this.coreRadius + 16);
     graphics.fillStyle(0x010107, coreAlpha);
