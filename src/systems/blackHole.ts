@@ -13,8 +13,8 @@ const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_
 const BLACK_HOLE_VISUAL_HORIZON_SCALE = 1.5;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 1500;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 2200;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 900;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1400;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
 export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
@@ -123,86 +123,7 @@ interface BlackHoleLensTextureLayer {
   scalePulseSpeed: number;
 }
 
-const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
-  {
-    key: 'starvivors-black-hole-lens-field-outer',
-    isProjectionLayer: false,
-    strokeCount: 2600,
-    minRadius: 280,
-    maxRadius: 500,
-    squash: 0.84,
-    nodeAngle: 0,
-    alpha: 0.52,
-    mirrorAlpha: 0.28,
-    scalePulse: 0.012,
-    scalePulseSpeed: 0.29
-  },
-  {
-    key: 'starvivors-black-hole-lens-field-mid',
-    isProjectionLayer: false,
-    strokeCount: 3400,
-    minRadius: 205,
-    maxRadius: 420,
-    squash: 0.72,
-    nodeAngle: 0,
-    alpha: 0.62,
-    mirrorAlpha: 0.34,
-    scalePulse: 0.016,
-    scalePulseSpeed: 0.37
-  },
-  {
-    key: 'starvivors-black-hole-lens-field-inner',
-    isProjectionLayer: false,
-    strokeCount: 2400,
-    minRadius: 142,
-    maxRadius: 318,
-    squash: 0.58,
-    nodeAngle: 0,
-    alpha: 0.46,
-    mirrorAlpha: 0.25,
-    scalePulse: 0.018,
-    scalePulseSpeed: 0.43
-  },
-  {
-    key: 'starvivors-black-hole-lens-field-bright',
-    isProjectionLayer: false,
-    strokeCount: 1600,
-    minRadius: 220,
-    maxRadius: 455,
-    squash: 0.78,
-    nodeAngle: 0,
-    alpha: 0.38,
-    mirrorAlpha: 0.2,
-    scalePulse: 0.01,
-    scalePulseSpeed: 0.33
-  },
-  {
-    key: 'starvivors-black-hole-lens-field-horizon-fill',
-    isProjectionLayer: false,
-    strokeCount: 1800,
-    minRadius: 118,
-    maxRadius: 188,
-    squash: 0.96,
-    nodeAngle: 0,
-    alpha: 0.34,
-    mirrorAlpha: 0.18,
-    scalePulse: 0.006,
-    scalePulseSpeed: 0.22
-  },
-  {
-    key: 'starvivors-black-hole-lens-projection-horizontal',
-    isProjectionLayer: true,
-    strokeCount: 1600,
-    minRadius: 176,
-    maxRadius: 438,
-    squash: 0.34,
-    nodeAngle: Math.PI * 0.02,
-    alpha: 0.22,
-    mirrorAlpha: 0.12,
-    scalePulse: 0.01,
-    scalePulseSpeed: 0.26
-  }
-];
+const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
 
 export interface BlackHoleState {
   body: Phaser.GameObjects.Container;
