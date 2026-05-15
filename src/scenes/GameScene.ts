@@ -125,6 +125,12 @@ const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 1;
 const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MAX = 12.5;
 const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
 const DEBUG_PULSE_MIN_COOLDOWN_MS = 100;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 1;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 8;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH = 220;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT = 54;
+const DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH = 176;
 
 type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
 type PassiveUpgradeId = 'hull-plating' | 'engine-tuning' | 'damage-control';
@@ -433,6 +439,9 @@ export class GameScene extends Phaser.Scene {
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
   private upgradeButtonGraphics!: Phaser.GameObjects.Graphics;
   private upgradeButtonText!: Phaser.GameObjects.Text;
+  private blackHoleLensOrbitSliderContainer!: Phaser.GameObjects.Container;
+  private blackHoleLensOrbitSliderGraphics!: Phaser.GameObjects.Graphics;
+  private blackHoleLensOrbitSliderText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
   private farStarfield!: Phaser.GameObjects.TileSprite;
@@ -503,6 +512,7 @@ export class GameScene extends Phaser.Scene {
   // Debug/testing modifiers only. These are reset with each rebuilt run and never alter upgrade levels.
   private debugPulseDamageMultiplier = 1;
   private debugPulseFireRateMultiplier = 1;
+  private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
 
   constructor() {
@@ -538,6 +548,7 @@ export class GameScene extends Phaser.Scene {
       this.updateGameplayHud(time);
       this.updateMinimap();
       this.updateParallaxTunerText();
+      this.updateBlackHoleLensOrbitSlider();
       this.updateDebugText(time);
       return;
     }
@@ -561,6 +572,7 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(time);
     this.updateMinimap();
     this.updateParallaxTunerText();
+    this.updateBlackHoleLensOrbitSlider();
     this.updateDebugText(time);
   }
 
@@ -904,6 +916,7 @@ export class GameScene extends Phaser.Scene {
     this.totalUpgradePauseMs = 0;
     this.isMinimapVisible = true;
     this.resetDebugWeaponTuning();
+    this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.blackHoleRingDebugColorMode = 'normal';
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
@@ -949,11 +962,13 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1000);
 
     this.createParallaxTuner();
+    this.createBlackHoleLensOrbitSlider();
     this.createUpgradeButton();
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateParallaxTunerText();
+    this.updateBlackHoleLensOrbitSlider();
     this.updateDebugText(0);
   }
 
@@ -1317,7 +1332,8 @@ export class GameScene extends Phaser.Scene {
       deltaSeconds,
       this.arena,
       this.blackHoleRingDebugColorMode,
-      this.isCollisionDebugEnabled
+      this.isCollisionDebugEnabled,
+      this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier()
     );
     this.updateToroidalRenderMirror(
       blackHole.body,
@@ -1592,6 +1608,12 @@ export class GameScene extends Phaser.Scene {
     return this.isCollisionDebugEnabled ? this.debugPulseFireRateMultiplier : 1;
   }
 
+  private getActiveDebugBlackHoleLensOrbitSpeedMultiplier(): number {
+    return this.isCollisionDebugEnabled
+      ? this.debugBlackHoleLensOrbitSpeedMultiplier
+      : DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
+  }
+
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
     const delta = direction * STARFIELD_PARALLAX_STEP;
 
@@ -1766,6 +1788,111 @@ export class GameScene extends Phaser.Scene {
       PLAYER_DAMAGE_INVULNERABILITY_MS +
       this.passiveUpgradeLevels['damage-control'] * DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS
     );
+  }
+
+  private createBlackHoleLensOrbitSlider(): void {
+    this.blackHoleLensOrbitSliderGraphics = this.add.graphics();
+    this.blackHoleLensOrbitSliderText = this.add
+      .text(0, -15, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff'
+      })
+      .setOrigin(0.5);
+
+    this.blackHoleLensOrbitSliderContainer = this.add
+      .container(0, 0, [this.blackHoleLensOrbitSliderGraphics, this.blackHoleLensOrbitSliderText])
+      .setScrollFactor(0)
+      .setDepth(1003)
+      .setSize(DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH, DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT)
+      .setInteractive({ useHandCursor: true });
+
+    this.input.setDraggable(this.blackHoleLensOrbitSliderContainer);
+    this.blackHoleLensOrbitSliderContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) =>
+      this.handleBlackHoleLensOrbitSliderPointer(pointer)
+    );
+    this.blackHoleLensOrbitSliderContainer.on('drag', (pointer: Phaser.Input.Pointer) =>
+      this.handleBlackHoleLensOrbitSliderPointer(pointer)
+    );
+  }
+
+  private handleBlackHoleLensOrbitSliderPointer(pointer: Phaser.Input.Pointer): void {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+      return;
+    }
+
+    const trackX = -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH / 2;
+    const localX = pointer.x - this.blackHoleLensOrbitSliderContainer.x;
+    const progress = Phaser.Math.Clamp(localX - trackX, 0, DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH) /
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH;
+    const value = Phaser.Math.Linear(
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN,
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX,
+      progress
+    );
+
+    this.debugBlackHoleLensOrbitSpeedMultiplier = Number(value.toFixed(1));
+    this.updateBlackHoleLensOrbitSlider();
+    this.nextDebugUpdateAt = 0;
+  }
+
+  private updateBlackHoleLensOrbitSlider(): void {
+    if (
+      !this.blackHoleLensOrbitSliderContainer ||
+      !this.blackHoleLensOrbitSliderGraphics ||
+      !this.blackHoleLensOrbitSliderText
+    ) {
+      return;
+    }
+
+    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const panelX = 16 + DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH / 2;
+    const panelY = this.scale.height - 78;
+    const trackX = -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH / 2;
+    const trackY = 10;
+    const progress =
+      (this.debugBlackHoleLensOrbitSpeedMultiplier - DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN) /
+      (DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX - DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN);
+    const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+    const knobX = trackX + DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH * clampedProgress;
+
+    this.blackHoleLensOrbitSliderContainer
+      .setPosition(panelX, panelY)
+      .setVisible(isVisible)
+      .setActive(isVisible);
+
+    this.blackHoleLensOrbitSliderText.setText(
+      `Lens orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)}`
+    );
+
+    this.blackHoleLensOrbitSliderGraphics.clear();
+    this.blackHoleLensOrbitSliderGraphics.fillStyle(0x02040a, 0.82);
+    this.blackHoleLensOrbitSliderGraphics.fillRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH / 2,
+      -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT / 2,
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH,
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT,
+      6
+    );
+    this.blackHoleLensOrbitSliderGraphics.lineStyle(1, 0x52627f, 0.72);
+    this.blackHoleLensOrbitSliderGraphics.strokeRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH / 2,
+      -DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT / 2,
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_WIDTH,
+      DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_HEIGHT,
+      6
+    );
+    this.blackHoleLensOrbitSliderGraphics.lineStyle(4, 0x24384f, 0.9);
+    this.blackHoleLensOrbitSliderGraphics.lineBetween(
+      trackX,
+      trackY,
+      trackX + DEBUG_BLACK_HOLE_LENS_ORBIT_SLIDER_TRACK_WIDTH,
+      trackY
+    );
+    this.blackHoleLensOrbitSliderGraphics.lineStyle(4, 0x42f5d7, 0.74);
+    this.blackHoleLensOrbitSliderGraphics.lineBetween(trackX, trackY, knobX, trackY);
+    this.blackHoleLensOrbitSliderGraphics.fillStyle(0xf2fbff, 0.96);
+    this.blackHoleLensOrbitSliderGraphics.fillCircle(knobX, trackY, 6);
   }
 
   private createUpgradeButton(): void {
@@ -3703,7 +3830,8 @@ export class GameScene extends Phaser.Scene {
         `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
       : '';
     const blackHoleDebugLine = this.isCollisionDebugEnabled
-      ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n`
+      ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n` +
+        `Black hole lens orbit: x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} slider\n`
       : '';
 
     this.debugText.setText(
