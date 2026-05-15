@@ -81,8 +81,8 @@ export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 
 interface BlackHoleLensingArc {
   angle: number;
   radius: number;
-  arcLength: number;
-  baseArcLength: number;
+  trailSpan: number;
+  baseTrailSpan: number;
   thickness: number;
   baseAlpha: number;
   alpha: number;
@@ -94,7 +94,7 @@ interface BlackHoleLensingArc {
   pulsePhase: number;
   pulseAmount: number;
   squash: number;
-  brokenness: number;
+  curl: number;
 }
 
 interface BlackHoleRingPlane {
@@ -669,7 +669,7 @@ export class BlackHoleSystem {
 
   private createLensingArcs(): BlackHoleLensingArc[] {
     return Array.from({ length: BLACK_HOLE_LENSING_ARC_MAX_COUNT }, (_, index) =>
-      this.createLensingArc(index, true)
+      this.createLensingArc(index, false)
     );
   }
 
@@ -688,7 +688,7 @@ export class BlackHoleSystem {
         );
     const proximity = 1 - radius;
     const densityCurve = Math.pow(proximity, 1.45);
-    const baseArcLength = Phaser.Math.Linear(
+    const baseTrailSpan = Phaser.Math.Linear(
       BLACK_HOLE_LENS_ARC_LENGTH_MIN,
       isDenseBandArc ? BLACK_HOLE_LENS_ARC_LENGTH_MAX * 1.18 : BLACK_HOLE_LENS_ARC_LENGTH_MAX,
       densityCurve * Phaser.Math.FloatBetween(0.88, 1)
@@ -702,8 +702,8 @@ export class BlackHoleSystem {
     return {
       angle: baseAngle,
       radius,
-      arcLength: baseArcLength,
-      baseArcLength,
+      trailSpan: baseTrailSpan,
+      baseTrailSpan,
       thickness: Phaser.Math.Linear(
         BLACK_HOLE_LENS_ARC_THICKNESS_MIN,
         isDenseBandArc ? BLACK_HOLE_LENS_ARC_THICKNESS_MAX * 1.16 : BLACK_HOLE_LENS_ARC_THICKNESS_MAX,
@@ -731,7 +731,7 @@ export class BlackHoleSystem {
         BLACK_HOLE_LENS_ARC_SQUASH_MAX,
         Phaser.Math.FloatBetween(0, 1)
       ),
-      brokenness: Phaser.Math.FloatBetween(0.24, 0.34)
+      curl: Phaser.Math.FloatBetween(0.78, 1.24)
     };
   }
 
@@ -743,10 +743,10 @@ export class BlackHoleSystem {
       const proximity = Phaser.Math.Clamp(1 - arc.radius, 0, 1);
 
       arc.age += deltaSeconds;
-      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.12, Math.pow(proximity, 1.25)) * deltaSeconds;
-      arc.angle += arc.angularDriftSpeed * (0.62 + proximity * 1.35) * orbitMultiplier * deltaSeconds;
+      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.08, Math.pow(proximity, 1.18)) * deltaSeconds;
+      arc.angle += arc.angularDriftSpeed * (0.58 + proximity * 1.8) * orbitMultiplier * deltaSeconds;
 
-      if (arc.radius <= BLACK_HOLE_LENS_ARC_RESET_RADIUS || arc.age >= arc.lifetime) {
+      if (arc.radius <= BLACK_HOLE_LENS_ARC_RESET_RADIUS) {
         this.lensingArcs[i] = this.createLensingArc(i, true);
       }
     }
@@ -867,76 +867,62 @@ export class BlackHoleSystem {
       const fadeIn = Phaser.Math.Clamp((arc.radius - BLACK_HOLE_LENS_ARC_INNER_RADIUS) / 0.035, 0, 1);
       const edgeFade = Phaser.Math.Clamp((BLACK_HOLE_LENS_ARC_OUTER_RADIUS - arc.radius) / 0.045, 0, 1);
       const ageProgress = Phaser.Math.Clamp(arc.age / arc.lifetime, 0, 1);
-      const ageFade = Phaser.Math.Linear(1, 0.72, ageProgress);
-      const stretch = 0.72 + densityCurve * 1.18;
+      const ageFade = Phaser.Math.Linear(1, 0.78, ageProgress);
+      const stretch = 0.72 + densityCurve * 1.12;
       const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
-      const radius = this.getLensingRenderRadius(
-        arc.radius + (Math.sin(time * 0.00031 + arc.pulsePhase) * (1.5 + densityCurve * 2.2)) /
-          BLACK_HOLE_BASE_LENS_FIELD_RADIUS
-      );
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.24 + arc.pulsePhase) * arc.pulseAmount;
       const proximityAlpha = Phaser.Math.Linear(0.42, 1, Math.pow(proximity, 0.75));
       const alpha = arc.baseAlpha * 1.35 * proximityAlpha * ageFade * fadeIn * edgeFade * mirrorAlpha * brightness * (foreground ? 0.9 : 1);
-      const arcLength = arc.baseArcLength * stretch * Phaser.Math.Linear(1, 0.86, ageProgress) * this.lensLengthMultiplier;
-      const firstLength = arcLength * (0.52 - arc.brokenness * 0.22);
-      const secondLength = arcLength * (0.28 + arc.brokenness * 0.18);
-      const gap = arcLength * (0.18 + arc.brokenness * 0.22);
-      const firstStartAngle = driftedAngle - arcLength * 0.5;
-      const secondStartAngle = firstStartAngle + firstLength + gap;
+      const trailSpan =
+        arc.baseTrailSpan *
+        stretch *
+        Phaser.Math.Linear(1.08, 0.92, ageProgress) *
+        Math.sqrt(this.lensLengthMultiplier);
 
       arc.alpha = alpha;
-      arc.arcLength = arcLength;
+      arc.trailSpan = trailSpan;
 
-      this.drawLensingArcSegment(
-        graphics,
-        arc,
-        firstStartAngle,
-        firstLength,
-        radius,
-        alpha,
-        foreground,
-        densityCurve,
-        ageProgress
-      );
-      this.drawLensingArcSegment(
-        graphics,
-        arc,
-        secondStartAngle,
-        secondLength,
-        radius,
-        alpha * 0.72,
-        foreground,
-        densityCurve,
-        ageProgress
-      );
+      this.drawLensingStreamline(graphics, arc, driftedAngle, trailSpan, alpha, foreground, densityCurve, ageProgress, time);
     }
   }
 
-  private drawLensingArcSegment(
+  private drawLensingStreamline(
     graphics: Phaser.GameObjects.Graphics,
     arc: BlackHoleLensingArc,
-    startAngle: number,
-    arcLength: number,
-    radius: number,
+    headAngle: number,
+    trailSpan: number,
     alpha: number,
     foreground: boolean,
     densityCurve: number,
-    ageProgress: number
+    ageProgress: number,
+    time: number
   ): void {
-    const segments = 8;
-    let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
-
-    const horizonThicknessScale = Phaser.Math.Linear(0.82, 0.68, densityCurve);
-
-    graphics.lineStyle(arc.thickness * horizonThicknessScale * Phaser.Math.Linear(1, 0.82, ageProgress), arc.color, alpha);
+    const segments = 9;
+    const headRadius = arc.radius;
+    const headProximity = Phaser.Math.Clamp(1 - headRadius, 0, 1);
+    const angularTrail = (0.42 + headProximity * 1.35) * arc.curl;
+    const wobble = (Math.sin(time * 0.00031 + arc.pulsePhase) * (0.9 + densityCurve * 1.4)) / BLACK_HOLE_BASE_LENS_FIELD_RADIUS;
+    let previous = this.getLensingStreamlinePoint(headAngle, headRadius + wobble, arc.squash);
 
     for (let i = 1; i <= segments; i += 1) {
-      const angle = startAngle + (arcLength * i) / segments;
-      const point = this.getLensingArcPoint(angle, radius, arc.squash);
+      const trailProgress = i / segments;
+      const radius = Phaser.Math.Clamp(
+        headRadius + trailSpan * trailProgress,
+        BLACK_HOLE_LENS_ARC_INNER_RADIUS,
+        BLACK_HOLE_LENS_ARC_OUTER_RADIUS
+      );
+      const radiusProximity = Phaser.Math.Clamp(1 - radius, 0, 1);
+      const angle = headAngle - angularTrail * (trailProgress + trailProgress * trailProgress * 0.68);
+      const point = this.getLensingStreamlinePoint(angle, radius + wobble * (1 - trailProgress * 0.5), arc.squash);
       const midY = (previous.y + point.y) * 0.5;
       const isFrontSegment = midY >= -this.coreRadius * 0.08;
 
       if (isFrontSegment === foreground) {
+        const tailFade = Math.pow(1 - trailProgress * 0.82, 1.15);
+        const outerFade = Phaser.Math.Linear(0.34, 1, Phaser.Math.Clamp((1 - radius) / 0.14, 0, 1));
+        const segmentAlpha = alpha * tailFade * outerFade;
+        const thicknessScale = Phaser.Math.Linear(0.74, 0.56, Math.pow(radiusProximity, 0.85));
+        graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, segmentAlpha);
         graphics.lineBetween(previous.x, previous.y, point.x, point.y);
       }
 
@@ -944,7 +930,9 @@ export class BlackHoleSystem {
     }
   }
 
-  private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
+  private getLensingStreamlinePoint(angle: number, normalizedRadius: number, squash: number): { x: number; y: number } {
+    const radius = this.getLensingRenderRadius(normalizedRadius);
+
     return {
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius * squash
