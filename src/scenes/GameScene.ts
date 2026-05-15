@@ -15,7 +15,9 @@ import { pulseCannon } from '../data/weapons';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
+  BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS,
   BlackHoleSystem,
+  type BlackHoleCapturedProjectileState,
   type BlackHoleRingDebugColorMode
 } from '../systems/blackHole';
 
@@ -359,7 +361,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
 const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5];
 const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
 
-interface PulseCannonProjectile {
+interface PulseCannonProjectile extends BlackHoleCapturedProjectileState {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
@@ -370,7 +372,7 @@ interface PulseCannonProjectile {
   nextTrailAt: number;
 }
 
-interface EnemyProjectile {
+interface EnemyProjectile extends BlackHoleCapturedProjectileState {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
@@ -2880,14 +2882,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateEnemyProjectiles(time: number, deltaSeconds: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
     for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.enemyProjectiles[i];
+
+      if (projectile.capturedByBlackHole) {
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, SHOOTER_PROJECTILE_HIT_RADIUS)) {
+          this.destroyEnemyProjectile(projectile);
+          this.enemyProjectiles.splice(i, 1);
+        }
+
+        continue;
+      }
+
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, SHOOTER_PROJECTILE_HIT_RADIUS);
+
+      if (this.tryCaptureProjectile(projectile)) {
+        continue;
+      }
 
       if (this.tryHitPlayerWithEnemyProjectile(projectile, time)) {
         this.destroyEnemyProjectile(projectile);
@@ -3026,14 +3046,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePulseCannonProjectiles(time: number, deltaSeconds: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
     for (let i = this.pulseCannonProjectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.pulseCannonProjectiles[i];
+
+      if (projectile.capturedByBlackHole) {
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, PULSE_CANNON_MUZZLE_OFFSET)) {
+          this.destroyPulseCannonProjectile(projectile);
+          this.pulseCannonProjectiles.splice(i, 1);
+        }
+
+        continue;
+      }
+
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
+
+      if (this.tryCaptureProjectile(projectile)) {
+        continue;
+      }
 
       if (
         !this.isPlayerDead &&
@@ -3083,6 +3121,29 @@ export class GameScene extends Phaser.Scene {
   private destroyPulseCannonProjectile(projectile: PulseCannonProjectile): void {
     projectile.body.destroy(true);
     projectile.wrapMirrorBody.destroy(true);
+  }
+
+  private tryCaptureProjectile(projectile: PulseCannonProjectile | EnemyProjectile): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    return this.blackHole.tryCaptureProjectile(projectile, this.arena);
+  }
+
+  private updateCapturedProjectile(
+    projectile: PulseCannonProjectile | EnemyProjectile,
+    deltaSeconds: number,
+    mirrorViewRadius: number
+  ): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    const isConsumed = this.blackHole.updateCapturedProjectile(projectile, deltaSeconds, this.arena);
+    this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, mirrorViewRadius);
+
+    return isConsumed;
   }
 
   private flashDamageSprites(...containers: Phaser.GameObjects.Container[]): void {
@@ -3934,6 +3995,12 @@ export class GameScene extends Phaser.Scene {
     this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.coreRadius);
     this.collisionDebugGraphics.lineStyle(1, 0xb48cff, 0.34);
     this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.warningRadius);
+    this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.42);
+    this.collisionDebugGraphics.strokeCircle(
+      blackHolePosition.x,
+      blackHolePosition.y,
+      BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS
+    );
   }
 
   private drawProjectileCollisionDebug(): void {
@@ -3944,7 +4011,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.55);
+      this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, projectile.capturedByBlackHole ? 0.22 : 0.55);
       this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, PROJECTILE_HIT_RADIUS);
     }
 
@@ -3955,7 +4022,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.62);
+      this.collisionDebugGraphics.lineStyle(1, 0xff5964, projectile.capturedByBlackHole ? 0.22 : 0.62);
       this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, SHOOTER_PROJECTILE_HIT_RADIUS);
     }
   }

@@ -13,6 +13,12 @@ const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1000;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS = 260;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_INWARD_SPEED = 118;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_ANGULAR_SPEED = 3.2;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_MIN_SCALE = 0.08;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_FADE_SECONDS = 1.65;
+export const BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS = 70;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
@@ -244,6 +250,21 @@ export interface BlackHoleState {
   warningRadius: number;
 }
 
+export interface BlackHoleCapturedProjectileState {
+  capturedByBlackHole?: boolean;
+  captureAngle?: number;
+  captureRadius?: number;
+  captureAngularSpeed?: number;
+  captureInwardSpeed?: number;
+  captureStartScale?: number;
+  captureAge?: number;
+}
+
+export interface BlackHoleCapturableProjectile extends BlackHoleCapturedProjectileState {
+  body: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+}
+
 export class BlackHoleSystem {
   readonly body: Phaser.GameObjects.Container;
   readonly wrapMirrorBody: Phaser.GameObjects.Container;
@@ -319,6 +340,83 @@ export class BlackHoleSystem {
     const offset = this.getWrappedDirection(this.body.x, this.body.y, playerX, playerY, arena);
 
     return offset.lengthSq() <= this.coreRadius * this.coreRadius;
+  }
+
+  tryCaptureProjectile(projectile: BlackHoleCapturableProjectile, arena: ArenaSize): boolean {
+    if (projectile.capturedByBlackHole) {
+      return true;
+    }
+
+    const offset = this.getWrappedDirection(this.body.x, this.body.y, projectile.body.x, projectile.body.y, arena);
+
+    if (offset.lengthSq() > BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS * BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS) {
+      return false;
+    }
+
+    const radius = Math.max(offset.length(), BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS + 1);
+    const angle = Math.atan2(offset.y, offset.x);
+    const tangentialDirection = new Phaser.Math.Vector2(-Math.sin(angle), Math.cos(angle));
+    const orbitSign = projectile.velocity.dot(tangentialDirection) < 0 ? -1 : 1;
+
+    projectile.capturedByBlackHole = true;
+    projectile.captureAngle = angle;
+    projectile.captureRadius = radius;
+    projectile.captureAngularSpeed = BLACK_HOLE_PROJECTILE_CAPTURE_ANGULAR_SPEED * orbitSign;
+    projectile.captureInwardSpeed = BLACK_HOLE_PROJECTILE_CAPTURE_INWARD_SPEED;
+    projectile.captureStartScale = Math.max(projectile.body.scaleX, projectile.body.scaleY, 1);
+    projectile.captureAge = 0;
+    projectile.body.setAlpha(1);
+
+    return true;
+  }
+
+  updateCapturedProjectile(
+    projectile: BlackHoleCapturableProjectile,
+    deltaSeconds: number,
+    arena: ArenaSize
+  ): boolean {
+    if (!projectile.capturedByBlackHole) {
+      return false;
+    }
+
+    const captureAge = (projectile.captureAge ?? 0) + deltaSeconds;
+    const captureRadius = Math.max(
+      0,
+      (projectile.captureRadius ?? BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS) -
+        (projectile.captureInwardSpeed ?? BLACK_HOLE_PROJECTILE_CAPTURE_INWARD_SPEED) * deltaSeconds
+    );
+    const captureAngle =
+      (projectile.captureAngle ?? 0) +
+      (projectile.captureAngularSpeed ?? BLACK_HOLE_PROJECTILE_CAPTURE_ANGULAR_SPEED) *
+        (1 + (1 - captureRadius / BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS) * 0.65) *
+        deltaSeconds;
+    const completion = Phaser.Math.Clamp(captureAge / BLACK_HOLE_PROJECTILE_CAPTURE_FADE_SECONDS, 0, 1);
+    const radialCompletion = Phaser.Math.Clamp(
+      (BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS - captureRadius) /
+        Math.max(1, BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS - BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS),
+      0,
+      1
+    );
+    const visualCompletion = Math.max(completion, radialCompletion);
+    const scale = Phaser.Math.Linear(
+      projectile.captureStartScale ?? 1,
+      BLACK_HOLE_PROJECTILE_CAPTURE_MIN_SCALE,
+      visualCompletion
+    );
+
+    projectile.captureAge = captureAge;
+    projectile.captureRadius = captureRadius;
+    projectile.captureAngle = captureAngle;
+    projectile.body.x = wrapCoordinate(this.body.x + Math.cos(captureAngle) * captureRadius, arena.width);
+    projectile.body.y = wrapCoordinate(this.body.y + Math.sin(captureAngle) * captureRadius, arena.height);
+    projectile.body.rotation = captureAngle + Math.sign(projectile.captureAngularSpeed ?? 1) * Math.PI * 0.5;
+    projectile.body.setScale(scale);
+    projectile.body.setAlpha(1 - visualCompletion * 0.9);
+
+    return (
+      captureRadius <= BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS ||
+      captureAge >= BLACK_HOLE_PROJECTILE_CAPTURE_FADE_SECONDS
+    );
   }
 
   getState(): BlackHoleState {
