@@ -149,9 +149,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('png-toggle-layer', columnX + 162, y, 74, 'Toggle', config.callbacks.toggleBlackHolePngLayer);
   addButton('projection-lenses', columnX + 242, y, 74, 'All', config.callbacks.toggleBlackHoleProjectionLenses);
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('png-add-layer', columnX, y, 101, 'Add +', config.callbacks.addBlackHolePngLayer);
-  addButton('png-duplicate-layer', columnX + 108, y, 101, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
-  addButton('png-remove-layer', columnX + 216, y, 100, 'Remove -', config.callbacks.removeBlackHolePngLayer);
+  addButton('png-add-image-prev', columnX, y, 101, 'Add img -', () => config.callbacks.cycleBlackHoleAddPngLayerImage(-1));
+  addButton('png-add-image-next', columnX + 108, y, 101, 'Add img +', () => config.callbacks.cycleBlackHoleAddPngLayerImage(1));
+  addButton('png-add-layer', columnX + 216, y, 100, 'Add +', config.callbacks.addBlackHolePngLayer);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('png-duplicate-layer', columnX, y, 154, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
+  addButton('png-remove-layer', columnX + 162, y, 154, 'Remove -', config.callbacks.removeBlackHolePngLayer);
   y += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('field-scale-down', columnX, y, 101, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
   addButton('field-scale-up', columnX + 108, y, 101, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
@@ -390,8 +393,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         pngLayer
           ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
               values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / field x${values.blackHoleFieldScaleMultiplier.toFixed(1)}\nAdd uses selected image`
-          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
+            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
+          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
       );
       setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);

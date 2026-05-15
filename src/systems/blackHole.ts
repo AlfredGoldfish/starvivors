@@ -713,7 +713,7 @@ export class BlackHoleSystem {
   }
 
   removePngLayer(index: number): number {
-    if (this.pngLayers.length <= 1 || !this.pngLayers[index]) {
+    if (!this.pngLayers[index]) {
       return Phaser.Math.Clamp(index, 0, Math.max(0, this.pngLayers.length - 1));
     }
 

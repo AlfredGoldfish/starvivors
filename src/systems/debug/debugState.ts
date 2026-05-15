@@ -1,4 +1,4 @@
-import type { BlackHolePngLayerDebugSummary } from '../blackHole';
+import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 import type { DebugMenuValues } from './debugTypes';
 
 const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
@@ -64,6 +64,8 @@ export class DebugState {
     blackHoleSelectedPngLayerIndex: number;
     blackHolePngLayerCount: number;
     blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
+    blackHoleAddPngTextureKey: BlackHolePngTextureKey;
+    blackHoleAddPngTextureLabel: string;
     debugGamePaused: boolean;
     activeEnemies: number;
     activeAsteroids: number;
@@ -96,6 +98,8 @@ export class DebugState {
       blackHoleSelectedPngLayerIndex: snapshot.blackHoleSelectedPngLayerIndex,
       blackHolePngLayerCount: snapshot.blackHolePngLayerCount,
       blackHoleSelectedPngLayer: snapshot.blackHoleSelectedPngLayer,
+      blackHoleAddPngTextureKey: snapshot.blackHoleAddPngTextureKey,
+      blackHoleAddPngTextureLabel: snapshot.blackHoleAddPngTextureLabel,
       debugGamePaused: snapshot.debugGamePaused,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,

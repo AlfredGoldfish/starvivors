@@ -1,4 +1,4 @@
-import type { BlackHolePngLayerDebugSummary } from '../blackHole';
+import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
@@ -26,6 +26,8 @@ export interface DebugMenuValues {
   blackHoleSelectedPngLayerIndex: number;
   blackHolePngLayerCount: number;
   blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
+  blackHoleAddPngTextureKey: BlackHolePngTextureKey;
+  blackHoleAddPngTextureLabel: string;
   debugGamePaused: boolean;
   activeEnemies: number;
   activeAsteroids: number;
@@ -67,6 +69,7 @@ export interface DebugMenuCallbacks {
   selectPreviousBlackHolePngLayer: () => void;
   selectNextBlackHolePngLayer: () => void;
   cycleBlackHolePngLayerImage: (direction: number) => void;
+  cycleBlackHoleAddPngLayerImage: (direction: number) => void;
   adjustBlackHolePngLayerSpeed: (delta: number) => void;
   adjustBlackHolePngLayerSize: (delta: number) => void;
   adjustBlackHolePngLayerAlpha: (delta: number) => void;

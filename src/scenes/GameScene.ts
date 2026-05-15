@@ -27,8 +27,11 @@ import {
   BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS,
   BLACK_HOLE_FULL_TEXTURE_KEY,
   BLACK_HOLE_FULL_TEXTURE_KEYS,
+  BLACK_HOLE_PNG_TEXTURE_KEYS,
+  BLACK_HOLE_PNG_TEXTURE_LABELS,
   BlackHoleSystem,
   type BlackHoleCapturedProjectileState,
+  type BlackHolePngTextureKey,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
 import { DebugState } from '../systems/debug/debugState';
@@ -630,6 +633,7 @@ export class GameScene extends Phaser.Scene {
   private debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
   private areDebugBlackHoleProjectionLensLayersEnabled = true;
   private debugSelectedBlackHolePngLayerIndex = 0;
+  private debugAddBlackHolePngTextureKey: BlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[0];
 
   constructor() {
     super('GameScene');
@@ -790,6 +794,7 @@ export class GameScene extends Phaser.Scene {
         selectPreviousBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(-1)),
         selectNextBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(1)),
         cycleBlackHolePngLayerImage: (direction) => this.runDebugMenuAction(() => this.cycleBlackHolePngLayerImage(direction)),
+        cycleBlackHoleAddPngLayerImage: (direction) => this.runDebugMenuAction(() => this.cycleBlackHoleAddPngLayerImage(direction)),
         adjustBlackHolePngLayerSpeed: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSpeed(delta)),
         adjustBlackHolePngLayerSize: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSize(delta)),
         adjustBlackHolePngLayerAlpha: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerAlpha(delta)),
@@ -848,6 +853,8 @@ export class GameScene extends Phaser.Scene {
       blackHoleSelectedPngLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
       blackHolePngLayerCount: this.blackHole?.getPngLayerCount() ?? 0,
       blackHoleSelectedPngLayer: this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex),
+      blackHoleAddPngTextureKey: this.debugAddBlackHolePngTextureKey,
+      blackHoleAddPngTextureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey],
       debugGamePaused: this.debugState.debugGamePaused,
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
@@ -1173,6 +1180,7 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.debugSelectedBlackHolePngLayerIndex = 0;
+    this.debugAddBlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[0];
     this.backgroundStarsVisible = true;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
@@ -2333,6 +2341,12 @@ export class GameScene extends Phaser.Scene {
     this.blackHole?.cyclePngLayerTexture(this.debugSelectedBlackHolePngLayerIndex, direction);
   }
 
+  private cycleBlackHoleAddPngLayerImage(direction: number): void {
+    const textureIndex = BLACK_HOLE_PNG_TEXTURE_KEYS.indexOf(this.debugAddBlackHolePngTextureKey);
+    const nextIndex = Phaser.Math.Wrap(textureIndex + direction, 0, BLACK_HOLE_PNG_TEXTURE_KEYS.length);
+    this.debugAddBlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[nextIndex];
+  }
+
   private adjustBlackHolePngLayerSpeed(delta: number): void {
     this.clampSelectedBlackHolePngLayer();
     this.blackHole?.adjustPngLayerSpeed(this.debugSelectedBlackHolePngLayerIndex, delta);
@@ -2354,9 +2368,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addBlackHolePngLayer(): void {
-    const selected = this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex);
-
-    this.debugSelectedBlackHolePngLayerIndex = this.blackHole?.addPngLayer(selected?.textureKey) ?? 0;
+    this.debugSelectedBlackHolePngLayerIndex = this.blackHole?.addPngLayer(this.debugAddBlackHolePngTextureKey) ?? 0;
   }
 
   private duplicateBlackHolePngLayer(): void {
@@ -2378,6 +2390,7 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.debugSelectedBlackHolePngLayerIndex = 0;
+    this.debugAddBlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[0];
     this.blackHole?.resetPngLayers();
   }
 
