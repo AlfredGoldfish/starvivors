@@ -14,6 +14,13 @@ export interface DebugMenuValues {
   pulseDamageMultiplier: number;
   pulseFireRateMultiplier: number;
   pulseCooldownSeconds: number;
+  starfieldFarParallax: number;
+  starfieldMidParallax: number;
+  starfieldNearParallax: number;
+  blackHoleLensOrbitSpeedMultiplier: number;
+  blackHoleLensDensity: number;
+  blackHoleLensLengthMultiplier: number;
+  blackHoleProjectionLensLayersEnabled: boolean;
   activeEnemies: number;
   activeAsteroids: number;
   playerProjectiles: number;
@@ -40,7 +47,14 @@ export interface DebugMenuCallbacks {
   adjustPulseFireRate: (delta: number) => void;
   adjustPulseCooldownSeconds: (deltaSeconds: number) => void;
   resetWeaponTuning: () => void;
+  adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
+  resetStarfieldParallax: () => void;
   cycleBlackHoleRingDebugColor: () => void;
   toggleBlackHoleRadii: () => void;
   toggleCollisionDebug: () => void;
+  adjustBlackHoleLensOrbit: (delta: number) => void;
+  adjustBlackHoleLensDensity: (delta: number) => void;
+  adjustBlackHoleLensLength: (delta: number) => void;
+  toggleBlackHoleProjectionLenses: () => void;
+  resetBlackHoleLensTuning: () => void;
 }

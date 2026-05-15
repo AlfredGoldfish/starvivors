@@ -21,7 +21,6 @@ import {
   type BlackHoleCapturedProjectileState
 } from '../systems/blackHole';
 import { DebugState } from '../systems/debug/debugState';
-import { updateDebugWeaponHotkeys } from '../systems/debug/debugHotkeys';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 
@@ -129,8 +128,6 @@ const ENGINE_TUNING_ACCELERATION_MULTIPLIER = 0.08;
 const ENGINE_TUNING_MAX_SPEED_MULTIPLIER = 0.04;
 const DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS = 150;
 const DAMAGE_CONTROL_REPAIR = 10;
-const DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP = 0.5;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP = 0.5;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 0.7;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 8;
@@ -471,20 +468,11 @@ export class GameScene extends Phaser.Scene {
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
   private restartKey!: Phaser.Input.Keyboard.Key;
-  private collisionDebugKey!: Phaser.Input.Keyboard.Key;
-  private parallaxTunerKey!: Phaser.Input.Keyboard.Key;
-  private parallaxResetKey!: Phaser.Input.Keyboard.Key;
-  private shiftKey!: Phaser.Input.Keyboard.Key;
+  private debugMenuKey!: Phaser.Input.Keyboard.Key;
   private upgradeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
   private minimapKey!: Phaser.Input.Keyboard.Key;
-  private debugPulseDamageDecreaseKey!: Phaser.Input.Keyboard.Key;
-  private debugPulseDamageIncreaseKey!: Phaser.Input.Keyboard.Key;
-  private debugPulseFireRateDecreaseKey!: Phaser.Input.Keyboard.Key;
-  private debugPulseFireRateIncreaseKey!: Phaser.Input.Keyboard.Key;
-  private debugPulseResetKey!: Phaser.Input.Keyboard.Key;
-  private blackHoleRingDebugColorKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
@@ -522,9 +510,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
-  private parallaxTunerText!: Phaser.GameObjects.Text;
   private isMinimapVisible = true;
-  private isParallaxTunerVisible = false;
   private farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
   private midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
   private nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
@@ -567,30 +553,18 @@ export class GameScene extends Phaser.Scene {
       this.updateBackgroundTiles(time);
       this.updateGameplayHud(time);
       this.updateMinimap();
-      this.updateParallaxTunerText();
-      this.updateBlackHoleLensOrbitSlider();
-      this.updateBlackHoleLensDensitySlider();
-      this.updateBlackHoleLensLengthSlider();
-      this.updateBlackHoleProjectionLensToggle();
       this.updateCollisionDebugOverlay();
       this.refreshDebugMenu();
       this.updateDebugText(time);
       return;
     }
 
-    this.updateParallaxTunerInput();
     this.updateUpgradeOverlayInput(time);
-    this.updateDebugWeaponTuningInput();
 
     if (this.isUpgradeOverlayOpen) {
       this.updateBackgroundTiles(time);
       this.updateGameplayHud(time);
       this.updateMinimap();
-      this.updateParallaxTunerText();
-      this.updateBlackHoleLensOrbitSlider();
-      this.updateBlackHoleLensDensitySlider();
-      this.updateBlackHoleLensLengthSlider();
-      this.updateBlackHoleProjectionLensToggle();
       this.updateDebugText(time);
       return;
     }
@@ -613,11 +587,6 @@ export class GameScene extends Phaser.Scene {
     this.updateBackgroundTiles(time);
     this.updateGameplayHud(time);
     this.updateMinimap();
-    this.updateParallaxTunerText();
-    this.updateBlackHoleLensOrbitSlider();
-    this.updateBlackHoleLensDensitySlider();
-    this.updateBlackHoleLensLengthSlider();
-    this.updateBlackHoleProjectionLensToggle();
     this.updateDebugText(time);
   }
 
@@ -634,10 +603,7 @@ export class GameScene extends Phaser.Scene {
     >;
     this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.collisionDebugKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F2);
-    this.parallaxTunerKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3);
-    this.parallaxResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
-    this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+    this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3);
     this.upgradeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
@@ -649,12 +615,6 @@ export class GameScene extends Phaser.Scene {
     ];
     this.upgradeCancelKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.minimapKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
-    this.debugPulseDamageDecreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET);
-    this.debugPulseDamageIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET);
-    this.debugPulseFireRateDecreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SEMICOLON);
-    this.debugPulseFireRateIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.QUOTES);
-    this.debugPulseResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
-    this.blackHoleRingDebugColorKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
   }
 
   private createDebugMenu(): void {
@@ -694,13 +654,22 @@ export class GameScene extends Phaser.Scene {
             )
           ),
         resetWeaponTuning: () => this.runDebugMenuAction(() => this.debugState.resetWeaponTuning()),
+        adjustStarfieldParallax: (layer, direction) => this.runDebugMenuAction(() => this.adjustStarfieldParallax(layer, direction)),
+        resetStarfieldParallax: () => this.runDebugMenuAction(() => this.resetStarfieldParallax()),
         cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.debugState.cycleBlackHoleRingDebugColorMode()),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
           this.debugState.showBlackHoleRadii = !this.debugState.showBlackHoleRadii;
         }),
         toggleCollisionDebug: () => this.runDebugMenuAction(() => {
           this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
-        })
+        }),
+        adjustBlackHoleLensOrbit: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensOrbitSpeed(delta)),
+        adjustBlackHoleLensDensity: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensDensity(delta)),
+        adjustBlackHoleLensLength: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensLength(delta)),
+        toggleBlackHoleProjectionLenses: () => this.runDebugMenuAction(() => {
+          this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
+        }),
+        resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
       }
     });
     this.refreshDebugMenu();
@@ -725,6 +694,13 @@ export class GameScene extends Phaser.Scene {
 
     return this.debugState.createMenuValues({
       pulseCooldownSeconds: this.getPulseCooldownMs() / 1000,
+      starfieldFarParallax: this.farStarfieldParallax,
+      starfieldMidParallax: this.midStarfieldParallax,
+      starfieldNearParallax: this.nearStarfieldParallax,
+      blackHoleLensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
+      blackHoleLensDensity: this.debugBlackHoleLensDensity,
+      blackHoleLensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
+      blackHoleProjectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
       playerProjectiles: this.pulseCannonProjectiles.length,
@@ -1089,21 +1065,11 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
-    this.createParallaxTuner();
-    this.createBlackHoleLensOrbitSlider();
-    this.createBlackHoleLensDensitySlider();
-    this.createBlackHoleLensLengthSlider();
-    this.createBlackHoleProjectionLensToggle();
     this.createUpgradeButton();
     this.createUpgradeOverlay();
     this.createDebugMenu();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
-    this.updateParallaxTunerText();
-    this.updateBlackHoleLensOrbitSlider();
-    this.updateBlackHoleLensDensitySlider();
-    this.updateBlackHoleLensLengthSlider();
-    this.updateBlackHoleProjectionLensToggle();
     this.updateDebugText(0);
   }
 
@@ -1690,7 +1656,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.parallaxTunerKey)) {
+    if (Phaser.Input.Keyboard.JustDown(this.debugMenuKey)) {
       if (this.isUpgradeOverlayOpen) {
         return;
       }
@@ -1715,11 +1681,6 @@ export class GameScene extends Phaser.Scene {
     this.debugMenuOpenedAt = time;
     this.debugMenu.open();
     this.refreshDebugMenu();
-    this.updateParallaxTunerText();
-    this.updateBlackHoleLensOrbitSlider();
-    this.updateBlackHoleLensDensitySlider();
-    this.updateBlackHoleLensLengthSlider();
-    this.updateBlackHoleProjectionLensToggle();
   }
 
   private closeDebugMenu(time: number): void {
@@ -1733,11 +1694,6 @@ export class GameScene extends Phaser.Scene {
     this.debugMenuOpenedAt = 0;
     this.debugMenu.close();
     this.updateGameplayHud(time);
-    this.updateParallaxTunerText();
-    this.updateBlackHoleLensOrbitSlider();
-    this.updateBlackHoleLensDensitySlider();
-    this.updateBlackHoleLensLengthSlider();
-    this.updateBlackHoleProjectionLensToggle();
   }
 
   private updateUpgradeOverlayInput(time: number): void {
@@ -1783,50 +1739,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateParallaxTunerInput(): void {
-    if (!this.isParallaxTunerVisible || this.isUpgradeOverlayOpen) {
-      return;
-    }
-
-    const direction = this.shiftKey.isDown ? 1 : -1;
-
-    if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[0])) {
-      this.adjustStarfieldParallax('far', direction);
-    } else if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[1])) {
-      this.adjustStarfieldParallax('mid', direction);
-    } else if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[2])) {
-      this.adjustStarfieldParallax('near', direction);
-    } else if (Phaser.Input.Keyboard.JustDown(this.parallaxResetKey)) {
-      this.resetStarfieldParallax();
-    }
-  }
-
-  private updateDebugWeaponTuningInput(): void {
-    if (!this.debugState.collisionDebugEnabled || this.isUpgradeOverlayOpen) {
-      return;
-    }
-
-    updateDebugWeaponHotkeys(
-      this.debugState,
-      {
-        ringColor: this.blackHoleRingDebugColorKey,
-        pulseDamageDecrease: this.debugPulseDamageDecreaseKey,
-        pulseDamageIncrease: this.debugPulseDamageIncreaseKey,
-        pulseFireRateDecrease: this.debugPulseFireRateDecreaseKey,
-        pulseFireRateIncrease: this.debugPulseFireRateIncreaseKey,
-        pulseReset: this.debugPulseResetKey
-      },
-      DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP,
-      DEBUG_PULSE_FIRE_RATE_MULTIPLIER_STEP
-    );
-  }
-
   private getActiveDebugPulseDamageMultiplier(): number {
-    return this.debugState.collisionDebugEnabled ? this.debugState.pulseDamageMultiplier : 1;
+    return this.debugState.pulseDamageMultiplier;
   }
 
   private getActiveDebugPulseFireRateMultiplier(): number {
-    return this.debugState.collisionDebugEnabled ? this.debugState.pulseFireRateMultiplier : 1;
+    return this.debugState.pulseFireRateMultiplier;
   }
 
   private getActiveDebugBlackHoleLensOrbitSpeedMultiplier(): number {
@@ -1863,7 +1781,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.applyBackgroundTilePositions();
-    this.updateParallaxTunerText();
   }
 
   private resetStarfieldParallax(): void {
@@ -1871,51 +1788,10 @@ export class GameScene extends Phaser.Scene {
     this.midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
     this.nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
     this.applyBackgroundTilePositions();
-    this.updateParallaxTunerText();
   }
 
   private clampStarfieldParallax(value: number): number {
     return Number(Phaser.Math.Clamp(value, STARFIELD_PARALLAX_MIN, STARFIELD_PARALLAX_MAX).toFixed(2));
-  }
-
-  private createParallaxTuner(): void {
-    this.parallaxTunerText = this.add
-      .text(this.scale.width - HUD_MARGIN, HUD_MARGIN + 54, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
-        color: '#f2fbff',
-        backgroundColor: 'rgba(2, 4, 10, 0.82)',
-        padding: { x: 10, y: 8 },
-        align: 'left'
-      })
-      .setOrigin(1, 0)
-      .setScrollFactor(0)
-      .setDepth(1001);
-  }
-
-  private updateParallaxTunerText(): void {
-    if (!this.parallaxTunerText) {
-      return;
-    }
-
-    const isVisible = this.isParallaxTunerVisible && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen();
-
-    this.parallaxTunerText.setVisible(isVisible);
-
-    if (!isVisible) {
-      return;
-    }
-
-    this.parallaxTunerText
-      .setPosition(this.scale.width - HUD_MARGIN, HUD_MARGIN + 54)
-      .setText(
-        `DEBUG PARALLAX TUNER\n` +
-          `Far:  ${this.farStarfieldParallax.toFixed(2)}  1 / Shift+1\n` +
-          `Mid:  ${this.midStarfieldParallax.toFixed(2)}  2 / Shift+2\n` +
-          `Near: ${this.nearStarfieldParallax.toFixed(2)}  3 / Shift+3\n` +
-          `0 reset   F3 debug menu\n` +
-          `Step ${STARFIELD_PARALLAX_STEP.toFixed(2)}  Range ${STARFIELD_PARALLAX_MIN.toFixed(2)}-${STARFIELD_PARALLAX_MAX.toFixed(2)}`
-      );
   }
 
   private openUpgradeOverlay(time: number): void {
@@ -1929,7 +1805,6 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics.setVisible(true);
     this.upgradeOverlayText.setVisible(true);
     this.updateUpgradeButton();
-    this.updateParallaxTunerText();
   }
 
   private closeUpgradeOverlay(time: number): void {
@@ -1945,7 +1820,6 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayText.setVisible(false);
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
-    this.updateParallaxTunerText();
   }
 
   private selectUpgrade(upgrade: UpgradeDefinition, time: number): void {
@@ -2025,6 +1899,43 @@ export class GameScene extends Phaser.Scene {
       PLAYER_DAMAGE_INVULNERABILITY_MS +
       this.passiveUpgradeLevels['damage-control'] * DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS
     );
+  }
+
+  private adjustBlackHoleLensOrbitSpeed(delta: number): void {
+    this.debugBlackHoleLensOrbitSpeedMultiplier = Number(
+      Phaser.Math.Clamp(
+        this.debugBlackHoleLensOrbitSpeedMultiplier + delta,
+        DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN,
+        DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX
+      ).toFixed(1)
+    );
+  }
+
+  private adjustBlackHoleLensDensity(delta: number): void {
+    this.debugBlackHoleLensDensity = Math.round(
+      Phaser.Math.Clamp(
+        this.debugBlackHoleLensDensity + delta,
+        DEBUG_BLACK_HOLE_LENS_DENSITY_MIN,
+        BLACK_HOLE_LENSING_ARC_MAX_COUNT
+      )
+    );
+  }
+
+  private adjustBlackHoleLensLength(delta: number): void {
+    this.debugBlackHoleLensLengthMultiplier = Number(
+      Phaser.Math.Clamp(
+        this.debugBlackHoleLensLengthMultiplier + delta,
+        DEBUG_BLACK_HOLE_LENS_LENGTH_MIN,
+        DEBUG_BLACK_HOLE_LENS_LENGTH_MAX
+      ).toFixed(1)
+    );
+  }
+
+  private resetBlackHoleLensTuning(): void {
+    this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
+    this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
+    this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+    this.areDebugBlackHoleProjectionLensLayersEnabled = true;
   }
 
   private createBlackHoleLensOrbitSlider(): void {
@@ -4040,10 +3951,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCollisionDebugOverlay(): void {
-    if (Phaser.Input.Keyboard.JustDown(this.collisionDebugKey)) {
-      this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
-    }
-
     if (!this.collisionDebugGraphics) {
       return;
     }
@@ -4489,10 +4396,10 @@ export class GameScene extends Phaser.Scene {
       : '';
     const debugWeaponLine = this.debugState.collisionDebugEnabled
       ? `Debug weapon: dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
-        `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
+        `Debug weapon tuning: F3 menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
-      ? `Black hole rings: ${this.debugState.blackHoleRingDebugColorMode}  B cycle\n` +
+      ? `Black hole rings: ${this.debugState.blackHoleRingDebugColorMode}  F3 menu\n` +
         `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity} / length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)} / projection ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
       : '';
 
@@ -4510,7 +4417,7 @@ export class GameScene extends Phaser.Scene {
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Debug menu: F3 ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
-        `Collision debug: ${this.debugState.collisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
+        `Collision visuals: ${this.debugState.collisionDebugEnabled ? 'on' : 'off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`

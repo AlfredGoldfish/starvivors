@@ -58,6 +58,13 @@ export class DebugState {
 
   createMenuValues(snapshot: {
     pulseCooldownSeconds: number;
+    starfieldFarParallax: number;
+    starfieldMidParallax: number;
+    starfieldNearParallax: number;
+    blackHoleLensOrbitSpeedMultiplier: number;
+    blackHoleLensDensity: number;
+    blackHoleLensLengthMultiplier: number;
+    blackHoleProjectionLensLayersEnabled: boolean;
     activeEnemies: number;
     activeAsteroids: number;
     playerProjectiles: number;
@@ -77,6 +84,13 @@ export class DebugState {
       pulseDamageMultiplier: this.pulseDamageMultiplier,
       pulseFireRateMultiplier: this.pulseFireRateMultiplier,
       pulseCooldownSeconds: snapshot.pulseCooldownSeconds,
+      starfieldFarParallax: snapshot.starfieldFarParallax,
+      starfieldMidParallax: snapshot.starfieldMidParallax,
+      starfieldNearParallax: snapshot.starfieldNearParallax,
+      blackHoleLensOrbitSpeedMultiplier: snapshot.blackHoleLensOrbitSpeedMultiplier,
+      blackHoleLensDensity: snapshot.blackHoleLensDensity,
+      blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
+      blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,
       playerProjectiles: snapshot.playerProjectiles,

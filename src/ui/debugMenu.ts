@@ -22,7 +22,7 @@ interface DebugButton {
 }
 
 const PANEL_WIDTH = 920;
-const PANEL_HEIGHT = 650;
+const PANEL_HEIGHT = 720;
 const PANEL_PADDING = 20;
 const COLUMN_WIDTH = 286;
 const BUTTON_HEIGHT = 28;
@@ -121,6 +121,20 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('player-invuln', columnXs[1], midY, COLUMN_WIDTH, 'Debug invulnerability', config.callbacks.togglePlayerInvulnerability);
   midY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('kill-player', columnXs[1], midY, COLUMN_WIDTH, 'Kill player', config.callbacks.killPlayer);
+  midY += BUTTON_HEIGHT + ROW_GAP;
+
+  midY = addSection(columnXs[1], midY, 'Background Tuning');
+  addValue('background', columnXs[1], midY);
+  midY += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
+  addButton('far-parallax-down', columnXs[1], midY, 64, 'Far -', () => config.callbacks.adjustStarfieldParallax('far', -1));
+  addButton('far-parallax-up', columnXs[1] + 74, midY, 64, 'Far +', () => config.callbacks.adjustStarfieldParallax('far', 1));
+  addButton('mid-parallax-down', columnXs[1] + 148, midY, 64, 'Mid -', () => config.callbacks.adjustStarfieldParallax('mid', -1));
+  addButton('mid-parallax-up', columnXs[1] + 222, midY, 64, 'Mid +', () => config.callbacks.adjustStarfieldParallax('mid', 1));
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('near-parallax-down', columnXs[1], midY, 138, 'Near -', () => config.callbacks.adjustStarfieldParallax('near', -1));
+  addButton('near-parallax-up', columnXs[1] + 148, midY, 138, 'Near +', () => config.callbacks.adjustStarfieldParallax('near', 1));
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('parallax-reset', columnXs[1], midY, COLUMN_WIDTH, 'Reset background tuning', config.callbacks.resetStarfieldParallax);
 
   rightY = addSection(columnXs[2], rightY, 'Weapon Testing');
   addValue('weapon', columnXs[2], rightY);
@@ -147,7 +161,23 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('black-hole-radii', columnXs[2], rightY, COLUMN_WIDTH, 'Black hole radii', config.callbacks.toggleBlackHoleRadii);
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('collision-debug', columnXs[2], rightY, COLUMN_WIDTH, 'F2 collision debug', config.callbacks.toggleCollisionDebug);
+  addButton('collision-debug', columnXs[2], rightY, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
+  rightY += BUTTON_HEIGHT + ROW_GAP;
+
+  rightY = addSection(columnXs[2], rightY, 'Black Hole Lenses');
+  addValue('black-hole-lenses', columnXs[2], rightY);
+  rightY += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  addButton('lens-orbit-down', columnXs[2], rightY, 64, 'Orbit -', () => config.callbacks.adjustBlackHoleLensOrbit(-0.1));
+  addButton('lens-orbit-up', columnXs[2] + 74, rightY, 64, 'Orbit +', () => config.callbacks.adjustBlackHoleLensOrbit(0.1));
+  addButton('lens-density-down', columnXs[2] + 148, rightY, 64, 'Dens -', () => config.callbacks.adjustBlackHoleLensDensity(-1));
+  addButton('lens-density-up', columnXs[2] + 222, rightY, 64, 'Dens +', () => config.callbacks.adjustBlackHoleLensDensity(1));
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('lens-length-down', columnXs[2], rightY, 138, 'Length -', () => config.callbacks.adjustBlackHoleLensLength(-0.1));
+  addButton('lens-length-up', columnXs[2] + 148, rightY, 138, 'Length +', () => config.callbacks.adjustBlackHoleLensLength(0.1));
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('projection-lenses', columnXs[2], rightY, COLUMN_WIDTH, 'Projection lens layers', config.callbacks.toggleBlackHoleProjectionLenses);
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('lens-reset', columnXs[2], rightY, COLUMN_WIDTH, 'Reset lens tuning', config.callbacks.resetBlackHoleLensTuning);
 
   function addSection(x: number, y: number, label: string): number {
     const text = scene.add
@@ -323,10 +353,20 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         `Damage x${values.pulseDamageMultiplier.toFixed(1)}\nFire x${values.pulseFireRateMultiplier.toFixed(1)}\nCooldown ${values.pulseCooldownSeconds.toFixed(2)}s`
       );
       setValue(
+        'background',
+        `Far ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
+      );
+      setValue(
         'black-hole',
         `Ring color: ${values.blackHoleRingDebugColorMode}\nRadii: ${
           values.blackHoleRadiiVisible ? 'shown' : 'hidden'
-        } / F2: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+        } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+      );
+      setValue(
+        'black-hole-lenses',
+        `Orbit x${values.blackHoleLensOrbitSpeedMultiplier.toFixed(1)}\nDensity ${values.blackHoleLensDensity}\nLength x${values.blackHoleLensLengthMultiplier.toFixed(1)}\nProjection ${
+          values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
+        }`
       );
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
       setButtonLabel(
@@ -337,7 +377,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
-      setButtonLabel('collision-debug', `F2 collision debug: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
+      setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
+      setButtonLabel('projection-lenses', `Projection lens layers: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
     },
     destroy: () => {
       blocker.destroy();
