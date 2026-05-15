@@ -726,20 +726,20 @@ export class BlackHoleSystem {
   private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
     const mirrorAlpha = isMirror ? 0.5 : 1;
     const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
-    const glowAlpha = (0.16 + pulse * 0.05) * mirrorAlpha;
+    const glowAlpha = (0.2 + pulse * 0.07) * mirrorAlpha;
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    graphics.lineStyle(26, 0x42f5d7, glowAlpha * 0.08);
+    graphics.lineStyle(36, 0x42f5d7, glowAlpha * 0.08);
+    graphics.strokeCircle(0, 0, rimRadius + 16);
+    graphics.lineStyle(26, 0x9fd8ff, glowAlpha * 0.13);
     graphics.strokeCircle(0, 0, rimRadius + 10);
-    graphics.lineStyle(18, 0x9fd8ff, glowAlpha * 0.14);
-    graphics.strokeCircle(0, 0, rimRadius + 6);
-    graphics.lineStyle(10, 0xc8f7ff, glowAlpha * 0.2);
-    graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(7, 0xf2fbff, glowAlpha * 0.3);
+    graphics.lineStyle(15, 0xc8f7ff, glowAlpha * 0.2);
+    graphics.strokeCircle(0, 0, rimRadius + 4);
+    graphics.lineStyle(10, 0xf2fbff, glowAlpha * 0.34);
     graphics.beginPath();
-    graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
+    graphics.arc(0, 0, rimRadius + 7, Math.PI * 0.08, Math.PI * 0.92, false);
     graphics.strokePath();
     graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xb8dce8, (isMirror ? 0.26 : 0.42));
     graphics.strokeCircle(0, 0, rimRadius);
