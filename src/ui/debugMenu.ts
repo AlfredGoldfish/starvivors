@@ -125,7 +125,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   midY = addSection(columnXs[1], midY, 'Background Tuning');
   addValue('background', columnXs[1], midY);
-  midY += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
+  midY += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  addButton('background-stars', columnXs[1], midY, COLUMN_WIDTH, 'Background stars', config.callbacks.toggleBackgroundStars);
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('far-parallax-down', columnXs[1], midY, 64, 'Far -', () => config.callbacks.adjustStarfieldParallax('far', -1));
   addButton('far-parallax-up', columnXs[1] + 74, midY, 64, 'Far +', () => config.callbacks.adjustStarfieldParallax('far', 1));
   addButton('mid-parallax-down', columnXs[1] + 148, midY, 64, 'Mid -', () => config.callbacks.adjustStarfieldParallax('mid', -1));
@@ -359,7 +361,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue(
         'background',
-        `Far ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
+        `Stars: ${values.backgroundStarsVisible ? 'on' : 'off'}\nFar ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
       );
       setValue(
         'black-hole',
@@ -381,6 +383,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
           : 'Asteroid spawning unavailable'
       );
       setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
+      setButtonLabel('background-stars', `Background stars: ${values.backgroundStarsVisible ? 'on' : 'off'}`);
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
       setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
       setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);

@@ -15,6 +15,7 @@ export interface DebugMenuValues {
   pulseDamageMultiplier: number;
   pulseFireRateMultiplier: number;
   pulseCooldownSeconds: number;
+  backgroundStarsVisible: boolean;
   starfieldFarParallax: number;
   starfieldMidParallax: number;
   starfieldNearParallax: number;
@@ -50,6 +51,7 @@ export interface DebugMenuCallbacks {
   adjustPulseCooldownSeconds: (deltaSeconds: number) => void;
   resetWeaponTuning: () => void;
   adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
+  toggleBackgroundStars: () => void;
   resetStarfieldParallax: () => void;
   cycleBlackHoleRingDebugColor: () => void;
   toggleBlackHoleRadii: () => void;

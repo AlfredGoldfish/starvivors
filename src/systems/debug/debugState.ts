@@ -60,6 +60,7 @@ export class DebugState {
 
   createMenuValues(snapshot: {
     pulseCooldownSeconds: number;
+    backgroundStarsVisible: boolean;
     starfieldFarParallax: number;
     starfieldMidParallax: number;
     starfieldNearParallax: number;
@@ -88,6 +89,7 @@ export class DebugState {
       pulseDamageMultiplier: this.pulseDamageMultiplier,
       pulseFireRateMultiplier: this.pulseFireRateMultiplier,
       pulseCooldownSeconds: snapshot.pulseCooldownSeconds,
+      backgroundStarsVisible: snapshot.backgroundStarsVisible,
       starfieldFarParallax: snapshot.starfieldFarParallax,
       starfieldMidParallax: snapshot.starfieldMidParallax,
       starfieldNearParallax: snapshot.starfieldNearParallax,

@@ -595,6 +595,7 @@ export class GameScene extends Phaser.Scene {
   private farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
   private midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
   private nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
+  private backgroundStarsVisible = true;
   private backgroundScrollX = 0;
   private backgroundScrollY = 0;
   private previousBackgroundPlayerX?: number;
@@ -737,6 +738,7 @@ export class GameScene extends Phaser.Scene {
           ),
         resetWeaponTuning: () => this.runDebugMenuAction(() => this.debugState.resetWeaponTuning()),
         adjustStarfieldParallax: (layer, direction) => this.runDebugMenuAction(() => this.adjustStarfieldParallax(layer, direction)),
+        toggleBackgroundStars: () => this.runDebugMenuAction(() => this.toggleBackgroundStars()),
         resetStarfieldParallax: () => this.runDebugMenuAction(() => this.resetStarfieldParallax()),
         cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.debugState.cycleBlackHoleRingDebugColorMode()),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
@@ -780,6 +782,7 @@ export class GameScene extends Phaser.Scene {
 
     return this.debugState.createMenuValues({
       pulseCooldownSeconds: this.getPulseCooldownMs() / 1000,
+      backgroundStarsVisible: this.backgroundStarsVisible,
       starfieldFarParallax: this.farStarfieldParallax,
       starfieldMidParallax: this.midStarfieldParallax,
       starfieldNearParallax: this.nearStarfieldParallax,
@@ -1111,6 +1114,7 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.debugBlackHoleFieldScaleMultiplier = DEBUG_BLACK_HOLE_FIELD_SCALE_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
+    this.backgroundStarsVisible = true;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
     this.previousBackgroundPlayerX = undefined;
@@ -1243,6 +1247,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(-18);
 
     this.applyBackgroundTilePositions();
+    this.applyBackgroundStarVisibility();
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
@@ -2087,6 +2092,21 @@ export class GameScene extends Phaser.Scene {
     this.midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
     this.nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
     this.applyBackgroundTilePositions();
+  }
+
+  private toggleBackgroundStars(): void {
+    this.backgroundStarsVisible = !this.backgroundStarsVisible;
+    this.applyBackgroundStarVisibility();
+  }
+
+  private applyBackgroundStarVisibility(): void {
+    if (!this.farStarfield || !this.midStarfield || !this.nearStarfield) {
+      return;
+    }
+
+    this.farStarfield.setVisible(this.backgroundStarsVisible);
+    this.midStarfield.setVisible(this.backgroundStarsVisible);
+    this.nearStarfield.setVisible(this.backgroundStarsVisible);
   }
 
   private clampStarfieldParallax(value: number): number {
@@ -4394,6 +4414,11 @@ export class GameScene extends Phaser.Scene {
     this.previousBackgroundPlayerY = this.player.y;
 
     this.applyBackgroundTilePositions();
+
+    if (!this.backgroundStarsVisible) {
+      this.applyBackgroundStarVisibility();
+      return;
+    }
 
     this.farStarfield.setAlpha(0.72);
     this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.32 + 1.8) * 0.012);
