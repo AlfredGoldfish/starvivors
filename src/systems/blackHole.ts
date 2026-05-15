@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-const BLACK_HOLE_LENSING_ARC_COUNT = 24;
+const BLACK_HOLE_LENSING_ARC_COUNT = 56;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_RING_SEGMENTS = 112;
 
@@ -33,11 +33,11 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     minRadius: 246,
     maxRadius: 318,
     resetRadius: 226,
-    inwardSpeedMin: 3.8,
-    inwardSpeedMax: 7.2,
-    angularDriftMin: -0.018,
-    angularDriftMax: 0.026,
-    alpha: 0.34,
+    inwardSpeedMin: 9.5,
+    inwardSpeedMax: 15,
+    angularDriftMin: -0.034,
+    angularDriftMax: 0.046,
+    alpha: 0.28,
     thickness: [0.8, 1.4],
     arcLength: [0.06, 0.16],
     squash: [0.76, 0.9]
@@ -46,11 +46,11 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     minRadius: 206,
     maxRadius: 270,
     resetRadius: 168,
-    inwardSpeedMin: 6.8,
-    inwardSpeedMax: 11.2,
-    angularDriftMin: -0.026,
-    angularDriftMax: 0.038,
-    alpha: 0.48,
+    inwardSpeedMin: 14,
+    inwardSpeedMax: 22,
+    angularDriftMin: -0.046,
+    angularDriftMax: 0.064,
+    alpha: 0.38,
     thickness: [1, 2],
     arcLength: [0.09, 0.24],
     squash: [0.7, 0.84]
@@ -59,11 +59,11 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     minRadius: 154,
     maxRadius: 222,
     resetRadius: 112,
-    inwardSpeedMin: 10,
-    inwardSpeedMax: 15.5,
-    angularDriftMin: -0.042,
-    angularDriftMax: 0.052,
-    alpha: 0.28,
+    inwardSpeedMin: 20,
+    inwardSpeedMax: 31,
+    angularDriftMin: -0.064,
+    angularDriftMax: 0.082,
+    alpha: 0.22,
     thickness: [0.8, 1.5],
     arcLength: [0.05, 0.17],
     squash: [0.62, 0.76]
