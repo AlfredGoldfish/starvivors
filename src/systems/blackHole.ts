@@ -143,32 +143,32 @@ interface BlackHoleWhirlpoolImageLayer {
 
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
 const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: 0.041, alpha: 0.34, initialRotation: 0, sizeMultiplier: 0.96 },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: Math.PI * 2 * 1.05, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96 },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[1],
-    rotationSpeed: 0.049,
-    alpha: 0.32,
+    rotationSpeed: Math.PI * 2 * 1.45,
+    alpha: 1,
     initialRotation: Math.PI * 0.18,
     sizeMultiplier: 1.03
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[2],
-    rotationSpeed: 0.055,
-    alpha: 0.3,
+    rotationSpeed: Math.PI * 2 * 1.95,
+    alpha: 1,
     initialRotation: Math.PI * 0.37,
     sizeMultiplier: 1
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[3],
-    rotationSpeed: 0.064,
-    alpha: 0.28,
+    rotationSpeed: Math.PI * 2 * 2.55,
+    alpha: 1,
     initialRotation: Math.PI * 0.53,
     sizeMultiplier: 1.07
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[4],
-    rotationSpeed: 0.073,
-    alpha: 0.26,
+    rotationSpeed: Math.PI * 2 * 3.25,
+    alpha: 1,
     initialRotation: Math.PI * 0.71,
     sizeMultiplier: 0.91
   }
@@ -176,22 +176,22 @@ const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
 const BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0],
-    rotationSpeed: 0.12,
-    alpha: 0.44,
+    rotationSpeed: Math.PI * 2 * 2.4,
+    alpha: 1,
     initialRotation: Math.PI * 0.08,
     sizeMultiplier: 0.94
   },
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1],
-    rotationSpeed: 0.155,
-    alpha: 0.4,
+    rotationSpeed: Math.PI * 2 * 3.35,
+    alpha: 1,
     initialRotation: Math.PI * 0.34,
     sizeMultiplier: 1.04
   },
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2],
-    rotationSpeed: 0.19,
-    alpha: 0.36,
+    rotationSpeed: Math.PI * 2 * 4.6,
+    alpha: 1,
     initialRotation: Math.PI * 0.62,
     sizeMultiplier: 0.99
   }
