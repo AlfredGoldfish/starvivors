@@ -10,26 +10,37 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-const BLACK_HOLE_WARNING_STAR_COUNT = 42;
-const BLACK_HOLE_WARNING_STAR_MIN_RADIUS = 176;
-const BLACK_HOLE_WARNING_STAR_MAX_RADIUS = 256;
-const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN = 0.12;
-const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX = 0.34;
-const BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE = 0.085;
-const BLACK_HOLE_WARNING_STAR_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
+const BLACK_HOLE_LENSING_ARC_COUNT = 20;
+const BLACK_HOLE_LENSING_ARC_MIN_RADIUS = 184;
+const BLACK_HOLE_LENSING_ARC_MAX_RADIUS = 286;
+const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
+const BLACK_HOLE_RING_SEGMENTS = 112;
 
 export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 'white';
 
-interface BlackHoleWarningStar {
+interface BlackHoleLensingArc {
   angle: number;
   radius: number;
-  radiusPulse: number;
-  size: number;
-  speed: number;
+  arcLength: number;
+  thickness: number;
   alpha: number;
   color: number;
-  trailLength: number;
-  trailAlpha: number;
+  driftSpeed: number;
+  pulsePhase: number;
+  pulseAmount: number;
+  squash: number;
+  brokenness: number;
+  foreground: boolean;
+}
+
+interface BlackHoleRingPlane {
+  radius: number;
+  tilt: number;
+  nodeAngle: number;
+  precessionSpeed: number;
+  lineWidth: number;
+  frontAlpha: number;
+  backAlpha: number;
 }
 
 export interface BlackHoleState {
@@ -48,7 +59,8 @@ export class BlackHoleSystem {
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
   private readonly velocity: Phaser.Math.Vector2;
-  private readonly warningStars: BlackHoleWarningStar[];
+  private readonly lensingArcs: BlackHoleLensingArc[];
+  private readonly ringPlanes: BlackHoleRingPlane[];
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
@@ -62,7 +74,8 @@ export class BlackHoleSystem {
       Math.cos(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED,
       Math.sin(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED
     );
-    this.warningStars = this.createWarningStars();
+    this.lensingArcs = this.createLensingArcs();
+    this.ringPlanes = this.createRingPlanes();
     this.visualPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
 
     this.body.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
@@ -146,23 +159,71 @@ export class BlackHoleSystem {
     return new Phaser.Math.Vector2(x, y);
   }
 
-  private createWarningStars(): BlackHoleWarningStar[] {
-    return Array.from({ length: BLACK_HOLE_WARNING_STAR_COUNT }, (_, index) => {
-      const ringShare = index / BLACK_HOLE_WARNING_STAR_COUNT;
-      const bandOffset = (index % 4) / 3;
+  private createLensingArcs(): BlackHoleLensingArc[] {
+    return Array.from({ length: BLACK_HOLE_LENSING_ARC_COUNT }, (_, index) => {
+      const clusterOffset = index % 5 === 0 ? Phaser.Math.FloatBetween(-0.18, 0.18) : Phaser.Math.FloatBetween(-0.44, 0.44);
+      const baseAngle =
+        index < BLACK_HOLE_LENSING_ARC_COUNT * 0.45
+          ? Math.PI * 0.08 + clusterOffset
+          : (index / BLACK_HOLE_LENSING_ARC_COUNT) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.22, 0.22);
+      const outerBias = Math.pow(Phaser.Math.FloatBetween(0, 1), 0.42);
 
       return {
-        angle: ringShare * Math.PI * 2 + Phaser.Math.FloatBetween(-0.18, 0.18),
-        radius: Phaser.Math.Linear(BLACK_HOLE_WARNING_STAR_MIN_RADIUS, BLACK_HOLE_WARNING_STAR_MAX_RADIUS, bandOffset),
-        radiusPulse: Phaser.Math.FloatBetween(4, 18),
-        size: Phaser.Math.FloatBetween(1.1, 2.7),
-        speed: Phaser.Math.FloatBetween(BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN, BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX),
-        alpha: Phaser.Math.FloatBetween(0.58, 0.95),
-        color: BLACK_HOLE_WARNING_STAR_COLORS[Phaser.Math.Between(0, BLACK_HOLE_WARNING_STAR_COLORS.length - 1)],
-        trailLength: Phaser.Math.FloatBetween(0.72, 1.28),
-        trailAlpha: Phaser.Math.FloatBetween(0.18, 0.32)
+        angle: baseAngle,
+        radius: Phaser.Math.Linear(BLACK_HOLE_LENSING_ARC_MIN_RADIUS, BLACK_HOLE_LENSING_ARC_MAX_RADIUS, outerBias),
+        arcLength: Phaser.Math.FloatBetween(0.08, index % 6 === 0 ? 0.34 : 0.22),
+        thickness: Phaser.Math.FloatBetween(1, index % 7 === 0 ? 2.6 : 1.7),
+        alpha: Phaser.Math.FloatBetween(0.22, index % 5 === 0 ? 0.78 : 0.52),
+        color: BLACK_HOLE_LENSING_ARC_COLORS[Phaser.Math.Between(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)],
+        driftSpeed: Phaser.Math.FloatBetween(-0.026, 0.032),
+        pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
+        pulseAmount: Phaser.Math.FloatBetween(0.08, 0.24),
+        squash: Phaser.Math.FloatBetween(0.7, 0.86),
+        brokenness: Phaser.Math.FloatBetween(0.18, 0.38),
+        foreground: index % 6 === 0
       };
     });
+  }
+
+  private createRingPlanes(): BlackHoleRingPlane[] {
+    return [
+      {
+        radius: this.coreRadius + 120,
+        tilt: 1.18,
+        nodeAngle: Math.PI * 0.02,
+        precessionSpeed: 0.08,
+        lineWidth: 3,
+        frontAlpha: 0.9,
+        backAlpha: 0.28
+      },
+      {
+        radius: this.coreRadius + 136,
+        tilt: 0.72,
+        nodeAngle: Math.PI * 0.32,
+        precessionSpeed: -0.055,
+        lineWidth: 2,
+        frontAlpha: 0.74,
+        backAlpha: 0.22
+      },
+      {
+        radius: this.coreRadius + 108,
+        tilt: 1.42,
+        nodeAngle: Math.PI * 0.62,
+        precessionSpeed: 0.038,
+        lineWidth: 2,
+        frontAlpha: 0.68,
+        backAlpha: 0.18
+      },
+      {
+        radius: this.coreRadius + 154,
+        tilt: 0.94,
+        nodeAngle: Math.PI * 0.86,
+        precessionSpeed: -0.03,
+        lineWidth: 1,
+        frontAlpha: 0.52,
+        backAlpha: 0.16
+      }
+    ];
   }
 
   private draw(
@@ -173,86 +234,136 @@ export class BlackHoleSystem {
     time = this.scene.time.now
   ): void {
     const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + this.visualPhase) * 0.5;
-    const mirrorAlpha = isMirror ? 0.62 : 1;
     const bodyAlpha = isMirror ? 0.56 : 0.82;
-    const ringAlpha = isMirror ? 0.52 : 0.86;
     const ringColor = this.getRingColor(ringDebugColorMode, isDebugEnabled);
     const coreAlpha = isMirror ? 0.84 : 1;
 
     graphics.clear();
     graphics.fillStyle(0x000006, isMirror ? 0.11 : 0.18);
     graphics.fillCircle(0, 0, this.warningRadius);
+
+    this.drawLensingArcs(graphics, isMirror, time, false);
+    this.drawProjectedRings(graphics, isMirror, ringColor, false, isDebugEnabled);
+
     graphics.fillStyle(0x000003, bodyAlpha);
     graphics.fillCircle(0, 0, this.coreRadius + 36 + pulse * 6);
     graphics.fillStyle(0x030307, isMirror ? 0.48 : 0.74);
     graphics.fillCircle(0, 0, this.coreRadius + 16);
-
-    this.drawOrbitRing(graphics, this.coreRadius + 116, this.coreRadius + 34, this.visualPhase * 0.62, ringAlpha * 0.72, 3, ringColor);
-    this.drawOrbitRing(graphics, this.coreRadius + 138, this.coreRadius + 48, -this.visualPhase * 0.44 + Math.PI * 0.34, ringAlpha * 0.58, 2, ringColor);
-    this.drawOrbitRing(graphics, this.coreRadius + 104, this.coreRadius + 72, this.visualPhase * 0.28 + Math.PI * 0.68, ringAlpha * 0.52, 2, ringColor);
-    this.drawOrbitRing(graphics, this.coreRadius + 156, this.coreRadius + 26, -this.visualPhase * 0.2 + Math.PI * 0.92, ringAlpha * 0.44, 1, ringColor);
-
-    for (const star of this.warningStars) {
-      const starAngle = star.angle + time * 0.001 * star.speed + this.visualPhase * 0.12;
-      const starRadius = star.radius + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.82 + star.angle) * star.radiusPulse;
-      const x = Math.cos(starAngle) * starRadius;
-      const y = Math.sin(starAngle) * starRadius * 0.74;
-      const trailAngle = starAngle - BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE * star.trailLength;
-      const trailX = Math.cos(trailAngle) * starRadius;
-      const trailY = Math.sin(trailAngle) * starRadius * 0.74;
-      const midTrailAngle = starAngle - BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE * star.trailLength * 0.52;
-      const midTrailX = Math.cos(midTrailAngle) * starRadius;
-      const midTrailY = Math.sin(midTrailAngle) * starRadius * 0.74;
-      const alpha = star.alpha * mirrorAlpha * (0.68 + pulse * 0.32);
-
-      graphics.lineStyle(Math.max(1, star.size * 0.72), star.color, alpha * star.trailAlpha);
-      graphics.lineBetween(trailX, trailY, x, y);
-      graphics.fillStyle(star.color, alpha * star.trailAlpha * 0.72);
-      graphics.fillCircle(trailX, trailY, star.size * 0.4);
-      graphics.fillStyle(star.color, alpha * star.trailAlpha);
-      graphics.fillCircle(midTrailX, midTrailY, star.size * 0.58);
-      graphics.fillStyle(star.color, alpha);
-      graphics.fillCircle(x, y, star.size);
-      graphics.fillStyle(0xf2fbff, alpha * 0.42);
-      graphics.fillCircle(
-        x + Math.cos(starAngle + Math.PI * 0.5) * 2.2,
-        y + Math.sin(starAngle + Math.PI * 0.5) * 1.4,
-        star.size * 0.45
-      );
-    }
-
     graphics.fillStyle(0x010107, coreAlpha);
     graphics.fillCircle(0, 0, this.coreRadius);
     graphics.fillStyle(0x000000, 1);
     graphics.fillCircle(0, 0, this.coreRadius * 0.72);
+
+    this.drawProjectedRings(graphics, isMirror, ringColor, true, isDebugEnabled);
+    this.drawLensingArcs(graphics, isMirror, time, true);
   }
 
-  private drawOrbitRing(
+  private drawLensingArcs(
     graphics: Phaser.GameObjects.Graphics,
-    halfWidth: number,
-    halfHeight: number,
-    rotation: number,
-    alpha: number,
-    lineWidth: number,
-    color = 0x000000
+    isMirror: boolean,
+    time: number,
+    foreground: boolean
   ): void {
-    const segments = 96;
-    let previousX = Math.cos(rotation) * halfWidth;
-    let previousY = Math.sin(rotation) * halfWidth;
+    const mirrorAlpha = isMirror ? 0.58 : 1;
 
-    graphics.lineStyle(lineWidth, color, alpha);
+    for (const arc of this.lensingArcs) {
+      if (arc.foreground !== foreground) {
+        continue;
+      }
+
+      const driftedAngle = arc.angle + time * 0.001 * arc.driftSpeed + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.018;
+      const radius = arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * 5;
+      const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.36 + arc.pulsePhase) * arc.pulseAmount;
+      const alpha = arc.alpha * mirrorAlpha * brightness * (foreground ? 0.76 : 1);
+      const firstLength = arc.arcLength * (0.52 - arc.brokenness * 0.22);
+      const secondLength = arc.arcLength * (0.28 + arc.brokenness * 0.18);
+      const gap = arc.arcLength * (0.18 + arc.brokenness * 0.22);
+
+      this.drawLensingArcSegment(graphics, arc, driftedAngle - arc.arcLength * 0.5, firstLength, radius, alpha);
+      this.drawLensingArcSegment(graphics, arc, driftedAngle - arc.arcLength * 0.5 + firstLength + gap, secondLength, radius, alpha * 0.72);
+    }
+  }
+
+  private drawLensingArcSegment(
+    graphics: Phaser.GameObjects.Graphics,
+    arc: BlackHoleLensingArc,
+    startAngle: number,
+    arcLength: number,
+    radius: number,
+    alpha: number
+  ): void {
+    const segments = 8;
+    let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
+
+    graphics.lineStyle(arc.thickness, arc.color, alpha);
 
     for (let i = 1; i <= segments; i += 1) {
-      const angle = (Math.PI * 2 * i) / segments;
-      const localX = Math.cos(angle) * halfWidth;
-      const localY = Math.sin(angle) * halfHeight;
-      const x = localX * Math.cos(rotation) - localY * Math.sin(rotation);
-      const y = localX * Math.sin(rotation) + localY * Math.cos(rotation);
+      const angle = startAngle + (arcLength * i) / segments;
+      const point = this.getLensingArcPoint(angle, radius, arc.squash);
 
-      graphics.lineBetween(previousX, previousY, x, y);
-      previousX = x;
-      previousY = y;
+      graphics.lineBetween(previous.x, previous.y, point.x, point.y);
+      previous = point;
     }
+  }
+
+  private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
+    return {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius * squash
+    };
+  }
+
+  private drawProjectedRings(
+    graphics: Phaser.GameObjects.Graphics,
+    isMirror: boolean,
+    color: number,
+    frontPass: boolean,
+    isDebugEnabled: boolean
+  ): void {
+    for (const ring of this.ringPlanes) {
+      this.drawProjectedRingPass(graphics, ring, isMirror, color, frontPass, isDebugEnabled);
+    }
+  }
+
+  private drawProjectedRingPass(
+    graphics: Phaser.GameObjects.Graphics,
+    ring: BlackHoleRingPlane,
+    isMirror: boolean,
+    color: number,
+    frontPass: boolean,
+    isDebugEnabled: boolean
+  ): void {
+    const nodeAngle = ring.nodeAngle + this.visualPhase * ring.precessionSpeed;
+    const alphaBase = frontPass ? ring.frontAlpha : ring.backAlpha;
+    const alpha = alphaBase * (isMirror ? 0.56 : 1) * (isDebugEnabled && color !== 0x000000 ? 1 : 0.82);
+
+    for (let i = 0; i < BLACK_HOLE_RING_SEGMENTS; i += 1) {
+      const startAngle = (Math.PI * 2 * i) / BLACK_HOLE_RING_SEGMENTS;
+      const endAngle = (Math.PI * 2 * (i + 1)) / BLACK_HOLE_RING_SEGMENTS;
+      const midAngle = (startAngle + endAngle) * 0.5;
+      const midDepth = Math.sin(midAngle) * Math.sin(ring.tilt);
+      const isFrontSegment = midDepth >= 0;
+
+      if (isFrontSegment !== frontPass) {
+        continue;
+      }
+
+      const start = this.projectRingPoint(startAngle, ring.radius, ring.tilt, nodeAngle);
+      const end = this.projectRingPoint(endAngle, ring.radius, ring.tilt, nodeAngle);
+
+      graphics.lineStyle(ring.lineWidth, color, alpha);
+      graphics.lineBetween(start.x, start.y, end.x, end.y);
+    }
+  }
+
+  private projectRingPoint(angle: number, radius: number, tilt: number, nodeAngle: number): { x: number; y: number } {
+    const localX = Math.cos(angle) * radius;
+    const localY = Math.sin(angle) * radius * Math.cos(tilt);
+
+    return {
+      x: localX * Math.cos(nodeAngle) - localY * Math.sin(nodeAngle),
+      y: localX * Math.sin(nodeAngle) + localY * Math.cos(nodeAngle)
+    };
   }
 
   private getRingColor(ringDebugColorMode: BlackHoleRingDebugColorMode, isDebugEnabled: boolean): number {
