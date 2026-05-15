@@ -143,31 +143,31 @@ interface BlackHoleWhirlpoolImageLayer {
 
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
 const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: Math.PI * 2 * 1.05, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96 },
+  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], rotationSpeed: Math.PI * 2 * 0.18, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96 },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[1],
-    rotationSpeed: Math.PI * 2 * 1.45,
+    rotationSpeed: Math.PI * 2 * 0.24,
     alpha: 1,
     initialRotation: Math.PI * 0.18,
     sizeMultiplier: 1.03
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[2],
-    rotationSpeed: Math.PI * 2 * 1.95,
+    rotationSpeed: Math.PI * 2 * 0.31,
     alpha: 1,
     initialRotation: Math.PI * 0.37,
     sizeMultiplier: 1
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[3],
-    rotationSpeed: Math.PI * 2 * 2.55,
+    rotationSpeed: Math.PI * 2 * 0.38,
     alpha: 1,
     initialRotation: Math.PI * 0.53,
     sizeMultiplier: 1.07
   },
   {
     key: BLACK_HOLE_FULL_TEXTURE_KEYS[4],
-    rotationSpeed: Math.PI * 2 * 3.25,
+    rotationSpeed: Math.PI * 2 * 0.46,
     alpha: 1,
     initialRotation: Math.PI * 0.71,
     sizeMultiplier: 0.91
@@ -176,21 +176,21 @@ const BLACK_HOLE_FULL_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
 const BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS: BlackHoleWhirlpoolImageLayer[] = [
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0],
-    rotationSpeed: Math.PI * 2 * 2.4,
+    rotationSpeed: Math.PI * 2 * 0.55,
     alpha: 1,
     initialRotation: Math.PI * 0.08,
     sizeMultiplier: 0.94
   },
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1],
-    rotationSpeed: Math.PI * 2 * 3.35,
+    rotationSpeed: Math.PI * 2 * 0.72,
     alpha: 1,
     initialRotation: Math.PI * 0.34,
     sizeMultiplier: 1.04
   },
   {
     key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2],
-    rotationSpeed: Math.PI * 2 * 4.6,
+    rotationSpeed: Math.PI * 2 * 0.9,
     alpha: 1,
     initialRotation: Math.PI * 0.62,
     sizeMultiplier: 0.99
@@ -299,7 +299,8 @@ export class BlackHoleSystem {
     activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
     lensLengthMultiplier = 1,
     areProjectionLensLayersEnabled = true,
-    fieldRadiusMultiplier = 1
+    fieldRadiusMultiplier = 1,
+    shouldMove = true
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
       Math.round(activeLensingArcCount),
@@ -312,14 +313,16 @@ export class BlackHoleSystem {
       BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX
     );
     this.setLensLengthMultiplier(lensLengthMultiplier);
-    this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
-    this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
+    if (shouldMove) {
+      this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
+      this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
+    }
     this.body.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.wrapMirrorBody.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
     this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
-    this.updateWhirlpoolImages(deltaSeconds, lensOrbitSpeedMultiplier);
+    this.updateWhirlpoolImages(deltaSeconds, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
   }
@@ -664,37 +667,45 @@ export class BlackHoleSystem {
     );
   }
 
-  private updateWhirlpoolImages(deltaSeconds: number, lensOrbitSpeedMultiplier: number): void {
-    const fullDisplaySize = this.influenceRadius * 2;
-    const eventHorizonDisplaySize = (this.coreRadius + 230) * 2;
+  private updateWhirlpoolImages(
+    deltaSeconds: number,
+    lensOrbitSpeedMultiplier: number,
+    areLayersEnabled: boolean
+  ): void {
+    const fullDisplaySize = this.influenceRadius * 2 * this.lensLengthMultiplier;
+    const eventHorizonDisplaySize = (this.coreRadius + 230) * 2 * this.lensLengthMultiplier;
 
     this.updateWhirlpoolImageGroup(
       this.fullLensImages,
       BLACK_HOLE_FULL_IMAGE_LAYERS,
       fullDisplaySize,
       deltaSeconds,
-      lensOrbitSpeedMultiplier
+      lensOrbitSpeedMultiplier,
+      areLayersEnabled
     );
     this.updateWhirlpoolImageGroup(
       this.wrapMirrorFullLensImages,
       BLACK_HOLE_FULL_IMAGE_LAYERS,
       fullDisplaySize,
       deltaSeconds,
-      lensOrbitSpeedMultiplier
+      lensOrbitSpeedMultiplier,
+      areLayersEnabled
     );
     this.updateWhirlpoolImageGroup(
       this.eventHorizonLensImages,
       BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
       eventHorizonDisplaySize,
       deltaSeconds,
-      lensOrbitSpeedMultiplier
+      lensOrbitSpeedMultiplier,
+      areLayersEnabled
     );
     this.updateWhirlpoolImageGroup(
       this.wrapMirrorEventHorizonLensImages,
       BLACK_HOLE_EVENT_HORIZON_IMAGE_LAYERS,
       eventHorizonDisplaySize,
       deltaSeconds,
-      lensOrbitSpeedMultiplier
+      lensOrbitSpeedMultiplier,
+      areLayersEnabled
     );
   }
 
@@ -703,14 +714,18 @@ export class BlackHoleSystem {
     layers: BlackHoleWhirlpoolImageLayer[],
     displaySize: number,
     deltaSeconds: number,
-    lensOrbitSpeedMultiplier: number
+    lensOrbitSpeedMultiplier: number,
+    areLayersEnabled: boolean
   ): void {
     for (let i = 0; i < images.length; i += 1) {
       const image = images[i];
       const rotation = layers[i].rotationSpeed * lensOrbitSpeedMultiplier * deltaSeconds;
       const layerDisplaySize = displaySize * layers[i].sizeMultiplier;
 
-      image.setDisplaySize(layerDisplaySize, layerDisplaySize).setRotation(image.rotation + rotation);
+      image
+        .setDisplaySize(layerDisplaySize, layerDisplaySize)
+        .setRotation(image.rotation + rotation)
+        .setVisible(areLayersEnabled);
     }
   }
 

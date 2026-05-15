@@ -12,6 +12,7 @@ export class DebugState {
   playerInvulnerable = false;
   showBlackHoleRadii = false;
   blackHoleFieldDamageEnabled = true;
+  debugGamePaused = false;
   pulseDamageMultiplier = 1;
   pulseFireRateMultiplier = 1;
   blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
@@ -22,6 +23,7 @@ export class DebugState {
     this.playerInvulnerable = false;
     this.showBlackHoleRadii = false;
     this.blackHoleFieldDamageEnabled = true;
+    this.debugGamePaused = false;
     this.pulseDamageMultiplier = 1;
     this.pulseFireRateMultiplier = 1;
     this.blackHoleRingDebugColorMode = 'normal';
@@ -69,6 +71,7 @@ export class DebugState {
     blackHoleLensLengthMultiplier: number;
     blackHoleFieldScaleMultiplier: number;
     blackHoleProjectionLensLayersEnabled: boolean;
+    debugGamePaused: boolean;
     activeEnemies: number;
     activeAsteroids: number;
     playerProjectiles: number;
@@ -98,6 +101,7 @@ export class DebugState {
       blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
       blackHoleFieldScaleMultiplier: snapshot.blackHoleFieldScaleMultiplier,
       blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
+      debugGamePaused: snapshot.debugGamePaused,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,
       playerProjectiles: snapshot.playerProjectiles,

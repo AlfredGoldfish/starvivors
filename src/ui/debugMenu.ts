@@ -18,18 +18,18 @@ interface DebugButton {
   background: Phaser.GameObjects.Rectangle;
   text: Phaser.GameObjects.Text;
   hitArea: Phaser.GameObjects.Zone;
+  baseY: number;
   setLabel: (label: string) => void;
 }
 
-const PANEL_WIDTH = 920;
-const PANEL_HEIGHT = 720;
-const PANEL_PADDING = 20;
-const COLUMN_WIDTH = 286;
-const BUTTON_HEIGHT = 28;
-const BUTTON_GAP = 8;
-const ROW_GAP = 10;
-const VALUE_LINE_HEIGHT = 18;
-const SECTION_TITLE_HEIGHT = 24;
+const PANEL_WIDTH = 344;
+const PANEL_PADDING = 14;
+const COLUMN_WIDTH = 316;
+const BUTTON_HEIGHT = 24;
+const BUTTON_GAP = 6;
+const ROW_GAP = 8;
+const VALUE_LINE_HEIGHT = 15;
+const SECTION_TITLE_HEIGHT = 20;
 
 export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): DebugMenuController {
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
@@ -37,12 +37,16 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   const buttonsByKey = new Map<string, DebugButton>();
   const buttons: DebugButton[] = [];
   const buttonHitAreas: Phaser.GameObjects.Zone[] = [];
+  const scrollButtons: DebugButton[] = [];
   let open = false;
+  let scrollOffset = 0;
+  let contentHeight = 0;
 
-  const panelX = Math.max(12, (scene.scale.width - PANEL_WIDTH) / 2);
-  const panelY = Math.max(12, (scene.scale.height - PANEL_HEIGHT) / 2);
-  const blocker = scene.add
-    .zone(0, 0, scene.scale.width, scene.scale.height)
+  const panelX = Math.max(0, scene.scale.width - PANEL_WIDTH);
+  const panelY = 0;
+  const panelHeight = scene.scale.height;
+  const panelBlocker = scene.add
+    .zone(panelX, panelY, PANEL_WIDTH, panelHeight)
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(1401)
@@ -52,139 +56,132 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
     .disableInteractive();
   const background = scene.add.graphics();
-  background.fillStyle(0x02040a, 0.9);
-  background.fillRect(0, 0, scene.scale.width, scene.scale.height);
-  background.fillStyle(0x071018, 0.98);
-  background.fillRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
+  background.fillStyle(0x071018, 0.96);
+  background.fillRect(panelX, panelY, PANEL_WIDTH, panelHeight);
   background.lineStyle(2, 0x42f5d7, 0.8);
-  background.strokeRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
+  background.lineBetween(panelX, panelY, panelX, panelY + panelHeight);
   container.add(background);
+  const content = scene.add.container(0, 0);
+  container.add(content);
 
   const title = scene.add
-    .text(panelX + PANEL_PADDING, panelY + 14, 'DEBUG MENU', {
+    .text(panelX + PANEL_PADDING, panelY + 10, 'DEBUG', {
       fontFamily: 'Consolas, "Courier New", monospace',
-      fontSize: '22px',
+      fontSize: '20px',
       color: '#f2fbff'
     })
     .setOrigin(0, 0);
   container.add(title);
 
-  addButton('close', panelX + PANEL_WIDTH - 106, panelY + 14, 84, 'Close', config.callbacks.close);
+  addButton('close', panelX + PANEL_WIDTH - 78, panelY + 10, 64, 'Close', config.callbacks.close);
 
-  const columnXs = [
-    panelX + PANEL_PADDING,
-    panelX + PANEL_PADDING + COLUMN_WIDTH + 12,
-    panelX + PANEL_PADDING + (COLUMN_WIDTH + 12) * 2
-  ];
-  let leftY = panelY + 58;
-  let midY = panelY + 58;
-  let rightY = panelY + 58;
+  const columnX = panelX + PANEL_PADDING;
+  let y = panelY + 42;
 
-  leftY = addSection(columnXs[0], leftY, 'Spawn Control');
-  addValue('spawn-state', columnXs[0], leftY);
-  leftY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('enemy-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Enemy spawning', config.callbacks.toggleEnemySpawning);
-  leftY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('spawn-chaser', columnXs[0], leftY, 88, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
-  addButton('spawn-shooter', columnXs[0] + 98, leftY, 88, 'Shooter', () => config.callbacks.spawnEnemy('shooter'));
-  addButton('spawn-tank', columnXs[0] + 196, leftY, 88, 'Tank', () => config.callbacks.spawnEnemy('tank'));
-  leftY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('clear-enemies', columnXs[0], leftY, COLUMN_WIDTH, 'Clear enemies', config.callbacks.clearEnemies);
-  leftY += BUTTON_HEIGHT + ROW_GAP;
+  y = addSection(columnX, y, 'Run');
+  addValue('run-state', columnX, y);
+  y += VALUE_LINE_HEIGHT + BUTTON_GAP;
+  addButton('debug-pause', columnX, y, COLUMN_WIDTH, 'Pause game', config.callbacks.toggleDebugPause);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  leftY = addSection(columnXs[0], leftY, 'Asteroid Testing');
-  addValue('asteroid-state', columnXs[0], leftY);
-  leftY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('asteroid-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Asteroid spawning unavailable', config.callbacks.toggleAsteroidSpawning);
-  leftY += BUTTON_HEIGHT + BUTTON_GAP;
+  y = addSection(columnX, y, 'Spawn Control');
+  addValue('spawn-state', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+  addButton('enemy-spawning', columnX, y, COLUMN_WIDTH, 'Enemy spawning', config.callbacks.toggleEnemySpawning);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('spawn-chaser', columnX, y, 98, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
+  addButton('spawn-shooter', columnX + 109, y, 98, 'Shooter', () => config.callbacks.spawnEnemy('shooter'));
+  addButton('spawn-tank', columnX + 218, y, 98, 'Tank', () => config.callbacks.spawnEnemy('tank'));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('clear-enemies', columnX, y, 154, 'Clear enemies', config.callbacks.clearEnemies);
+  addButton('clear-asteroids', columnX + 162, y, 154, 'Clear asteroids', config.callbacks.clearAsteroids);
+  y += BUTTON_HEIGHT + ROW_GAP;
+
+  y = addSection(columnX, y, 'Asteroids');
+  addValue('asteroid-state', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
   for (let tier = 1; tier <= 5; tier += 1) {
-    addButton(`asteroid-${tier}`, columnXs[0] + (tier - 1) * 56, leftY, 48, `T${tier}`, () =>
+    addButton(`asteroid-${tier}`, columnX + (tier - 1) * 63, y, 55, `T${tier}`, () =>
       config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
     );
   }
-  leftY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('clear-asteroids', columnXs[0], leftY, COLUMN_WIDTH, 'Clear asteroids', config.callbacks.clearAsteroids);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  midY = addSection(columnXs[1], midY, 'Projectile Cleanup');
-  addValue('projectiles', columnXs[1], midY);
-  midY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('clear-player-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear player projectiles', config.callbacks.clearPlayerProjectiles);
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('clear-enemy-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear enemy projectiles', config.callbacks.clearEnemyProjectiles);
-  midY += BUTTON_HEIGHT + ROW_GAP;
+  y = addSection(columnX, y, 'Player');
+  addValue('player', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+  addButton('restore-hull', columnX, y, 101, 'Restore', config.callbacks.restorePlayerHull);
+  addButton('player-invuln', columnX + 108, y, 101, 'Invuln', config.callbacks.togglePlayerInvulnerability);
+  addButton('kill-player', columnX + 216, y, 100, 'Kill', config.callbacks.killPlayer);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  midY = addSection(columnXs[1], midY, 'Player Testing');
-  addValue('player', columnXs[1], midY);
-  midY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('restore-hull', columnXs[1], midY, COLUMN_WIDTH, 'Restore hull', config.callbacks.restorePlayerHull);
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('player-invuln', columnXs[1], midY, COLUMN_WIDTH, 'Debug invulnerability', config.callbacks.togglePlayerInvulnerability);
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('kill-player', columnXs[1], midY, COLUMN_WIDTH, 'Kill player', config.callbacks.killPlayer);
-  midY += BUTTON_HEIGHT + ROW_GAP;
+  y = addSection(columnX, y, 'Projectiles');
+  addValue('projectiles', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+  addButton('clear-player-projectiles', columnX, y, 154, 'Clear player shots', config.callbacks.clearPlayerProjectiles);
+  addButton('clear-enemy-projectiles', columnX + 162, y, 154, 'Clear enemy shots', config.callbacks.clearEnemyProjectiles);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  midY = addSection(columnXs[1], midY, 'Background Tuning');
-  addValue('background', columnXs[1], midY);
-  midY += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
-  addButton('background-stars', columnXs[1], midY, COLUMN_WIDTH, 'Background stars', config.callbacks.toggleBackgroundStars);
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('far-parallax-down', columnXs[1], midY, 64, 'Far -', () => config.callbacks.adjustStarfieldParallax('far', -1));
-  addButton('far-parallax-up', columnXs[1] + 74, midY, 64, 'Far +', () => config.callbacks.adjustStarfieldParallax('far', 1));
-  addButton('mid-parallax-down', columnXs[1] + 148, midY, 64, 'Mid -', () => config.callbacks.adjustStarfieldParallax('mid', -1));
-  addButton('mid-parallax-up', columnXs[1] + 222, midY, 64, 'Mid +', () => config.callbacks.adjustStarfieldParallax('mid', 1));
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('near-parallax-down', columnXs[1], midY, 138, 'Near -', () => config.callbacks.adjustStarfieldParallax('near', -1));
-  addButton('near-parallax-up', columnXs[1] + 148, midY, 138, 'Near +', () => config.callbacks.adjustStarfieldParallax('near', 1));
-  midY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('parallax-reset', columnXs[1], midY, COLUMN_WIDTH, 'Reset background tuning', config.callbacks.resetStarfieldParallax);
+  y = addSection(columnX, y, 'Black Hole');
+  addValue('black-hole', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+  addButton('ring-color', columnX, y, 154, 'Ring color', config.callbacks.cycleBlackHoleRingDebugColor);
+  addButton('black-hole-radii', columnX + 162, y, 154, 'Radii', config.callbacks.toggleBlackHoleRadii);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('black-hole-field-damage', columnX, y, 154, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
+  addButton('collision-debug', columnX + 162, y, 154, 'Collision visuals', config.callbacks.toggleCollisionDebug);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  rightY = addSection(columnXs[2], rightY, 'Weapon Testing');
-  addValue('weapon', columnXs[2], rightY);
-  rightY += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-  addButton('damage-down', columnXs[2], rightY, 64, 'Dmg -', () => config.callbacks.adjustPulseDamage(-0.5));
-  addButton('damage-up', columnXs[2] + 74, rightY, 64, 'Dmg +', () => config.callbacks.adjustPulseDamage(0.5));
-  addButton('fire-down', columnXs[2] + 148, rightY, 64, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
-  addButton('fire-up', columnXs[2] + 222, rightY, 64, 'Fire +', () => config.callbacks.adjustPulseFireRate(0.5));
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('cooldown-down', columnXs[2], rightY, 138, 'Cooldown -0.05s', () =>
-    config.callbacks.adjustPulseCooldownSeconds(-0.05)
-  );
-  addButton('cooldown-up', columnXs[2] + 148, rightY, 138, 'Cooldown +0.05s', () =>
-    config.callbacks.adjustPulseCooldownSeconds(0.05)
-  );
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('weapon-reset', columnXs[2], rightY, COLUMN_WIDTH, 'Reset weapon tuning', config.callbacks.resetWeaponTuning);
-  rightY += BUTTON_HEIGHT + ROW_GAP;
+  y = addSection(columnX, y, 'Black Hole PNG');
+  addValue('black-hole-lenses', columnX, y);
+  y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  addButton('lens-orbit-down', columnX, y, 74, 'Spin -', () => config.callbacks.adjustBlackHoleLensOrbit(-0.1));
+  addButton('lens-orbit-up', columnX + 80, y, 74, 'Spin +', () => config.callbacks.adjustBlackHoleLensOrbit(0.1));
+  addButton('lens-length-down', columnX + 162, y, 74, 'Size -', () => config.callbacks.adjustBlackHoleLensLength(-0.1));
+  addButton('lens-length-up', columnX + 242, y, 74, 'Size +', () => config.callbacks.adjustBlackHoleLensLength(0.1));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-scale-down', columnX, y, 154, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
+  addButton('field-scale-up', columnX + 162, y, 154, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('projection-lenses', columnX, y, 154, 'PNG layers', config.callbacks.toggleBlackHoleProjectionLenses);
+  addButton('lens-reset', columnX + 162, y, 154, 'Reset black hole', config.callbacks.resetBlackHoleLensTuning);
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  rightY = addSection(columnXs[2], rightY, 'Black Hole Debug');
-  addValue('black-hole', columnXs[2], rightY);
-  rightY += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-  addButton('ring-color', columnXs[2], rightY, COLUMN_WIDTH, 'Cycle ring color', config.callbacks.cycleBlackHoleRingDebugColor);
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('black-hole-radii', columnXs[2], rightY, COLUMN_WIDTH, 'Black hole radii', config.callbacks.toggleBlackHoleRadii);
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('black-hole-field-damage', columnXs[2], rightY, COLUMN_WIDTH, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('collision-debug', columnXs[2], rightY, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
-  rightY += BUTTON_HEIGHT + ROW_GAP;
+  y = addSection(columnX, y, 'Weapon');
+  addValue('weapon', columnX, y);
+  y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
+  addButton('damage-down', columnX, y, 74, 'Dmg -', () => config.callbacks.adjustPulseDamage(-0.5));
+  addButton('damage-up', columnX + 80, y, 74, 'Dmg +', () => config.callbacks.adjustPulseDamage(0.5));
+  addButton('fire-down', columnX + 162, y, 74, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
+  addButton('fire-up', columnX + 242, y, 74, 'Fire +', () => config.callbacks.adjustPulseFireRate(0.5));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('cooldown-down', columnX, y, 154, 'Cooldown -', () => config.callbacks.adjustPulseCooldownSeconds(-0.05));
+  addButton('cooldown-up', columnX + 162, y, 154, 'Cooldown +', () => config.callbacks.adjustPulseCooldownSeconds(0.05));
+  y += BUTTON_HEIGHT + ROW_GAP;
 
-  rightY = addSection(columnXs[2], rightY, 'Black Hole Lenses');
-  addValue('black-hole-lenses', columnXs[2], rightY);
-  rightY += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
-  addButton('lens-orbit-down', columnXs[2], rightY, 64, 'Orbit -', () => config.callbacks.adjustBlackHoleLensOrbit(-0.1));
-  addButton('lens-orbit-up', columnXs[2] + 74, rightY, 64, 'Orbit +', () => config.callbacks.adjustBlackHoleLensOrbit(0.1));
-  addButton('lens-density-down', columnXs[2] + 148, rightY, 64, 'Dens -', () => config.callbacks.adjustBlackHoleLensDensity(-1));
-  addButton('lens-density-up', columnXs[2] + 222, rightY, 64, 'Dens +', () => config.callbacks.adjustBlackHoleLensDensity(1));
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('lens-length-down', columnXs[2], rightY, 138, 'Length -', () => config.callbacks.adjustBlackHoleLensLength(-0.1));
-  addButton('lens-length-up', columnXs[2] + 148, rightY, 138, 'Length +', () => config.callbacks.adjustBlackHoleLensLength(0.1));
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('field-scale-down', columnXs[2], rightY, 138, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
-  addButton('field-scale-up', columnXs[2] + 148, rightY, 138, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('projection-lenses', columnXs[2], rightY, COLUMN_WIDTH, 'Projection lens layers', config.callbacks.toggleBlackHoleProjectionLenses);
-  rightY += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('lens-reset', columnXs[2], rightY, COLUMN_WIDTH, 'Reset lens tuning', config.callbacks.resetBlackHoleLensTuning);
+  y = addSection(columnX, y, 'Background');
+  addValue('background', columnX, y);
+  y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  addButton('background-stars', columnX, y, 154, 'Stars', config.callbacks.toggleBackgroundStars);
+  addButton('parallax-reset', columnX + 162, y, 154, 'Reset bg', config.callbacks.resetStarfieldParallax);
+  contentHeight = y + BUTTON_HEIGHT + PANEL_PADDING;
+
+  scene.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _deltaX: number, deltaY: number) => {
+    if (!open) {
+      return;
+    }
+
+    const maxScroll = Math.max(0, contentHeight - scene.scale.height);
+    const nextOffset = Phaser.Math.Clamp(scrollOffset - Math.sign(deltaY) * 36, -maxScroll, 0);
+
+    if (nextOffset !== scrollOffset) {
+      scrollOffset = nextOffset;
+      content.setY(scrollOffset);
+      for (const button of scrollButtons) {
+        button.hitArea.setY(button.baseY + scrollOffset);
+      }
+    }
+  });
 
   function addSection(x: number, y: number, label: string): number {
     const text = scene.add
@@ -194,7 +191,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         color: '#42f5d7'
       })
       .setOrigin(0, 0);
-    container.add(text);
+    content.add(text);
     return y + SECTION_TITLE_HEIGHT;
   }
 
@@ -208,7 +205,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       })
       .setOrigin(0, 0);
     valuesTextByKey.set(key, text);
-    container.add(text);
+    content.add(text);
   }
 
   function addButton(key: string, x: number, y: number, width: number, label: string, callback: () => void): DebugButton {
@@ -273,17 +270,19 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
     hitArea.disableInteractive();
 
-    container.add([background, text]);
+    content.add([background, text]);
     buttonHitAreas.push(hitArea);
 
     const button = {
       background,
       text,
       hitArea,
+      baseY: y,
       setLabel: (nextLabel: string) => text.setText(nextLabel)
     };
     buttonsByKey.set(key, button);
     buttons.push(button);
+    scrollButtons.push(button);
 
     return button;
   }
@@ -297,12 +296,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function setButtonInputEnabled(isEnabled: boolean): void {
-    blocker.setVisible(isEnabled);
-
+    panelBlocker.setVisible(isEnabled);
     if (isEnabled) {
-      blocker.setInteractive();
+      panelBlocker.setInteractive();
     } else {
-      blocker.disableInteractive();
+      panelBlocker.disableInteractive();
     }
 
     for (const hitArea of buttonHitAreas) {
@@ -326,6 +324,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   return {
     open: () => {
       open = true;
+      scrollOffset = 0;
+      content.setY(scrollOffset);
+      for (const button of scrollButtons) {
+        button.hitArea.setY(button.baseY);
+      }
       container.setVisible(true);
       setButtonInputEnabled(true);
     },
@@ -341,6 +344,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     },
     isOpen: () => open,
     update: (values: DebugMenuValues) => {
+      setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
       setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
       setValue(
         'asteroid-state',
@@ -371,10 +375,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue(
         'black-hole-lenses',
-        `Orbit x${values.blackHoleLensOrbitSpeedMultiplier.toFixed(1)}\nDensity ${values.blackHoleLensDensity}\nLength x${values.blackHoleLensLengthMultiplier.toFixed(1)}\nProjection ${
+        `Spin x${values.blackHoleLensOrbitSpeedMultiplier.toFixed(1)}\nVisual size x${values.blackHoleLensLengthMultiplier.toFixed(1)}\nPNG layers ${
           values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
         }\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
       );
+      setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
       setButtonLabel(
         'asteroid-spawning',
@@ -387,10 +392,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
       setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
       setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
-      setButtonLabel('projection-lenses', `Projection lens layers: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
+      setButtonLabel('projection-lenses', `PNG layers: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
     },
     destroy: () => {
-      blocker.destroy();
+      panelBlocker.destroy();
       for (const hitArea of buttonHitAreas) {
         hitArea.destroy();
       }

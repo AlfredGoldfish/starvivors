@@ -24,6 +24,7 @@ export interface DebugMenuValues {
   blackHoleLensLengthMultiplier: number;
   blackHoleFieldScaleMultiplier: number;
   blackHoleProjectionLensLayersEnabled: boolean;
+  debugGamePaused: boolean;
   activeEnemies: number;
   activeAsteroids: number;
   playerProjectiles: number;
@@ -35,6 +36,7 @@ export interface DebugMenuValues {
 
 export interface DebugMenuCallbacks {
   close: () => void;
+  toggleDebugPause: () => void;
   toggleEnemySpawning: () => void;
   spawnEnemy: (type: DebugEnemyType) => void;
   clearEnemies: () => void;
@@ -58,7 +60,6 @@ export interface DebugMenuCallbacks {
   toggleBlackHoleFieldDamage: () => void;
   toggleCollisionDebug: () => void;
   adjustBlackHoleLensOrbit: (delta: number) => void;
-  adjustBlackHoleLensDensity: (delta: number) => void;
   adjustBlackHoleLensLength: (delta: number) => void;
   adjustBlackHoleFieldScale: (delta: number) => void;
   toggleBlackHoleProjectionLenses: () => void;
