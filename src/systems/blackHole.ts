@@ -728,6 +728,22 @@ export class BlackHoleSystem {
     this.syncPngLayerImages();
   }
 
+  setPngLayers(layers: BlackHolePngLayerConfig[]): void {
+    this.pngLayers.splice(
+      0,
+      this.pngLayers.length,
+      ...layers.map((layer) => ({
+        textureKey: layer.textureKey,
+        speedRps: Number(Phaser.Math.Clamp(layer.speedRps, 0, 5).toFixed(2)),
+        sizeMultiplier: Number(Phaser.Math.Clamp(layer.sizeMultiplier, 0.05, 3).toFixed(2)),
+        alpha: Number(Phaser.Math.Clamp(layer.alpha, 0, 1).toFixed(2)),
+        enabled: layer.enabled,
+        initialRotation: layer.initialRotation
+      }))
+    );
+    this.syncPngLayerImages();
+  }
+
   private syncPngLayerImages(): void {
     this.syncPngLayerImageGroup(false);
     this.syncPngLayerImageGroup(true);

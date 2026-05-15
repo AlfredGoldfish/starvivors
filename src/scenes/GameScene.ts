@@ -31,6 +31,7 @@ import {
   BLACK_HOLE_PNG_TEXTURE_LABELS,
   BlackHoleSystem,
   type BlackHoleCapturedProjectileState,
+  type BlackHolePngLayerConfig,
   type BlackHolePngTextureKey,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
@@ -61,6 +62,24 @@ const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
   { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1], url: blackHoleEventHorizonLines2Url },
   { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, url: blackHoleEventHorizonLinesUrl }
 ] as const;
+
+interface SavedBlackHolePngLayer {
+  image: unknown;
+  speedRps: unknown;
+  size: unknown;
+  alpha: unknown;
+  enabled: unknown;
+  initialRotation?: unknown;
+}
+
+interface SavedBlackHolePngSetup {
+  fieldScale?: unknown;
+  allLayersEnabled?: unknown;
+  addImage?: unknown;
+  selectedLayerIndex?: unknown;
+  layers?: unknown;
+}
+
 const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
 const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
 const STARFIELD_NEAR_TEXTURE_KEY = 'starvivors-starfield-near-tile';
@@ -803,6 +822,7 @@ export class GameScene extends Phaser.Scene {
         duplicateBlackHolePngLayer: () => this.runDebugMenuAction(() => this.duplicateBlackHolePngLayer()),
         removeBlackHolePngLayer: () => this.runDebugMenuAction(() => this.removeBlackHolePngLayer()),
         saveBlackHolePngSetup: () => this.runDebugMenuAction(() => this.saveBlackHolePngSetup()),
+        loadBlackHolePngSetup: () => this.runDebugMenuAction(() => this.loadBlackHolePngSetup()),
         resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
       }
     });
@@ -2389,6 +2409,120 @@ export class GameScene extends Phaser.Scene {
     const filename = `blackhole-setup-${this.getTimestampSlug()}.md`;
 
     this.downloadTextFile(filename, markdown, 'text/markdown');
+  }
+
+  private loadBlackHolePngSetup(): void {
+    const input = document.createElement('input');
+
+    input.type = 'file';
+    input.accept = '.md,text/markdown,text/plain';
+    input.onchange = () => {
+      const file = input.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      void file.text().then((contents) => {
+        this.applyBlackHolePngSetupMarkdown(contents);
+        this.refreshDebugMenu();
+      });
+    };
+    input.click();
+  }
+
+  private applyBlackHolePngSetupMarkdown(markdown: string): void {
+    const setup = this.parseBlackHolePngSetupMarkdown(markdown);
+
+    if (!setup) {
+      return;
+    }
+
+    const layers = this.normalizeBlackHolePngSetupLayers(setup.layers);
+
+    if (!layers) {
+      return;
+    }
+
+    this.blackHole?.setPngLayers(layers);
+
+    if (typeof setup.fieldScale === 'number' && Number.isFinite(setup.fieldScale)) {
+      this.debugBlackHoleFieldScaleMultiplier = Phaser.Math.Clamp(setup.fieldScale, 1, 20);
+    }
+
+    if (typeof setup.allLayersEnabled === 'boolean') {
+      this.areDebugBlackHoleProjectionLensLayersEnabled = setup.allLayersEnabled;
+    }
+
+    if (this.isBlackHolePngTextureKey(setup.addImage)) {
+      this.debugAddBlackHolePngTextureKey = setup.addImage;
+    }
+
+    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
+    const selectedLayerIndex = typeof setup.selectedLayerIndex === 'number' && Number.isFinite(setup.selectedLayerIndex)
+      ? setup.selectedLayerIndex
+      : 0;
+
+    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
+      Math.trunc(selectedLayerIndex),
+      0,
+      Math.max(0, layerCount - 1)
+    );
+  }
+
+  private parseBlackHolePngSetupMarkdown(markdown: string): SavedBlackHolePngSetup | undefined {
+    const jsonBlockMatch = markdown.match(/```json\s*([\s\S]*?)```/i);
+
+    if (!jsonBlockMatch) {
+      return undefined;
+    }
+
+    try {
+      const parsed = JSON.parse(jsonBlockMatch[1]) as unknown;
+
+      return parsed && typeof parsed === 'object' ? (parsed as SavedBlackHolePngSetup) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private normalizeBlackHolePngSetupLayers(rawLayers: unknown): BlackHolePngLayerConfig[] | undefined {
+    if (!Array.isArray(rawLayers)) {
+      return undefined;
+    }
+
+    const layers: BlackHolePngLayerConfig[] = [];
+
+    for (const rawLayer of rawLayers) {
+      if (!rawLayer || typeof rawLayer !== 'object') {
+        return undefined;
+      }
+
+      const layer = rawLayer as SavedBlackHolePngLayer;
+
+      if (!this.isBlackHolePngTextureKey(layer.image)) {
+        return undefined;
+      }
+
+      layers.push({
+        textureKey: layer.image,
+        speedRps: this.getFiniteNumber(layer.speedRps, 0.25),
+        sizeMultiplier: this.getFiniteNumber(layer.size, 1),
+        alpha: this.getFiniteNumber(layer.alpha, 1),
+        enabled: typeof layer.enabled === 'boolean' ? layer.enabled : true,
+        initialRotation: this.getFiniteNumber(layer.initialRotation, Phaser.Math.FloatBetween(0, Math.PI * 2))
+      });
+    }
+
+    return layers;
+  }
+
+  private isBlackHolePngTextureKey(value: unknown): value is BlackHolePngTextureKey {
+    return typeof value === 'string' && BLACK_HOLE_PNG_TEXTURE_KEYS.includes(value as BlackHolePngTextureKey);
+  }
+
+  private getFiniteNumber(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
 
   private createBlackHolePngSetupMarkdown(): string {
