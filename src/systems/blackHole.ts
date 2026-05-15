@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_HORIZON_RIM_WIDTH = 4;
+const BLACK_HOLE_HORIZON_RIM_WIDTH = 2;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
@@ -726,18 +726,23 @@ export class BlackHoleSystem {
   private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
     const mirrorAlpha = isMirror ? 0.5 : 1;
     const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
-    const glowAlpha = (0.12 + pulse * 0.04) * mirrorAlpha;
+    const glowAlpha = (0.16 + pulse * 0.05) * mirrorAlpha;
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
-    graphics.lineStyle(11, 0x9fd8ff, glowAlpha * 0.26);
-    graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(6, 0xc8f7ff, glowAlpha);
-    graphics.strokeCircle(0, 0, rimRadius + 1);
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xc8f7ff, (isMirror ? 0.42 : 0.62));
-    graphics.strokeCircle(0, 0, rimRadius);
-    graphics.lineStyle(1, 0x42f5d7, (isMirror ? 0.1 : 0.2));
+
+    graphics.lineStyle(26, 0x42f5d7, glowAlpha * 0.08);
+    graphics.strokeCircle(0, 0, rimRadius + 10);
+    graphics.lineStyle(18, 0x9fd8ff, glowAlpha * 0.14);
     graphics.strokeCircle(0, 0, rimRadius + 6);
+    graphics.lineStyle(10, 0xc8f7ff, glowAlpha * 0.2);
+    graphics.strokeCircle(0, 0, rimRadius + 2);
+    graphics.lineStyle(7, 0xf2fbff, glowAlpha * 0.3);
+    graphics.beginPath();
+    graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
+    graphics.strokePath();
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xb8dce8, (isMirror ? 0.26 : 0.42));
+    graphics.strokeCircle(0, 0, rimRadius);
   }
 
   private drawLensingArcs(
