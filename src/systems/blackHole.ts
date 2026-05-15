@@ -11,7 +11,7 @@ const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 104;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 5000;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1000;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
@@ -191,6 +191,7 @@ export class BlackHoleSystem {
   private readonly lensingArcs: BlackHoleLensingArc[];
   private readonly ringPlanes: BlackHoleRingPlane[];
   private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
+  private lensLengthMultiplier = 1;
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
@@ -227,13 +228,15 @@ export class BlackHoleSystem {
     ringDebugColorMode: BlackHoleRingDebugColorMode,
     isDebugEnabled: boolean,
     lensOrbitSpeedMultiplier = 1,
-    activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT
+    activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
+    lensLengthMultiplier = 1
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
       Math.round(activeLensingArcCount),
       0,
       BLACK_HOLE_LENSING_ARC_MAX_COUNT
     );
+    this.setLensLengthMultiplier(lensLengthMultiplier);
     this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
@@ -306,17 +309,23 @@ export class BlackHoleSystem {
 
   private ensureLensTextureLayers(): void {
     for (const layer of BLACK_HOLE_LENS_TEXTURE_LAYERS) {
-      if (this.scene.textures.exists(layer.key)) {
-        continue;
+      if (!this.scene.textures.exists(layer.key)) {
+        this.scene.textures.createCanvas(
+          layer.key,
+          BLACK_HOLE_LENS_TEXTURE_SIZE,
+          BLACK_HOLE_LENS_TEXTURE_SIZE
+        );
       }
+    }
 
-      const texture = this.scene.textures.createCanvas(
-        layer.key,
-        BLACK_HOLE_LENS_TEXTURE_SIZE,
-        BLACK_HOLE_LENS_TEXTURE_SIZE
-      );
+    this.redrawLensTextureLayers();
+  }
 
-      if (!texture) {
+  private redrawLensTextureLayers(): void {
+    for (const layer of BLACK_HOLE_LENS_TEXTURE_LAYERS) {
+      const texture = this.scene.textures.get(layer.key) as Phaser.Textures.CanvasTexture;
+
+      if (!texture || typeof texture.getContext !== 'function') {
         continue;
       }
 
@@ -337,7 +346,7 @@ export class BlackHoleSystem {
       const band = i % 7 === 0 ? 0.68 : i % 5 === 0 ? 0.44 : random.frac();
       const radius = Phaser.Math.Linear(layer.minRadius, layer.maxRadius, Math.pow(random.frac() * 0.68 + band * 0.32, 0.86));
       const angle = random.frac() * Math.PI * 2;
-      const length = Phaser.Math.Linear(5, i % 11 === 0 ? 34 : 22, random.frac());
+      const length = Phaser.Math.Linear(5, i % 11 === 0 ? 34 : 22, random.frac()) * this.lensLengthMultiplier;
       const thickness = Phaser.Math.Linear(0.45, i % 13 === 0 ? 1.35 : 0.9, random.frac());
       const radialProgress = Phaser.Math.Clamp(
         (radius - layer.minRadius) / Math.max(1, layer.maxRadius - layer.minRadius),
@@ -399,6 +408,17 @@ export class BlackHoleSystem {
       image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * inwardPulse);
       image.setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha);
     }
+  }
+
+  private setLensLengthMultiplier(lensLengthMultiplier: number): void {
+    const nextMultiplier = Number(Phaser.Math.Clamp(lensLengthMultiplier, 0.25, 4).toFixed(1));
+
+    if (nextMultiplier === this.lensLengthMultiplier) {
+      return;
+    }
+
+    this.lensLengthMultiplier = nextMultiplier;
+    this.redrawLensTextureLayers();
   }
 
   private createLensingArcs(): BlackHoleLensingArc[] {
@@ -557,7 +577,7 @@ export class BlackHoleSystem {
       const radius = arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * (1.5 + inwardProgress * 2.2);
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.36 + arc.pulsePhase) * arc.pulseAmount;
       const alpha = arc.baseAlpha * fadeIn * fadeOut * mirrorAlpha * brightness * (foreground ? 0.76 : 1);
-      const arcLength = arc.baseArcLength * stretch;
+      const arcLength = arc.baseArcLength * stretch * this.lensLengthMultiplier;
       const firstLength = arcLength * (0.52 - arc.brokenness * 0.22);
       const secondLength = arcLength * (0.28 + arc.brokenness * 0.18);
       const gap = arcLength * (0.18 + arc.brokenness * 0.22);

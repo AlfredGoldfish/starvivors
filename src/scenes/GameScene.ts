@@ -134,6 +134,9 @@ const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 1;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 8;
 const DEBUG_BLACK_HOLE_LENS_DENSITY_MIN = 0;
+const DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT = 1;
+const DEBUG_BLACK_HOLE_LENS_LENGTH_MIN = 0.25;
+const DEBUG_BLACK_HOLE_LENS_LENGTH_MAX = 4;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH = 220;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT = 54;
 const DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH = 176;
@@ -452,6 +455,9 @@ export class GameScene extends Phaser.Scene {
   private blackHoleLensDensitySliderContainer!: Phaser.GameObjects.Container;
   private blackHoleLensDensitySliderGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleLensDensitySliderText!: Phaser.GameObjects.Text;
+  private blackHoleLensLengthSliderContainer!: Phaser.GameObjects.Container;
+  private blackHoleLensLengthSliderGraphics!: Phaser.GameObjects.Graphics;
+  private blackHoleLensLengthSliderText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
   private farStarfield!: Phaser.GameObjects.TileSprite;
@@ -524,6 +530,7 @@ export class GameScene extends Phaser.Scene {
   private debugPulseFireRateMultiplier = 1;
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
+  private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
 
   constructor() {
@@ -561,6 +568,7 @@ export class GameScene extends Phaser.Scene {
       this.updateParallaxTunerText();
       this.updateBlackHoleLensOrbitSlider();
       this.updateBlackHoleLensDensitySlider();
+      this.updateBlackHoleLensLengthSlider();
       this.updateDebugText(time);
       return;
     }
@@ -586,6 +594,7 @@ export class GameScene extends Phaser.Scene {
     this.updateParallaxTunerText();
     this.updateBlackHoleLensOrbitSlider();
     this.updateBlackHoleLensDensitySlider();
+    this.updateBlackHoleLensLengthSlider();
     this.updateDebugText(time);
   }
 
@@ -931,6 +940,7 @@ export class GameScene extends Phaser.Scene {
     this.resetDebugWeaponTuning();
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
+    this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.blackHoleRingDebugColorMode = 'normal';
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
@@ -978,6 +988,7 @@ export class GameScene extends Phaser.Scene {
     this.createParallaxTuner();
     this.createBlackHoleLensOrbitSlider();
     this.createBlackHoleLensDensitySlider();
+    this.createBlackHoleLensLengthSlider();
     this.createUpgradeButton();
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
@@ -985,6 +996,7 @@ export class GameScene extends Phaser.Scene {
     this.updateParallaxTunerText();
     this.updateBlackHoleLensOrbitSlider();
     this.updateBlackHoleLensDensitySlider();
+    this.updateBlackHoleLensLengthSlider();
     this.updateDebugText(0);
   }
 
@@ -1350,7 +1362,8 @@ export class GameScene extends Phaser.Scene {
       this.blackHoleRingDebugColorMode,
       this.isCollisionDebugEnabled,
       this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier(),
-      this.getActiveDebugBlackHoleLensDensity()
+      this.getActiveDebugBlackHoleLensDensity(),
+      this.getActiveDebugBlackHoleLensLengthMultiplier()
     );
     this.updateToroidalRenderMirror(
       blackHole.body,
@@ -1637,6 +1650,12 @@ export class GameScene extends Phaser.Scene {
       : BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   }
 
+  private getActiveDebugBlackHoleLensLengthMultiplier(): number {
+    return this.isCollisionDebugEnabled
+      ? this.debugBlackHoleLensLengthMultiplier
+      : DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+  }
+
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
     const delta = direction * STARFIELD_PARALLAX_STEP;
 
@@ -1870,7 +1889,7 @@ export class GameScene extends Phaser.Scene {
 
     const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
-    const panelY = Math.max(220, this.scale.height - 270);
+    const panelY = Math.max(220, this.scale.height - 330);
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
     const trackY = 10;
     const progress =
@@ -1975,7 +1994,7 @@ export class GameScene extends Phaser.Scene {
 
     const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
-    const panelY = Math.max(220, this.scale.height - 270) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP;
+    const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP;
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
     const trackY = 10;
     const progress =
@@ -2019,6 +2038,111 @@ export class GameScene extends Phaser.Scene {
     this.blackHoleLensDensitySliderGraphics.lineBetween(trackX, trackY, knobX, trackY);
     this.blackHoleLensDensitySliderGraphics.fillStyle(0xf2fbff, 0.96);
     this.blackHoleLensDensitySliderGraphics.fillCircle(knobX, trackY, 6);
+  }
+
+  private createBlackHoleLensLengthSlider(): void {
+    this.blackHoleLensLengthSliderGraphics = this.add.graphics();
+    this.blackHoleLensLengthSliderText = this.add
+      .text(0, -15, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff'
+      })
+      .setOrigin(0.5);
+
+    this.blackHoleLensLengthSliderContainer = this.add
+      .container(0, 0, [this.blackHoleLensLengthSliderGraphics, this.blackHoleLensLengthSliderText])
+      .setScrollFactor(0)
+      .setDepth(1003)
+      .setSize(DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH, DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT)
+      .setInteractive({ useHandCursor: true });
+
+    this.input.setDraggable(this.blackHoleLensLengthSliderContainer);
+    this.blackHoleLensLengthSliderContainer.on('pointerdown', (pointer: Phaser.Input.Pointer) =>
+      this.handleBlackHoleLensLengthSliderPointer(pointer)
+    );
+    this.blackHoleLensLengthSliderContainer.on('drag', (pointer: Phaser.Input.Pointer) =>
+      this.handleBlackHoleLensLengthSliderPointer(pointer)
+    );
+  }
+
+  private handleBlackHoleLensLengthSliderPointer(pointer: Phaser.Input.Pointer): void {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+      return;
+    }
+
+    const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
+    const localX = pointer.x - this.blackHoleLensLengthSliderContainer.x;
+    const progress = Phaser.Math.Clamp(localX - trackX, 0, DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH) /
+      DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH;
+    const value = Phaser.Math.Linear(
+      DEBUG_BLACK_HOLE_LENS_LENGTH_MIN,
+      DEBUG_BLACK_HOLE_LENS_LENGTH_MAX,
+      progress
+    );
+
+    this.debugBlackHoleLensLengthMultiplier = Number(value.toFixed(1));
+    this.updateBlackHoleLensLengthSlider();
+    this.nextDebugUpdateAt = 0;
+  }
+
+  private updateBlackHoleLensLengthSlider(): void {
+    if (
+      !this.blackHoleLensLengthSliderContainer ||
+      !this.blackHoleLensLengthSliderGraphics ||
+      !this.blackHoleLensLengthSliderText
+    ) {
+      return;
+    }
+
+    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
+    const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 2;
+    const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
+    const trackY = 10;
+    const progress =
+      (this.debugBlackHoleLensLengthMultiplier - DEBUG_BLACK_HOLE_LENS_LENGTH_MIN) /
+      (DEBUG_BLACK_HOLE_LENS_LENGTH_MAX - DEBUG_BLACK_HOLE_LENS_LENGTH_MIN);
+    const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+    const knobX = trackX + DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH * clampedProgress;
+
+    this.blackHoleLensLengthSliderContainer
+      .setPosition(panelX, panelY)
+      .setVisible(isVisible)
+      .setActive(isVisible);
+
+    this.blackHoleLensLengthSliderText.setText(
+      `Lens length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)}`
+    );
+
+    this.blackHoleLensLengthSliderGraphics.clear();
+    this.blackHoleLensLengthSliderGraphics.fillStyle(0x02040a, 0.82);
+    this.blackHoleLensLengthSliderGraphics.fillRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2,
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT / 2,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT,
+      6
+    );
+    this.blackHoleLensLengthSliderGraphics.lineStyle(1, 0x52627f, 0.72);
+    this.blackHoleLensLengthSliderGraphics.strokeRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2,
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT / 2,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT,
+      6
+    );
+    this.blackHoleLensLengthSliderGraphics.lineStyle(4, 0x24384f, 0.9);
+    this.blackHoleLensLengthSliderGraphics.lineBetween(
+      trackX,
+      trackY,
+      trackX + DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH,
+      trackY
+    );
+    this.blackHoleLensLengthSliderGraphics.lineStyle(4, 0xa8c7ff, 0.74);
+    this.blackHoleLensLengthSliderGraphics.lineBetween(trackX, trackY, knobX, trackY);
+    this.blackHoleLensLengthSliderGraphics.fillStyle(0xf2fbff, 0.96);
+    this.blackHoleLensLengthSliderGraphics.fillCircle(knobX, trackY, 6);
   }
 
   private createUpgradeButton(): void {
@@ -3957,7 +4081,7 @@ export class GameScene extends Phaser.Scene {
       : '';
     const blackHoleDebugLine = this.isCollisionDebugEnabled
       ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n` +
-        `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity}\n`
+        `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity} / length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)}\n`
       : '';
 
     this.debugText.setText(
