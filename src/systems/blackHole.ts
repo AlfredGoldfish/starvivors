@@ -109,10 +109,12 @@ interface BlackHoleRingPlane {
 
 interface BlackHoleLensTextureLayer {
   key: string;
+  isProjectionLayer: boolean;
   strokeCount: number;
   minRadius: number;
   maxRadius: number;
   squash: number;
+  nodeAngle: number;
   alpha: number;
   mirrorAlpha: number;
   rotationSpeed: number;
@@ -123,10 +125,12 @@ interface BlackHoleLensTextureLayer {
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
   {
     key: 'starvivors-black-hole-lens-field-outer',
+    isProjectionLayer: false,
     strokeCount: 2600,
     minRadius: 280,
     maxRadius: 500,
     squash: 0.84,
+    nodeAngle: 0,
     alpha: 0.52,
     mirrorAlpha: 0.28,
     rotationSpeed: 0.034,
@@ -135,10 +139,12 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
   },
   {
     key: 'starvivors-black-hole-lens-field-mid',
+    isProjectionLayer: false,
     strokeCount: 3400,
     minRadius: 205,
     maxRadius: 420,
     squash: 0.72,
+    nodeAngle: 0,
     alpha: 0.62,
     mirrorAlpha: 0.34,
     rotationSpeed: 0.058,
@@ -147,10 +153,12 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
   },
   {
     key: 'starvivors-black-hole-lens-field-inner',
+    isProjectionLayer: false,
     strokeCount: 2400,
     minRadius: 142,
     maxRadius: 318,
     squash: 0.58,
+    nodeAngle: 0,
     alpha: 0.46,
     mirrorAlpha: 0.25,
     rotationSpeed: 0.092,
@@ -159,15 +167,73 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
   },
   {
     key: 'starvivors-black-hole-lens-field-bright',
+    isProjectionLayer: false,
     strokeCount: 1600,
     minRadius: 220,
     maxRadius: 455,
     squash: 0.78,
+    nodeAngle: 0,
     alpha: 0.38,
     mirrorAlpha: 0.2,
     rotationSpeed: 0.071,
     scalePulse: 0.01,
     scalePulseSpeed: 0.33
+  },
+  {
+    key: 'starvivors-black-hole-lens-projection-horizontal',
+    isProjectionLayer: true,
+    strokeCount: 1200,
+    minRadius: 176,
+    maxRadius: 438,
+    squash: 0.34,
+    nodeAngle: Math.PI * 0.02,
+    alpha: 0.22,
+    mirrorAlpha: 0.12,
+    rotationSpeed: 0.042,
+    scalePulse: 0.01,
+    scalePulseSpeed: 0.26
+  },
+  {
+    key: 'starvivors-black-hole-lens-projection-diagonal-a',
+    isProjectionLayer: true,
+    strokeCount: 1100,
+    minRadius: 156,
+    maxRadius: 406,
+    squash: 0.46,
+    nodeAngle: Math.PI * 0.24,
+    alpha: 0.18,
+    mirrorAlpha: 0.1,
+    rotationSpeed: 0.052,
+    scalePulse: 0.012,
+    scalePulseSpeed: 0.31
+  },
+  {
+    key: 'starvivors-black-hole-lens-projection-vertical',
+    isProjectionLayer: true,
+    strokeCount: 950,
+    minRadius: 132,
+    maxRadius: 382,
+    squash: 0.28,
+    nodeAngle: Math.PI * 0.48,
+    alpha: 0.16,
+    mirrorAlpha: 0.09,
+    rotationSpeed: 0.066,
+    scalePulse: 0.014,
+    scalePulseSpeed: 0.36
+  },
+  {
+    key: 'starvivors-black-hole-lens-projection-diagonal-b',
+    isProjectionLayer: true,
+    strokeCount: 1000,
+    minRadius: 172,
+    maxRadius: 462,
+    squash: 0.52,
+    nodeAngle: Math.PI * 0.72,
+    alpha: 0.15,
+    mirrorAlpha: 0.08,
+    rotationSpeed: 0.035,
+    scalePulse: 0.01,
+    scalePulseSpeed: 0.28
   }
 ];
 
@@ -230,7 +296,8 @@ export class BlackHoleSystem {
     isDebugEnabled: boolean,
     lensOrbitSpeedMultiplier = 1,
     activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
-    lensLengthMultiplier = 1
+    lensLengthMultiplier = 1,
+    areProjectionLensLayersEnabled = true
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
       Math.round(activeLensingArcCount),
@@ -242,8 +309,8 @@ export class BlackHoleSystem {
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
     this.updateLensingArcs(deltaSeconds, lensOrbitSpeedMultiplier);
-    this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier);
-    this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier);
+    this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
+    this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
   }
@@ -358,19 +425,23 @@ export class BlackHoleSystem {
       const outerFade = Phaser.Math.Clamp((layer.maxRadius - radius) / 74, 0, 1);
       const alpha = Phaser.Math.Linear(0.08, i % 17 === 0 ? 0.58 : 0.28, random.frac()) * innerFade * outerFade;
       const color = BLACK_HOLE_LENSING_ARC_COLORS[random.integerInRange(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)];
-      const x = center + Math.cos(angle) * radius;
-      const y = center + Math.sin(angle) * radius * layer.squash;
+      const localX = Math.cos(angle) * radius;
+      const localY = Math.sin(angle) * radius * layer.squash;
+      const x = center + localX * Math.cos(layer.nodeAngle) - localY * Math.sin(layer.nodeAngle);
+      const y = center + localX * Math.sin(layer.nodeAngle) + localY * Math.cos(layer.nodeAngle);
       const tangentX = -Math.sin(angle);
       const tangentY = Math.cos(angle) * layer.squash;
       const tangentLength = Math.max(0.001, Math.hypot(tangentX, tangentY));
+      const rotatedTangentX = tangentX * Math.cos(layer.nodeAngle) - tangentY * Math.sin(layer.nodeAngle);
+      const rotatedTangentY = tangentX * Math.sin(layer.nodeAngle) + tangentY * Math.cos(layer.nodeAngle);
       const halfLength = length * (0.72 + radialProgress * 0.42) * 0.5;
 
       context.globalAlpha = alpha;
       context.strokeStyle = this.toRgba(color, 1);
       context.lineWidth = thickness;
       context.beginPath();
-      context.moveTo(x - (tangentX / tangentLength) * halfLength, y - (tangentY / tangentLength) * halfLength);
-      context.lineTo(x + (tangentX / tangentLength) * halfLength, y + (tangentY / tangentLength) * halfLength);
+      context.moveTo(x - (rotatedTangentX / tangentLength) * halfLength, y - (rotatedTangentY / tangentLength) * halfLength);
+      context.lineTo(x + (rotatedTangentX / tangentLength) * halfLength, y + (rotatedTangentY / tangentLength) * halfLength);
       context.stroke();
     }
 
@@ -395,7 +466,12 @@ export class BlackHoleSystem {
     );
   }
 
-  private updateLensTextureImages(time: number, isMirror: boolean, lensOrbitSpeedMultiplier: number): void {
+  private updateLensTextureImages(
+    time: number,
+    isMirror: boolean,
+    lensOrbitSpeedMultiplier: number,
+    areProjectionLensLayersEnabled: boolean
+  ): void {
     const images = isMirror ? this.wrapMirrorLensTextureImages : this.lensTextureImages;
     const orbitMultiplier = Math.max(0, lensOrbitSpeedMultiplier);
 
@@ -403,10 +479,12 @@ export class BlackHoleSystem {
       const image = images[i];
       const layer = BLACK_HOLE_LENS_TEXTURE_LAYERS[i];
       const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
+      const isVisible = !layer.isProjectionLayer || areProjectionLensLayersEnabled;
 
       image.setRotation(time * 0.001 * layer.rotationSpeed * orbitMultiplier);
       image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse);
-      image.setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha);
+      image.setVisible(isVisible);
+      image.setAlpha(isVisible ? (isMirror ? layer.mirrorAlpha : layer.alpha) : 0);
     }
   }
 

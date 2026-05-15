@@ -458,6 +458,9 @@ export class GameScene extends Phaser.Scene {
   private blackHoleLensLengthSliderContainer!: Phaser.GameObjects.Container;
   private blackHoleLensLengthSliderGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleLensLengthSliderText!: Phaser.GameObjects.Text;
+  private blackHoleProjectionLensToggleContainer!: Phaser.GameObjects.Container;
+  private blackHoleProjectionLensToggleGraphics!: Phaser.GameObjects.Graphics;
+  private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private deathText?: Phaser.GameObjects.Text;
   private farStarfield!: Phaser.GameObjects.TileSprite;
@@ -531,6 +534,7 @@ export class GameScene extends Phaser.Scene {
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+  private areDebugBlackHoleProjectionLensLayersEnabled = true;
   private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
 
   constructor() {
@@ -569,6 +573,7 @@ export class GameScene extends Phaser.Scene {
       this.updateBlackHoleLensOrbitSlider();
       this.updateBlackHoleLensDensitySlider();
       this.updateBlackHoleLensLengthSlider();
+      this.updateBlackHoleProjectionLensToggle();
       this.updateDebugText(time);
       return;
     }
@@ -595,6 +600,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBlackHoleLensOrbitSlider();
     this.updateBlackHoleLensDensitySlider();
     this.updateBlackHoleLensLengthSlider();
+    this.updateBlackHoleProjectionLensToggle();
     this.updateDebugText(time);
   }
 
@@ -941,6 +947,7 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+    this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.blackHoleRingDebugColorMode = 'normal';
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
@@ -989,6 +996,7 @@ export class GameScene extends Phaser.Scene {
     this.createBlackHoleLensOrbitSlider();
     this.createBlackHoleLensDensitySlider();
     this.createBlackHoleLensLengthSlider();
+    this.createBlackHoleProjectionLensToggle();
     this.createUpgradeButton();
     this.createUpgradeOverlay();
     this.updateGameplayHud(this.time.now);
@@ -997,6 +1005,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBlackHoleLensOrbitSlider();
     this.updateBlackHoleLensDensitySlider();
     this.updateBlackHoleLensLengthSlider();
+    this.updateBlackHoleProjectionLensToggle();
     this.updateDebugText(0);
   }
 
@@ -1363,7 +1372,8 @@ export class GameScene extends Phaser.Scene {
       this.isCollisionDebugEnabled,
       this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier(),
       this.getActiveDebugBlackHoleLensDensity(),
-      this.getActiveDebugBlackHoleLensLengthMultiplier()
+      this.getActiveDebugBlackHoleLensLengthMultiplier(),
+      this.getActiveDebugBlackHoleProjectionLensLayerState()
     );
     this.updateToroidalRenderMirror(
       blackHole.body,
@@ -1654,6 +1664,10 @@ export class GameScene extends Phaser.Scene {
     return this.isCollisionDebugEnabled
       ? this.debugBlackHoleLensLengthMultiplier
       : DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+  }
+
+  private getActiveDebugBlackHoleProjectionLensLayerState(): boolean {
+    return this.isCollisionDebugEnabled ? this.areDebugBlackHoleProjectionLensLayersEnabled : true;
   }
 
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
@@ -2143,6 +2157,87 @@ export class GameScene extends Phaser.Scene {
     this.blackHoleLensLengthSliderGraphics.lineBetween(trackX, trackY, knobX, trackY);
     this.blackHoleLensLengthSliderGraphics.fillStyle(0xf2fbff, 0.96);
     this.blackHoleLensLengthSliderGraphics.fillCircle(knobX, trackY, 6);
+  }
+
+  private createBlackHoleProjectionLensToggle(): void {
+    this.blackHoleProjectionLensToggleGraphics = this.add.graphics();
+    this.blackHoleProjectionLensToggleText = this.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff'
+      })
+      .setOrigin(0, 0.5);
+
+    this.blackHoleProjectionLensToggleContainer = this.add
+      .container(0, 0, [this.blackHoleProjectionLensToggleGraphics, this.blackHoleProjectionLensToggleText])
+      .setScrollFactor(0)
+      .setDepth(1003)
+      .setSize(DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH, 34)
+      .setInteractive({ useHandCursor: true });
+
+    this.blackHoleProjectionLensToggleContainer.on('pointerdown', () => {
+      if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+        return;
+      }
+
+      this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
+      this.updateBlackHoleProjectionLensToggle();
+      this.nextDebugUpdateAt = 0;
+    });
+  }
+
+  private updateBlackHoleProjectionLensToggle(): void {
+    if (
+      !this.blackHoleProjectionLensToggleContainer ||
+      !this.blackHoleProjectionLensToggleGraphics ||
+      !this.blackHoleProjectionLensToggleText
+    ) {
+      return;
+    }
+
+    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
+    const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 3;
+    const boxX = -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2 + 12;
+    const boxY = -8;
+
+    this.blackHoleProjectionLensToggleContainer
+      .setPosition(panelX, panelY)
+      .setVisible(isVisible)
+      .setActive(isVisible);
+
+    this.blackHoleProjectionLensToggleText
+      .setPosition(boxX + 24, 0)
+      .setText('Projection lens layers');
+
+    this.blackHoleProjectionLensToggleGraphics.clear();
+    this.blackHoleProjectionLensToggleGraphics.fillStyle(0x02040a, 0.82);
+    this.blackHoleProjectionLensToggleGraphics.fillRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2,
+      -17,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
+      34,
+      6
+    );
+    this.blackHoleProjectionLensToggleGraphics.lineStyle(1, 0x52627f, 0.72);
+    this.blackHoleProjectionLensToggleGraphics.strokeRoundedRect(
+      -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2,
+      -17,
+      DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
+      34,
+      6
+    );
+    this.blackHoleProjectionLensToggleGraphics.fillStyle(0x071018, 0.95);
+    this.blackHoleProjectionLensToggleGraphics.fillRect(boxX, boxY, 16, 16);
+    this.blackHoleProjectionLensToggleGraphics.lineStyle(1, 0x9fd8ff, 0.82);
+    this.blackHoleProjectionLensToggleGraphics.strokeRect(boxX, boxY, 16, 16);
+
+    if (this.areDebugBlackHoleProjectionLensLayersEnabled) {
+      this.blackHoleProjectionLensToggleGraphics.lineStyle(3, 0x42f5d7, 0.88);
+      this.blackHoleProjectionLensToggleGraphics.lineBetween(boxX + 3, boxY + 8, boxX + 7, boxY + 12);
+      this.blackHoleProjectionLensToggleGraphics.lineBetween(boxX + 7, boxY + 12, boxX + 13, boxY + 4);
+    }
   }
 
   private createUpgradeButton(): void {
@@ -4081,7 +4176,7 @@ export class GameScene extends Phaser.Scene {
       : '';
     const blackHoleDebugLine = this.isCollisionDebugEnabled
       ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n` +
-        `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity} / length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)}\n`
+        `Black hole lenses: orbit x${this.debugBlackHoleLensOrbitSpeedMultiplier.toFixed(1)} / density ${this.debugBlackHoleLensDensity} / length x${this.debugBlackHoleLensLengthMultiplier.toFixed(1)} / projection ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
       : '';
 
     this.debugText.setText(
