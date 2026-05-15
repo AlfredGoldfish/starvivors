@@ -9,6 +9,8 @@ const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
+const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = 2;
+const BLACK_HOLE_HORIZON_RIM_WIDTH = 4;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
@@ -743,6 +745,22 @@ export class BlackHoleSystem {
 
     this.drawProjectedRings(graphics, isMirror, ringColor, true, isDebugEnabled);
     this.drawLensingArcs(graphics, isMirror, time, true);
+    this.drawEventHorizonRim(graphics, isMirror, pulse);
+  }
+
+  private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
+    const mirrorAlpha = isMirror ? 0.62 : 1;
+    const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
+    const glowAlpha = (0.22 + pulse * 0.08) * mirrorAlpha;
+
+    graphics.lineStyle(12, 0x9fd8ff, glowAlpha * 0.36);
+    graphics.strokeCircle(0, 0, rimRadius + 2);
+    graphics.lineStyle(7, 0xf2fbff, glowAlpha);
+    graphics.strokeCircle(0, 0, rimRadius + 1);
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.72 : 0.96));
+    graphics.strokeCircle(0, 0, rimRadius);
+    graphics.lineStyle(1, 0x42f5d7, (isMirror ? 0.18 : 0.34));
+    graphics.strokeCircle(0, 0, rimRadius + 6);
   }
 
   private drawLensingArcs(
@@ -821,6 +839,10 @@ export class BlackHoleSystem {
     frontPass: boolean,
     isDebugEnabled: boolean
   ): void {
+    if (!isDebugEnabled || color === 0x000000) {
+      return;
+    }
+
     for (const ring of this.ringPlanes) {
       this.drawProjectedRingPass(graphics, ring, isMirror, color, frontPass, isDebugEnabled);
     }
