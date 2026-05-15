@@ -742,6 +742,9 @@ export class GameScene extends Phaser.Scene {
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
           this.debugState.showBlackHoleRadii = !this.debugState.showBlackHoleRadii;
         }),
+        toggleBlackHoleFieldDamage: () => this.runDebugMenuAction(() => {
+          this.debugState.blackHoleFieldDamageEnabled = !this.debugState.blackHoleFieldDamageEnabled;
+        }),
         toggleCollisionDebug: () => this.runDebugMenuAction(() => {
           this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
         }),
@@ -1632,7 +1635,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (result.isInsideDamage && time >= this.nextBlackHolePlayerDamageAt) {
+    if (
+      this.debugState.blackHoleFieldDamageEnabled &&
+      result.isInsideDamage &&
+      time >= this.nextBlackHolePlayerDamageAt
+    ) {
       const damage = this.getBlackHoleTidalDamage(
         result.proximity,
         BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE,
@@ -1669,7 +1676,11 @@ export class GameScene extends Phaser.Scene {
       return true;
     }
 
-    if (result.isInsideDamage && time >= asteroid.nextBlackHoleDamageAt) {
+    if (
+      this.debugState.blackHoleFieldDamageEnabled &&
+      result.isInsideDamage &&
+      time >= asteroid.nextBlackHoleDamageAt
+    ) {
       asteroid.hp -= this.getBlackHoleTidalDamage(
         result.proximity,
         BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE,
@@ -1751,7 +1762,11 @@ export class GameScene extends Phaser.Scene {
       return true;
     }
 
-    if (result.isInsideDamage && time >= enemy.nextBlackHoleDamageAt) {
+    if (
+      this.debugState.blackHoleFieldDamageEnabled &&
+      result.isInsideDamage &&
+      time >= enemy.nextBlackHoleDamageAt
+    ) {
       enemy.hp -= this.getBlackHoleTidalDamage(
         result.proximity,
         BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,

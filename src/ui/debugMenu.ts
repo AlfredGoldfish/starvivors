@@ -161,6 +161,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('black-hole-radii', columnXs[2], rightY, COLUMN_WIDTH, 'Black hole radii', config.callbacks.toggleBlackHoleRadii);
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('black-hole-field-damage', columnXs[2], rightY, COLUMN_WIDTH, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('collision-debug', columnXs[2], rightY, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
   rightY += BUTTON_HEIGHT + ROW_GAP;
 
@@ -363,7 +365,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         'black-hole',
         `Ring color: ${values.blackHoleRingDebugColorMode}\nRadii: ${
           values.blackHoleRadiiVisible ? 'shown' : 'hidden'
-        } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+        } / damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'} / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
       );
       setValue(
         'black-hole-lenses',
@@ -380,6 +382,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
+      setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
       setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
       setButtonLabel('projection-lenses', `Projection lens layers: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
     },

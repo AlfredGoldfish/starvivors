@@ -10,6 +10,7 @@ export interface DebugMenuValues {
   playerInvulnerable: boolean;
   collisionDebugEnabled: boolean;
   blackHoleRadiiVisible: boolean;
+  blackHoleFieldDamageEnabled: boolean;
   blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode;
   pulseDamageMultiplier: number;
   pulseFireRateMultiplier: number;
@@ -52,6 +53,7 @@ export interface DebugMenuCallbacks {
   resetStarfieldParallax: () => void;
   cycleBlackHoleRingDebugColor: () => void;
   toggleBlackHoleRadii: () => void;
+  toggleBlackHoleFieldDamage: () => void;
   toggleCollisionDebug: () => void;
   adjustBlackHoleLensOrbit: (delta: number) => void;
   adjustBlackHoleLensDensity: (delta: number) => void;

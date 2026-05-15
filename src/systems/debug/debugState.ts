@@ -11,6 +11,7 @@ export class DebugState {
   asteroidSpawningEnabled = false;
   playerInvulnerable = false;
   showBlackHoleRadii = false;
+  blackHoleFieldDamageEnabled = true;
   pulseDamageMultiplier = 1;
   pulseFireRateMultiplier = 1;
   blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
@@ -20,6 +21,7 @@ export class DebugState {
     this.asteroidSpawningEnabled = false;
     this.playerInvulnerable = false;
     this.showBlackHoleRadii = false;
+    this.blackHoleFieldDamageEnabled = true;
     this.pulseDamageMultiplier = 1;
     this.pulseFireRateMultiplier = 1;
     this.blackHoleRingDebugColorMode = 'normal';
@@ -81,6 +83,7 @@ export class DebugState {
       playerInvulnerable: this.playerInvulnerable,
       collisionDebugEnabled: this.collisionDebugEnabled,
       blackHoleRadiiVisible: this.showBlackHoleRadii || this.collisionDebugEnabled,
+      blackHoleFieldDamageEnabled: this.blackHoleFieldDamageEnabled,
       blackHoleRingDebugColorMode: this.blackHoleRingDebugColorMode,
       pulseDamageMultiplier: this.pulseDamageMultiplier,
       pulseFireRateMultiplier: this.pulseFireRateMultiplier,
