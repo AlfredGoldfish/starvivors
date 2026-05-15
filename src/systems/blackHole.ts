@@ -912,36 +912,22 @@ export class BlackHoleSystem {
     densityCurve: number,
     ageProgress: number
   ): void {
-    const segments = 6;
     const startAngle = centerAngle - arcLength * 0.5;
-    let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
+    const endAngle = centerAngle + arcLength * 0.5;
+    const midY = Math.sin(centerAngle) * radius * arc.squash;
+    const isFrontArc = midY >= -this.coreRadius * 0.08;
 
-    for (let i = 1; i <= segments; i += 1) {
-      const segmentProgress = i / segments;
-      const segmentOffset = segmentProgress - 0.5;
-      const angle = startAngle + arcLength * segmentProgress;
-      const point = this.getLensingArcPoint(angle, radius, arc.squash);
-      const midY = (previous.y + point.y) * 0.5;
-      const isFrontSegment = midY >= -this.coreRadius * 0.08;
-
-      if (isFrontSegment === foreground) {
-        const segmentFade = Phaser.Math.Linear(0.76, 1, 1 - Math.abs(segmentOffset) * 2);
-        const segmentAlpha = alpha * segmentFade;
-        const innerThicknessBoost = Phaser.Math.Linear(0, 0.78, Math.pow(densityCurve, 1.35));
-        const thicknessScale = Phaser.Math.Linear(0.68, 0.82, densityCurve) + innerThicknessBoost;
-        graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, segmentAlpha);
-        graphics.lineBetween(previous.x, previous.y, point.x, point.y);
-      }
-
-      previous = point;
+    if (isFrontArc !== foreground) {
+      return;
     }
-  }
 
-  private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
-    return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * squash
-    };
+    const innerThicknessBoost = Phaser.Math.Linear(0, 0.78, Math.pow(densityCurve, 1.35));
+    const thicknessScale = Phaser.Math.Linear(0.68, 0.82, densityCurve) + innerThicknessBoost;
+
+    graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, alpha);
+    graphics.beginPath();
+    graphics.arc(0, 0, radius, startAngle, endAngle, false);
+    graphics.strokePath();
   }
 
   private getLensingRenderRadius(normalizedRadius: number): number {
