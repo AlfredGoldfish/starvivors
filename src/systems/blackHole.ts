@@ -13,8 +13,8 @@ const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_
 const BLACK_HOLE_VISUAL_HORIZON_SCALE = 1.5;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 1500;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 2200;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 100;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 600;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
 export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
@@ -119,6 +119,7 @@ interface BlackHoleLensTextureLayer {
   nodeAngle: number;
   alpha: number;
   mirrorAlpha: number;
+  rotationSpeed: number;
   scalePulse: number;
   scalePulseSpeed: number;
 }
@@ -134,6 +135,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.52,
     mirrorAlpha: 0.28,
+    rotationSpeed: 0.12,
     scalePulse: 0.012,
     scalePulseSpeed: 0.29
   },
@@ -147,6 +149,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.62,
     mirrorAlpha: 0.34,
+    rotationSpeed: -0.18,
     scalePulse: 0.016,
     scalePulseSpeed: 0.37
   },
@@ -160,6 +163,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.46,
     mirrorAlpha: 0.25,
+    rotationSpeed: 0.28,
     scalePulse: 0.018,
     scalePulseSpeed: 0.43
   },
@@ -173,6 +177,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.38,
     mirrorAlpha: 0.2,
+    rotationSpeed: -0.14,
     scalePulse: 0.01,
     scalePulseSpeed: 0.33
   },
@@ -186,6 +191,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.34,
     mirrorAlpha: 0.18,
+    rotationSpeed: 0.42,
     scalePulse: 0.006,
     scalePulseSpeed: 0.22
   },
@@ -199,6 +205,7 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: Math.PI * 0.02,
     alpha: 0.22,
     mirrorAlpha: 0.12,
+    rotationSpeed: -0.08,
     scalePulse: 0.01,
     scalePulseSpeed: 0.26
   }
@@ -640,7 +647,7 @@ export class BlackHoleSystem {
   private updateLensTextureImages(
     time: number,
     isMirror: boolean,
-    _lensOrbitSpeedMultiplier: number,
+    lensOrbitSpeedMultiplier: number,
     areProjectionLensLayersEnabled: boolean
   ): void {
     const images = isMirror ? this.wrapMirrorLensTextureImages : this.lensTextureImages;
@@ -651,7 +658,7 @@ export class BlackHoleSystem {
       const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
       const isVisible = !layer.isProjectionLayer || areProjectionLensLayersEnabled;
 
-      image.setRotation(0);
+      image.setRotation(this.visualPhase * layer.rotationSpeed * Math.max(0, lensOrbitSpeedMultiplier));
       image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * this.lensFieldScale);
       image.setVisible(isVisible);
       image.setAlpha(isVisible ? (isMirror ? layer.mirrorAlpha : layer.alpha) : 0);
