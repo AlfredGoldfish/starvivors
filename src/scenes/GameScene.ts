@@ -15,6 +15,7 @@ import { pulseCannon } from '../data/weapons';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
+  BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS,
   BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS,
   BlackHoleSystem,
   type BlackHoleCapturedProjectileState,
@@ -2898,6 +2899,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
+      this.applyProjectileInfluence(projectile, deltaSeconds);
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
@@ -3062,6 +3064,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
+      this.applyProjectileInfluence(projectile, deltaSeconds);
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
@@ -3129,6 +3132,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     return this.blackHole.tryCaptureProjectile(projectile, this.arena);
+  }
+
+  private applyProjectileInfluence(projectile: PulseCannonProjectile | EnemyProjectile, deltaSeconds: number): void {
+    if (!this.blackHole) {
+      return;
+    }
+
+    this.blackHole.applyProjectileInfluence(projectile, deltaSeconds, this.arena);
   }
 
   private updateCapturedProjectile(
@@ -3987,7 +3998,7 @@ export class GameScene extends Phaser.Scene {
 
     const blackHolePosition = this.getNearestWrappedRenderPosition(this.blackHole.body.x, this.blackHole.body.y);
 
-    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, this.blackHole.warningRadius)) {
+    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS)) {
       return;
     }
 
@@ -4000,6 +4011,12 @@ export class GameScene extends Phaser.Scene {
       blackHolePosition.x,
       blackHolePosition.y,
       BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS
+    );
+    this.collisionDebugGraphics.lineStyle(1, 0x9fd8ff, 0.22);
+    this.collisionDebugGraphics.strokeCircle(
+      blackHolePosition.x,
+      blackHolePosition.y,
+      BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS
     );
   }
 
