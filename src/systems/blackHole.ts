@@ -24,7 +24,7 @@ export const BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS = BLACK_HOLE_CAPTURE_RADIUS;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_MIN_SCALE = 0.08;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_FADE_SECONDS = 1.65;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS = BLACK_HOLE_EVENT_HORIZON_RADIUS;
-const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
+const BLACK_HOLE_LENSING_ARC_COLORS = [0xffffff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
 const BLACK_HOLE_RING_SEGMENTS = 112;
@@ -925,7 +925,9 @@ export class BlackHoleSystem {
     const segments = 8;
     let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
 
-    graphics.lineStyle(arc.thickness * (0.72 + densityCurve * 0.62) * Phaser.Math.Linear(1, 0.68, ageProgress), arc.color, alpha);
+    const horizonThicknessScale = Phaser.Math.Linear(0.72, 0.67, densityCurve);
+
+    graphics.lineStyle(arc.thickness * horizonThicknessScale * Phaser.Math.Linear(1, 0.68, ageProgress), arc.color, alpha);
 
     for (let i = 1; i <= segments; i += 1) {
       const angle = startAngle + (arcLength * i) / segments;
