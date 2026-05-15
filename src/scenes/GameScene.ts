@@ -77,6 +77,8 @@ const BLACK_HOLE_WARNING_STAR_MIN_RADIUS = 176;
 const BLACK_HOLE_WARNING_STAR_MAX_RADIUS = 256;
 const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN = 0.12;
 const BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX = 0.34;
+const BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE = 0.085;
+const BLACK_HOLE_WARNING_STAR_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
@@ -147,6 +149,7 @@ type UpgradeCategory = 'pulse' | 'passive';
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
+type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 'white';
 
 interface UpgradeDefinition {
   id: UpgradeId;
@@ -432,6 +435,9 @@ interface BlackHoleWarningStar {
   size: number;
   speed: number;
   alpha: number;
+  color: number;
+  trailLength: number;
+  trailAlpha: number;
 }
 
 interface AsteroidBreakupProfile {
@@ -489,6 +495,7 @@ export class GameScene extends Phaser.Scene {
   private debugPulseFireRateDecreaseKey!: Phaser.Input.Keyboard.Key;
   private debugPulseFireRateIncreaseKey!: Phaser.Input.Keyboard.Key;
   private debugPulseResetKey!: Phaser.Input.Keyboard.Key;
+  private blackHoleRingDebugColorKey!: Phaser.Input.Keyboard.Key;
   private pulseCannonProjectiles: PulseCannonProjectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
@@ -536,6 +543,7 @@ export class GameScene extends Phaser.Scene {
   // Debug/testing modifiers only. These are reset with each rebuilt run and never alter upgrade levels.
   private debugPulseDamageMultiplier = 1;
   private debugPulseFireRateMultiplier = 1;
+  private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
 
   constructor() {
     super('GameScene');
@@ -629,6 +637,7 @@ export class GameScene extends Phaser.Scene {
     this.debugPulseFireRateDecreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SEMICOLON);
     this.debugPulseFireRateIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.QUOTES);
     this.debugPulseResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
+    this.blackHoleRingDebugColorKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
   }
 
   private installTestHarness(): void {
@@ -935,6 +944,7 @@ export class GameScene extends Phaser.Scene {
     this.totalUpgradePauseMs = 0;
     this.isMinimapVisible = true;
     this.resetDebugWeaponTuning();
+    this.blackHoleRingDebugColorMode = 'normal';
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
     this.previousBackgroundPlayerX = undefined;
@@ -1439,7 +1449,10 @@ export class GameScene extends Phaser.Scene {
         radiusPulse: Phaser.Math.FloatBetween(4, 18),
         size: Phaser.Math.FloatBetween(1.1, 2.7),
         speed: Phaser.Math.FloatBetween(BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MIN, BLACK_HOLE_WARNING_STAR_ORBIT_SPEED_MAX),
-        alpha: Phaser.Math.FloatBetween(0.58, 0.95)
+        alpha: Phaser.Math.FloatBetween(0.58, 0.95),
+        color: BLACK_HOLE_WARNING_STAR_COLORS[Phaser.Math.Between(0, BLACK_HOLE_WARNING_STAR_COLORS.length - 1)],
+        trailLength: Phaser.Math.FloatBetween(0.72, 1.28),
+        trailAlpha: Phaser.Math.FloatBetween(0.18, 0.32)
       };
     });
   }
@@ -1454,6 +1467,7 @@ export class GameScene extends Phaser.Scene {
     const mirrorAlpha = isMirror ? 0.62 : 1;
     const bodyAlpha = isMirror ? 0.56 : 0.82;
     const ringAlpha = isMirror ? 0.52 : 0.86;
+    const ringColor = this.getBlackHoleRingColor();
     const coreAlpha = isMirror ? 0.84 : 1;
 
     graphics.clear();
@@ -1465,21 +1479,33 @@ export class GameScene extends Phaser.Scene {
     graphics.fillStyle(0x030307, isMirror ? 0.48 : 0.74);
     graphics.fillCircle(0, 0, blackHole.coreRadius + 16);
 
-    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 116, blackHole.coreRadius + 34, blackHole.visualPhase * 0.62, ringAlpha * 0.72, 3);
-    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 138, blackHole.coreRadius + 48, -blackHole.visualPhase * 0.44 + Math.PI * 0.34, ringAlpha * 0.58, 2);
-    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 104, blackHole.coreRadius + 72, blackHole.visualPhase * 0.28 + Math.PI * 0.68, ringAlpha * 0.52, 2);
-    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 156, blackHole.coreRadius + 26, -blackHole.visualPhase * 0.2 + Math.PI * 0.92, ringAlpha * 0.44, 1);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 116, blackHole.coreRadius + 34, blackHole.visualPhase * 0.62, ringAlpha * 0.72, 3, ringColor);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 138, blackHole.coreRadius + 48, -blackHole.visualPhase * 0.44 + Math.PI * 0.34, ringAlpha * 0.58, 2, ringColor);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 104, blackHole.coreRadius + 72, blackHole.visualPhase * 0.28 + Math.PI * 0.68, ringAlpha * 0.52, 2, ringColor);
+    this.drawBlackHoleOrbitRing(graphics, blackHole.coreRadius + 156, blackHole.coreRadius + 26, -blackHole.visualPhase * 0.2 + Math.PI * 0.92, ringAlpha * 0.44, 1, ringColor);
 
     for (const star of blackHole.warningStars) {
       const starAngle = star.angle + time * 0.001 * star.speed + blackHole.visualPhase * 0.12;
       const starRadius = star.radius + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.82 + star.angle) * star.radiusPulse;
       const x = Math.cos(starAngle) * starRadius;
       const y = Math.sin(starAngle) * starRadius * 0.74;
+      const trailAngle = starAngle - BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE * star.trailLength;
+      const trailX = Math.cos(trailAngle) * starRadius;
+      const trailY = Math.sin(trailAngle) * starRadius * 0.74;
+      const midTrailAngle = starAngle - BLACK_HOLE_WARNING_STAR_TRAIL_ANGLE * star.trailLength * 0.52;
+      const midTrailX = Math.cos(midTrailAngle) * starRadius;
+      const midTrailY = Math.sin(midTrailAngle) * starRadius * 0.74;
       const alpha = star.alpha * mirrorAlpha * (0.68 + pulse * 0.32);
 
-      graphics.fillStyle(0xf2fbff, alpha);
+      graphics.lineStyle(Math.max(1, star.size * 0.72), star.color, alpha * star.trailAlpha);
+      graphics.lineBetween(trailX, trailY, x, y);
+      graphics.fillStyle(star.color, alpha * star.trailAlpha * 0.72);
+      graphics.fillCircle(trailX, trailY, star.size * 0.4);
+      graphics.fillStyle(star.color, alpha * star.trailAlpha);
+      graphics.fillCircle(midTrailX, midTrailY, star.size * 0.58);
+      graphics.fillStyle(star.color, alpha);
       graphics.fillCircle(x, y, star.size);
-      graphics.fillStyle(0xffffff, alpha * 0.42);
+      graphics.fillStyle(0xf2fbff, alpha * 0.42);
       graphics.fillCircle(x + Math.cos(starAngle + Math.PI * 0.5) * 2.2, y + Math.sin(starAngle + Math.PI * 0.5) * 1.4, star.size * 0.45);
     }
 
@@ -1495,13 +1521,14 @@ export class GameScene extends Phaser.Scene {
     halfHeight: number,
     rotation: number,
     alpha: number,
-    lineWidth: number
+    lineWidth: number,
+    color = 0x000000
   ): void {
     const segments = 96;
     let previousX = Math.cos(rotation) * halfWidth;
     let previousY = Math.sin(rotation) * halfWidth;
 
-    graphics.lineStyle(lineWidth, 0x000000, alpha);
+    graphics.lineStyle(lineWidth, color, alpha);
 
     for (let i = 1; i <= segments; i += 1) {
       const angle = (Math.PI * 2 * i) / segments;
@@ -1513,6 +1540,26 @@ export class GameScene extends Phaser.Scene {
       graphics.lineBetween(previousX, previousY, x, y);
       previousX = x;
       previousY = y;
+    }
+  }
+
+  private getBlackHoleRingColor(): number {
+    if (!this.isCollisionDebugEnabled) {
+      return 0x000000;
+    }
+
+    switch (this.blackHoleRingDebugColorMode) {
+      case 'red':
+        return 0xff5964;
+      case 'green':
+        return 0x7cff6b;
+      case 'cyan':
+        return 0x42f5d7;
+      case 'white':
+        return 0xf2fbff;
+      case 'normal':
+      default:
+        return 0x000000;
     }
   }
 
@@ -1713,6 +1760,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (Phaser.Input.Keyboard.JustDown(this.blackHoleRingDebugColorKey)) {
+      this.cycleBlackHoleRingDebugColorMode();
+      return;
+    }
+
     if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageDecreaseKey)) {
       this.adjustDebugPulseDamageMultiplier(-DEBUG_PULSE_DAMAGE_MULTIPLIER_STEP);
     } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseDamageIncreaseKey)) {
@@ -1724,6 +1776,14 @@ export class GameScene extends Phaser.Scene {
     } else if (Phaser.Input.Keyboard.JustDown(this.debugPulseResetKey)) {
       this.resetDebugWeaponTuning();
     }
+  }
+
+  private cycleBlackHoleRingDebugColorMode(): void {
+    const modes: BlackHoleRingDebugColorMode[] = ['normal', 'red', 'green', 'cyan', 'white'];
+    const currentIndex = modes.indexOf(this.blackHoleRingDebugColorMode);
+    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % modes.length;
+
+    this.blackHoleRingDebugColorMode = modes[nextIndex];
   }
 
   private adjustDebugPulseDamageMultiplier(delta: number): void {
@@ -3869,6 +3929,9 @@ export class GameScene extends Phaser.Scene {
       ? `Debug weapon: dmg x${this.debugPulseDamageMultiplier.toFixed(1)} / fire x${this.debugPulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon keys: [ ] damage, ; ' fire, 0 reset\n`
       : '';
+    const blackHoleDebugLine = this.isCollisionDebugEnabled
+      ? `Black hole rings: ${this.blackHoleRingDebugColorMode}  B cycle\n`
+      : '';
 
     this.debugText.setText(
       `FPS: ${fps}\n` +
@@ -3884,6 +3947,7 @@ export class GameScene extends Phaser.Scene {
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
+        blackHoleDebugLine +
         debugWeaponLine +
         `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
     );
