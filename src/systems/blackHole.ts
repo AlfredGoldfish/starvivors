@@ -13,6 +13,12 @@ const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_
 const BLACK_HOLE_VISUAL_HORIZON_SCALE = 1.5;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
+export const BLACK_HOLE_FULL_TEXTURE_KEY = 'black-hole-full-lines';
+export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY = 'black-hole-event-horizon-lines';
+const BLACK_HOLE_FULL_TEXTURE_ROTATION_SPEED = 0.055;
+const BLACK_HOLE_EVENT_HORIZON_TEXTURE_ROTATION_SPEED = 0.16;
+const BLACK_HOLE_FULL_TEXTURE_ALPHA = 0.92;
+const BLACK_HOLE_EVENT_HORIZON_TEXTURE_ALPHA = 0.95;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 450;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 700;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
@@ -156,6 +162,10 @@ export class BlackHoleSystem {
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
+  private readonly fullLensImage: Phaser.GameObjects.Image;
+  private readonly eventHorizonLensImage: Phaser.GameObjects.Image;
+  private readonly wrapMirrorFullLensImage: Phaser.GameObjects.Image;
+  private readonly wrapMirrorEventHorizonLensImage: Phaser.GameObjects.Image;
   private readonly lensTextureImages: Phaser.GameObjects.Image[];
   private readonly wrapMirrorLensTextureImages: Phaser.GameObjects.Image[];
   private readonly velocity: Phaser.Math.Vector2;
@@ -172,11 +182,27 @@ export class BlackHoleSystem {
     this.ensureLensTextureLayers();
     this.lensTextureImages = this.createLensTextureImages(false);
     this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
+    this.fullLensImage = this.createWhirlpoolImage(BLACK_HOLE_FULL_TEXTURE_KEY, false, false);
+    this.eventHorizonLensImage = this.createWhirlpoolImage(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, true, false);
+    this.wrapMirrorFullLensImage = this.createWhirlpoolImage(BLACK_HOLE_FULL_TEXTURE_KEY, false, true);
+    this.wrapMirrorEventHorizonLensImage = this.createWhirlpoolImage(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, true, true);
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
-    this.body = scene.add.container(position.x, position.y, [...this.lensTextureImages, this.bodyGraphics]).setDepth(6);
+    this.body = scene.add
+      .container(position.x, position.y, [
+        ...this.lensTextureImages,
+        this.fullLensImage,
+        this.eventHorizonLensImage,
+        this.bodyGraphics
+      ])
+      .setDepth(6);
     this.wrapMirrorBody = scene.add
-      .container(position.x, position.y, [...this.wrapMirrorLensTextureImages, this.wrapMirrorGraphics])
+      .container(position.x, position.y, [
+        ...this.wrapMirrorLensTextureImages,
+        this.wrapMirrorFullLensImage,
+        this.wrapMirrorEventHorizonLensImage,
+        this.wrapMirrorGraphics
+      ])
       .setDepth(6);
     this.velocity = new Phaser.Math.Vector2(
       Math.cos(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED,
@@ -221,9 +247,9 @@ export class BlackHoleSystem {
     this.body.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.wrapMirrorBody.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
-    this.updateLensingArcs(deltaSeconds, lensOrbitSpeedMultiplier);
     this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
+    this.updateWhirlpoolImages(deltaSeconds, lensOrbitSpeedMultiplier);
     this.draw(this.bodyGraphics, false, ringDebugColorMode, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, ringDebugColorMode, isDebugEnabled, time);
   }
@@ -554,6 +580,36 @@ export class BlackHoleSystem {
     );
   }
 
+  private createWhirlpoolImage(textureKey: string, isEventHorizonLayer: boolean, isMirror: boolean): Phaser.GameObjects.Image {
+    const image = this.scene.add.image(0, 0, textureKey).setOrigin(0.5);
+    const alpha = isEventHorizonLayer ? BLACK_HOLE_EVENT_HORIZON_TEXTURE_ALPHA : BLACK_HOLE_FULL_TEXTURE_ALPHA;
+
+    image.setAlpha(alpha * (isMirror ? 0.56 : 1));
+    image.setBlendMode(Phaser.BlendModes.ADD);
+
+    return image;
+  }
+
+  private updateWhirlpoolImages(deltaSeconds: number, lensOrbitSpeedMultiplier: number): void {
+    const fullDisplaySize = this.influenceRadius * 2;
+    const eventHorizonDisplaySize = (this.coreRadius + 230) * 2;
+    const fullRotation = BLACK_HOLE_FULL_TEXTURE_ROTATION_SPEED * lensOrbitSpeedMultiplier * deltaSeconds;
+    const eventHorizonRotation = BLACK_HOLE_EVENT_HORIZON_TEXTURE_ROTATION_SPEED * lensOrbitSpeedMultiplier * deltaSeconds;
+
+    this.fullLensImage
+      .setDisplaySize(fullDisplaySize, fullDisplaySize)
+      .setRotation(this.fullLensImage.rotation + fullRotation);
+    this.wrapMirrorFullLensImage
+      .setDisplaySize(fullDisplaySize, fullDisplaySize)
+      .setRotation(this.wrapMirrorFullLensImage.rotation + fullRotation);
+    this.eventHorizonLensImage
+      .setDisplaySize(eventHorizonDisplaySize, eventHorizonDisplaySize)
+      .setRotation(this.eventHorizonLensImage.rotation + eventHorizonRotation);
+    this.wrapMirrorEventHorizonLensImage
+      .setDisplaySize(eventHorizonDisplaySize, eventHorizonDisplaySize)
+      .setRotation(this.wrapMirrorEventHorizonLensImage.rotation + eventHorizonRotation);
+  }
+
   private updateLensTextureImages(
     time: number,
     isMirror: boolean,
@@ -726,7 +782,6 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000006, isMirror ? 0.11 : 0.18);
     graphics.fillCircle(0, 0, this.warningRadius);
 
-    this.drawLensingArcs(graphics, isMirror, time, false);
     this.drawProjectedRings(graphics, isMirror, ringColor, false, isDebugEnabled);
 
     graphics.fillStyle(0x000003, bodyAlpha);
@@ -743,7 +798,6 @@ export class BlackHoleSystem {
     graphics.fillCircle(0, 0, this.coreRadius * 0.72);
 
     this.drawProjectedRings(graphics, isMirror, ringColor, true, isDebugEnabled);
-    this.drawLensingArcs(graphics, isMirror, time, true);
     this.drawEventHorizonMask(graphics, isMirror);
   }
 

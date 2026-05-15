@@ -3,6 +3,8 @@ import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
 import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
 import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
 import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
+import blackHoleEventHorizonLinesUrl from '../../assets/blackhole/blackhole_eventhorizon3.png';
+import blackHoleFullLinesUrl from '../../assets/blackhole/blackhole_full3.png';
 import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
 import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
 import enemyTankUrl from '../../assets/ships/enemy_tank.png';
@@ -15,6 +17,8 @@ import { pulseCannon } from '../data/weapons';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
+  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY,
+  BLACK_HOLE_FULL_TEXTURE_KEY,
   BlackHoleSystem,
   type BlackHoleCapturedProjectileState,
   type BlackHoleWhirlpoolTuning
@@ -619,6 +623,8 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
     this.load.image(TANK_ENEMY_TEXTURE_KEY, enemyTankUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
+    this.load.image(BLACK_HOLE_FULL_TEXTURE_KEY, blackHoleFullLinesUrl);
+    this.load.image(BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, blackHoleEventHorizonLinesUrl);
   }
 
   create(): void {
