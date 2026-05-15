@@ -10,7 +10,8 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-const BLACK_HOLE_LENSING_ARC_COUNT = 104;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 104;
+export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1000;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_RING_SEGMENTS = 112;
 
@@ -35,7 +36,7 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     resetRadius: 226,
     inwardSpeedMin: 6,
     inwardSpeedMax: 10,
-    angularDriftMin: -0.16,
+    angularDriftMin: 0.16,
     angularDriftMax: 0.22,
     alpha: 0.16,
     thickness: [0.8, 1.4],
@@ -48,7 +49,7 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     resetRadius: 168,
     inwardSpeedMin: 9,
     inwardSpeedMax: 15,
-    angularDriftMin: -0.26,
+    angularDriftMin: 0.26,
     angularDriftMax: 0.36,
     alpha: 0.24,
     thickness: [1, 2],
@@ -61,7 +62,7 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     resetRadius: 112,
     inwardSpeedMin: 13,
     inwardSpeedMax: 22,
-    angularDriftMin: -0.42,
+    angularDriftMin: 0.42,
     angularDriftMax: 0.58,
     alpha: 0.14,
     thickness: [0.8, 1.5],
@@ -121,6 +122,7 @@ export class BlackHoleSystem {
   private readonly velocity: Phaser.Math.Vector2;
   private readonly lensingArcs: BlackHoleLensingArc[];
   private readonly ringPlanes: BlackHoleRingPlane[];
+  private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
@@ -151,8 +153,14 @@ export class BlackHoleSystem {
     arena: ArenaSize,
     ringDebugColorMode: BlackHoleRingDebugColorMode,
     isDebugEnabled: boolean,
-    lensOrbitSpeedMultiplier = 1
+    lensOrbitSpeedMultiplier = 1,
+    activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT
   ): void {
+    this.activeLensingArcCount = Phaser.Math.Clamp(
+      Math.round(activeLensingArcCount),
+      0,
+      BLACK_HOLE_LENSING_ARC_MAX_COUNT
+    );
     this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
@@ -222,7 +230,7 @@ export class BlackHoleSystem {
   }
 
   private createLensingArcs(): BlackHoleLensingArc[] {
-    return Array.from({ length: BLACK_HOLE_LENSING_ARC_COUNT }, (_, index) =>
+    return Array.from({ length: BLACK_HOLE_LENSING_ARC_MAX_COUNT }, (_, index) =>
       this.createLensingArc(index % BLACK_HOLE_LENSING_LAYERS.length, index, false)
     );
   }
@@ -231,10 +239,9 @@ export class BlackHoleSystem {
     const layer = BLACK_HOLE_LENSING_LAYERS[layerIndex];
     const isDenseBandArc = index % 5 === 0;
     const clusterOffset = isDenseBandArc ? Phaser.Math.FloatBetween(-0.2, 0.2) : Phaser.Math.FloatBetween(-0.48, 0.48);
-    const baseAngle =
-      index < BLACK_HOLE_LENSING_ARC_COUNT * 0.42
-        ? Math.PI * 0.08 + clusterOffset
-        : (index / BLACK_HOLE_LENSING_ARC_COUNT) * Math.PI * 2 + Phaser.Math.FloatBetween(-0.26, 0.26);
+    const baseAngle = isDenseBandArc
+      ? Math.PI * 0.08 + clusterOffset
+      : index * 2.399963229728653 + Phaser.Math.FloatBetween(-0.26, 0.26);
     const outerBias = Math.pow(Phaser.Math.FloatBetween(0, 1), 0.44);
     const radius = startAtOuter
       ? Phaser.Math.FloatBetween(layer.maxRadius - 12, layer.maxRadius + 12)
@@ -255,7 +262,7 @@ export class BlackHoleSystem {
       alpha: baseAlpha,
       color: BLACK_HOLE_LENSING_ARC_COLORS[Phaser.Math.Between(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)],
       inwardSpeed: Phaser.Math.FloatBetween(layer.inwardSpeedMin, layer.inwardSpeedMax),
-      angularDriftSpeed: Phaser.Math.FloatBetween(layer.angularDriftMin, layer.angularDriftMax),
+      angularDriftSpeed: Math.abs(Phaser.Math.FloatBetween(layer.angularDriftMin, layer.angularDriftMax)),
       pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
       pulseAmount: Phaser.Math.FloatBetween(0.06, 0.18),
       squash: Phaser.Math.FloatBetween(layer.squash[0], layer.squash[1]),
@@ -359,7 +366,9 @@ export class BlackHoleSystem {
   ): void {
     const mirrorAlpha = isMirror ? 0.58 : 1;
 
-    for (const arc of this.lensingArcs) {
+    for (let i = 0; i < this.activeLensingArcCount; i += 1) {
+      const arc = this.lensingArcs[i];
+
       if (arc.foreground !== foreground) {
         continue;
       }
