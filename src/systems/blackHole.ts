@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_HORIZON_RIM_WIDTH = 5;
+const BLACK_HOLE_HORIZON_RIM_WIDTH = 10;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 2600;
@@ -829,35 +829,13 @@ export class BlackHoleSystem {
   }
 
   private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
-    const mirrorAlpha = isMirror ? 0.5 : 1;
     const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
-    const glowAlpha = (0.19 + pulse * 0.06) * mirrorAlpha;
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    this.drawEventHorizonOuterGlow(graphics, rimRadius, glowAlpha);
-    graphics.lineStyle(12, 0xffffff, Math.min(1, glowAlpha * 0.75));
-    graphics.beginPath();
-    graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
-    graphics.strokePath();
     graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, isMirror ? 0.65 : 1);
     graphics.strokeCircle(0, 0, rimRadius);
-  }
-
-  private drawEventHorizonOuterGlow(graphics: Phaser.GameObjects.Graphics, rimRadius: number, glowAlpha: number): void {
-    const rings = 12;
-    const glowRange = 78;
-
-    for (let i = rings; i >= 1; i -= 1) {
-      const progress = i / rings;
-      const radius = rimRadius + progress * glowRange;
-      const alpha = glowAlpha * 0.48 * Math.pow(1 - progress, 1.65);
-      const lineWidth = Phaser.Math.Linear(18, 6, progress);
-
-      graphics.lineStyle(lineWidth, 0xffffff, alpha);
-      graphics.strokeCircle(0, 0, radius);
-    }
   }
 
   private drawLensingArcs(
