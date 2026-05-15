@@ -15,7 +15,9 @@ export interface DebugMenuController {
 }
 
 interface DebugButton {
+  background: Phaser.GameObjects.Rectangle;
   text: Phaser.GameObjects.Text;
+  hitArea: Phaser.GameObjects.Zone;
   setLabel: (label: string) => void;
 }
 
@@ -33,6 +35,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
   const valuesTextByKey = new Map<string, Phaser.GameObjects.Text>();
   const buttonsByKey = new Map<string, DebugButton>();
+  const buttons: DebugButton[] = [];
   const buttonHitAreas: Phaser.GameObjects.Zone[] = [];
   let open = false;
 
@@ -41,9 +44,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   const blocker = scene.add
     .zone(0, 0, scene.scale.width, scene.scale.height)
     .setOrigin(0, 0)
+    .setScrollFactor(0)
+    .setDepth(1401)
+    .setVisible(false)
     .setInteractive()
     .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-    .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
+    .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+    .disableInteractive();
   const background = scene.add.graphics();
   background.fillStyle(0x02040a, 0.9);
   background.fillRect(0, 0, scene.scale.width, scene.scale.height);
@@ -51,7 +58,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   background.fillRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
   background.lineStyle(2, 0x42f5d7, 0.8);
   background.strokeRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
-  container.add([blocker, background]);
+  container.add(background);
 
   const title = scene.add
     .text(panelX + PANEL_PADDING, panelY + 14, 'DEBUG MENU', {
@@ -183,22 +190,56 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     const hitArea = scene.add
       .zone(x, y, width, BUTTON_HEIGHT)
       .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1402)
+      .setVisible(false)
       .setInteractive({ useHandCursor: true })
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         pointer.event?.stopPropagation();
         if (open) {
-          callback();
+          background.setFillStyle(0x0a121c, 1);
+          background.setStrokeStyle(1, 0x42f5d7, 1);
+          text.setPosition(x + width / 2 + 1, y + BUTTON_HEIGHT / 2 + 1);
         }
+      })
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event?.stopPropagation();
+        if (!open) {
+          return;
+        }
+
+        background.setFillStyle(0x182434, 0.98);
+        background.setStrokeStyle(1, 0x42f5d7, 0.9);
+        text.setPosition(x + width / 2, y + BUTTON_HEIGHT / 2);
+        callback();
+      })
+      .on('pointerover', () => {
+        if (!open) {
+          return;
+        }
+
+        background.setFillStyle(0x182434, 0.98);
+        background.setStrokeStyle(1, 0x42f5d7, 0.9);
+      })
+      .on('pointerout', () => {
+        background.setFillStyle(0x111a24, 0.96);
+        background.setStrokeStyle(1, 0x52627f, 0.9);
+        text.setPosition(x + width / 2, y + BUTTON_HEIGHT / 2);
       });
 
-    container.add([background, text, hitArea]);
+    hitArea.disableInteractive();
+
+    container.add([background, text]);
     buttonHitAreas.push(hitArea);
 
     const button = {
+      background,
       text,
+      hitArea,
       setLabel: (nextLabel: string) => text.setText(nextLabel)
     };
     buttonsByKey.set(key, button);
+    buttons.push(button);
 
     return button;
   }
@@ -212,12 +253,27 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function setButtonInputEnabled(isEnabled: boolean): void {
+    blocker.setVisible(isEnabled);
+
+    if (isEnabled) {
+      blocker.setInteractive();
+    } else {
+      blocker.disableInteractive();
+    }
+
     for (const hitArea of buttonHitAreas) {
+      hitArea.setVisible(isEnabled);
+
       if (isEnabled) {
         hitArea.setInteractive({ useHandCursor: true });
       } else {
         hitArea.disableInteractive();
       }
+    }
+
+    for (const button of buttons) {
+      button.background.setFillStyle(0x111a24, 0.96);
+      button.background.setStrokeStyle(1, 0x52627f, 0.9);
     }
   }
 
@@ -276,6 +332,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
       setButtonLabel('collision-debug', `F2 collision debug: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
     },
-    destroy: () => container.destroy(true)
+    destroy: () => {
+      blocker.destroy();
+      for (const hitArea of buttonHitAreas) {
+        hitArea.destroy();
+      }
+      container.destroy(true);
+    }
   };
 }
