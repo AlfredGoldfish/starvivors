@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
 const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_HORIZON_RIM_WIDTH = 2;
+const BLACK_HOLE_HORIZON_RIM_WIDTH = 3;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 2600;
@@ -836,17 +836,17 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    graphics.lineStyle(26, 0xffffff, glowAlpha * 0.08);
+    graphics.lineStyle(30, 0xffffff, glowAlpha * 0.1);
     graphics.strokeCircle(0, 0, rimRadius + 10);
-    graphics.lineStyle(18, 0xffffff, glowAlpha * 0.14);
+    graphics.lineStyle(21, 0xffffff, glowAlpha * 0.18);
     graphics.strokeCircle(0, 0, rimRadius + 6);
-    graphics.lineStyle(10, 0xf8fbff, glowAlpha * 0.2);
+    graphics.lineStyle(12, 0xf8fbff, glowAlpha * 0.28);
     graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(7, 0xffffff, glowAlpha * 0.3);
+    graphics.lineStyle(9, 0xffffff, glowAlpha * 0.4);
     graphics.beginPath();
     graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
     graphics.strokePath();
-    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.24 : 0.4));
+    graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, (isMirror ? 0.3 : 0.52));
     graphics.strokeCircle(0, 0, rimRadius);
   }
 
@@ -925,7 +925,8 @@ export class BlackHoleSystem {
       if (isFrontSegment === foreground) {
         const segmentFade = Phaser.Math.Linear(0.76, 1, 1 - Math.abs(segmentOffset) * 2);
         const segmentAlpha = alpha * segmentFade;
-        const thicknessScale = Phaser.Math.Linear(0.76, 0.54, densityCurve);
+        const innerThicknessBoost = Phaser.Math.Linear(0, 0.38, Math.pow(densityCurve, 2.2));
+        const thicknessScale = Phaser.Math.Linear(0.68, 0.82, densityCurve) + innerThicknessBoost;
         graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, segmentAlpha);
         graphics.lineBetween(previous.x, previous.y, point.x, point.y);
       }
