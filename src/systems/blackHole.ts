@@ -830,10 +830,19 @@ export class BlackHoleSystem {
 
   private drawEventHorizonRim(graphics: Phaser.GameObjects.Graphics, isMirror: boolean, pulse: number): void {
     const rimRadius = this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET;
+    const shadowAlpha = (isMirror ? 0.42 : 1) * (0.18 + pulse * 0.04);
 
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
+    graphics.lineStyle(6, 0xffffff, shadowAlpha * 0.72);
+    graphics.strokeCircle(0, 0, rimRadius + BLACK_HOLE_HORIZON_RIM_WIDTH * 0.72);
+    graphics.lineStyle(3, 0xffffff, shadowAlpha * 0.42);
+    graphics.strokeCircle(0, 0, rimRadius + BLACK_HOLE_HORIZON_RIM_WIDTH * 1.2);
+    graphics.lineStyle(5, 0xffffff, shadowAlpha * 0.58);
+    graphics.strokeCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.72);
+    graphics.lineStyle(3, 0xffffff, shadowAlpha * 0.32);
+    graphics.strokeCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 1.16);
     graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, isMirror ? 0.65 : 1);
     graphics.strokeCircle(0, 0, rimRadius);
   }
