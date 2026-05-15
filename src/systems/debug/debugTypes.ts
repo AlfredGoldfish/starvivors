@@ -77,5 +77,6 @@ export interface DebugMenuCallbacks {
   addBlackHolePngLayer: () => void;
   duplicateBlackHolePngLayer: () => void;
   removeBlackHolePngLayer: () => void;
+  saveBlackHolePngSetup: () => void;
   resetBlackHoleLensTuning: () => void;
 }

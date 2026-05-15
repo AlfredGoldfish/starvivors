@@ -802,6 +802,7 @@ export class GameScene extends Phaser.Scene {
         addBlackHolePngLayer: () => this.runDebugMenuAction(() => this.addBlackHolePngLayer()),
         duplicateBlackHolePngLayer: () => this.runDebugMenuAction(() => this.duplicateBlackHolePngLayer()),
         removeBlackHolePngLayer: () => this.runDebugMenuAction(() => this.removeBlackHolePngLayer()),
+        saveBlackHolePngSetup: () => this.runDebugMenuAction(() => this.saveBlackHolePngSetup()),
         resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
       }
     });
@@ -2381,6 +2382,83 @@ export class GameScene extends Phaser.Scene {
     this.clampSelectedBlackHolePngLayer();
     this.debugSelectedBlackHolePngLayerIndex =
       this.blackHole?.removePngLayer(this.debugSelectedBlackHolePngLayerIndex) ?? 0;
+  }
+
+  private saveBlackHolePngSetup(): void {
+    const markdown = this.createBlackHolePngSetupMarkdown();
+    const filename = `blackhole-setup-${this.getTimestampSlug()}.md`;
+
+    this.downloadTextFile(filename, markdown, 'text/markdown');
+  }
+
+  private createBlackHolePngSetupMarkdown(): string {
+    const layers = this.blackHole?.getPngLayerSummaries() ?? [];
+    const setup = {
+      fieldScale: this.debugBlackHoleFieldScaleMultiplier,
+      allLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
+      addImage: this.debugAddBlackHolePngTextureKey,
+      selectedLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
+      layers: layers.map((layer) => ({
+        image: layer.textureKey,
+        label: layer.textureLabel,
+        speedRps: layer.speedRps,
+        size: layer.sizeMultiplier,
+        alpha: layer.alpha,
+        enabled: layer.enabled,
+        initialRotation: Number(layer.initialRotation.toFixed(4))
+      }))
+    };
+    const layerRows = layers.length > 0
+      ? layers
+          .map(
+            (layer) =>
+              `| ${layer.index + 1} | ${layer.textureLabel} | ${layer.textureKey} | ${layer.speedRps.toFixed(2)} | ${layer.sizeMultiplier.toFixed(2)} | ${layer.alpha.toFixed(2)} | ${layer.enabled ? 'yes' : 'no'} |`
+          )
+          .join('\n')
+      : '| none | | | | | | |';
+
+    return [
+      '# Black Hole PNG Setup',
+      '',
+      `Saved: ${new Date().toLocaleString()}`,
+      '',
+      '## Global Settings',
+      '',
+      `- Field scale: ${this.debugBlackHoleFieldScaleMultiplier.toFixed(1)}`,
+      `- All PNG layers enabled: ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'yes' : 'no'}`,
+      `- Add image selector: ${BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey]} (${this.debugAddBlackHolePngTextureKey})`,
+      `- Selected layer index: ${this.debugSelectedBlackHolePngLayerIndex}`,
+      '',
+      '## Layers',
+      '',
+      '| # | Label | Texture key | Speed rps | Size | Alpha | Enabled |',
+      '| - | - | - | -: | -: | -: | - |',
+      layerRows,
+      '',
+      '## Machine Readable Setup',
+      '',
+      '```json',
+      JSON.stringify(setup, null, 2),
+      '```',
+      ''
+    ].join('\n');
+  }
+
+  private downloadTextFile(filename: string, contents: string, mimeType: string): void {
+    const blob = new Blob([contents], { type: `${mimeType};charset=utf-8` });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  private getTimestampSlug(): string {
+    return new Date().toISOString().replace(/[:.]/g, '-');
   }
 
   private resetBlackHoleLensTuning(): void {

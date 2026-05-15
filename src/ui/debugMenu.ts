@@ -159,6 +159,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('field-scale-down', columnX, y, 101, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
   addButton('field-scale-up', columnX + 108, y, 101, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
   addButton('lens-reset', columnX + 216, y, 100, 'Reset', config.callbacks.resetBlackHoleLensTuning);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('png-save-setup', columnX, y, COLUMN_WIDTH, 'Save setup .md', config.callbacks.saveBlackHolePngSetup);
   y += BUTTON_HEIGHT + ROW_GAP;
 
   y = addSection(columnX, y, 'Weapon');
