@@ -2889,17 +2889,7 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.enemyProjectiles[i];
-
-      if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, SHOOTER_PROJECTILE_HIT_RADIUS)) {
-          this.destroyEnemyProjectile(projectile);
-          this.enemyProjectiles.splice(i, 1);
-        }
-
-        continue;
-      }
-
-      this.applyProjectileInfluence(projectile, deltaSeconds);
+      this.applyProjectileGravity(projectile, deltaSeconds);
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
@@ -2907,7 +2897,12 @@ export class GameScene extends Phaser.Scene {
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, SHOOTER_PROJECTILE_HIT_RADIUS);
 
-      if (this.tryCaptureProjectile(projectile)) {
+      if (projectile.capturedByBlackHole) {
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, SHOOTER_PROJECTILE_HIT_RADIUS)) {
+          this.destroyEnemyProjectile(projectile);
+          this.enemyProjectiles.splice(i, 1);
+        }
+
         continue;
       }
 
@@ -3054,17 +3049,7 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = this.pulseCannonProjectiles.length - 1; i >= 0; i -= 1) {
       const projectile = this.pulseCannonProjectiles[i];
-
-      if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, PULSE_CANNON_MUZZLE_OFFSET)) {
-          this.destroyPulseCannonProjectile(projectile);
-          this.pulseCannonProjectiles.splice(i, 1);
-        }
-
-        continue;
-      }
-
-      this.applyProjectileInfluence(projectile, deltaSeconds);
+      this.applyProjectileGravity(projectile, deltaSeconds);
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
@@ -3072,7 +3057,12 @@ export class GameScene extends Phaser.Scene {
       projectile.distanceRemaining -= travelDistance;
       this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
 
-      if (this.tryCaptureProjectile(projectile)) {
+      if (projectile.capturedByBlackHole) {
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, PULSE_CANNON_MUZZLE_OFFSET)) {
+          this.destroyPulseCannonProjectile(projectile);
+          this.pulseCannonProjectiles.splice(i, 1);
+        }
+
         continue;
       }
 
@@ -3126,20 +3116,12 @@ export class GameScene extends Phaser.Scene {
     projectile.wrapMirrorBody.destroy(true);
   }
 
-  private tryCaptureProjectile(projectile: PulseCannonProjectile | EnemyProjectile): boolean {
-    if (!this.blackHole) {
-      return false;
-    }
-
-    return this.blackHole.tryCaptureProjectile(projectile, this.arena);
-  }
-
-  private applyProjectileInfluence(projectile: PulseCannonProjectile | EnemyProjectile, deltaSeconds: number): void {
+  private applyProjectileGravity(projectile: PulseCannonProjectile | EnemyProjectile, deltaSeconds: number): void {
     if (!this.blackHole) {
       return;
     }
 
-    this.blackHole.applyProjectileInfluence(projectile, deltaSeconds, this.arena);
+    this.blackHole.applyProjectileGravity(projectile, deltaSeconds, this.arena);
   }
 
   private updateCapturedProjectile(
