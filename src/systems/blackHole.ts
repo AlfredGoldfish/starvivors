@@ -836,22 +836,28 @@ export class BlackHoleSystem {
     graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
     graphics.fillCircle(0, 0, rimRadius - BLACK_HOLE_HORIZON_RIM_WIDTH * 0.5);
 
-    graphics.lineStyle(114, 0xffffff, glowAlpha * 0.21);
-    graphics.strokeCircle(0, 0, rimRadius + 16);
-    graphics.lineStyle(72, 0xffffff, glowAlpha * 0.48);
-    graphics.strokeCircle(0, 0, rimRadius + 8);
-    graphics.lineStyle(90, 0xffffff, glowAlpha * 0.3);
-    graphics.strokeCircle(0, 0, rimRadius + 10);
-    graphics.lineStyle(63, 0xffffff, glowAlpha * 0.54);
-    graphics.strokeCircle(0, 0, rimRadius + 6);
-    graphics.lineStyle(36, 0xffffff, glowAlpha * 0.84);
-    graphics.strokeCircle(0, 0, rimRadius + 2);
-    graphics.lineStyle(27, 0xffffff, Math.min(1, glowAlpha * 1.2));
+    this.drawEventHorizonOuterGlow(graphics, rimRadius, glowAlpha);
+    graphics.lineStyle(12, 0xffffff, Math.min(1, glowAlpha * 0.75));
     graphics.beginPath();
     graphics.arc(0, 0, rimRadius + 4, Math.PI * 0.08, Math.PI * 0.92, false);
     graphics.strokePath();
     graphics.lineStyle(BLACK_HOLE_HORIZON_RIM_WIDTH, 0xffffff, isMirror ? 0.65 : 1);
     graphics.strokeCircle(0, 0, rimRadius);
+  }
+
+  private drawEventHorizonOuterGlow(graphics: Phaser.GameObjects.Graphics, rimRadius: number, glowAlpha: number): void {
+    const rings = 12;
+    const glowRange = 78;
+
+    for (let i = rings; i >= 1; i -= 1) {
+      const progress = i / rings;
+      const radius = rimRadius + progress * glowRange;
+      const alpha = glowAlpha * 0.48 * Math.pow(1 - progress, 1.65);
+      const lineWidth = Phaser.Math.Linear(18, 6, progress);
+
+      graphics.lineStyle(lineWidth, 0xffffff, alpha);
+      graphics.strokeCircle(0, 0, radius);
+    }
   }
 
   private drawLensingArcs(
