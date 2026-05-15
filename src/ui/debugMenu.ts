@@ -131,6 +131,24 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('collision-debug', columnX, y, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
   y += BUTTON_HEIGHT + ROW_GAP;
 
+  y = addSection(columnX, y, 'Black Hole Field');
+  addValue('black-hole-field', columnX, y);
+  y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  addButton('field-radial-down', columnX, y, 74, 'Rad -', () => config.callbacks.adjustBlackHoleRadialStrength(-0.1));
+  addButton('field-radial-up', columnX + 80, y, 74, 'Rad +', () => config.callbacks.adjustBlackHoleRadialStrength(0.1));
+  addButton('field-swirl-down', columnX + 162, y, 74, 'Swirl -', () => config.callbacks.adjustBlackHoleSwirlStrength(-0.1));
+  addButton('field-swirl-up', columnX + 242, y, 74, 'Swirl +', () => config.callbacks.adjustBlackHoleSwirlStrength(0.1));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-mass-down', columnX, y, 74, 'Mass -', () => config.callbacks.adjustBlackHoleMassResistance(-0.1));
+  addButton('field-mass-up', columnX + 80, y, 74, 'Mass +', () => config.callbacks.adjustBlackHoleMassResistance(0.1));
+  addButton('field-vel-down', columnX + 162, y, 74, 'Vel -', () => config.callbacks.adjustBlackHoleMaxVelocity(-0.1));
+  addButton('field-vel-up', columnX + 242, y, 74, 'Vel +', () => config.callbacks.adjustBlackHoleMaxVelocity(0.1));
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-save-tuning', columnX, y, 101, 'Save field', config.callbacks.saveBlackHoleFieldTuning);
+  addButton('field-load-tuning', columnX + 108, y, 101, 'Load field', config.callbacks.loadBlackHoleFieldTuning);
+  addButton('field-reset', columnX + 216, y, 100, 'Reset', config.callbacks.resetBlackHoleLensTuning);
+  y += BUTTON_HEIGHT + ROW_GAP;
+
   y = addSection(columnX, y, 'Black Hole PNG Layers');
   addValue('black-hole-lenses', columnX, y);
   y += VALUE_LINE_HEIGHT * 6 + BUTTON_GAP;
@@ -389,6 +407,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         `Radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}\nDamage: ${
           values.blackHoleFieldDamageEnabled ? 'on' : 'off'
         } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+      );
+      setValue(
+        'black-hole-field',
+        `Radial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)}\nMax velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
       );
       const pngLayer = values.blackHoleSelectedPngLayer;
       setValue(

@@ -22,6 +22,10 @@ export interface DebugMenuValues {
   blackHoleLensDensity: number;
   blackHoleLensLengthMultiplier: number;
   blackHoleFieldScaleMultiplier: number;
+  blackHoleRadialStrengthMultiplier: number;
+  blackHoleSwirlStrengthMultiplier: number;
+  blackHoleMassResistanceMultiplier: number;
+  blackHoleMaxVelocityMultiplier: number;
   blackHoleProjectionLensLayersEnabled: boolean;
   blackHoleSelectedPngLayerIndex: number;
   blackHolePngLayerCount: number;
@@ -65,6 +69,10 @@ export interface DebugMenuCallbacks {
   adjustBlackHoleLensOrbit: (delta: number) => void;
   adjustBlackHoleLensLength: (delta: number) => void;
   adjustBlackHoleFieldScale: (delta: number) => void;
+  adjustBlackHoleRadialStrength: (delta: number) => void;
+  adjustBlackHoleSwirlStrength: (delta: number) => void;
+  adjustBlackHoleMassResistance: (delta: number) => void;
+  adjustBlackHoleMaxVelocity: (delta: number) => void;
   toggleBlackHoleProjectionLenses: () => void;
   selectPreviousBlackHolePngLayer: () => void;
   selectNextBlackHolePngLayer: () => void;
@@ -79,5 +87,7 @@ export interface DebugMenuCallbacks {
   removeBlackHolePngLayer: () => void;
   saveBlackHolePngSetup: () => void;
   loadBlackHolePngSetup: () => void;
+  saveBlackHoleFieldTuning: () => void;
+  loadBlackHoleFieldTuning: () => void;
   resetBlackHoleLensTuning: () => void;
 }

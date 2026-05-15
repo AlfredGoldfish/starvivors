@@ -1,5 +1,18 @@
 import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
+import {
+  DEFAULT_BLACK_HOLE_FIELD_TUNING,
+  applyBlackHoleWhirlpoolForce,
+  computeBlackHoleWhirlpoolForce,
+  getWrappedDirection,
+  sampleWorldForce,
+  type BlackHoleFieldTuningConfig,
+  type BlackHoleWhirlpoolResult,
+  type BlackHoleWhirlpoolTuning,
+  type WorldForceRadii,
+  type WorldForceSource,
+  type WorldForceSample
+} from './worldForces';
 
 const BLACK_HOLE_SPAWN_OFFSET_X = 700;
 const BLACK_HOLE_SPAWN_OFFSET_Y = 120;
@@ -60,28 +73,12 @@ const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX = 20;
 const BLACK_HOLE_CORE_GROWTH_PER_SCALE = 0.08;
 const BLACK_HOLE_BASE_LENS_FIELD_RADIUS = BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE * 0.5;
 
-export interface BlackHoleWhirlpoolTuning {
-  radialBaseAcceleration: number;
-  radialExtraAcceleration: number;
-  swirlBaseAcceleration: number;
-  swirlExtraAcceleration: number;
-  maxSpeed: number;
-  mass: number;
-  massResistance: number;
-}
-
-export interface BlackHoleWhirlpoolSample {
-  distance: number;
-  proximity: number;
-  isInsideInfluence: boolean;
-  isInsideDamage: boolean;
-  isInsideCapture: boolean;
-  isInsideEventHorizon: boolean;
-}
-
-export interface BlackHoleWhirlpoolResult extends BlackHoleWhirlpoolSample {
-  acceleration: Phaser.Math.Vector2;
-}
+export type {
+  BlackHoleFieldTuningConfig,
+  BlackHoleWhirlpoolResult,
+  BlackHoleWhirlpoolTuning,
+  WorldForceSample as BlackHoleWhirlpoolSample
+} from './worldForces';
 
 const BLACK_HOLE_LENS_ARC_INNER_RADIUS = 0.025;
 const BLACK_HOLE_LENS_ARC_OUTER_RADIUS = 1;
@@ -152,14 +149,39 @@ export interface BlackHolePngLayerDebugSummary extends BlackHolePngLayerConfig {
 
 const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
 const BLACK_HOLE_DEFAULT_PNG_LAYERS: BlackHolePngLayerConfig[] = [
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.18, alpha: 1, initialRotation: 0, sizeMultiplier: 0.96, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.24, alpha: 1, initialRotation: Math.PI * 0.18, sizeMultiplier: 1.03, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[2], speedRps: 0.31, alpha: 1, initialRotation: Math.PI * 0.37, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[3], speedRps: 0.38, alpha: 1, initialRotation: Math.PI * 0.53, sizeMultiplier: 1.07, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[4], speedRps: 0.46, alpha: 1, initialRotation: Math.PI * 0.71, sizeMultiplier: 0.91, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.55, alpha: 1, initialRotation: Math.PI * 0.08, sizeMultiplier: 0.39, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1], speedRps: 0.72, alpha: 1, initialRotation: Math.PI * 0.34, sizeMultiplier: 0.43, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2], speedRps: 0.9, alpha: 1, initialRotation: Math.PI * 0.62, sizeMultiplier: 0.41, enabled: true }
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.9557, sizeMultiplier: 1.1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.1824, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 1.0655, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.5317, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.9509, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.1144, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 1.4509, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.7282, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.4, alpha: 1, initialRotation: 5.4672, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.55, alpha: 1, initialRotation: 1.1075, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 2.4855, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 1.5073, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 5.1592, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.5, alpha: 1, initialRotation: 3.5783, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0, alpha: 1, initialRotation: 5.6083, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 4.8861, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 5.4108, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 4.9782, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.1, alpha: 1, initialRotation: 1.4044, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.15, alpha: 1, initialRotation: 5.9102, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 6.2512, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 6.2061, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 6.6145, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 7.0229, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.4, alpha: 1, initialRotation: 7.4313, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 7.8397, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.6, alpha: 1, initialRotation: 8.2482, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 8.6566, sizeMultiplier: 0.55, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.45, alpha: 1, initialRotation: 5.4922, sizeMultiplier: 0.85, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.25, alpha: 1, initialRotation: 4.7142, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.05, alpha: 1, initialRotation: 3.6645, sizeMultiplier: 1.15, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.15, alpha: 1, initialRotation: 5.4399, sizeMultiplier: 1, enabled: true },
+  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEY, speedRps: 0.25, alpha: 1, initialRotation: 1.9323, sizeMultiplier: 1.1, enabled: true }
 ];
 
 export interface BlackHoleState {
@@ -288,25 +310,8 @@ export class BlackHoleSystem {
     return offset.lengthSq() <= this.eventHorizonRadius * this.eventHorizonRadius;
   }
 
-  getWhirlpoolSample(x: number, y: number, arena: ArenaSize): BlackHoleWhirlpoolSample {
-    const offset = this.getWrappedDirection(x, y, this.body.x, this.body.y, arena);
-    const distance = offset.length();
-    const influenceRadius = this.influenceRadius;
-    const eventHorizonRadius = this.eventHorizonRadius;
-    const proximity = Phaser.Math.Clamp(
-      (influenceRadius - distance) / Math.max(1, influenceRadius - eventHorizonRadius),
-      0,
-      1
-    );
-
-    return {
-      distance,
-      proximity,
-      isInsideInfluence: distance < influenceRadius,
-      isInsideDamage: distance < this.damageRadius,
-      isInsideCapture: distance <= this.captureRadius,
-      isInsideEventHorizon: distance <= eventHorizonRadius
-    };
+  getWhirlpoolSample(x: number, y: number, arena: ArenaSize): WorldForceSample {
+    return sampleWorldForce(this.getForceSource(), x, y, arena);
   }
 
   computeWhirlpoolAcceleration(
@@ -314,31 +319,10 @@ export class BlackHoleSystem {
     y: number,
     velocity: Phaser.Math.Vector2,
     tuning: BlackHoleWhirlpoolTuning,
-    arena: ArenaSize
+    arena: ArenaSize,
+    fieldTuning: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
   ): BlackHoleWhirlpoolResult {
-    const offset = this.getWrappedDirection(x, y, this.body.x, this.body.y, arena);
-    const distance = offset.length();
-    const sample = this.getWhirlpoolSample(x, y, arena);
-    const acceleration = new Phaser.Math.Vector2(0, 0);
-
-    if (distance <= 0 || !sample.isInsideInfluence) {
-      return { ...sample, acceleration };
-    }
-
-    const inward = offset.scale(1 / distance);
-    const tangent = new Phaser.Math.Vector2(-inward.y, inward.x);
-    const orbitSign = velocity.lengthSq() > 0 && velocity.dot(tangent) < 0 ? -1 : 1;
-    const curve = sample.proximity * sample.proximity;
-    const massDivisor = 1 + Math.max(0, tuning.mass - 1) * tuning.massResistance;
-    const radialAcceleration = (tuning.radialBaseAcceleration + curve * tuning.radialExtraAcceleration) / massDivisor;
-    const tangentialAcceleration = (tuning.swirlBaseAcceleration + curve * tuning.swirlExtraAcceleration) / massDivisor;
-
-    acceleration.set(
-      inward.x * radialAcceleration + tangent.x * tangentialAcceleration * orbitSign,
-      inward.y * radialAcceleration + tangent.y * tangentialAcceleration * orbitSign
-    );
-
-    return { ...sample, acceleration };
+    return computeBlackHoleWhirlpoolForce(this.getForceSource(), x, y, velocity, tuning, arena, fieldTuning);
   }
 
   applyWhirlpoolToVelocity(
@@ -347,23 +331,17 @@ export class BlackHoleSystem {
     velocity: Phaser.Math.Vector2,
     deltaSeconds: number,
     tuning: BlackHoleWhirlpoolTuning,
-    arena: ArenaSize
+    arena: ArenaSize,
+    fieldTuning: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
   ): BlackHoleWhirlpoolResult {
-    const result = this.computeWhirlpoolAcceleration(x, y, velocity, tuning, arena);
-
-    if (result.acceleration.lengthSq() > 0) {
-      velocity.x += result.acceleration.x * deltaSeconds;
-      velocity.y += result.acceleration.y * deltaSeconds;
-      velocity.limit(tuning.maxSpeed);
-    }
-
-    return result;
+    return applyBlackHoleWhirlpoolForce(this.getForceSource(), x, y, velocity, deltaSeconds, tuning, arena, fieldTuning);
   }
 
   applyProjectileGravity(
     projectile: BlackHoleCapturableProjectile,
     deltaSeconds: number,
-    arena: ArenaSize
+    arena: ArenaSize,
+    fieldTuning: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
   ): boolean {
     const tuning = {
       ...BLACK_HOLE_PROJECTILE_WHIRLPOOL_TUNING,
@@ -375,7 +353,8 @@ export class BlackHoleSystem {
       projectile.velocity,
       deltaSeconds,
       tuning,
-      arena
+      arena,
+      fieldTuning
     );
 
     if (result.isInsideCapture && !projectile.capturedByBlackHole) {
@@ -495,18 +474,18 @@ export class BlackHoleSystem {
     toY: number,
     arena: ArenaSize
   ): Phaser.Math.Vector2 {
-    let x = toX - fromX;
-    let y = toY - fromY;
+    return getWrappedDirection(fromX, fromY, toX, toY, arena);
+  }
 
-    if (Math.abs(x) > arena.width / 2) {
-      x -= Math.sign(x) * arena.width;
-    }
-
-    if (Math.abs(y) > arena.height / 2) {
-      y -= Math.sign(y) * arena.height;
-    }
-
-    return new Phaser.Math.Vector2(x, y);
+  private getForceSource(): WorldForceSource & WorldForceRadii {
+    return {
+      x: this.body.x,
+      y: this.body.y,
+      influenceRadius: this.influenceRadius,
+      damageRadius: this.damageRadius,
+      captureRadius: this.captureRadius,
+      eventHorizonRadius: this.eventHorizonRadius
+    };
   }
 
   private ensureLensTextureLayers(): void {

@@ -60,6 +60,10 @@ export class DebugState {
     blackHoleLensDensity: number;
     blackHoleLensLengthMultiplier: number;
     blackHoleFieldScaleMultiplier: number;
+    blackHoleRadialStrengthMultiplier: number;
+    blackHoleSwirlStrengthMultiplier: number;
+    blackHoleMassResistanceMultiplier: number;
+    blackHoleMaxVelocityMultiplier: number;
     blackHoleProjectionLensLayersEnabled: boolean;
     blackHoleSelectedPngLayerIndex: number;
     blackHolePngLayerCount: number;
@@ -94,6 +98,10 @@ export class DebugState {
       blackHoleLensDensity: snapshot.blackHoleLensDensity,
       blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
       blackHoleFieldScaleMultiplier: snapshot.blackHoleFieldScaleMultiplier,
+      blackHoleRadialStrengthMultiplier: snapshot.blackHoleRadialStrengthMultiplier,
+      blackHoleSwirlStrengthMultiplier: snapshot.blackHoleSwirlStrengthMultiplier,
+      blackHoleMassResistanceMultiplier: snapshot.blackHoleMassResistanceMultiplier,
+      blackHoleMaxVelocityMultiplier: snapshot.blackHoleMaxVelocityMultiplier,
       blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
       blackHoleSelectedPngLayerIndex: snapshot.blackHoleSelectedPngLayerIndex,
       blackHolePngLayerCount: snapshot.blackHolePngLayerCount,
