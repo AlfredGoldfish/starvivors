@@ -10,7 +10,7 @@ const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 104;
+export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1000;
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
@@ -402,10 +402,9 @@ export class BlackHoleSystem {
       const image = images[i];
       const layer = BLACK_HOLE_LENS_TEXTURE_LAYERS[i];
       const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
-      const inwardPulse = 1 - ((time * 0.000025 * (i + 1)) % 0.035);
 
       image.setRotation(time * 0.001 * layer.rotationSpeed * orbitMultiplier);
-      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * inwardPulse);
+      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse);
       image.setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha);
     }
   }
