@@ -9,8 +9,10 @@ const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
-const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET;
+const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
 const BLACK_HOLE_HORIZON_RIM_WIDTH = 4;
+const BLACK_HOLE_LENS_FIELD_OFFSET_X = -10;
+const BLACK_HOLE_LENS_FIELD_OFFSET_Y = 4;
 const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
 const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
@@ -74,7 +76,7 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
   {
     minRadius: 154,
     maxRadius: 222,
-    resetRadius: 112,
+    resetRadius: 118,
     inwardSpeedMin: 13,
     inwardSpeedMax: 22,
     angularDriftMin: 0.42,
@@ -83,6 +85,19 @@ const BLACK_HOLE_LENSING_LAYERS: BlackHoleLensingLayer[] = [
     thickness: [0.8, 1.5],
     arcLength: [0.05, 0.17],
     squash: [0.62, 0.76]
+  },
+  {
+    minRadius: 122,
+    maxRadius: 176,
+    resetRadius: 108,
+    inwardSpeedMin: 10,
+    inwardSpeedMax: 16,
+    angularDriftMin: 0.28,
+    angularDriftMax: 0.42,
+    alpha: 0.18,
+    thickness: [0.7, 1.3],
+    arcLength: [0.04, 0.13],
+    squash: [0.9, 1]
   }
 ];
 
@@ -129,7 +144,6 @@ interface BlackHoleLensTextureLayer {
   nodeAngle: number;
   alpha: number;
   mirrorAlpha: number;
-  rotationSpeed: number;
   scalePulse: number;
   scalePulseSpeed: number;
 }
@@ -145,7 +159,6 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.52,
     mirrorAlpha: 0.28,
-    rotationSpeed: 0.034,
     scalePulse: 0.012,
     scalePulseSpeed: 0.29
   },
@@ -159,7 +172,6 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.62,
     mirrorAlpha: 0.34,
-    rotationSpeed: 0.058,
     scalePulse: 0.016,
     scalePulseSpeed: 0.37
   },
@@ -173,7 +185,6 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.46,
     mirrorAlpha: 0.25,
-    rotationSpeed: 0.092,
     scalePulse: 0.018,
     scalePulseSpeed: 0.43
   },
@@ -187,9 +198,21 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: 0,
     alpha: 0.38,
     mirrorAlpha: 0.2,
-    rotationSpeed: 0.071,
     scalePulse: 0.01,
     scalePulseSpeed: 0.33
+  },
+  {
+    key: 'starvivors-black-hole-lens-field-horizon-fill',
+    isProjectionLayer: false,
+    strokeCount: 1800,
+    minRadius: 118,
+    maxRadius: 188,
+    squash: 0.96,
+    nodeAngle: 0,
+    alpha: 0.34,
+    mirrorAlpha: 0.18,
+    scalePulse: 0.006,
+    scalePulseSpeed: 0.22
   },
   {
     key: 'starvivors-black-hole-lens-projection-horizontal',
@@ -201,7 +224,6 @@ const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [
     nodeAngle: Math.PI * 0.02,
     alpha: 0.22,
     mirrorAlpha: 0.12,
-    rotationSpeed: 0.042,
     scalePulse: 0.01,
     scalePulseSpeed: 0.26
   }
@@ -532,7 +554,7 @@ export class BlackHoleSystem {
   private createLensTextureImages(isMirror: boolean): Phaser.GameObjects.Image[] {
     return BLACK_HOLE_LENS_TEXTURE_LAYERS.map((layer) =>
       this.scene.add
-        .image(0, 0, layer.key)
+        .image(BLACK_HOLE_LENS_FIELD_OFFSET_X, BLACK_HOLE_LENS_FIELD_OFFSET_Y, layer.key)
         .setOrigin(0.5)
         .setDisplaySize(BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE, BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE)
         .setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha)
@@ -542,11 +564,10 @@ export class BlackHoleSystem {
   private updateLensTextureImages(
     time: number,
     isMirror: boolean,
-    lensOrbitSpeedMultiplier: number,
+    _lensOrbitSpeedMultiplier: number,
     areProjectionLensLayersEnabled: boolean
   ): void {
     const images = isMirror ? this.wrapMirrorLensTextureImages : this.lensTextureImages;
-    const orbitMultiplier = Math.max(0, lensOrbitSpeedMultiplier);
 
     for (let i = 0; i < images.length; i += 1) {
       const image = images[i];
@@ -554,7 +575,7 @@ export class BlackHoleSystem {
       const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
       const isVisible = !layer.isProjectionLayer || areProjectionLensLayersEnabled;
 
-      image.setRotation(time * 0.001 * layer.rotationSpeed * orbitMultiplier);
+      image.setRotation(0);
       image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse);
       image.setVisible(isVisible);
       image.setAlpha(isVisible ? (isMirror ? layer.mirrorAlpha : layer.alpha) : 0);
@@ -787,8 +808,8 @@ export class BlackHoleSystem {
 
   private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
     return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * squash
+      x: BLACK_HOLE_LENS_FIELD_OFFSET_X + Math.cos(angle) * radius,
+      y: BLACK_HOLE_LENS_FIELD_OFFSET_Y + Math.sin(angle) * radius * squash
     };
   }
 
