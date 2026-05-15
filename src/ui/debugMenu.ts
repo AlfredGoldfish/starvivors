@@ -166,7 +166,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   rightY = addSection(columnXs[2], rightY, 'Black Hole Lenses');
   addValue('black-hole-lenses', columnXs[2], rightY);
-  rightY += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+  rightY += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
   addButton('lens-orbit-down', columnXs[2], rightY, 64, 'Orbit -', () => config.callbacks.adjustBlackHoleLensOrbit(-0.1));
   addButton('lens-orbit-up', columnXs[2] + 74, rightY, 64, 'Orbit +', () => config.callbacks.adjustBlackHoleLensOrbit(0.1));
   addButton('lens-density-down', columnXs[2] + 148, rightY, 64, 'Dens -', () => config.callbacks.adjustBlackHoleLensDensity(-1));
@@ -174,6 +174,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('lens-length-down', columnXs[2], rightY, 138, 'Length -', () => config.callbacks.adjustBlackHoleLensLength(-0.1));
   addButton('lens-length-up', columnXs[2] + 148, rightY, 138, 'Length +', () => config.callbacks.adjustBlackHoleLensLength(0.1));
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-scale-down', columnXs[2], rightY, 138, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
+  addButton('field-scale-up', columnXs[2] + 148, rightY, 138, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('projection-lenses', columnXs[2], rightY, COLUMN_WIDTH, 'Projection lens layers', config.callbacks.toggleBlackHoleProjectionLenses);
   rightY += BUTTON_HEIGHT + BUTTON_GAP;
@@ -366,7 +369,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         'black-hole-lenses',
         `Orbit x${values.blackHoleLensOrbitSpeedMultiplier.toFixed(1)}\nDensity ${values.blackHoleLensDensity}\nLength x${values.blackHoleLensLengthMultiplier.toFixed(1)}\nProjection ${
           values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-        }`
+        }\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
       );
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
       setButtonLabel(

@@ -64,6 +64,7 @@ export class DebugState {
     blackHoleLensOrbitSpeedMultiplier: number;
     blackHoleLensDensity: number;
     blackHoleLensLengthMultiplier: number;
+    blackHoleFieldScaleMultiplier: number;
     blackHoleProjectionLensLayersEnabled: boolean;
     activeEnemies: number;
     activeAsteroids: number;
@@ -90,6 +91,7 @@ export class DebugState {
       blackHoleLensOrbitSpeedMultiplier: snapshot.blackHoleLensOrbitSpeedMultiplier,
       blackHoleLensDensity: snapshot.blackHoleLensDensity,
       blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
+      blackHoleFieldScaleMultiplier: snapshot.blackHoleFieldScaleMultiplier,
       blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,

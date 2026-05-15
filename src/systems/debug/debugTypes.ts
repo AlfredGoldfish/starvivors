@@ -20,6 +20,7 @@ export interface DebugMenuValues {
   blackHoleLensOrbitSpeedMultiplier: number;
   blackHoleLensDensity: number;
   blackHoleLensLengthMultiplier: number;
+  blackHoleFieldScaleMultiplier: number;
   blackHoleProjectionLensLayersEnabled: boolean;
   activeEnemies: number;
   activeAsteroids: number;
@@ -55,6 +56,7 @@ export interface DebugMenuCallbacks {
   adjustBlackHoleLensOrbit: (delta: number) => void;
   adjustBlackHoleLensDensity: (delta: number) => void;
   adjustBlackHoleLensLength: (delta: number) => void;
+  adjustBlackHoleFieldScale: (delta: number) => void;
   toggleBlackHoleProjectionLenses: () => void;
   resetBlackHoleLensTuning: () => void;
 }

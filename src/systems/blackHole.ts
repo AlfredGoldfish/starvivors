@@ -16,7 +16,7 @@ const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
 export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 700;
 export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 1000;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
-export const BLACK_HOLE_DAMAGE_RADIUS = 340;
+export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
 export const BLACK_HOLE_EVENT_HORIZON_RADIUS = BLACK_HOLE_CORE_RADIUS;
 export const BLACK_HOLE_PROJECTILE_INFLUENCE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
@@ -28,6 +28,10 @@ const BLACK_HOLE_LENSING_ARC_COLORS = [0xf2fbff, 0xa8c7ff, 0x42f5d7, 0x9fd8ff] a
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
 const BLACK_HOLE_RING_SEGMENTS = 112;
+const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MIN = 1;
+const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX = 20;
+const BLACK_HOLE_CORE_GROWTH_PER_SCALE = 0.08;
+const BLACK_HOLE_LENS_FIELD_SCALE_POWER = 0.86;
 
 export interface BlackHoleWhirlpoolTuning {
   radialBaseAcceleration: number;
@@ -280,8 +284,6 @@ export const BLACK_HOLE_PROJECTILE_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = 
 export class BlackHoleSystem {
   readonly body: Phaser.GameObjects.Container;
   readonly wrapMirrorBody: Phaser.GameObjects.Container;
-  readonly coreRadius = BLACK_HOLE_CORE_RADIUS;
-  readonly warningRadius = BLACK_HOLE_WARNING_RADIUS;
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
@@ -292,6 +294,7 @@ export class BlackHoleSystem {
   private readonly ringPlanes: BlackHoleRingPlane[];
   private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private lensLengthMultiplier = 1;
+  private fieldRadiusMultiplier = 1;
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
@@ -330,16 +333,24 @@ export class BlackHoleSystem {
     lensOrbitSpeedMultiplier = 1,
     activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
     lensLengthMultiplier = 1,
-    areProjectionLensLayersEnabled = true
+    areProjectionLensLayersEnabled = true,
+    fieldRadiusMultiplier = 1
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
       Math.round(activeLensingArcCount),
       0,
       BLACK_HOLE_LENSING_ARC_MAX_COUNT
     );
+    this.fieldRadiusMultiplier = Phaser.Math.Clamp(
+      fieldRadiusMultiplier,
+      BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MIN,
+      BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX
+    );
     this.setLensLengthMultiplier(lensLengthMultiplier);
     this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
     this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
+    this.body.setSize(this.warningRadius * 2, this.warningRadius * 2);
+    this.wrapMirrorBody.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
     this.updateLensingArcs(deltaSeconds, lensOrbitSpeedMultiplier);
     this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
@@ -351,15 +362,16 @@ export class BlackHoleSystem {
   wouldConsumePlayer(playerX: number, playerY: number, arena: ArenaSize): boolean {
     const offset = this.getWrappedDirection(this.body.x, this.body.y, playerX, playerY, arena);
 
-    return offset.lengthSq() <= BLACK_HOLE_EVENT_HORIZON_RADIUS * BLACK_HOLE_EVENT_HORIZON_RADIUS;
+    return offset.lengthSq() <= this.eventHorizonRadius * this.eventHorizonRadius;
   }
 
   getWhirlpoolSample(x: number, y: number, arena: ArenaSize): BlackHoleWhirlpoolSample {
     const offset = this.getWrappedDirection(x, y, this.body.x, this.body.y, arena);
     const distance = offset.length();
+    const influenceRadius = this.influenceRadius;
+    const eventHorizonRadius = this.eventHorizonRadius;
     const proximity = Phaser.Math.Clamp(
-      (BLACK_HOLE_INFLUENCE_RADIUS - distance) /
-        Math.max(1, BLACK_HOLE_INFLUENCE_RADIUS - BLACK_HOLE_EVENT_HORIZON_RADIUS),
+      (influenceRadius - distance) / Math.max(1, influenceRadius - eventHorizonRadius),
       0,
       1
     );
@@ -367,10 +379,10 @@ export class BlackHoleSystem {
     return {
       distance,
       proximity,
-      isInsideInfluence: distance < BLACK_HOLE_INFLUENCE_RADIUS,
-      isInsideDamage: distance < BLACK_HOLE_DAMAGE_RADIUS,
-      isInsideCapture: distance <= BLACK_HOLE_CAPTURE_RADIUS,
-      isInsideEventHorizon: distance <= BLACK_HOLE_EVENT_HORIZON_RADIUS
+      isInsideInfluence: distance < influenceRadius,
+      isInsideDamage: distance < this.damageRadius,
+      isInsideCapture: distance <= this.captureRadius,
+      isInsideEventHorizon: distance <= eventHorizonRadius
     };
   }
 
@@ -464,9 +476,10 @@ export class BlackHoleSystem {
 
     const offset = this.getWrappedDirection(this.body.x, this.body.y, projectile.body.x, projectile.body.y, arena);
     const distance = offset.length();
+    const captureRadius = this.captureRadius;
+    const consumeRadius = this.eventHorizonRadius;
     const radialCompletion = Phaser.Math.Clamp(
-      (BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS - distance) /
-        Math.max(1, BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS - BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS),
+      (captureRadius - distance) / Math.max(1, captureRadius - consumeRadius),
       0,
       1
     );
@@ -484,7 +497,7 @@ export class BlackHoleSystem {
     projectile.body.setScale(scale);
     projectile.body.setAlpha(1 - visualCompletion * 0.9);
 
-    return distance <= BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS;
+    return distance <= consumeRadius;
   }
 
   getState(): BlackHoleState {
@@ -494,6 +507,38 @@ export class BlackHoleSystem {
       coreRadius: this.coreRadius,
       warningRadius: this.warningRadius
     };
+  }
+
+  get coreRadius(): number {
+    return BLACK_HOLE_CORE_RADIUS * this.coreVisualScale;
+  }
+
+  get warningRadius(): number {
+    return BLACK_HOLE_WARNING_RADIUS * this.lensFieldScale;
+  }
+
+  get influenceRadius(): number {
+    return BLACK_HOLE_INFLUENCE_RADIUS * this.fieldRadiusMultiplier;
+  }
+
+  get damageRadius(): number {
+    return BLACK_HOLE_DAMAGE_RADIUS * this.fieldRadiusMultiplier;
+  }
+
+  get captureRadius(): number {
+    return BLACK_HOLE_CAPTURE_RADIUS * (1 + (this.fieldRadiusMultiplier - 1) * 0.18);
+  }
+
+  get eventHorizonRadius(): number {
+    return BLACK_HOLE_EVENT_HORIZON_RADIUS * this.coreVisualScale;
+  }
+
+  private get coreVisualScale(): number {
+    return 1 + (Math.sqrt(this.fieldRadiusMultiplier) - 1) * BLACK_HOLE_CORE_GROWTH_PER_SCALE;
+  }
+
+  private get lensFieldScale(): number {
+    return Math.pow(this.fieldRadiusMultiplier, BLACK_HOLE_LENS_FIELD_SCALE_POWER);
   }
 
   private getSpawnPosition(arena: ArenaSize, center: Phaser.Math.Vector2): Phaser.Math.Vector2 {
@@ -647,7 +692,7 @@ export class BlackHoleSystem {
       const isVisible = !layer.isProjectionLayer || areProjectionLensLayersEnabled;
 
       image.setRotation(0);
-      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse);
+      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * this.lensFieldScale);
       image.setVisible(isVisible);
       image.setAlpha(isVisible ? (isMirror ? layer.mirrorAlpha : layer.alpha) : 0);
     }
@@ -839,7 +884,9 @@ export class BlackHoleSystem {
       const fadeOut = Phaser.Math.Clamp((arc.radius - arc.resetRadius) / 42, 0, 1);
       const stretch = 1 + inwardProgress * (arc.layer === 2 ? 1.1 : 0.7);
       const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
-      const radius = arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * (1.5 + inwardProgress * 2.2);
+      const radius =
+        (arc.radius + Math.sin(time * 0.00031 + arc.pulsePhase) * (1.5 + inwardProgress * 2.2)) *
+        this.lensFieldScale;
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.36 + arc.pulsePhase) * arc.pulseAmount;
       const alpha = arc.baseAlpha * fadeIn * fadeOut * mirrorAlpha * brightness * (foreground ? 0.76 : 1);
       const arcLength = arc.baseArcLength * stretch * this.lensLengthMultiplier;
