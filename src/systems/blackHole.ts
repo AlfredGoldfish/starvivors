@@ -61,18 +61,18 @@ const BLACK_HOLE_LENS_ARC_OUTER_RADIUS = 1;
 const BLACK_HOLE_LENS_ARC_RESET_RADIUS = 0.035;
 const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN = 0.84;
 const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX = 0.985;
-const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN = 0.012;
-const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MAX = 0.046;
-const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN = 0.08;
-const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX = 0.58;
+const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN = 0.004;
+const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MAX = 0.014;
+const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN = 0.42;
+const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX = 1.35;
 const BLACK_HOLE_LENS_ARC_LIFETIME_MIN = 86;
 const BLACK_HOLE_LENS_ARC_LIFETIME_MAX = 160;
 const BLACK_HOLE_LENS_ARC_ALPHA_MIN = 0.22;
 const BLACK_HOLE_LENS_ARC_ALPHA_MAX = 0.72;
 const BLACK_HOLE_LENS_ARC_THICKNESS_MIN = 0.72;
 const BLACK_HOLE_LENS_ARC_THICKNESS_MAX = 1.95;
-const BLACK_HOLE_LENS_ARC_LENGTH_MIN = 0.055;
-const BLACK_HOLE_LENS_ARC_LENGTH_MAX = 0.34;
+const BLACK_HOLE_LENS_ARC_LENGTH_MIN = 0.045;
+const BLACK_HOLE_LENS_ARC_LENGTH_MAX = 0.22;
 const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.7;
 const BLACK_HOLE_LENS_ARC_SQUASH_MAX = 0.98;
 
@@ -81,8 +81,8 @@ export type BlackHoleRingDebugColorMode = 'normal' | 'red' | 'green' | 'cyan' | 
 interface BlackHoleLensingArc {
   angle: number;
   radius: number;
-  trailSpan: number;
-  baseTrailSpan: number;
+  arcLength: number;
+  baseArcLength: number;
   thickness: number;
   baseAlpha: number;
   alpha: number;
@@ -94,7 +94,7 @@ interface BlackHoleLensingArc {
   pulsePhase: number;
   pulseAmount: number;
   squash: number;
-  curl: number;
+  spiralBias: number;
 }
 
 interface BlackHoleRingPlane {
@@ -688,10 +688,10 @@ export class BlackHoleSystem {
         );
     const proximity = 1 - radius;
     const densityCurve = Math.pow(proximity, 1.45);
-    const baseTrailSpan = Phaser.Math.Linear(
+    const baseArcLength = Phaser.Math.Linear(
       BLACK_HOLE_LENS_ARC_LENGTH_MIN,
-      isDenseBandArc ? BLACK_HOLE_LENS_ARC_LENGTH_MAX * 1.18 : BLACK_HOLE_LENS_ARC_LENGTH_MAX,
-      densityCurve * Phaser.Math.FloatBetween(0.88, 1)
+      isDenseBandArc ? BLACK_HOLE_LENS_ARC_LENGTH_MAX * 1.12 : BLACK_HOLE_LENS_ARC_LENGTH_MAX,
+      Math.pow(proximity, 0.72) * Phaser.Math.FloatBetween(0.82, 1)
     );
     const baseAlpha = Phaser.Math.Linear(
       BLACK_HOLE_LENS_ARC_ALPHA_MIN,
@@ -702,8 +702,8 @@ export class BlackHoleSystem {
     return {
       angle: baseAngle,
       radius,
-      trailSpan: baseTrailSpan,
-      baseTrailSpan,
+      arcLength: baseArcLength,
+      baseArcLength,
       thickness: Phaser.Math.Linear(
         BLACK_HOLE_LENS_ARC_THICKNESS_MIN,
         isDenseBandArc ? BLACK_HOLE_LENS_ARC_THICKNESS_MAX * 1.16 : BLACK_HOLE_LENS_ARC_THICKNESS_MAX,
@@ -715,12 +715,12 @@ export class BlackHoleSystem {
       inwardSpeed: Phaser.Math.Linear(
         BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN,
         BLACK_HOLE_LENS_ARC_INWARD_SPEED_MAX,
-        Math.pow(radius, 0.85)
+        Phaser.Math.Clamp(radius, 0, 1)
       ) * Phaser.Math.FloatBetween(0.94, 1.06),
       angularDriftSpeed: Phaser.Math.Linear(
         BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN,
         BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX,
-        densityCurve
+        Math.pow(proximity, 0.82)
       ) * Phaser.Math.FloatBetween(0.94, 1.06),
       age: startAtOuter ? 0 : Phaser.Math.FloatBetween(0, BLACK_HOLE_LENS_ARC_LIFETIME_MAX * 0.7),
       lifetime: Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_LIFETIME_MIN, BLACK_HOLE_LENS_ARC_LIFETIME_MAX),
@@ -731,7 +731,7 @@ export class BlackHoleSystem {
         BLACK_HOLE_LENS_ARC_SQUASH_MAX,
         Phaser.Math.FloatBetween(0, 1)
       ),
-      curl: Phaser.Math.FloatBetween(0.78, 1.24)
+      spiralBias: Phaser.Math.FloatBetween(0.18, 0.42)
     };
   }
 
@@ -743,8 +743,8 @@ export class BlackHoleSystem {
       const proximity = Phaser.Math.Clamp(1 - arc.radius, 0, 1);
 
       arc.age += deltaSeconds;
-      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.08, Math.pow(proximity, 1.18)) * deltaSeconds;
-      arc.angle += arc.angularDriftSpeed * (0.58 + proximity * 1.8) * orbitMultiplier * deltaSeconds;
+      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.18, Math.pow(proximity, 1.15)) * deltaSeconds;
+      arc.angle += arc.angularDriftSpeed * (0.92 + proximity * 1.28) * orbitMultiplier * deltaSeconds;
 
       if (arc.radius <= BLACK_HOLE_LENS_ARC_RESET_RADIUS) {
         this.lensingArcs[i] = this.createLensingArc(i, true);
@@ -873,55 +873,51 @@ export class BlackHoleSystem {
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.24 + arc.pulsePhase) * arc.pulseAmount;
       const proximityAlpha = Phaser.Math.Linear(0.42, 1, Math.pow(proximity, 0.75));
       const alpha = arc.baseAlpha * 1.35 * proximityAlpha * ageFade * fadeIn * edgeFade * mirrorAlpha * brightness * (foreground ? 0.9 : 1);
-      const trailSpan =
-        arc.baseTrailSpan *
+      const radius = this.getLensingRenderRadius(
+        arc.radius + (Math.sin(time * 0.00031 + arc.pulsePhase) * (0.7 + densityCurve * 1.2)) /
+          BLACK_HOLE_BASE_LENS_FIELD_RADIUS
+      );
+      const arcLength =
+        arc.baseArcLength *
         stretch *
-        Phaser.Math.Linear(1.08, 0.92, ageProgress) *
+        Phaser.Math.Linear(1.04, 0.78, Math.pow(proximity, 0.9)) *
         Math.sqrt(this.lensLengthMultiplier);
 
       arc.alpha = alpha;
-      arc.trailSpan = trailSpan;
+      arc.arcLength = arcLength;
 
-      this.drawLensingStreamline(graphics, arc, driftedAngle, trailSpan, alpha, foreground, densityCurve, ageProgress, time);
+      this.drawLensingOrbitArc(graphics, arc, driftedAngle, arcLength, radius, alpha, foreground, densityCurve, ageProgress);
     }
   }
 
-  private drawLensingStreamline(
+  private drawLensingOrbitArc(
     graphics: Phaser.GameObjects.Graphics,
     arc: BlackHoleLensingArc,
-    headAngle: number,
-    trailSpan: number,
+    centerAngle: number,
+    arcLength: number,
+    radius: number,
     alpha: number,
     foreground: boolean,
     densityCurve: number,
-    ageProgress: number,
-    time: number
+    ageProgress: number
   ): void {
     const segments = 9;
-    const headRadius = arc.radius;
-    const headProximity = Phaser.Math.Clamp(1 - headRadius, 0, 1);
-    const angularTrail = (0.42 + headProximity * 1.35) * arc.curl;
-    const wobble = (Math.sin(time * 0.00031 + arc.pulsePhase) * (0.9 + densityCurve * 1.4)) / BLACK_HOLE_BASE_LENS_FIELD_RADIUS;
-    let previous = this.getLensingStreamlinePoint(headAngle, headRadius + wobble, arc.squash);
+    const startAngle = centerAngle - arcLength * 0.5;
+    let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
 
     for (let i = 1; i <= segments; i += 1) {
-      const trailProgress = i / segments;
-      const radius = Phaser.Math.Clamp(
-        headRadius + trailSpan * trailProgress,
-        BLACK_HOLE_LENS_ARC_INNER_RADIUS,
-        BLACK_HOLE_LENS_ARC_OUTER_RADIUS
-      );
-      const radiusProximity = Phaser.Math.Clamp(1 - radius, 0, 1);
-      const angle = headAngle - angularTrail * (trailProgress + trailProgress * trailProgress * 0.68);
-      const point = this.getLensingStreamlinePoint(angle, radius + wobble * (1 - trailProgress * 0.5), arc.squash);
+      const segmentProgress = i / segments;
+      const segmentOffset = segmentProgress - 0.5;
+      const angle = startAngle + arcLength * segmentProgress;
+      const spiralRadius = radius - this.influenceRadius * arc.spiralBias * densityCurve * segmentOffset * 0.018;
+      const point = this.getLensingArcPoint(angle, spiralRadius, arc.squash);
       const midY = (previous.y + point.y) * 0.5;
       const isFrontSegment = midY >= -this.coreRadius * 0.08;
 
       if (isFrontSegment === foreground) {
-        const tailFade = Math.pow(1 - trailProgress * 0.82, 1.15);
-        const outerFade = Phaser.Math.Linear(0.34, 1, Phaser.Math.Clamp((1 - radius) / 0.14, 0, 1));
-        const segmentAlpha = alpha * tailFade * outerFade;
-        const thicknessScale = Phaser.Math.Linear(0.74, 0.56, Math.pow(radiusProximity, 0.85));
+        const segmentFade = Phaser.Math.Linear(0.76, 1, 1 - Math.abs(segmentOffset) * 2);
+        const segmentAlpha = alpha * segmentFade;
+        const thicknessScale = Phaser.Math.Linear(0.76, 0.54, densityCurve);
         graphics.lineStyle(arc.thickness * thicknessScale * Phaser.Math.Linear(1, 0.88, ageProgress), arc.color, segmentAlpha);
         graphics.lineBetween(previous.x, previous.y, point.x, point.y);
       }
@@ -930,9 +926,7 @@ export class BlackHoleSystem {
     }
   }
 
-  private getLensingStreamlinePoint(angle: number, normalizedRadius: number, squash: number): { x: number; y: number } {
-    const radius = this.getLensingRenderRadius(normalizedRadius);
-
+  private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
     return {
       x: Math.cos(angle) * radius,
       y: Math.sin(angle) * radius * squash
