@@ -67,10 +67,10 @@ const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN = 0.08;
 const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX = 0.58;
 const BLACK_HOLE_LENS_ARC_LIFETIME_MIN = 18;
 const BLACK_HOLE_LENS_ARC_LIFETIME_MAX = 34;
-const BLACK_HOLE_LENS_ARC_ALPHA_MIN = 0.09;
-const BLACK_HOLE_LENS_ARC_ALPHA_MAX = 0.62;
-const BLACK_HOLE_LENS_ARC_THICKNESS_MIN = 0.75;
-const BLACK_HOLE_LENS_ARC_THICKNESS_MAX = 3.3;
+const BLACK_HOLE_LENS_ARC_ALPHA_MIN = 0.14;
+const BLACK_HOLE_LENS_ARC_ALPHA_MAX = 0.82;
+const BLACK_HOLE_LENS_ARC_THICKNESS_MIN = 0.9;
+const BLACK_HOLE_LENS_ARC_THICKNESS_MAX = 3.8;
 const BLACK_HOLE_LENS_ARC_LENGTH_MIN = 0.055;
 const BLACK_HOLE_LENS_ARC_LENGTH_MAX = 0.34;
 const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.7;
@@ -669,7 +669,7 @@ export class BlackHoleSystem {
 
   private createLensingArcs(): BlackHoleLensingArc[] {
     return Array.from({ length: BLACK_HOLE_LENSING_ARC_MAX_COUNT }, (_, index) =>
-      this.createLensingArc(index, true)
+      this.createLensingArc(index, false)
     );
   }
 
@@ -875,7 +875,7 @@ export class BlackHoleSystem {
           BLACK_HOLE_BASE_LENS_FIELD_RADIUS
       );
       const brightness = 1 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED * 0.36 + arc.pulsePhase) * arc.pulseAmount;
-      const alpha = arc.baseAlpha * 1.35 * ageFade * fadeIn * fadeOut * mirrorAlpha * brightness * (foreground ? 0.82 : 1);
+      const alpha = arc.baseAlpha * 1.6 * ageFade * fadeIn * fadeOut * mirrorAlpha * brightness * (foreground ? 0.88 : 1);
       const arcLength = arc.baseArcLength * stretch * Phaser.Math.Linear(1, 0.72, ageProgress) * this.lensLengthMultiplier;
       const firstLength = arcLength * (0.52 - arc.brokenness * 0.22);
       const secondLength = arcLength * (0.28 + arc.brokenness * 0.18);
