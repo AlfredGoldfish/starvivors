@@ -21,6 +21,13 @@ import {
   type BlackHoleCapturedProjectileState,
   type BlackHoleRingDebugColorMode
 } from '../systems/blackHole';
+import {
+  createDebugMenu,
+  type DebugAsteroidTier,
+  type DebugEnemyType,
+  type DebugMenuController,
+  type DebugMenuValues
+} from '../ui/debugMenu';
 
 const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
 const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
@@ -518,6 +525,9 @@ export class GameScene extends Phaser.Scene {
   private isUpgradeOverlayOpen = false;
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
+  private debugMenu?: DebugMenuController;
+  private debugMenuOpenedAt = 0;
+  private totalDebugPauseMs = 0;
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
@@ -539,6 +549,10 @@ export class GameScene extends Phaser.Scene {
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   private areDebugBlackHoleProjectionLensLayersEnabled = true;
   private blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode = 'normal';
+  private debugEnemySpawningEnabled = true;
+  private debugAsteroidSpawningEnabled = false;
+  private debugPlayerInvulnerable = false;
+  private debugShowBlackHoleRadii = false;
 
   constructor() {
     super('GameScene');
@@ -564,6 +578,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.updateDebugMenuInput(time);
+
+    if (this.debugMenu?.isOpen()) {
+      this.updateBackgroundTiles(time);
+      this.updateGameplayHud(time);
+      this.updateMinimap();
+      this.updateParallaxTunerText();
+      this.updateBlackHoleLensOrbitSlider();
+      this.updateBlackHoleLensDensitySlider();
+      this.updateBlackHoleLensLengthSlider();
+      this.updateBlackHoleProjectionLensToggle();
+      this.updateCollisionDebugOverlay();
+      this.refreshDebugMenu();
+      this.updateDebugText(time);
+      return;
+    }
+
     this.updateParallaxTunerInput();
     this.updateUpgradeOverlayInput(time);
     this.updateDebugWeaponTuningInput();
@@ -641,6 +672,87 @@ export class GameScene extends Phaser.Scene {
     this.debugPulseFireRateIncreaseKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.QUOTES);
     this.debugPulseResetKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ZERO);
     this.blackHoleRingDebugColorKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.B);
+  }
+
+  private createDebugMenu(): void {
+    this.debugMenu = createDebugMenu(this, {
+      callbacks: {
+        close: () => this.closeDebugMenu(this.time.now),
+        toggleEnemySpawning: () => this.runDebugMenuAction(() => {
+          this.debugEnemySpawningEnabled = !this.debugEnemySpawningEnabled;
+        }),
+        spawnEnemy: (type) => this.runDebugMenuAction(() => this.spawnDebugEnemy(type)),
+        clearEnemies: () => this.runDebugMenuAction(() => this.clearEnemies()),
+        toggleAsteroidSpawning: () => this.runDebugMenuAction(() => {
+          this.debugAsteroidSpawningEnabled = false;
+        }),
+        spawnAsteroid: (tier) => this.runDebugMenuAction(() => this.spawnDebugAsteroid(tier)),
+        clearAsteroids: () => this.runDebugMenuAction(() => this.clearAsteroids()),
+        clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPulseCannonProjectiles()),
+        clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
+        restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
+        togglePlayerInvulnerability: () => this.runDebugMenuAction(() => {
+          this.debugPlayerInvulnerable = !this.debugPlayerInvulnerable;
+          if (this.debugPlayerInvulnerable) {
+            this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
+          } else {
+            this.playerInvulnerableUntil = 0;
+          }
+        }),
+        killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
+        adjustPulseDamage: (delta) => this.runDebugMenuAction(() => this.adjustDebugPulseDamageMultiplier(delta)),
+        adjustPulseFireRate: (delta) => this.runDebugMenuAction(() => this.adjustDebugPulseFireRateMultiplier(delta)),
+        resetWeaponTuning: () => this.runDebugMenuAction(() => this.resetDebugWeaponTuning()),
+        cycleBlackHoleRingDebugColor: () => this.runDebugMenuAction(() => this.cycleBlackHoleRingDebugColorMode()),
+        toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
+          this.debugShowBlackHoleRadii = !this.debugShowBlackHoleRadii;
+        }),
+        toggleCollisionDebug: () => this.runDebugMenuAction(() => {
+          this.isCollisionDebugEnabled = !this.isCollisionDebugEnabled;
+        })
+      }
+    });
+    this.refreshDebugMenu();
+  }
+
+  private runDebugMenuAction(action: () => void): void {
+    action();
+    this.refreshDebugMenu();
+    this.updateCollisionDebugOverlay();
+  }
+
+  private refreshDebugMenu(): void {
+    if (!this.debugMenu) {
+      return;
+    }
+
+    this.debugMenu.update(this.getDebugMenuValues());
+  }
+
+  private getDebugMenuValues(): DebugMenuValues {
+    const time = this.time.now;
+
+    return {
+      enemySpawningEnabled: this.debugEnemySpawningEnabled,
+      asteroidSpawningAvailable: false,
+      asteroidSpawningEnabled: this.debugAsteroidSpawningEnabled,
+      playerInvulnerable: this.debugPlayerInvulnerable,
+      collisionDebugEnabled: this.isCollisionDebugEnabled,
+      blackHoleRadiiVisible: this.debugShowBlackHoleRadii || this.isCollisionDebugEnabled,
+      blackHoleRingDebugColorMode: this.blackHoleRingDebugColorMode,
+      pulseDamageMultiplier: this.debugPulseDamageMultiplier,
+      pulseFireRateMultiplier: this.debugPulseFireRateMultiplier,
+      pulseCooldownSeconds: this.getPulseCooldownMs() / 1000,
+      activeEnemies: this.getActiveEnemyCount(),
+      activeAsteroids: this.basicAsteroids.length,
+      playerProjectiles: this.pulseCannonProjectiles.length,
+      enemyProjectiles: this.enemyProjectiles.length,
+      playerHull: this.playerHull,
+      playerMaxHull: this.getPlayerMaxHull(),
+      spawnDirectorSummary: `Spawner ${this.debugEnemySpawningEnabled ? 'on' : 'off'} / next ${(
+        Math.max(0, this.nextEnemySpawnAt - time) / 1000
+      ).toFixed(1)}s`
+    };
   }
 
   private installTestHarness(): void {
@@ -913,6 +1025,7 @@ export class GameScene extends Phaser.Scene {
     const center = getArenaCenter(this.arena);
 
     this.children.removeAll(true);
+    this.debugMenu = undefined;
     this.playerVelocity.set(0, 0);
     this.playerHull = PLAYER_MAX_HULL;
     this.playerInvulnerableUntil = 0;
@@ -945,6 +1058,8 @@ export class GameScene extends Phaser.Scene {
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
+    this.debugMenuOpenedAt = 0;
+    this.totalDebugPauseMs = 0;
     this.isMinimapVisible = true;
     this.resetDebugWeaponTuning();
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
@@ -952,6 +1067,10 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.blackHoleRingDebugColorMode = 'normal';
+    this.debugEnemySpawningEnabled = true;
+    this.debugAsteroidSpawningEnabled = false;
+    this.debugPlayerInvulnerable = false;
+    this.debugShowBlackHoleRadii = false;
     this.backgroundScrollX = 0;
     this.backgroundScrollY = 0;
     this.previousBackgroundPlayerX = undefined;
@@ -1002,6 +1121,7 @@ export class GameScene extends Phaser.Scene {
     this.createBlackHoleProjectionLensToggle();
     this.createUpgradeButton();
     this.createUpgradeOverlay();
+    this.createDebugMenu();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateParallaxTunerText();
@@ -1228,7 +1348,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateEnemySpawnDirector(time: number): void {
-    if (this.isPlayerDead || this.isUpgradeOverlayOpen || time < this.nextEnemySpawnAt) {
+    if (
+      this.isPlayerDead ||
+      this.isUpgradeOverlayOpen ||
+      this.debugMenu?.isOpen() ||
+      !this.debugEnemySpawningEnabled ||
+      time < this.nextEnemySpawnAt
+    ) {
       return;
     }
 
@@ -1342,6 +1468,60 @@ export class GameScene extends Phaser.Scene {
 
   private getActiveEnemyCount(): number {
     return this.basicEnemies.length + this.shooterEnemies.length + this.tankEnemies.length;
+  }
+
+  private spawnDebugEnemy(enemyType: DebugEnemyType): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    this.spawnDirectedEnemy(enemyType, this.time.now);
+  }
+
+  private clearEnemies(): void {
+    for (const enemy of this.basicEnemies) {
+      enemy.body.destroy(true);
+      enemy.wrapMirrorBody.destroy(true);
+    }
+
+    for (const enemy of this.shooterEnemies) {
+      enemy.body.destroy(true);
+      enemy.wrapMirrorBody.destroy(true);
+    }
+
+    for (const enemy of this.tankEnemies) {
+      enemy.body.destroy(true);
+      enemy.wrapMirrorBody.destroy(true);
+    }
+
+    this.basicEnemies = [];
+    this.shooterEnemies = [];
+    this.tankEnemies = [];
+  }
+
+  private spawnDebugAsteroid(tier: DebugAsteroidTier): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    const position = this.getDebugSpawnPosition(ASTEROID_SAFE_SPAWN_RADIUS);
+    this.basicAsteroids.push(this.createAsteroidInstance(position.x, position.y, tier));
+  }
+
+  private getDebugSpawnPosition(safeDistance: number): Phaser.Math.Vector2 {
+    for (let i = 0; i < 12; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(safeDistance, safeDistance * 1.35);
+      const x = wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width);
+      const y = wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height);
+      const offsetFromPlayer = this.getWrappedDirection(this.player.x, this.player.y, x, y);
+
+      if (offsetFromPlayer.length() >= safeDistance) {
+        return new Phaser.Math.Vector2(x, y);
+      }
+    }
+
+    return new Phaser.Math.Vector2(wrapCoordinate(this.player.x + safeDistance, this.arena.width), this.player.y);
   }
 
   private createBasicAsteroids(center: Phaser.Math.Vector2): void {
@@ -1525,6 +1705,66 @@ export class GameScene extends Phaser.Scene {
     this.player.y += this.playerVelocity.y * deltaSeconds;
   }
 
+  private updateDebugMenuInput(time: number): void {
+    if (!this.debugMenu || !this.isDebugMenuAvailable()) {
+      return;
+    }
+
+    if (this.debugMenu.isOpen() && this.isPlayerDead && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+      this.rebuildWorld();
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.parallaxTunerKey)) {
+      if (this.isUpgradeOverlayOpen) {
+        return;
+      }
+
+      if (this.debugMenu.isOpen()) {
+        this.closeDebugMenu(time);
+      } else {
+        this.openDebugMenu(time);
+      }
+    }
+  }
+
+  private isDebugMenuAvailable(): boolean {
+    return import.meta.env.DEV || this.isCollisionDebugEnabled;
+  }
+
+  private openDebugMenu(time: number): void {
+    if (!this.debugMenu || this.debugMenu.isOpen() || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    this.debugMenuOpenedAt = time;
+    this.debugMenu.open();
+    this.refreshDebugMenu();
+    this.updateParallaxTunerText();
+    this.updateBlackHoleLensOrbitSlider();
+    this.updateBlackHoleLensDensitySlider();
+    this.updateBlackHoleLensLengthSlider();
+    this.updateBlackHoleProjectionLensToggle();
+  }
+
+  private closeDebugMenu(time: number): void {
+    if (!this.debugMenu?.isOpen()) {
+      return;
+    }
+
+    const pauseDurationMs = Math.max(0, time - this.debugMenuOpenedAt);
+    this.totalDebugPauseMs += pauseDurationMs;
+    this.nextEnemySpawnAt += pauseDurationMs;
+    this.debugMenuOpenedAt = 0;
+    this.debugMenu.close();
+    this.updateGameplayHud(time);
+    this.updateParallaxTunerText();
+    this.updateBlackHoleLensOrbitSlider();
+    this.updateBlackHoleLensDensitySlider();
+    this.updateBlackHoleLensLengthSlider();
+    this.updateBlackHoleProjectionLensToggle();
+  }
+
   private updateUpgradeOverlayInput(time: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.minimapKey)) {
       this.isMinimapVisible = !this.isMinimapVisible;
@@ -1539,6 +1779,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!this.isUpgradeOverlayOpen) {
+      if (this.debugMenu?.isOpen()) {
+        return;
+      }
+
       if (this.bankedUpgrades > 0 && Phaser.Input.Keyboard.JustDown(this.upgradeKey)) {
         this.openUpgradeOverlay(time);
       }
@@ -1565,11 +1809,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateParallaxTunerInput(): void {
-    if (Phaser.Input.Keyboard.JustDown(this.parallaxTunerKey)) {
-      this.isParallaxTunerVisible = !this.isParallaxTunerVisible;
-      this.updateParallaxTunerText();
-    }
-
     if (!this.isParallaxTunerVisible || this.isUpgradeOverlayOpen) {
       return;
     }
@@ -1720,7 +1959,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isParallaxTunerVisible && !this.isUpgradeOverlayOpen;
+    const isVisible = this.isParallaxTunerVisible && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen();
 
     this.parallaxTunerText.setVisible(isVisible);
 
@@ -1735,7 +1974,7 @@ export class GameScene extends Phaser.Scene {
           `Far:  ${this.farStarfieldParallax.toFixed(2)}  1 / Shift+1\n` +
           `Mid:  ${this.midStarfieldParallax.toFixed(2)}  2 / Shift+2\n` +
           `Near: ${this.nearStarfieldParallax.toFixed(2)}  3 / Shift+3\n` +
-          `0 reset   F3 hide\n` +
+          `0 reset   F3 debug menu\n` +
           `Step ${STARFIELD_PARALLAX_STEP.toFixed(2)}  Range ${STARFIELD_PARALLAX_MIN.toFixed(2)}-${STARFIELD_PARALLAX_MAX.toFixed(2)}`
       );
   }
@@ -1876,7 +2115,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensOrbitSliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -1904,7 +2143,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const isVisible =
+      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330);
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -1981,7 +2221,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensDensitySliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -2009,7 +2249,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const isVisible =
+      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP;
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -2084,7 +2325,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleBlackHoleLensLengthSliderPointer(pointer: Phaser.Input.Pointer): void {
-    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+    if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
       return;
     }
 
@@ -2112,7 +2353,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const isVisible =
+      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 2;
     const trackX = -DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH / 2;
@@ -2180,7 +2422,7 @@ export class GameScene extends Phaser.Scene {
       .setInteractive({ useHandCursor: true });
 
     this.blackHoleProjectionLensToggleContainer.on('pointerdown', () => {
-      if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.isPlayerDead) {
+      if (!this.isCollisionDebugEnabled || this.isUpgradeOverlayOpen || this.debugMenu?.isOpen() || this.isPlayerDead) {
         return;
       }
 
@@ -2199,7 +2441,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.isPlayerDead;
+    const isVisible =
+      this.isCollisionDebugEnabled && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen() && !this.isPlayerDead;
     const panelX = 16 + DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2;
     const panelY = Math.max(220, this.scale.height - 330) + DEBUG_BLACK_HOLE_LENS_SLIDER_GAP * 3;
     const boxX = -DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH / 2 + 12;
@@ -2277,7 +2520,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.bankedUpgrades > 0 && !this.isPlayerDead && !this.isUpgradeOverlayOpen;
+    const isVisible =
+      this.bankedUpgrades > 0 && !this.isPlayerDead && !this.isUpgradeOverlayOpen && !this.debugMenu?.isOpen();
     const label = this.bankedUpgrades > 1 ? `Upgrade (${this.bankedUpgrades})` : 'Upgrade';
 
     this.upgradeButtonContainer
@@ -2653,6 +2897,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damagePlayer(damage: number, time: number, impactX = this.player.x, impactY = this.player.y): void {
+    if (this.debugPlayerInvulnerable) {
+      this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
+      return;
+    }
+
     this.playerHull = Math.max(0, this.playerHull - damage);
     this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
     this.emitPlayerDamageFeedback(impactX, impactY);
@@ -2749,6 +2998,24 @@ export class GameScene extends Phaser.Scene {
     this.playerSprite.setAlpha(0.62);
     this.updateGameplayHud(this.time.now);
     this.showDeathText();
+  }
+
+  private restorePlayerHull(): void {
+    this.playerHull = this.getPlayerMaxHull();
+    this.isPlayerDead = false;
+    this.player.setVisible(true);
+    this.playerSprite.clearTint();
+    this.playerSprite.setAlpha(1);
+
+    if (this.debugPlayerInvulnerable) {
+      this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
+    } else {
+      this.playerInvulnerableUntil = 0;
+    }
+
+    this.deathText?.destroy();
+    this.deathText = undefined;
+    this.updateGameplayHud(this.time.now);
   }
 
   private showDeathText(): void {
@@ -3114,6 +3381,22 @@ export class GameScene extends Phaser.Scene {
   private destroyPulseCannonProjectile(projectile: PulseCannonProjectile): void {
     projectile.body.destroy(true);
     projectile.wrapMirrorBody.destroy(true);
+  }
+
+  private clearPulseCannonProjectiles(): void {
+    for (const projectile of this.pulseCannonProjectiles) {
+      this.destroyPulseCannonProjectile(projectile);
+    }
+
+    this.pulseCannonProjectiles = [];
+  }
+
+  private clearEnemyProjectiles(): void {
+    for (const projectile of this.enemyProjectiles) {
+      this.destroyEnemyProjectile(projectile);
+    }
+
+    this.enemyProjectiles = [];
   }
 
   private applyProjectileGravity(projectile: PulseCannonProjectile | EnemyProjectile, deltaSeconds: number): void {
@@ -3507,6 +3790,18 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private clearAsteroids(): void {
+    for (const asteroid of this.basicAsteroids) {
+      asteroid.body.destroy(true);
+      asteroid.wrapMirrorBody.destroy(true);
+    }
+
+    this.basicAsteroids = [];
+    this.asteroidCameraViewCount = 0;
+    this.asteroidWrappedViewCount = 0;
+    this.asteroidWrapMirrorCount = 0;
+  }
+
   private spawnAsteroidFragments(
     x: number,
     y: number,
@@ -3812,18 +4107,25 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.collisionDebugGraphics.clear();
-    this.collisionDebugGraphics.setVisible(this.isCollisionDebugEnabled);
+    const shouldShowBlackHoleRadii = this.debugShowBlackHoleRadii && Boolean(this.blackHole);
+    this.collisionDebugGraphics.setVisible(this.isCollisionDebugEnabled || shouldShowBlackHoleRadii);
 
-    if (!this.isCollisionDebugEnabled) {
+    if (!this.isCollisionDebugEnabled && !shouldShowBlackHoleRadii) {
       return;
     }
 
-    this.drawDebugArenaGrid();
-    this.drawPlayerCollisionDebug();
-    this.drawEnemyCollisionDebug();
-    this.drawAsteroidCollisionDebug();
+    if (this.isCollisionDebugEnabled) {
+      this.drawDebugArenaGrid();
+      this.drawPlayerCollisionDebug();
+      this.drawEnemyCollisionDebug();
+      this.drawAsteroidCollisionDebug();
+    }
+
     this.drawBlackHoleCollisionDebug();
-    this.drawProjectileCollisionDebug();
+
+    if (this.isCollisionDebugEnabled) {
+      this.drawProjectileCollisionDebug();
+    }
   }
 
   private drawDebugArenaGrid(): void {
@@ -4154,7 +4456,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const status = this.isPlayerDead ? 'CRITICAL' : this.playerInvulnerableUntil > time ? 'HIT' : 'STABLE';
+    const status = this.isPlayerDead
+      ? 'CRITICAL'
+      : this.debugPlayerInvulnerable
+        ? 'DEBUG INVULN'
+        : this.playerInvulnerableUntil > time
+          ? 'HIT'
+          : 'STABLE';
     const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
     const survivalTime = this.formatSurvivalTime(elapsedSeconds);
     const maxHull = this.getPlayerMaxHull();
@@ -4215,8 +4523,9 @@ export class GameScene extends Phaser.Scene {
 
   private getSurvivalElapsedMs(time: number): number {
     const activePauseMs = this.isUpgradeOverlayOpen ? Math.max(0, time - this.upgradeOverlayOpenedAt) : 0;
+    const activeDebugPauseMs = this.debugMenu?.isOpen() ? Math.max(0, time - this.debugMenuOpenedAt) : 0;
 
-    return Math.max(0, time - this.runStartedAt - this.totalUpgradePauseMs - activePauseMs);
+    return Math.max(0, time - this.runStartedAt - this.totalUpgradePauseMs - this.totalDebugPauseMs - activePauseMs - activeDebugPauseMs);
   }
 
   private updateDebugText(time: number): void {
@@ -4258,6 +4567,7 @@ export class GameScene extends Phaser.Scene {
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
+        `Debug menu: F3 ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / enemy spawning ${this.debugEnemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugPlayerInvulnerable ? 'on' : 'off'}\n` +
         `Collision debug: ${this.isCollisionDebugEnabled ? 'F2 on' : 'F2 off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +

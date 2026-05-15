@@ -1,0 +1,312 @@
+import Phaser from 'phaser';
+import type { BlackHoleRingDebugColorMode } from '../systems/blackHole';
+
+export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
+export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
+
+export interface DebugMenuValues {
+  enemySpawningEnabled: boolean;
+  asteroidSpawningAvailable: boolean;
+  asteroidSpawningEnabled: boolean;
+  playerInvulnerable: boolean;
+  collisionDebugEnabled: boolean;
+  blackHoleRadiiVisible: boolean;
+  blackHoleRingDebugColorMode: BlackHoleRingDebugColorMode;
+  pulseDamageMultiplier: number;
+  pulseFireRateMultiplier: number;
+  pulseCooldownSeconds: number;
+  activeEnemies: number;
+  activeAsteroids: number;
+  playerProjectiles: number;
+  enemyProjectiles: number;
+  playerHull: number;
+  playerMaxHull: number;
+  spawnDirectorSummary: string;
+}
+
+export interface DebugMenuCallbacks {
+  close: () => void;
+  toggleEnemySpawning: () => void;
+  spawnEnemy: (type: DebugEnemyType) => void;
+  clearEnemies: () => void;
+  toggleAsteroidSpawning: () => void;
+  spawnAsteroid: (tier: DebugAsteroidTier) => void;
+  clearAsteroids: () => void;
+  clearPlayerProjectiles: () => void;
+  clearEnemyProjectiles: () => void;
+  restorePlayerHull: () => void;
+  togglePlayerInvulnerability: () => void;
+  killPlayer: () => void;
+  adjustPulseDamage: (delta: number) => void;
+  adjustPulseFireRate: (delta: number) => void;
+  resetWeaponTuning: () => void;
+  cycleBlackHoleRingDebugColor: () => void;
+  toggleBlackHoleRadii: () => void;
+  toggleCollisionDebug: () => void;
+}
+
+export interface DebugMenuConfig {
+  callbacks: DebugMenuCallbacks;
+}
+
+export interface DebugMenuController {
+  open: () => void;
+  close: () => void;
+  toggle: () => void;
+  isOpen: () => boolean;
+  update: (values: DebugMenuValues) => void;
+  destroy: () => void;
+}
+
+interface DebugButton {
+  text: Phaser.GameObjects.Text;
+  setLabel: (label: string) => void;
+}
+
+const PANEL_WIDTH = 920;
+const PANEL_HEIGHT = 650;
+const PANEL_PADDING = 20;
+const COLUMN_WIDTH = 286;
+const BUTTON_HEIGHT = 28;
+const BUTTON_GAP = 8;
+const ROW_GAP = 10;
+
+export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): DebugMenuController {
+  const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
+  const valuesTextByKey = new Map<string, Phaser.GameObjects.Text>();
+  const buttonsByKey = new Map<string, DebugButton>();
+  const hitAreas: Phaser.GameObjects.Zone[] = [];
+  let open = false;
+
+  const panelX = Math.max(12, (scene.scale.width - PANEL_WIDTH) / 2);
+  const panelY = Math.max(12, (scene.scale.height - PANEL_HEIGHT) / 2);
+  const background = scene.add.graphics();
+  background.fillStyle(0x02040a, 0.9);
+  background.fillRect(0, 0, scene.scale.width, scene.scale.height);
+  background.fillStyle(0x071018, 0.98);
+  background.fillRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
+  background.lineStyle(2, 0x42f5d7, 0.8);
+  background.strokeRoundedRect(panelX, panelY, PANEL_WIDTH, PANEL_HEIGHT, 8);
+  container.add(background);
+
+  const title = scene.add
+    .text(panelX + PANEL_PADDING, panelY + 14, 'DEBUG MENU', {
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: '22px',
+      color: '#f2fbff'
+    })
+    .setOrigin(0, 0);
+  container.add(title);
+
+  addButton('close', panelX + PANEL_WIDTH - 106, panelY + 14, 84, 'Close', config.callbacks.close);
+
+  const columnXs = [
+    panelX + PANEL_PADDING,
+    panelX + PANEL_PADDING + COLUMN_WIDTH + 12,
+    panelX + PANEL_PADDING + (COLUMN_WIDTH + 12) * 2
+  ];
+  let leftY = panelY + 58;
+  let midY = panelY + 58;
+  let rightY = panelY + 58;
+
+  leftY = addSection(columnXs[0], leftY, 'Spawn Control');
+  addValue('spawn-state', columnXs[0], leftY);
+  leftY += 24;
+  addButton('enemy-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Enemy spawning', config.callbacks.toggleEnemySpawning);
+  leftY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('spawn-chaser', columnXs[0], leftY, 88, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
+  addButton('spawn-shooter', columnXs[0] + 98, leftY, 88, 'Shooter', () => config.callbacks.spawnEnemy('shooter'));
+  addButton('spawn-tank', columnXs[0] + 196, leftY, 88, 'Tank', () => config.callbacks.spawnEnemy('tank'));
+  leftY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('clear-enemies', columnXs[0], leftY, COLUMN_WIDTH, 'Clear enemies', config.callbacks.clearEnemies);
+  leftY += BUTTON_HEIGHT + ROW_GAP;
+
+  leftY = addSection(columnXs[0], leftY, 'Asteroid Testing');
+  addValue('asteroid-state', columnXs[0], leftY);
+  leftY += 24;
+  addButton('asteroid-spawning', columnXs[0], leftY, COLUMN_WIDTH, 'Asteroid spawning unavailable', config.callbacks.toggleAsteroidSpawning);
+  leftY += BUTTON_HEIGHT + BUTTON_GAP;
+  for (let tier = 1; tier <= 5; tier += 1) {
+    addButton(`asteroid-${tier}`, columnXs[0] + (tier - 1) * 56, leftY, 48, `T${tier}`, () =>
+      config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
+    );
+  }
+  leftY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('clear-asteroids', columnXs[0], leftY, COLUMN_WIDTH, 'Clear asteroids', config.callbacks.clearAsteroids);
+
+  midY = addSection(columnXs[1], midY, 'Projectile Cleanup');
+  addValue('projectiles', columnXs[1], midY);
+  midY += 24;
+  addButton('clear-player-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear player projectiles', config.callbacks.clearPlayerProjectiles);
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('clear-enemy-projectiles', columnXs[1], midY, COLUMN_WIDTH, 'Clear enemy projectiles', config.callbacks.clearEnemyProjectiles);
+  midY += BUTTON_HEIGHT + ROW_GAP;
+
+  midY = addSection(columnXs[1], midY, 'Player Testing');
+  addValue('player', columnXs[1], midY);
+  midY += 24;
+  addButton('restore-hull', columnXs[1], midY, COLUMN_WIDTH, 'Restore hull', config.callbacks.restorePlayerHull);
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('player-invuln', columnXs[1], midY, COLUMN_WIDTH, 'Debug invulnerability', config.callbacks.togglePlayerInvulnerability);
+  midY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('kill-player', columnXs[1], midY, COLUMN_WIDTH, 'Kill player', config.callbacks.killPlayer);
+
+  rightY = addSection(columnXs[2], rightY, 'Weapon Testing');
+  addValue('weapon', columnXs[2], rightY);
+  rightY += 44;
+  addButton('damage-down', columnXs[2], rightY, 64, 'Dmg -', () => config.callbacks.adjustPulseDamage(-0.5));
+  addButton('damage-up', columnXs[2] + 74, rightY, 64, 'Dmg +', () => config.callbacks.adjustPulseDamage(0.5));
+  addButton('fire-down', columnXs[2] + 148, rightY, 64, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
+  addButton('fire-up', columnXs[2] + 222, rightY, 64, 'Fire +', () => config.callbacks.adjustPulseFireRate(0.5));
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('weapon-reset', columnXs[2], rightY, COLUMN_WIDTH, 'Reset weapon tuning', config.callbacks.resetWeaponTuning);
+  rightY += BUTTON_HEIGHT + ROW_GAP;
+
+  rightY = addSection(columnXs[2], rightY, 'Black Hole Debug');
+  addValue('black-hole', columnXs[2], rightY);
+  rightY += 44;
+  addButton('ring-color', columnXs[2], rightY, COLUMN_WIDTH, 'Cycle ring color', config.callbacks.cycleBlackHoleRingDebugColor);
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('black-hole-radii', columnXs[2], rightY, COLUMN_WIDTH, 'Black hole radii', config.callbacks.toggleBlackHoleRadii);
+  rightY += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('collision-debug', columnXs[2], rightY, COLUMN_WIDTH, 'F2 collision debug', config.callbacks.toggleCollisionDebug);
+
+  function addSection(x: number, y: number, label: string): number {
+    const text = scene.add
+      .text(x, y, label, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#42f5d7'
+      })
+      .setOrigin(0, 0);
+    container.add(text);
+    return y + 24;
+  }
+
+  function addValue(key: string, x: number, y: number): void {
+    const text = scene.add
+      .text(x, y, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff',
+        lineSpacing: 4
+      })
+      .setOrigin(0, 0);
+    valuesTextByKey.set(key, text);
+    container.add(text);
+  }
+
+  function addButton(key: string, x: number, y: number, width: number, label: string, callback: () => void): DebugButton {
+    const graphics = scene.add.graphics();
+    graphics.fillStyle(0x111a24, 0.96);
+    graphics.fillRoundedRect(x, y, width, BUTTON_HEIGHT, 5);
+    graphics.lineStyle(1, 0x52627f, 0.9);
+    graphics.strokeRoundedRect(x, y, width, BUTTON_HEIGHT, 5);
+
+    const text = scene.add
+      .text(x + width / 2, y + BUTTON_HEIGHT / 2, label, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#f2fbff',
+        align: 'center',
+        fixedWidth: width - 10
+      })
+      .setOrigin(0.5, 0.5);
+
+    const hitArea = scene.add
+      .zone(x, y, width, BUTTON_HEIGHT)
+      .setOrigin(0, 0)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+        pointer.event.stopPropagation();
+        callback();
+      });
+
+    container.add([graphics, text, hitArea]);
+    hitAreas.push(hitArea);
+
+    const button = {
+      text,
+      setLabel: (nextLabel: string) => text.setText(nextLabel)
+    };
+    buttonsByKey.set(key, button);
+
+    return button;
+  }
+
+  function setValue(key: string, value: string): void {
+    valuesTextByKey.get(key)?.setText(value);
+  }
+
+  function setButtonLabel(key: string, value: string): void {
+    buttonsByKey.get(key)?.setLabel(value);
+  }
+
+  function setButtonInputEnabled(isEnabled: boolean): void {
+    for (const hitArea of hitAreas) {
+      if (isEnabled) {
+        hitArea.setInteractive({ useHandCursor: true });
+      } else {
+        hitArea.disableInteractive();
+      }
+    }
+  }
+
+  setButtonInputEnabled(false);
+
+  return {
+    open: () => {
+      open = true;
+      container.setVisible(true);
+      setButtonInputEnabled(true);
+    },
+    close: () => {
+      open = false;
+      container.setVisible(false);
+      setButtonInputEnabled(false);
+    },
+    toggle: () => {
+      open = !open;
+      container.setVisible(open);
+      setButtonInputEnabled(open);
+    },
+    isOpen: () => open,
+    update: (values: DebugMenuValues) => {
+      setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
+      setValue(
+        'asteroid-state',
+        `Asteroids active: ${values.activeAsteroids}\nSpawner: ${
+          values.asteroidSpawningAvailable ? (values.asteroidSpawningEnabled ? 'on' : 'off') : 'not implemented'
+        }`
+      );
+      setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
+      setValue(
+        'player',
+        `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
+          values.playerInvulnerable ? 'on' : 'off'
+        }`
+      );
+      setValue(
+        'weapon',
+        `Damage x${values.pulseDamageMultiplier.toFixed(1)}\nFire x${values.pulseFireRateMultiplier.toFixed(1)}\nCooldown ${values.pulseCooldownSeconds.toFixed(2)}s`
+      );
+      setValue(
+        'black-hole',
+        `Ring color: ${values.blackHoleRingDebugColorMode}\nRadii: ${
+          values.blackHoleRadiiVisible ? 'shown' : 'hidden'
+        } / F2: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+      );
+      setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
+      setButtonLabel(
+        'asteroid-spawning',
+        values.asteroidSpawningAvailable
+          ? `Asteroid spawning: ${values.asteroidSpawningEnabled ? 'on' : 'off'}`
+          : 'Asteroid spawning unavailable'
+      );
+      setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
+      setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
+      setButtonLabel('collision-debug', `F2 collision debug: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
+    },
+    destroy: () => container.destroy(true)
+  };
+}
