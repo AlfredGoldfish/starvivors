@@ -68,10 +68,8 @@ export const BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS = BLACK_HOLE_EVENT_HOR
 const BLACK_HOLE_LENSING_ARC_COLORS = [0xffffff] as const;
 const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
-const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MIN = 1;
-const BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX = 20;
-const BLACK_HOLE_CORE_GROWTH_PER_SCALE = 0.08;
 const BLACK_HOLE_BASE_LENS_FIELD_RADIUS = BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE * 0.5;
+const BLACK_HOLE_VISUAL_FIELD_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 
 export type {
   BlackHoleFieldTuningConfig,
@@ -228,7 +226,10 @@ export class BlackHoleSystem {
   private readonly pngLayers: BlackHolePngLayerConfig[];
   private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private lensLengthMultiplier = 1;
-  private fieldRadiusMultiplier = 1;
+  private influenceRadiusMultiplier = 1;
+  private damageRadiusMultiplier = 1;
+  private visualScaleMultiplier = 1;
+  private coreScaleMultiplier = 1;
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
@@ -276,7 +277,10 @@ export class BlackHoleSystem {
     activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
     lensLengthMultiplier = 1,
     areProjectionLensLayersEnabled = true,
-    fieldRadiusMultiplier = 1,
+    influenceRadiusMultiplier = 1,
+    damageRadiusMultiplier = 1,
+    visualScaleMultiplier = 1,
+    coreScaleMultiplier = 1,
     shouldMove = true
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
@@ -284,11 +288,10 @@ export class BlackHoleSystem {
       0,
       BLACK_HOLE_LENSING_ARC_MAX_COUNT
     );
-    this.fieldRadiusMultiplier = Phaser.Math.Clamp(
-      fieldRadiusMultiplier,
-      BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MIN,
-      BLACK_HOLE_FIELD_RADIUS_MULTIPLIER_MAX
-    );
+    this.influenceRadiusMultiplier = Math.max(0, influenceRadiusMultiplier);
+    this.damageRadiusMultiplier = Math.max(0, damageRadiusMultiplier);
+    this.visualScaleMultiplier = Math.max(0, visualScaleMultiplier);
+    this.coreScaleMultiplier = Math.max(0, coreScaleMultiplier);
     this.setLensLengthMultiplier(lensLengthMultiplier);
     if (shouldMove) {
       this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
@@ -412,35 +415,31 @@ export class BlackHoleSystem {
   }
 
   get coreRadius(): number {
-    return BLACK_HOLE_CORE_RADIUS * this.coreVisualScale;
+    return BLACK_HOLE_CORE_RADIUS * this.coreScaleMultiplier;
   }
 
   get warningRadius(): number {
-    return BLACK_HOLE_WARNING_RADIUS * this.lensFieldScale;
+    return BLACK_HOLE_WARNING_RADIUS * this.visualScaleMultiplier;
   }
 
   get influenceRadius(): number {
-    return BLACK_HOLE_INFLUENCE_RADIUS * this.fieldRadiusMultiplier;
+    return BLACK_HOLE_INFLUENCE_RADIUS * this.influenceRadiusMultiplier;
   }
 
   get damageRadius(): number {
-    return BLACK_HOLE_DAMAGE_RADIUS * this.fieldRadiusMultiplier;
+    return BLACK_HOLE_DAMAGE_RADIUS * this.damageRadiusMultiplier;
   }
 
   get captureRadius(): number {
-    return BLACK_HOLE_CAPTURE_RADIUS * (1 + (this.fieldRadiusMultiplier - 1) * 0.18);
+    return BLACK_HOLE_CAPTURE_RADIUS;
   }
 
   get eventHorizonRadius(): number {
-    return BLACK_HOLE_EVENT_HORIZON_RADIUS * this.coreVisualScale;
-  }
-
-  private get coreVisualScale(): number {
-    return 1 + (Math.sqrt(this.fieldRadiusMultiplier) - 1) * BLACK_HOLE_CORE_GROWTH_PER_SCALE;
+    return (this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET) * BLACK_HOLE_VISUAL_HORIZON_SCALE;
   }
 
   private get lensFieldScale(): number {
-    return this.influenceRadius / BLACK_HOLE_BASE_LENS_FIELD_RADIUS;
+    return this.visualScaleMultiplier;
   }
 
   private getSpawnPosition(arena: ArenaSize, center: Phaser.Math.Vector2): Phaser.Math.Vector2 {
@@ -785,7 +784,7 @@ export class BlackHoleSystem {
     lensOrbitSpeedMultiplier: number,
     areLayersEnabled: boolean
   ): void {
-    const fullDisplaySize = this.influenceRadius * 2 * this.lensLengthMultiplier;
+    const fullDisplaySize = BLACK_HOLE_VISUAL_FIELD_RADIUS * 2 * this.visualScaleMultiplier * this.lensLengthMultiplier;
 
     this.updateWhirlpoolImageGroup(this.pngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, false);
     this.updateWhirlpoolImageGroup(this.wrapMirrorPngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, true);
@@ -1028,7 +1027,7 @@ export class BlackHoleSystem {
   }
 
   private getLensingRenderRadius(normalizedRadius: number): number {
-    return Phaser.Math.Linear(this.coreRadius + 28, this.influenceRadius, Phaser.Math.Clamp(normalizedRadius, 0, 1));
+    return Phaser.Math.Linear(this.coreRadius + 28, BLACK_HOLE_VISUAL_FIELD_RADIUS * this.visualScaleMultiplier, Phaser.Math.Clamp(normalizedRadius, 0, 1));
   }
 
 }

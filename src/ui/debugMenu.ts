@@ -30,6 +30,8 @@ const BUTTON_GAP = 6;
 const ROW_GAP = 8;
 const VALUE_LINE_HEIGHT = 15;
 const SECTION_TITLE_HEIGHT = 20;
+const TOOLTIP_WIDTH = 304;
+const TOOLTIP_PADDING = 8;
 
 export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): DebugMenuController {
   const container = scene.add.container(0, 0).setScrollFactor(0).setDepth(1400).setVisible(false);
@@ -72,6 +74,20 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     })
     .setOrigin(0, 0);
   container.add(title);
+
+  const tooltipBackground = scene.add.graphics().setVisible(false);
+  const tooltipText = scene.add
+    .text(0, 0, '', {
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: '12px',
+      color: '#f2fbff',
+      fixedWidth: TOOLTIP_WIDTH - TOOLTIP_PADDING * 2,
+      lineSpacing: 2,
+      wordWrap: { width: TOOLTIP_WIDTH - TOOLTIP_PADDING * 2, useAdvancedWrap: true }
+    })
+    .setOrigin(0, 0)
+    .setVisible(false);
+  container.add([tooltipBackground, tooltipText]);
 
   addButton('close', panelX + PANEL_WIDTH - 78, panelY + 10, 64, 'Close', config.callbacks.close);
 
@@ -122,6 +138,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('clear-enemy-projectiles', columnX + 162, y, 154, 'Clear enemy shots', config.callbacks.clearEnemyProjectiles);
   y += BUTTON_HEIGHT + ROW_GAP;
 
+  y = addSection(columnX, y, 'Debris');
+  addValue('debris', columnX, y);
+  y += VALUE_LINE_HEIGHT + BUTTON_GAP;
+  addButton('spawn-debris', columnX, y, 154, 'Spawn debris', config.callbacks.spawnDebris);
+  addButton('clear-debris', columnX + 162, y, 154, 'Clear debris', config.callbacks.clearDebris);
+  y += BUTTON_HEIGHT + ROW_GAP;
+
   y = addSection(columnX, y, 'Black Hole');
   addValue('black-hole', columnX, y);
   y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
@@ -133,20 +156,46 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   y = addSection(columnX, y, 'Black Hole Field');
   addValue('black-hole-field', columnX, y);
-  y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
-  addButton('field-radial-down', columnX, y, 74, 'Rad -', () => config.callbacks.adjustBlackHoleRadialStrength(-0.1));
-  addButton('field-radial-up', columnX + 80, y, 74, 'Rad +', () => config.callbacks.adjustBlackHoleRadialStrength(0.1));
-  addButton('field-swirl-down', columnX + 162, y, 74, 'Swirl -', () => config.callbacks.adjustBlackHoleSwirlStrength(-0.1));
-  addButton('field-swirl-up', columnX + 242, y, 74, 'Swirl +', () => config.callbacks.adjustBlackHoleSwirlStrength(0.1));
+  y += VALUE_LINE_HEIGHT * 10 + BUTTON_GAP;
+  addButton('field-influence-down', columnX, y, 74, 'Inf -', () => config.callbacks.adjustBlackHoleInfluenceRadius(-0.5), 'Influence radius: how far black hole force reaches. Higher values can pull objects from farther away.');
+  addButton('field-influence-up', columnX + 80, y, 74, 'Inf +', () => config.callbacks.adjustBlackHoleInfluenceRadius(0.5), 'Influence radius: how far black hole force reaches. Higher values can pull objects from farther away.');
+  addButton('field-damage-down', columnX + 162, y, 74, 'DmgR -', () => config.callbacks.adjustBlackHoleDamageRadius(-0.5), 'Damage radius: where tidal damage starts. This does not change gravity range or visual size.');
+  addButton('field-damage-up', columnX + 242, y, 74, 'DmgR +', () => config.callbacks.adjustBlackHoleDamageRadius(0.5), 'Damage radius: where tidal damage starts. This does not change gravity range or visual size.');
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('field-mass-down', columnX, y, 74, 'Mass -', () => config.callbacks.adjustBlackHoleMassResistance(-0.1));
-  addButton('field-mass-up', columnX + 80, y, 74, 'Mass +', () => config.callbacks.adjustBlackHoleMassResistance(0.1));
-  addButton('field-vel-down', columnX + 162, y, 74, 'Vel -', () => config.callbacks.adjustBlackHoleMaxVelocity(-0.1));
-  addButton('field-vel-up', columnX + 242, y, 74, 'Vel +', () => config.callbacks.adjustBlackHoleMaxVelocity(0.1));
+  addButton('field-radial-down', columnX, y, 74, 'Rad -', () => config.callbacks.adjustBlackHoleRadialStrength(-0.1), 'Radial strength: direct inward pull toward the center.');
+  addButton('field-radial-up', columnX + 80, y, 74, 'Rad +', () => config.callbacks.adjustBlackHoleRadialStrength(0.1), 'Radial strength: direct inward pull toward the center.');
+  addButton('field-radial-curve-down', columnX + 162, y, 74, 'RCrv -', () => config.callbacks.adjustBlackHoleRadialCurve(-0.1), 'Radial curve: how sharply inward pull ramps near the center. Higher means weaker outside, stronger close in.');
+  addButton('field-radial-curve-up', columnX + 242, y, 74, 'RCrv +', () => config.callbacks.adjustBlackHoleRadialCurve(0.1), 'Radial curve: how sharply inward pull ramps near the center. Higher means weaker outside, stronger close in.');
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('field-save-tuning', columnX, y, 101, 'Save field', config.callbacks.saveBlackHoleFieldTuning);
-  addButton('field-load-tuning', columnX + 108, y, 101, 'Load field', config.callbacks.loadBlackHoleFieldTuning);
-  addButton('field-reset', columnX + 216, y, 100, 'Reset', config.callbacks.resetBlackHoleLensTuning);
+  addButton('field-swirl-down', columnX, y, 74, 'Swirl -', () => config.callbacks.adjustBlackHoleSwirlStrength(-0.1), 'Swirl strength: sideways/orbital force. Higher values make objects whirlpool more.');
+  addButton('field-swirl-up', columnX + 80, y, 74, 'Swirl +', () => config.callbacks.adjustBlackHoleSwirlStrength(0.1), 'Swirl strength: sideways/orbital force. Higher values make objects whirlpool more.');
+  addButton('field-swirl-curve-down', columnX + 162, y, 74, 'SCrv -', () => config.callbacks.adjustBlackHoleSwirlCurve(-0.1), 'Swirl curve: how sharply swirl increases near the center. Higher values focus swirl close to the core.');
+  addButton('field-swirl-curve-up', columnX + 242, y, 74, 'SCrv +', () => config.callbacks.adjustBlackHoleSwirlCurve(0.1), 'Swirl curve: how sharply swirl increases near the center. Higher values focus swirl close to the core.');
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-visc-down', columnX, y, 74, 'Visc -', () => config.callbacks.adjustBlackHoleViscosityStrength(-0.1), 'Viscosity: thick-liquid slowdown inside the field. Higher values make escape feel heavier.');
+  addButton('field-visc-up', columnX + 80, y, 74, 'Visc +', () => config.callbacks.adjustBlackHoleViscosityStrength(0.1), 'Viscosity: thick-liquid slowdown inside the field. Higher values make escape feel heavier.');
+  addButton('field-visc-curve-down', columnX + 162, y, 74, 'VCrv -', () => config.callbacks.adjustBlackHoleViscosityCurve(-0.1), 'Viscosity curve: how much slowdown concentrates near the center.');
+  addButton('field-visc-curve-up', columnX + 242, y, 74, 'VCrv +', () => config.callbacks.adjustBlackHoleViscosityCurve(0.1), 'Viscosity curve: how much slowdown concentrates near the center.');
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-drag-down', columnX, y, 74, 'Drag -', () => config.callbacks.adjustBlackHoleInnerDrag(-0.1), 'Inner drag: velocity kept near the core. Lower values slow objects more at the center.');
+  addButton('field-drag-up', columnX + 80, y, 74, 'Drag +', () => config.callbacks.adjustBlackHoleInnerDrag(0.1), 'Inner drag: velocity kept near the core. Lower values slow objects more at the center.');
+  addButton('field-player-down', columnX + 162, y, 74, 'PRes -', () => config.callbacks.adjustBlackHolePlayerResistance(-0.1), 'Player resistance: reduces black hole pull, swirl, and viscosity on the player only.');
+  addButton('field-player-up', columnX + 242, y, 74, 'PRes +', () => config.callbacks.adjustBlackHolePlayerResistance(0.1), 'Player resistance: reduces black hole pull, swirl, and viscosity on the player only.');
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-mass-down', columnX, y, 74, 'Mass -', () => config.callbacks.adjustBlackHoleMassResistance(-0.1), 'Mass resistance: makes heavier objects resist the black hole more.');
+  addButton('field-mass-up', columnX + 80, y, 74, 'Mass +', () => config.callbacks.adjustBlackHoleMassResistance(0.1), 'Mass resistance: makes heavier objects resist the black hole more.');
+  addButton('field-vel-down', columnX + 162, y, 74, 'Vel -', () => config.callbacks.adjustBlackHoleMaxVelocity(-0.1), 'Max velocity: caps speed after black hole force is applied.');
+  addButton('field-vel-up', columnX + 242, y, 74, 'Vel +', () => config.callbacks.adjustBlackHoleMaxVelocity(0.1), 'Max velocity: caps speed after black hole force is applied.');
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-visual-down', columnX, y, 74, 'Vis -', () => config.callbacks.adjustBlackHoleVisualScale(-0.5), 'Visual scale: changes only the visible field/PNG size, not physics range.');
+  addButton('field-visual-up', columnX + 80, y, 74, 'Vis +', () => config.callbacks.adjustBlackHoleVisualScale(0.5), 'Visual scale: changes only the visible field/PNG size, not physics range.');
+  addButton('field-core-down', columnX + 162, y, 74, 'Core -', () => config.callbacks.adjustBlackHoleCoreScale(-0.1), 'Core size: changes the black center circle and event horizon consume radius.');
+  addButton('field-core-up', columnX + 242, y, 74, 'Core +', () => config.callbacks.adjustBlackHoleCoreScale(0.1), 'Core size: changes the black center circle and event horizon consume radius.');
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-save-tuning', columnX, y, 154, 'Save field', config.callbacks.saveBlackHoleFieldTuning);
+  addButton('field-load-tuning', columnX + 162, y, 154, 'Load field', config.callbacks.loadBlackHoleFieldTuning);
+  y += BUTTON_HEIGHT + BUTTON_GAP;
+  addButton('field-reset', columnX, y, COLUMN_WIDTH, 'Reset field and visuals', config.callbacks.resetBlackHoleLensTuning);
   y += BUTTON_HEIGHT + ROW_GAP;
 
   y = addSection(columnX, y, 'Black Hole PNG Layers');
@@ -173,10 +222,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   y += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('png-duplicate-layer', columnX, y, 154, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
   addButton('png-remove-layer', columnX + 162, y, 154, 'Remove -', config.callbacks.removeBlackHolePngLayer);
-  y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('field-scale-down', columnX, y, 101, 'Field -', () => config.callbacks.adjustBlackHoleFieldScale(-0.5));
-  addButton('field-scale-up', columnX + 108, y, 101, 'Field +', () => config.callbacks.adjustBlackHoleFieldScale(0.5));
-  addButton('lens-reset', columnX + 216, y, 100, 'Reset', config.callbacks.resetBlackHoleLensTuning);
   y += BUTTON_HEIGHT + BUTTON_GAP;
   addButton('png-save-setup', columnX, y, 154, 'Save .md', config.callbacks.saveBlackHolePngSetup);
   addButton('png-load-setup', columnX + 162, y, 154, 'Load .md', config.callbacks.loadBlackHolePngSetup);
@@ -243,7 +288,15 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     content.add(text);
   }
 
-  function addButton(key: string, x: number, y: number, width: number, label: string, callback: () => void): DebugButton {
+  function addButton(
+    key: string,
+    x: number,
+    y: number,
+    width: number,
+    label: string,
+    callback: () => void,
+    tooltip?: string
+  ): DebugButton {
     const background = scene.add
       .rectangle(x, y, width, BUTTON_HEIGHT, 0x111a24, 0.96)
       .setOrigin(0, 0)
@@ -296,11 +349,15 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
         background.setFillStyle(0x182434, 0.98);
         background.setStrokeStyle(1, 0x42f5d7, 0.9);
+        if (tooltip) {
+          showTooltip(tooltip, hitArea.y + BUTTON_HEIGHT + 5);
+        }
       })
       .on('pointerout', () => {
         background.setFillStyle(0x111a24, 0.96);
         background.setStrokeStyle(1, 0x52627f, 0.9);
         text.setPosition(x + width / 2, y + BUTTON_HEIGHT / 2);
+        hideTooltip();
       });
 
     hitArea.disableInteractive();
@@ -320,6 +377,28 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     scrollButtons.push(button);
 
     return button;
+  }
+
+  function showTooltip(message: string, y: number): void {
+    tooltipText.setText(message);
+    const tooltipHeight = tooltipText.height + TOOLTIP_PADDING * 2;
+    const tooltipX = panelX + PANEL_PADDING;
+    const tooltipY = Phaser.Math.Clamp(y, panelY + 42, panelY + panelHeight - tooltipHeight - PANEL_PADDING);
+
+    tooltipBackground.clear();
+    tooltipBackground.fillStyle(0x02040a, 0.98);
+    tooltipBackground.fillRoundedRect(tooltipX, tooltipY, TOOLTIP_WIDTH, tooltipHeight, 5);
+    tooltipBackground.lineStyle(1, 0x42f5d7, 0.85);
+    tooltipBackground.strokeRoundedRect(tooltipX, tooltipY, TOOLTIP_WIDTH, tooltipHeight, 5);
+    tooltipBackground.setVisible(true);
+    tooltipText
+      .setPosition(tooltipX + TOOLTIP_PADDING, tooltipY + TOOLTIP_PADDING)
+      .setVisible(true);
+  }
+
+  function hideTooltip(): void {
+    tooltipBackground.setVisible(false);
+    tooltipText.setVisible(false);
   }
 
   function setValue(key: string, value: string): void {
@@ -351,6 +430,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     for (const button of buttons) {
       button.background.setFillStyle(0x111a24, 0.96);
       button.background.setStrokeStyle(1, 0x52627f, 0.9);
+    }
+
+    if (!isEnabled) {
+      hideTooltip();
     }
   }
 
@@ -388,6 +471,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         }`
       );
       setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
+      setValue('debris', `Active: ${values.activeDebris}`);
       setValue(
         'player',
         `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
@@ -410,7 +494,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue(
         'black-hole-field',
-        `Radial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)}\nMax velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
+        `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)} / max velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
       );
       const pngLayer = values.blackHoleSelectedPngLayer;
       setValue(
@@ -418,8 +502,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         pngLayer
           ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
               values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
-          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}\nField x${values.blackHoleFieldScaleMultiplier.toFixed(1)}`
+            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}`
+          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}`
       );
       setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);

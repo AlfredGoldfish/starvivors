@@ -35,20 +35,33 @@ export interface BlackHoleWhirlpoolTuning {
 
 export interface BlackHoleFieldTuningConfig {
   radialStrengthMultiplier: number;
+  radialCurve: number;
   swirlStrengthMultiplier: number;
+  swirlCurve: number;
   massResistanceMultiplier: number;
   maxVelocityMultiplier: number;
+  viscosityStrength: number;
+  viscosityCurve: number;
+  innerDrag: number;
+  playerResistance: number;
 }
 
 export interface BlackHoleWhirlpoolResult extends WorldForceSample {
   acceleration: Phaser.Math.Vector2;
+  dragMultiplier: number;
 }
 
 export const DEFAULT_BLACK_HOLE_FIELD_TUNING: BlackHoleFieldTuningConfig = {
   radialStrengthMultiplier: 1,
+  radialCurve: 2,
   swirlStrengthMultiplier: 1,
+  swirlCurve: 2,
   massResistanceMultiplier: 1,
-  maxVelocityMultiplier: 1
+  maxVelocityMultiplier: 1,
+  viscosityStrength: 0,
+  viscosityCurve: 2,
+  innerDrag: 0.88,
+  playerResistance: 1
 };
 
 export function getWrappedDirection(
@@ -104,6 +117,10 @@ export function getMassResistanceScale(mass: number, massResistance: number): nu
   return 1 / (1 + Math.max(0, mass - 1) * Math.max(0, massResistance));
 }
 
+export function getProximityCurve(proximity: number, curve: number): number {
+  return Math.pow(Phaser.Math.Clamp(proximity, 0, 1), Math.max(0, curve));
+}
+
 export function applyAccelerationToVelocity(
   velocity: Phaser.Math.Vector2,
   acceleration: Phaser.Math.Vector2,
@@ -132,6 +149,24 @@ export function applyBlackHoleFieldTuning(
   };
 }
 
+export function computeBlackHoleViscosityDrag(
+  proximity: number,
+  fieldTuning: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
+): number {
+  const viscosity = Math.max(0, fieldTuning.viscosityStrength);
+
+  if (viscosity <= 0) {
+    return 1;
+  }
+
+  const curve = getProximityCurve(proximity, fieldTuning.viscosityCurve);
+  const innerDrag = Math.min(1, fieldTuning.innerDrag);
+  const dragFloor = Phaser.Math.Linear(1, innerDrag, Math.min(1, viscosity));
+  const extraDrag = Math.max(0, viscosity - 1);
+
+  return Math.max(0, Phaser.Math.Linear(1, dragFloor, curve) - extraDrag * curve * 0.08);
+}
+
 export function computeBlackHoleWhirlpoolForce(
   source: WorldForceSource & WorldForceRadii,
   objectX: number,
@@ -143,28 +178,30 @@ export function computeBlackHoleWhirlpoolForce(
 ): BlackHoleWhirlpoolResult {
   const sample = sampleWorldForce(source, objectX, objectY, arena);
   const acceleration = new Phaser.Math.Vector2(0, 0);
+  const dragMultiplier = computeBlackHoleViscosityDrag(sample.proximity, fieldTuning);
 
   if (sample.distance <= 0 || !sample.isInsideInfluence) {
-    return { ...sample, acceleration };
+    return { ...sample, acceleration, dragMultiplier: 1 };
   }
 
   const activeTuning = applyBlackHoleFieldTuning(tuning, fieldTuning);
   const inward = sample.direction.clone().scale(1 / sample.distance);
   const tangent = new Phaser.Math.Vector2(-inward.y, inward.x);
   const orbitSign = velocity.lengthSq() > 0 && velocity.dot(tangent) < 0 ? -1 : 1;
-  const curve = sample.proximity * sample.proximity;
+  const radialCurve = getProximityCurve(sample.proximity, fieldTuning.radialCurve);
+  const swirlCurve = getProximityCurve(sample.proximity, fieldTuning.swirlCurve);
   const massScale = getMassResistanceScale(activeTuning.mass, activeTuning.massResistance);
   const radialAcceleration =
-    (activeTuning.radialBaseAcceleration + curve * activeTuning.radialExtraAcceleration) * massScale;
+    (activeTuning.radialBaseAcceleration + radialCurve * activeTuning.radialExtraAcceleration) * massScale;
   const tangentialAcceleration =
-    (activeTuning.swirlBaseAcceleration + curve * activeTuning.swirlExtraAcceleration) * massScale;
+    (activeTuning.swirlBaseAcceleration + swirlCurve * activeTuning.swirlExtraAcceleration) * massScale;
 
   acceleration.set(
     inward.x * radialAcceleration + tangent.x * tangentialAcceleration * orbitSign,
     inward.y * radialAcceleration + tangent.y * tangentialAcceleration * orbitSign
   );
 
-  return { ...sample, acceleration };
+  return { ...sample, acceleration, dragMultiplier };
 }
 
 export function applyBlackHoleWhirlpoolForce(
@@ -179,8 +216,9 @@ export function applyBlackHoleWhirlpoolForce(
 ): BlackHoleWhirlpoolResult {
   const result = computeBlackHoleWhirlpoolForce(source, objectX, objectY, velocity, tuning, arena, fieldTuning);
 
-  if (result.acceleration.lengthSq() > 0) {
+  if (result.isInsideInfluence) {
     applyAccelerationToVelocity(velocity, result.acceleration, deltaSeconds);
+    velocity.scale(Math.pow(result.dragMultiplier, deltaSeconds * 60));
     clampVelocity(velocity, applyBlackHoleFieldTuning(tuning, fieldTuning).maxSpeed);
   }
 

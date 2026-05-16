@@ -59,11 +59,20 @@ export class DebugState {
     blackHoleLensOrbitSpeedMultiplier: number;
     blackHoleLensDensity: number;
     blackHoleLensLengthMultiplier: number;
-    blackHoleFieldScaleMultiplier: number;
+    blackHoleInfluenceRadiusScale: number;
+    blackHoleDamageRadiusScale: number;
+    blackHoleVisualScale: number;
+    blackHoleCoreScale: number;
     blackHoleRadialStrengthMultiplier: number;
+    blackHoleRadialCurve: number;
     blackHoleSwirlStrengthMultiplier: number;
+    blackHoleSwirlCurve: number;
     blackHoleMassResistanceMultiplier: number;
     blackHoleMaxVelocityMultiplier: number;
+    blackHoleViscosityStrength: number;
+    blackHoleViscosityCurve: number;
+    blackHoleInnerDrag: number;
+    blackHolePlayerResistance: number;
     blackHoleProjectionLensLayersEnabled: boolean;
     blackHoleSelectedPngLayerIndex: number;
     blackHolePngLayerCount: number;
@@ -73,6 +82,7 @@ export class DebugState {
     debugGamePaused: boolean;
     activeEnemies: number;
     activeAsteroids: number;
+    activeDebris: number;
     playerProjectiles: number;
     enemyProjectiles: number;
     playerHull: number;
@@ -97,11 +107,20 @@ export class DebugState {
       blackHoleLensOrbitSpeedMultiplier: snapshot.blackHoleLensOrbitSpeedMultiplier,
       blackHoleLensDensity: snapshot.blackHoleLensDensity,
       blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
-      blackHoleFieldScaleMultiplier: snapshot.blackHoleFieldScaleMultiplier,
+      blackHoleInfluenceRadiusScale: snapshot.blackHoleInfluenceRadiusScale,
+      blackHoleDamageRadiusScale: snapshot.blackHoleDamageRadiusScale,
+      blackHoleVisualScale: snapshot.blackHoleVisualScale,
+      blackHoleCoreScale: snapshot.blackHoleCoreScale,
       blackHoleRadialStrengthMultiplier: snapshot.blackHoleRadialStrengthMultiplier,
+      blackHoleRadialCurve: snapshot.blackHoleRadialCurve,
       blackHoleSwirlStrengthMultiplier: snapshot.blackHoleSwirlStrengthMultiplier,
+      blackHoleSwirlCurve: snapshot.blackHoleSwirlCurve,
       blackHoleMassResistanceMultiplier: snapshot.blackHoleMassResistanceMultiplier,
       blackHoleMaxVelocityMultiplier: snapshot.blackHoleMaxVelocityMultiplier,
+      blackHoleViscosityStrength: snapshot.blackHoleViscosityStrength,
+      blackHoleViscosityCurve: snapshot.blackHoleViscosityCurve,
+      blackHoleInnerDrag: snapshot.blackHoleInnerDrag,
+      blackHolePlayerResistance: snapshot.blackHolePlayerResistance,
       blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
       blackHoleSelectedPngLayerIndex: snapshot.blackHoleSelectedPngLayerIndex,
       blackHolePngLayerCount: snapshot.blackHolePngLayerCount,
@@ -111,6 +130,7 @@ export class DebugState {
       debugGamePaused: snapshot.debugGamePaused,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,
+      activeDebris: snapshot.activeDebris,
       playerProjectiles: snapshot.playerProjectiles,
       enemyProjectiles: snapshot.enemyProjectiles,
       playerHull: snapshot.playerHull,
