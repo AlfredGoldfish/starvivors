@@ -21,8 +21,8 @@ import rammingShieldUrl from '../../assets/ships/ramming shield.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
-import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
-import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
+import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../data/enemies';
+import { interceptorMovement } from '../data/balance';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
@@ -38,6 +38,14 @@ import {
   resolvePlayerStats,
   type PlayerStats
 } from '../data/stats';
+import {
+  INITIAL_PASSIVE_UPGRADE_LEVELS,
+  INITIAL_PULSE_UPGRADE_LEVELS,
+  UPGRADE_CHOICES,
+  type PassiveUpgradeId,
+  type PulseUpgradeId,
+  type UpgradeDefinition
+} from '../data/upgrades';
 import { getWeaponDefinition, isProjectileWeapon, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
 import {
   createPlayerWeaponRuntimeState,
@@ -51,6 +59,21 @@ import {
   type PlayerWeaponRuntimeState,
   type PlayerWeaponUpgradeState
 } from '../systems/playerWeapons';
+import {
+  activateRammingShieldDash,
+  canApplyRammingShieldDamage,
+  createRammingShieldRuntimeState,
+  damageRammingShield,
+  ensureRammingShieldRuntime,
+  getRammingShieldCircleCollision as getRammingShieldCircleCollisionResult,
+  getRammingShieldCollider as getRammingShieldColliderData,
+  getRammingShieldDamage as getRammingShieldDamageValue,
+  getRammingShieldStats,
+  markRammingShieldDamageApplied,
+  updateRammingShieldRuntime,
+  type RammingShieldCollider,
+  type RammingShieldRuntimeState
+} from '../systems/rammingShield';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
@@ -145,10 +168,10 @@ const STARFIELD_PARALLAX_STEP = 0.05;
 const STARFIELD_PARALLAX_MIN = 0;
 const STARFIELD_PARALLAX_MAX = 2;
 const DEBUG_UPDATE_INTERVAL_MS = 150;
-const PULSE_CANNON_MUZZLE_OFFSET = 36;
-const PULSE_TRAIL_OFFSET = 11;
-const PULSE_TRAIL_FADE_MS = 220;
-const PULSE_TRAIL_INTERVAL_MS = 28;
+const PLAYER_PROJECTILE_MUZZLE_OFFSET = 36;
+const PLAYER_PROJECTILE_TRAIL_OFFSET = 11;
+const PLAYER_PROJECTILE_TRAIL_FADE_MS = 220;
+const PLAYER_PROJECTILE_TRAIL_INTERVAL_MS = 28;
 const PLAYER_SHIP_DISPLAY_SIZE = 118;
 const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
 const THRUSTER_FADE_MS = 170;
@@ -184,18 +207,17 @@ const DAMAGE_FLASH_MS = 90;
 const ENEMY_IMPACT_EXPLOSION_MS = 150;
 const ASTEROID_IMPACT_EXPLOSION_MS = 180;
 const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
-const PROJECTILE_HIT_RADIUS = 8;
+const PLAYER_PROJECTILE_HIT_RADIUS = 8;
 const PLAYER_MAX_HULL = 100;
 const PLAYER_HIT_RADIUS = 32;
 const PLAYER_DAMAGE_INVULNERABILITY_MS = 1000;
 const PLAYER_DAMAGE_FLASH_MS = 130;
-const ENEMY_CONTACT_DAMAGE = 15;
-const BASIC_ENEMY_XP_REWARD = 10;
+const ENEMY_CONTACT_DAMAGE = basicEnemy.stats.contactDamage;
+const BASIC_ENEMY_XP_REWARD = basicEnemy.stats.xpValue;
 const INITIAL_XP_THRESHOLD = 100;
 const XP_THRESHOLD_GROWTH = 1.2;
 const GAMEPLAY_MAX_VELOCITY = 500;
 const PLAYER_MASS = 3;
-const BASIC_ENEMY_MASS = 2;
 const PLAYER_CONTACT_IMPULSE_COOLDOWN_MS = 140;
 const PLAYER_CONTACT_MIN_IMPULSE = 120;
 const PLAYER_CONTACT_MAX_IMPULSE = 460;
@@ -218,7 +240,6 @@ const MINIMAP_WIDTH = 220;
 const MINIMAP_HEIGHT = 140;
 const MINIMAP_MARGIN = 16;
 const MINIMAP_PADDING = 8;
-const PASSIVE_UPGRADE_MAX_LEVEL = 5;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 1;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
 const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 4;
@@ -270,9 +291,9 @@ const BLACK_HOLE_CHASER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialExtraAcceleration: 1220,
   swirlBaseAcceleration: 105,
   swirlExtraAcceleration: 1080,
-  maxSpeed: 440,
-  mass: 2.2,
-  massResistance: 0.34
+  maxSpeed: basicEnemy.stats.blackHoleMaxSpeed,
+  mass: basicEnemy.stats.mass,
+  massResistance: basicEnemy.stats.blackHoleResistance
 };
 
 const BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
@@ -280,9 +301,9 @@ const BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialExtraAcceleration: 1040,
   swirlBaseAcceleration: 95,
   swirlExtraAcceleration: 920,
-  maxSpeed: 380,
-  mass: 3.2,
-  massResistance: 0.38
+  maxSpeed: shooterEnemy.stats.blackHoleMaxSpeed,
+  mass: shooterEnemy.stats.mass,
+  massResistance: shooterEnemy.stats.blackHoleResistance
 };
 
 const BLACK_HOLE_TANK_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
@@ -290,9 +311,9 @@ const BLACK_HOLE_TANK_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialExtraAcceleration: 880,
   swirlBaseAcceleration: 76,
   swirlExtraAcceleration: 720,
-  maxSpeed: 320,
-  mass: tankEnemyBalance.mass,
-  massResistance: 0.44
+  maxSpeed: tankEnemy.stats.blackHoleMaxSpeed,
+  mass: tankEnemy.stats.mass,
+  massResistance: tankEnemy.stats.blackHoleResistance
 };
 
 const BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
@@ -358,11 +379,6 @@ const SCRAP_PICKUP_MAX_SPEED = 100;
 const SCRAP_PICKUP_INHERITED_VELOCITY = 0.25;
 const SCRAP_PICKUP_DEBUG_VALUE = 10;
 const SCRAP_TO_CREDIT_RATE = 1;
-const SCRAP_PICKUP_VALUE_BY_ENEMY: Record<EnemySpawnType, number> = {
-  chaser: 3,
-  shooter: 6,
-  tank: 14
-};
 const SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER: Record<AsteroidTier, number> = {
   1: 1,
   2: 3,
@@ -372,25 +388,12 @@ const SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER: Record<AsteroidTier, number> = {
 };
 const SCRAP_PICKUP_VALUE_FROM_DEBRIS = 2;
 
-type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
-type PassiveUpgradeId = 'hull-plating' | 'engine-tuning' | 'damage-control';
-type UpgradeId = PulseUpgradeId | PassiveUpgradeId;
-type UpgradeCategory = 'pulse' | 'passive';
-
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
 type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop' | 'shipSelect';
 type ShopBackTarget = 'mainMenu' | 'results';
-
-interface UpgradeDefinition {
-  id: UpgradeId;
-  category: UpgradeCategory;
-  name: string;
-  description: string;
-  maxLevel?: number;
-}
 
 interface SecondaryWeaponChoice {
   category: 'secondary-weapon';
@@ -400,60 +403,6 @@ interface SecondaryWeaponChoice {
 }
 
 type UpgradeOverlayChoice = UpgradeDefinition | SecondaryWeaponChoice;
-
-const UPGRADE_CHOICES: UpgradeDefinition[] = [
-  {
-    id: 'pulse-damage-1',
-    category: 'pulse',
-    name: 'Weapon Damage I',
-    description: '+25% projectile damage per level.'
-  },
-  {
-    id: 'pulse-fire-rate-1',
-    category: 'pulse',
-    name: 'Weapon Fire Rate I',
-    description: 'Reduces cooldown by 12% per level.'
-  },
-  {
-    id: 'pulse-velocity-1',
-    category: 'pulse',
-    name: 'Weapon Velocity I',
-    description: '+20% projectile speed per level.'
-  },
-  {
-    id: 'hull-plating',
-    category: 'passive',
-    name: 'Hull Plating',
-    description: '+15 max hull and repair 15 hull.',
-    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
-  },
-  {
-    id: 'engine-tuning',
-    category: 'passive',
-    name: 'Engine Tuning',
-    description: '+8% acceleration and +4% max speed.',
-    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
-  },
-  {
-    id: 'damage-control',
-    category: 'passive',
-    name: 'Damage Control',
-    description: '+0.15s hit invulnerability and repair 10 hull.',
-    maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
-  }
-];
-
-const INITIAL_PULSE_UPGRADE_LEVELS: Record<PulseUpgradeId, number> = {
-  'pulse-damage-1': 0,
-  'pulse-fire-rate-1': 0,
-  'pulse-velocity-1': 0
-};
-
-const INITIAL_PASSIVE_UPGRADE_LEVELS: Record<PassiveUpgradeId, number> = {
-  'hull-plating': 0,
-  'engine-tuning': 0,
-  'damage-control': 0
-};
 
 const ENEMY_SPAWN_WEIGHTS_BY_STEP: Array<Record<EnemySpawnType, number>> = [
   { chaser: 100, shooter: 0, tank: 0 },
@@ -506,7 +455,7 @@ interface StarvivorsTestHarnessState {
   hullPlatingLevel: number;
   engineTuningLevel: number;
   damageControlLevel: number;
-  pulseDamageMultiplier: number;
+  weaponDamageMultiplier: number;
   pulseCooldownMs: number;
   pulseProjectileSpeed: number;
   playerAccelerationMultiplier: number;
@@ -617,7 +566,7 @@ const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
 const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5];
 const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
 
-interface PulseCannonProjectile extends BlackHoleCapturedProjectileState {
+interface PlayerProjectile extends BlackHoleCapturedProjectileState {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
@@ -638,6 +587,7 @@ interface EnemyProjectile extends BlackHoleCapturedProjectileState {
   velocity: Phaser.Math.Vector2;
   speed: number;
   damage: number;
+  hitRadius: number;
   expiresAt: number;
   distanceRemaining: number;
 }
@@ -645,6 +595,7 @@ interface EnemyProjectile extends BlackHoleCapturedProjectileState {
 interface BasicEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
+  stats: EnemyStatProfile;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
   blackHoleVelocity: Phaser.Math.Vector2;
@@ -655,6 +606,7 @@ interface BasicEnemy {
 interface ShooterEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
+  stats: EnemyStatProfile;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
   blackHoleVelocity: Phaser.Math.Vector2;
@@ -666,6 +618,7 @@ interface ShooterEnemy {
 interface TankEnemy {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
+  stats: EnemyStatProfile;
   velocity: Phaser.Math.Vector2;
   knockbackVelocity: Phaser.Math.Vector2;
   blackHoleVelocity: Phaser.Math.Vector2;
@@ -743,18 +696,9 @@ interface PlayerDebrisContact {
   hitRammingShield?: boolean;
 }
 
-interface RammingShieldCollider {
-  center: Phaser.Math.Vector2;
-  forward: Phaser.Math.Vector2;
-  right: Phaser.Math.Vector2;
-  halfWidth: number;
-  halfDepth: number;
-}
-
 interface RammingShieldCollision {
   normal: Phaser.Math.Vector2;
   penetration: number;
-  impact: Phaser.Math.Vector2;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -806,7 +750,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
   private minimapKey!: Phaser.Input.Keyboard.Key;
-  private pulseCannonProjectiles: PulseCannonProjectile[] = [];
+  private playerProjectiles: PlayerProjectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private shooterEnemies: ShooterEnemy[] = [];
@@ -819,14 +763,7 @@ export class GameScene extends Phaser.Scene {
   private selectedShipId: ShipId = DEFAULT_SHIP_ID;
   private unlockedShipIds = new Set<ShipId>([DEFAULT_SHIP_ID]);
   private playerHull = PLAYER_MAX_HULL;
-  private rammingShieldHp = 0;
-  private nextRammingShieldRegenAt = 0;
-  private rammingShieldImpactFlashUntil = 0;
-  private rammingShieldDashCharges = 0;
-  private nextRammingShieldDashChargeAt = 0;
-  private rammingShieldEmpoweredUntil = 0;
-  private nextRammingShieldBlockDamageAt = 0;
-  private rammingShieldTargetCooldowns = new WeakMap<object, number>();
+  private rammingShieldState: RammingShieldRuntimeState = createRammingShieldRuntimeState(false);
   private runScrapTotal = 0;
   private lastRunScrapTotal = 0;
   private totalCredits = 0;
@@ -971,7 +908,7 @@ export class GameScene extends Phaser.Scene {
       this.updatePlayerContactDamage(time);
       this.updateRammingShield(time, deltaSeconds);
       this.updateActiveMainWeapon(time);
-      this.updatePulseCannonProjectiles(time, deltaSeconds);
+      this.updatePlayerProjectiles(time, deltaSeconds);
       this.updateEnemyProjectiles(time, deltaSeconds);
       this.updatePlayerDamageVisuals(time);
     }
@@ -1033,7 +970,7 @@ export class GameScene extends Phaser.Scene {
         clearScrap: () => this.runDebugMenuAction(() => this.clearScrapPickups()),
         addScrap: (amount) => this.runDebugMenuAction(() => this.addRunScrap(amount)),
         addCredits: (amount) => this.runDebugMenuAction(() => this.addDebugCredits(amount)),
-        clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPulseCannonProjectiles()),
+        clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPlayerProjectiles()),
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
         togglePlayerInvulnerability: () => this.runDebugMenuAction(() => {
@@ -1045,11 +982,11 @@ export class GameScene extends Phaser.Scene {
           }
         }),
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
-        adjustPulseDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseDamageMultiplier(delta)),
-        adjustPulseFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPulseFireRateMultiplier(delta)),
-        adjustPulseCooldownSeconds: (deltaSeconds) =>
+        adjustWeaponDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponDamageMultiplier(delta)),
+        adjustWeaponFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponFireRateMultiplier(delta)),
+        adjustWeaponCooldownSeconds: (deltaSeconds) =>
           this.runDebugMenuAction(() =>
-            this.debugState.adjustPulseCooldownSeconds(
+            this.debugState.adjustWeaponCooldownSeconds(
               this.getActiveMainWeaponBaseCooldownMs() / 1000,
               this.getActiveMainWeaponCooldownMs() / 1000,
               deltaSeconds
@@ -1161,7 +1098,7 @@ export class GameScene extends Phaser.Scene {
     const time = this.time.now;
 
     return this.debugState.createMenuValues({
-      pulseCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
+      weaponCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
       backgroundStarsVisible: this.backgroundStarsVisible,
       starfieldFarParallax: this.farStarfieldParallax,
       starfieldMidParallax: this.midStarfieldParallax,
@@ -1196,7 +1133,7 @@ export class GameScene extends Phaser.Scene {
       activeScrapPickups: this.scrapPickups.length,
       runScrapTotal: this.runScrapTotal,
       totalCredits: this.totalCredits,
-      playerProjectiles: this.pulseCannonProjectiles.length,
+      playerProjectiles: this.playerProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
       playerMaxHull: this.getPlayerMaxHull(),
@@ -1279,7 +1216,7 @@ export class GameScene extends Phaser.Scene {
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.basicEnemies.splice(0, 1);
-          this.grantXp(BASIC_ENEMY_XP_REWARD);
+          this.grantXp(basicEnemy.stats.xpValue);
         }
 
         return this.getTestHarnessState();
@@ -1366,9 +1303,9 @@ export class GameScene extends Phaser.Scene {
       selectedShipId: selectedShip.id,
       selectedShipName: selectedShip.displayName,
       unlockedShipIds: [...this.unlockedShipIds],
-      rammingShieldHp: this.rammingShieldHp,
+      rammingShieldHp: this.rammingShieldState.hp,
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
-      rammingShieldDashCharges: this.rammingShieldDashCharges,
+      rammingShieldDashCharges: this.rammingShieldState.dashCharges,
       rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
@@ -1388,7 +1325,7 @@ export class GameScene extends Phaser.Scene {
       hullPlatingLevel: this.passiveUpgradeLevels['hull-plating'],
       engineTuningLevel: this.passiveUpgradeLevels['engine-tuning'],
       damageControlLevel: this.passiveUpgradeLevels['damage-control'],
-      pulseDamageMultiplier: this.getActiveMainWeaponDamageMultiplier(),
+      weaponDamageMultiplier: this.getActiveMainWeaponDamageMultiplier(),
       pulseCooldownMs: this.getActiveMainWeaponCooldownMs(),
       pulseProjectileSpeed: this.getActiveMainWeaponProjectileSpeed(),
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
@@ -1400,7 +1337,7 @@ export class GameScene extends Phaser.Scene {
       tankEnemies: this.tankEnemies.length,
       asteroids: this.basicAsteroids.length,
       scrapPickups: this.scrapPickups.length,
-      projectiles: this.pulseCannonProjectiles.length,
+      projectiles: this.playerProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length
     };
   }
@@ -1453,7 +1390,7 @@ export class GameScene extends Phaser.Scene {
       damageUpgrade.bankedUpgrades === 1 &&
       !damageUpgrade.isUpgradeOverlayOpen &&
       damageUpgrade.pulseDamageLevel === 1 &&
-      damageUpgrade.pulseDamageMultiplier === 1.25 &&
+      damageUpgrade.weaponDamageMultiplier === 1.25 &&
       fireRateUpgrade.bankedUpgrades === 0 &&
       fireRateUpgrade.pulseFireRateLevel === 1 &&
       fireRateUpgrade.pulseCooldownMs === 1100 &&
@@ -1607,14 +1544,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     const afterShieldHit = harness.getState();
-    this.rammingShieldHp = 0;
-    this.rammingShieldTargetCooldowns = new WeakMap<object, number>();
+    this.rammingShieldState.hp = 0;
+    this.rammingShieldState.targetCooldowns = new WeakMap<object, number>();
     this.playerInvulnerableUntil = 0;
     this.damagePlayer(ENEMY_CONTACT_DAMAGE, this.time.now + this.getRammingShieldStats().contactCooldownMs + 1);
 
     const afterBrokenHit = harness.getState();
-    this.rammingShieldHp = 10;
-    this.nextRammingShieldRegenAt = this.time.now - 1;
+    this.rammingShieldState.hp = 10;
+    this.rammingShieldState.nextRegenAt = this.time.now - 1;
     this.updateRammingShield(this.time.now, 1);
     const afterRegen = harness.getState();
     const pass =
@@ -1668,14 +1605,14 @@ export class GameScene extends Phaser.Scene {
     harness.grantXp(INITIAL_XP_THRESHOLD);
     const bulwarkChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
     const bulwarkSecondary = harness.selectPulseUpgrade(1);
-    const shotsBefore = this.pulseCannonProjectiles.length;
+    const shotsBefore = this.playerProjectiles.length;
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
 
     if (secondaryWeapon) {
       this.usePlayerWeapon(secondaryWeapon, this.time.now + 1000);
     }
 
-    const shotsAfter = this.pulseCannonProjectiles.length;
+    const shotsAfter = this.playerProjectiles.length;
     const pass =
       interceptorChoices.includes('ramming-shield') &&
       interceptorSecondary.rammingShieldMaxHp === this.getRammingShieldStats().shieldMaxHp &&
@@ -1722,14 +1659,7 @@ export class GameScene extends Phaser.Scene {
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
     this.hasResolvedSecondaryWeaponChoice = false;
     this.rammingShieldImage = undefined;
-    this.rammingShieldHp = this.getRammingShieldMaxHp();
-    this.nextRammingShieldRegenAt = 0;
-    this.rammingShieldImpactFlashUntil = 0;
-    this.rammingShieldDashCharges = this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0;
-    this.nextRammingShieldDashChargeAt = 0;
-    this.rammingShieldEmpoweredUntil = 0;
-    this.nextRammingShieldBlockDamageAt = 0;
-    this.rammingShieldTargetCooldowns = new WeakMap<object, number>();
+    this.rammingShieldState = createRammingShieldRuntimeState(this.hasRammingShield());
     this.playerVelocity.set(0, 0);
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
@@ -1742,7 +1672,7 @@ export class GameScene extends Phaser.Scene {
     this.bankedUpgrades = 0;
     this.resultsScreen = undefined;
     this.resultsActionZones = [];
-    this.pulseCannonProjectiles = [];
+    this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.basicEnemies = [];
     this.shooterEnemies = [];
@@ -2251,13 +2181,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getRammingShieldStats() {
-    const stats = getWeaponDefinition('ramming-shield').rammingShield;
-
-    if (!stats) {
-      throw new Error('Ramming Shield stats are required.');
-    }
-
-    return stats;
+    return getRammingShieldStats();
   }
 
   private ensureRammingShieldRuntime(): void {
@@ -2265,15 +2189,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const stats = this.getRammingShieldStats();
-    if (this.rammingShieldHp <= 0 && this.getRammingShieldMaxHp() > 0) {
-      this.rammingShieldHp = this.getRammingShieldMaxHp();
-    }
-
-    if (this.rammingShieldDashCharges <= 0) {
-      this.rammingShieldDashCharges = stats.dashMaxCharges;
-      this.nextRammingShieldDashChargeAt = 0;
-    }
+    ensureRammingShieldRuntime(this.rammingShieldState);
 
     if (!this.rammingShieldImage && this.player) {
       this.rammingShieldImage = this.createRammingShieldImage();
@@ -2671,10 +2587,11 @@ export class GameScene extends Phaser.Scene {
     return {
       body,
       wrapMirrorBody,
+      stats: basicEnemy.stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: basicEnemy.hp,
+      hp: basicEnemy.stats.maxHull,
       nextBlackHoleDamageAt: 0
     };
   }
@@ -2687,11 +2604,12 @@ export class GameScene extends Phaser.Scene {
     return {
       body,
       wrapMirrorBody,
+      stats: shooterEnemy.stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      nextFireAt: time + Phaser.Math.Between(700, Math.round(shooterEnemyBalance.fireCooldownSeconds * 1000)),
-      hp: shooterEnemy.hp,
+      nextFireAt: time + Phaser.Math.Between(700, Math.round(shooterEnemy.stats.attackCooldown * 1000)),
+      hp: shooterEnemy.stats.maxHull,
       nextBlackHoleDamageAt: 0
     };
   }
@@ -2703,10 +2621,11 @@ export class GameScene extends Phaser.Scene {
     return {
       body,
       wrapMirrorBody,
+      stats: tankEnemy.stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: tankEnemy.hp,
+      hp: tankEnemy.stats.maxHull,
       nextBlackHoleDamageAt: 0
     };
   }
@@ -3097,11 +3016,14 @@ export class GameScene extends Phaser.Scene {
       result.isInsideDamage &&
       time >= enemy.nextBlackHoleDamageAt
     ) {
-      enemy.hp -= this.getBlackHoleTidalDamage(
-        result.proximity,
-        BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
-        BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
-        BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
+      this.damageEnemy(
+        enemy,
+        this.getBlackHoleTidalDamage(
+          result.proximity,
+          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
+          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
+          BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
+        )
       );
       enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
 
@@ -3701,12 +3623,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getActiveDebugPulseDamageMultiplier(): number {
-    return this.debugState.pulseDamageMultiplier;
+  private getActiveDebugWeaponDamageMultiplier(): number {
+    return this.debugState.weaponDamageMultiplier;
   }
 
-  private getActiveDebugPulseFireRateMultiplier(): number {
-    return this.debugState.pulseFireRateMultiplier;
+  private getActiveDebugWeaponFireRateMultiplier(): number {
+    return this.debugState.weaponFireRateMultiplier;
   }
 
   private getActiveDebugBlackHoleLensOrbitSpeedMultiplier(): number {
@@ -5225,39 +5147,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const stats = this.getRammingShieldStats();
-    const maxShieldHp = this.getRammingShieldMaxHp();
-    if (this.rammingShieldHp < maxShieldHp && time >= this.nextRammingShieldRegenAt) {
-      this.rammingShieldHp = Math.min(maxShieldHp, this.rammingShieldHp + stats.shieldRegenRatePerSecond * deltaSeconds);
-    }
-
-    this.updateRammingShieldDashRecharge(time);
+    updateRammingShieldRuntime(this.rammingShieldState, time, deltaSeconds);
     this.updateRammingShieldVisual(time);
-  }
-
-  private updateRammingShieldDashRecharge(time: number): void {
-    if (!this.hasRammingShield()) {
-      return;
-    }
-
-    const stats = this.getRammingShieldStats();
-    if (this.rammingShieldDashCharges >= stats.dashMaxCharges) {
-      this.nextRammingShieldDashChargeAt = 0;
-      return;
-    }
-
-    if (this.nextRammingShieldDashChargeAt <= 0) {
-      this.nextRammingShieldDashChargeAt = time + stats.dashChargeRechargeSeconds * 1000;
-      return;
-    }
-
-    if (time < this.nextRammingShieldDashChargeAt) {
-      return;
-    }
-
-    this.rammingShieldDashCharges = Math.min(stats.dashMaxCharges, this.rammingShieldDashCharges + 1);
-    this.nextRammingShieldDashChargeAt =
-      this.rammingShieldDashCharges >= stats.dashMaxCharges ? 0 : time + stats.dashChargeRechargeSeconds * 1000;
   }
 
   private updateRammingShieldVisual(time: number): void {
@@ -5265,9 +5156,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const shieldRatio = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldHp / this.getRammingShieldMaxHp() : 0;
-    const isBroken = this.rammingShieldHp <= 0;
-    const isFlashing = time < this.rammingShieldImpactFlashUntil;
+    const shieldRatio = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldState.hp / this.getRammingShieldMaxHp() : 0;
+    const isBroken = this.rammingShieldState.hp <= 0;
+    const isFlashing = time < this.rammingShieldState.impactFlashUntil;
     const alpha = isBroken ? 0.22 : 0.54 + shieldRatio * 0.28 + (isFlashing ? 0.18 : 0);
     const tint = isBroken ? 0xff5964 : isFlashing ? 0xf2fbff : 0xffffff;
     const stats = this.getRammingShieldStats();
@@ -5282,22 +5173,21 @@ export class GameScene extends Phaser.Scene {
 
   private getEnemyContact(): PlayerEnemyContact | undefined {
     const playerHitRadius = this.getPlayerHitRadius();
-    const hitHalfWidth = basicEnemy.hitHalfWidth + playerHitRadius;
-    const hitHalfLength = basicEnemy.hitHalfLength + playerHitRadius;
-
     for (const enemy of this.basicEnemies) {
+      const hitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
+      const hitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(basicEnemy.hitHalfWidth, basicEnemy.hitHalfLength)
+        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
       );
       if (shieldCollision) {
         return {
           enemy,
           normal: shieldCollision.normal,
           penetration: shieldCollision.penetration,
-          damage: ENEMY_CONTACT_DAMAGE,
-          mass: BASIC_ENEMY_MASS,
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass,
           hitRammingShield: true
         };
       }
@@ -5314,28 +5204,27 @@ export class GameScene extends Phaser.Scene {
           enemy,
           normal: this.getCollisionNormal(offset),
           penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(hitHalfWidth, hitHalfLength),
-          damage: ENEMY_CONTACT_DAMAGE,
-          mass: BASIC_ENEMY_MASS
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass
         };
       }
     }
 
-    const shooterHitHalfWidth = shooterEnemy.hitHalfWidth + playerHitRadius;
-    const shooterHitHalfLength = shooterEnemy.hitHalfLength + playerHitRadius;
-
     for (const enemy of this.shooterEnemies) {
+      const shooterHitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
+      const shooterHitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(shooterEnemy.hitHalfWidth, shooterEnemy.hitHalfLength)
+        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
       );
       if (shieldCollision) {
         return {
           enemy,
           normal: shieldCollision.normal,
           penetration: shieldCollision.penetration,
-          damage: ENEMY_CONTACT_DAMAGE,
-          mass: BASIC_ENEMY_MASS,
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass,
           hitRammingShield: true
         };
       }
@@ -5354,28 +5243,27 @@ export class GameScene extends Phaser.Scene {
           enemy,
           normal: this.getCollisionNormal(offset),
           penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(shooterHitHalfWidth, shooterHitHalfLength),
-          damage: ENEMY_CONTACT_DAMAGE,
-          mass: BASIC_ENEMY_MASS
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass
         };
       }
     }
 
-    const tankHitHalfWidth = tankEnemy.hitHalfWidth + playerHitRadius;
-    const tankHitHalfLength = tankEnemy.hitHalfLength + playerHitRadius;
-
     for (const enemy of this.tankEnemies) {
+      const tankHitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
+      const tankHitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(tankEnemy.hitHalfWidth, tankEnemy.hitHalfLength)
+        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
       );
       if (shieldCollision) {
         return {
           enemy,
           normal: shieldCollision.normal,
           penetration: shieldCollision.penetration,
-          damage: tankEnemyBalance.contactDamage,
-          mass: tankEnemyBalance.mass,
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass,
           hitRammingShield: true
         };
       }
@@ -5392,8 +5280,8 @@ export class GameScene extends Phaser.Scene {
           enemy,
           normal: this.getCollisionNormal(offset),
           penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(tankHitHalfWidth, tankHitHalfLength),
-          damage: tankEnemyBalance.contactDamage,
-          mass: tankEnemyBalance.mass
+          damage: enemy.stats.contactDamage,
+          mass: enemy.stats.mass
         };
       }
     }
@@ -5464,26 +5352,24 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getRammingShieldCollider(): RammingShieldCollider | undefined {
-    if (!this.hasRammingShield() || this.rammingShieldHp <= 0) {
+    if (!this.hasRammingShield() || this.rammingShieldState.hp <= 0) {
       return undefined;
     }
 
-    const stats = this.getRammingShieldStats();
     const areaScale = this.getResolvedPlayerStats().area;
     const forward = this.getForwardDirection(this.player.rotation);
     const right = new Phaser.Math.Vector2(-forward.y, forward.x);
-    const center = new Phaser.Math.Vector2(
-      wrapCoordinate(this.player.x + forward.x * stats.range, this.arena.width),
-      wrapCoordinate(this.player.y + forward.y * stats.range, this.arena.height)
-    );
 
-    return {
-      center,
+    return getRammingShieldColliderData({
+      playerX: this.player.x,
+      playerY: this.player.y,
+      arenaWidth: this.arena.width,
+      arenaHeight: this.arena.height,
+      areaScale,
+      colliderDepth: RAMMING_SHIELD_COLLIDER_DEPTH,
       forward,
-      right,
-      halfWidth: (stats.width * areaScale) / 2,
-      halfDepth: (RAMMING_SHIELD_COLLIDER_DEPTH * areaScale) / 2
-    };
+      right
+    });
   }
 
   private getRammingShieldCircleCollision(
@@ -5496,13 +5382,13 @@ export class GameScene extends Phaser.Scene {
       return undefined;
     }
 
-    const offsetFromShield = this.getWrappedDirection(collider.center.x, collider.center.y, targetX, targetY);
-    const localX = offsetFromShield.dot(collider.right);
-    const localY = offsetFromShield.dot(collider.forward);
-    const overlapX = collider.halfWidth + targetRadius - Math.abs(localX);
-    const overlapY = collider.halfDepth + targetRadius - Math.abs(localY);
+    const collision = getRammingShieldCircleCollisionResult({
+      collider,
+      targetRadius,
+      offsetFromShield: this.getWrappedDirection(collider.centerX, collider.centerY, targetX, targetY)
+    });
 
-    if (overlapX <= 0 || overlapY <= 0) {
+    if (!collision) {
       return undefined;
     }
 
@@ -5510,8 +5396,7 @@ export class GameScene extends Phaser.Scene {
 
     return {
       normal,
-      penetration: Math.min(overlapX, overlapY),
-      impact: new Phaser.Math.Vector2(targetX, targetY)
+      penetration: collision.penetration
     };
   }
 
@@ -5565,35 +5450,22 @@ export class GameScene extends Phaser.Scene {
     time: number,
     damageTarget: () => void
   ): void {
-    if (this.hasRammingShield() && this.rammingShieldHp > 0 && this.canApplyRammingShieldDamage(target, time)) {
+    if (this.hasRammingShield() && this.rammingShieldState.hp > 0 && canApplyRammingShieldDamage(this.rammingShieldState, target, time)) {
       damageTarget();
-      this.rammingShieldTargetCooldowns.set(target, time + this.getRammingShieldStats().contactCooldownMs);
-      this.rammingShieldImpactFlashUntil = time + 140;
+      markRammingShieldDamageApplied(this.rammingShieldState, target, time);
     }
   }
 
-  private canApplyRammingShieldDamage(target: Phaser.GameObjects.GameObject, time: number): boolean {
-    return time >= (this.rammingShieldTargetCooldowns.get(target) ?? 0);
+  private getRammingShieldDamage(time = this.time.now): number {
+    return getRammingShieldDamageValue(this.rammingShieldState, this.playerVelocity.length(), time, this.getResolvedPlayerStats());
   }
 
-  private getRammingShieldDamage(time = this.time.now): number {
-    const stats = this.getRammingShieldStats();
-    const speed = this.playerVelocity.length();
-    const strongRamBonus = Math.max(0, speed - stats.strongRamSpeed) * stats.speedDamageMultiplier;
-    const activeMultiplier = this.rammingShieldHp > 0 ? 1 : stats.brokenDamageMultiplier;
-    const dashMultiplier = time < this.rammingShieldEmpoweredUntil ? stats.dashRamDamageMultiplier : 1;
-
-    return Math.max(
-      0,
-      Math.min(stats.maxDamage, stats.baseDamage + strongRamBonus) *
-        activeMultiplier *
-        dashMultiplier *
-        this.getResolvedPlayerStats().damage
-    );
+  private damageEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, damage: number): void {
+    enemy.hp -= Math.max(1, damage - enemy.stats.defense);
   }
 
   private blockDamageWithRammingShield(damage: number, time: number, impactX: number, impactY: number): boolean {
-    if (!this.hasRammingShield() || this.rammingShieldHp <= 0 || damage <= 0) {
+    if (!this.hasRammingShield() || this.rammingShieldState.hp <= 0 || damage <= 0) {
       return false;
     }
 
@@ -5602,27 +5474,17 @@ export class GameScene extends Phaser.Scene {
       return true;
     }
 
-    if (time < this.nextRammingShieldBlockDamageAt) {
+    if (time < this.rammingShieldState.nextBlockDamageAt) {
       return true;
     }
 
-    this.damageRammingShield(damage, time);
-    this.nextRammingShieldBlockDamageAt = time + this.getPlayerDamageInvulnerabilityMs();
+    damageRammingShield(this.rammingShieldState, damage, time);
+    this.rammingShieldState.nextBlockDamageAt = time + this.getPlayerDamageInvulnerabilityMs();
+    this.updateRammingShieldVisual(time);
     this.emitRammingShieldDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
 
     return true;
-  }
-
-  private damageRammingShield(damage: number, time: number): void {
-    if (!this.hasRammingShield() || damage <= 0) {
-      return;
-    }
-
-    this.rammingShieldHp = Math.max(0, this.rammingShieldHp - damage);
-    this.nextRammingShieldRegenAt = time + this.getRammingShieldStats().shieldRegenDelaySeconds * 1000;
-    this.rammingShieldImpactFlashUntil = time + 140;
-    this.updateRammingShieldVisual(time);
   }
 
   private emitRammingShieldDamageFeedback(impactX: number, impactY: number): void {
@@ -5675,7 +5537,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    enemy.hp -= damage;
+    this.damageEnemy(enemy, damage);
     this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
 
     const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
@@ -5689,7 +5551,7 @@ export class GameScene extends Phaser.Scene {
         );
         this.spawnScrapPickup(
           'enemy',
-          SCRAP_PICKUP_VALUE_BY_ENEMY.chaser,
+          enemy.stats.scrapValue,
           enemy.body.x,
           enemy.body.y,
           (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
@@ -5697,7 +5559,7 @@ export class GameScene extends Phaser.Scene {
         enemy.body.destroy(true);
         enemy.wrapMirrorBody.destroy(true);
         this.basicEnemies.splice(basicIndex, 1);
-        this.grantXp(BASIC_ENEMY_XP_REWARD);
+        this.grantXp(enemy.stats.xpValue);
       } else {
         this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
       }
@@ -5717,7 +5579,7 @@ export class GameScene extends Phaser.Scene {
         );
         this.spawnScrapPickup(
           'enemy',
-          SCRAP_PICKUP_VALUE_BY_ENEMY.tank,
+          tank.stats.scrapValue,
           tank.body.x,
           tank.body.y,
           tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity)
@@ -5725,7 +5587,7 @@ export class GameScene extends Phaser.Scene {
         tank.body.destroy(true);
         tank.wrapMirrorBody.destroy(true);
         this.tankEnemies.splice(tankIndex, 1);
-        this.grantXp(tankEnemyBalance.xpReward);
+        this.grantXp(tank.stats.xpValue);
       } else {
         this.flashDamageSprites(tank.body, tank.wrapMirrorBody);
       }
@@ -5745,7 +5607,7 @@ export class GameScene extends Phaser.Scene {
         );
         this.spawnScrapPickup(
           'enemy',
-          SCRAP_PICKUP_VALUE_BY_ENEMY.shooter,
+          shooter.stats.scrapValue,
           shooter.body.x,
           shooter.body.y,
           shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity)
@@ -5753,7 +5615,7 @@ export class GameScene extends Phaser.Scene {
         shooter.body.destroy(true);
         shooter.wrapMirrorBody.destroy(true);
         this.shooterEnemies.splice(shooterIndex, 1);
-        this.grantXp(shooterEnemyBalance.xpReward);
+        this.grantXp(shooter.stats.xpValue);
       } else {
         this.flashDamageSprites(shooter.body, shooter.wrapMirrorBody);
       }
@@ -6171,7 +6033,7 @@ export class GameScene extends Phaser.Scene {
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        enemy.velocity.set(direction.x * basicEnemy.moveSpeed, direction.y * basicEnemy.moveSpeed);
+        enemy.velocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
@@ -6207,21 +6069,21 @@ export class GameScene extends Phaser.Scene {
 
         enemy.body.rotation = Math.atan2(directionToPlayer.x, -directionToPlayer.y);
 
-        if (distance > shooterEnemyBalance.preferredRange) {
+        if (distance > enemy.stats.preferredRange) {
           enemy.velocity.set(
-            directionToPlayer.x * shooterEnemyBalance.moveSpeed,
-            directionToPlayer.y * shooterEnemyBalance.moveSpeed
+            directionToPlayer.x * enemy.stats.moveSpeed,
+            directionToPlayer.y * enemy.stats.moveSpeed
           );
-        } else if (distance < shooterEnemyBalance.tooCloseRange) {
+        } else if (distance < enemy.stats.retreatThreshold) {
           enemy.velocity.set(
-            -directionToPlayer.x * shooterEnemyBalance.moveSpeed * 0.72,
-            -directionToPlayer.y * shooterEnemyBalance.moveSpeed * 0.72
+            -directionToPlayer.x * enemy.stats.moveSpeed * 0.72,
+            -directionToPlayer.y * enemy.stats.moveSpeed * 0.72
           );
         }
 
         if (!this.isPlayerDead && time >= enemy.nextFireAt) {
           this.fireShooterProjectile(enemy, directionToPlayer, time);
-          enemy.nextFireAt = time + shooterEnemyBalance.fireCooldownSeconds * 1000;
+          enemy.nextFireAt = time + enemy.stats.attackCooldown * 1000;
         }
       }
 
@@ -6250,7 +6112,7 @@ export class GameScene extends Phaser.Scene {
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        enemy.velocity.set(direction.x * tankEnemyBalance.moveSpeed, direction.y * tankEnemyBalance.moveSpeed);
+        enemy.velocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
@@ -6272,29 +6134,31 @@ export class GameScene extends Phaser.Scene {
     const spawnX = wrapCoordinate(enemy.body.x + direction.x * spawnDistance, this.arena.width);
     const spawnY = wrapCoordinate(enemy.body.y + direction.y * spawnDistance, this.arena.height);
     const rotation = Math.atan2(direction.x, -direction.y);
-    const body = this.createEnemyProjectile(spawnX, spawnY, rotation);
-    const wrapMirrorBody = this.createEnemyProjectile(spawnX, spawnY, rotation);
+    const body = this.createEnemyProjectile(spawnX, spawnY, rotation, enemy.stats.projectileSize);
+    const wrapMirrorBody = this.createEnemyProjectile(spawnX, spawnY, rotation, enemy.stats.projectileSize);
     wrapMirrorBody.setVisible(false);
 
     this.enemyProjectiles.push({
       body,
       wrapMirrorBody,
-      velocity: direction.clone().scale(shooterEnemyBalance.projectileSpeed),
-      speed: shooterEnemyBalance.projectileSpeed,
-      damage: shooterEnemyBalance.projectileDamage,
-      expiresAt: time + shooterEnemyBalance.projectileLifetimeSeconds * 1000,
-      distanceRemaining: shooterEnemyBalance.projectileRange
+      velocity: direction.clone().scale(enemy.stats.projectileSpeed),
+      speed: enemy.stats.projectileSpeed,
+      damage: enemy.stats.attackDamage,
+      hitRadius: enemy.stats.projectileSize,
+      expiresAt: time + enemy.stats.projectileLifetimeSeconds * 1000,
+      distanceRemaining: enemy.stats.projectileRange
     });
   }
 
-  private createEnemyProjectile(x: number, y: number, rotation: number): Phaser.GameObjects.Container {
-    const glow = this.add.ellipse(0, 0, 20, 20, 0xff5964, 0.28);
-    const body = this.add.ellipse(0, 0, 10, 16, 0xff8f4f, 0.94);
+  private createEnemyProjectile(x: number, y: number, rotation: number, hitRadius = SHOOTER_PROJECTILE_HIT_RADIUS): Phaser.GameObjects.Container {
+    const visualSize = hitRadius * 2.2;
+    const glow = this.add.ellipse(0, 0, visualSize, visualSize, 0xff5964, 0.28);
+    const body = this.add.ellipse(0, 0, hitRadius * 1.1, hitRadius * 1.78, 0xff8f4f, 0.94);
     body.setStrokeStyle(1, 0xfff0b8, 0.86);
 
     const projectile = this.add.container(x, y, [glow, body]);
 
-    projectile.setSize(20, 20);
+    projectile.setSize(visualSize, visualSize);
     projectile.setRotation(rotation);
     projectile.setDepth(8);
 
@@ -6314,10 +6178,10 @@ export class GameScene extends Phaser.Scene {
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
-      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, SHOOTER_PROJECTILE_HIT_RADIUS);
+      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, projectile.hitRadius);
 
       if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, SHOOTER_PROJECTILE_HIT_RADIUS)) {
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, projectile.hitRadius)) {
           this.destroyEnemyProjectile(projectile);
           this.enemyProjectiles.splice(i, 1);
         }
@@ -6343,7 +6207,7 @@ export class GameScene extends Phaser.Scene {
     const shieldCollision = this.getRammingShieldCircleCollision(
       projectile.body.x,
       projectile.body.y,
-      SHOOTER_PROJECTILE_HIT_RADIUS
+      projectile.hitRadius
     );
     if (shieldCollision) {
       this.blockDamageWithRammingShield(projectile.damage, time, projectile.body.x, projectile.body.y);
@@ -6351,7 +6215,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, this.player.x, this.player.y);
-    const hitRadius = this.getPlayerHitRadius() + SHOOTER_PROJECTILE_HIT_RADIUS;
+    const hitRadius = this.getPlayerHitRadius() + projectile.hitRadius;
 
     if (offset.lengthSq() > hitRadius * hitRadius) {
       return false;
@@ -6416,8 +6280,8 @@ export class GameScene extends Phaser.Scene {
       this.getPlayerWeaponUpgradeState(),
       this.getResolvedPlayerStats(),
       {
-        damageMultiplier: this.getActiveDebugPulseDamageMultiplier(),
-        fireRateMultiplier: this.getActiveDebugPulseFireRateMultiplier()
+        damageMultiplier: this.getActiveDebugWeaponDamageMultiplier(),
+        fireRateMultiplier: this.getActiveDebugWeaponFireRateMultiplier()
       }
     );
   }
@@ -6473,25 +6337,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private useRammingShieldWeapon(time: number): boolean {
-    if (!this.hasRammingShield() || this.rammingShieldHp <= 0 || this.rammingShieldDashCharges <= 0) {
+    if (!this.hasRammingShield()) {
       return false;
     }
 
     const stats = this.getRammingShieldStats();
-    if (stats.dashRequiresShieldHp && this.rammingShieldHp <= 0) {
+    if (!activateRammingShieldDash(this.rammingShieldState, time, this.getResolvedPlayerStats())) {
       return false;
     }
 
     const direction = this.getForwardDirection(this.player.rotation);
     this.playerVelocity.x += direction.x * stats.dashImpulse;
     this.playerVelocity.y += direction.y * stats.dashImpulse;
-    this.rammingShieldDashCharges = Math.max(0, this.rammingShieldDashCharges - 1);
-    if (this.nextRammingShieldDashChargeAt <= 0) {
-      this.nextRammingShieldDashChargeAt = time + stats.dashChargeRechargeSeconds * 1000;
-    }
-
-    this.rammingShieldEmpoweredUntil = time + stats.dashEmpoweredWindowSeconds * 1000 * this.getResolvedPlayerStats().duration;
-    this.rammingShieldImpactFlashUntil = time + 140;
     this.updateRammingShieldVisual(time);
     return true;
   }
@@ -6506,20 +6363,20 @@ export class GameScene extends Phaser.Scene {
       this.getPlayerWeaponUpgradeState(),
       this.getResolvedPlayerStats(),
       {
-        damageMultiplier: this.getActiveDebugPulseDamageMultiplier(),
-        fireRateMultiplier: this.getActiveDebugPulseFireRateMultiplier()
+        damageMultiplier: this.getActiveDebugWeaponDamageMultiplier(),
+        fireRateMultiplier: this.getActiveDebugWeaponFireRateMultiplier()
       }
     );
     const direction = this.getForwardDirection(this.player.rotation);
-    const spawnX = this.player.x + direction.x * PULSE_CANNON_MUZZLE_OFFSET;
-    const spawnY = this.player.y + direction.y * PULSE_CANNON_MUZZLE_OFFSET;
+    const spawnX = this.player.x + direction.x * PLAYER_PROJECTILE_MUZZLE_OFFSET;
+    const spawnY = this.player.y + direction.y * PLAYER_PROJECTILE_MUZZLE_OFFSET;
 
     for (let index = 0; index < projectileConfig.projectileCount; index += 1) {
       const spreadOffset = index - (projectileConfig.projectileCount - 1) / 2;
       const projectileRotation = this.player.rotation + spreadOffset * 0.08;
       const projectileDirection = this.getForwardDirection(projectileRotation);
-      const body = this.createPulseCannonProjectile(spawnX, spawnY, projectileRotation, weapon, projectileConfig.projectileAreaScale);
-      const wrapMirrorBody = this.createPulseCannonProjectile(
+      const body = this.createPlayerProjectile(spawnX, spawnY, projectileRotation, weapon, projectileConfig.projectileAreaScale);
+      const wrapMirrorBody = this.createPlayerProjectile(
         spawnX,
         spawnY,
         projectileRotation,
@@ -6528,13 +6385,13 @@ export class GameScene extends Phaser.Scene {
       );
       wrapMirrorBody.setVisible(false);
 
-      this.pulseCannonProjectiles.push({
+      this.playerProjectiles.push({
         body,
         wrapMirrorBody,
         velocity: projectileDirection.scale(projectileConfig.projectileSpeed),
         speed: projectileConfig.projectileSpeed,
         damage: projectileConfig.damage,
-        hitRadius: PROJECTILE_HIT_RADIUS * projectileConfig.projectileAreaScale,
+        hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileConfig.projectileAreaScale,
         pierceRemaining: projectileConfig.pierce,
         piercedTargets: new WeakSet<object>(),
         expiresAt: time + projectileConfig.projectileLifetimeMs,
@@ -6547,7 +6404,7 @@ export class GameScene extends Phaser.Scene {
     return { cooldownMs: projectileConfig.cooldownMs };
   }
 
-  private createPulseCannonProjectile(
+  private createPlayerProjectile(
     x: number,
     y: number,
     rotation: number,
@@ -6572,25 +6429,25 @@ export class GameScene extends Phaser.Scene {
     return projectile;
   }
 
-  private updatePulseCannonProjectiles(time: number, deltaSeconds: number): void {
+  private updatePlayerProjectiles(time: number, deltaSeconds: number): void {
     if (this.isPlayerDead) {
       return;
     }
 
-    for (let i = this.pulseCannonProjectiles.length - 1; i >= 0; i -= 1) {
-      const projectile = this.pulseCannonProjectiles[i];
+    for (let i = this.playerProjectiles.length - 1; i >= 0; i -= 1) {
+      const projectile = this.playerProjectiles[i];
       this.applyProjectileGravity(projectile, deltaSeconds);
       const travelDistance = projectile.speed * deltaSeconds;
 
       projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
       projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
       projectile.distanceRemaining -= travelDistance;
-      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PULSE_CANNON_MUZZLE_OFFSET);
+      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PLAYER_PROJECTILE_MUZZLE_OFFSET);
 
       if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, PULSE_CANNON_MUZZLE_OFFSET)) {
-          this.destroyPulseCannonProjectile(projectile);
-          this.pulseCannonProjectiles.splice(i, 1);
+        if (this.updateCapturedProjectile(projectile, deltaSeconds, PLAYER_PROJECTILE_MUZZLE_OFFSET)) {
+          this.destroyPlayerProjectile(projectile);
+          this.playerProjectiles.splice(i, 1);
         }
 
         continue;
@@ -6607,19 +6464,19 @@ export class GameScene extends Phaser.Scene {
         );
 
       if (didHitTarget && this.shouldDestroyProjectileAfterHit(projectile)) {
-        this.destroyPulseCannonProjectile(projectile);
-        this.pulseCannonProjectiles.splice(i, 1);
+        this.destroyPlayerProjectile(projectile);
+        this.playerProjectiles.splice(i, 1);
       } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-        this.destroyPulseCannonProjectile(projectile);
-        this.pulseCannonProjectiles.splice(i, 1);
+        this.destroyPlayerProjectile(projectile);
+        this.playerProjectiles.splice(i, 1);
       } else if (time >= projectile.nextTrailAt) {
-        this.emitPulseCannonTrail(projectile);
-        projectile.nextTrailAt = time + PULSE_TRAIL_INTERVAL_MS;
+        this.emitPlayerProjectileTrail(projectile);
+        projectile.nextTrailAt = time + PLAYER_PROJECTILE_TRAIL_INTERVAL_MS;
       }
     }
   }
 
-  private shouldDestroyProjectileAfterHit(projectile: PulseCannonProjectile): boolean {
+  private shouldDestroyProjectileAfterHit(projectile: PlayerProjectile): boolean {
     if (projectile.pierceRemaining <= 0) {
       return true;
     }
@@ -6628,13 +6485,13 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private emitPulseCannonTrail(projectile: PulseCannonProjectile): void {
+  private emitPlayerProjectileTrail(projectile: PlayerProjectile): void {
     const movementDirection = projectile.velocity.clone().normalize();
     const trailDirection = movementDirection.clone().negate();
     const sideDirection = new Phaser.Math.Vector2(-movementDirection.y, movementDirection.x);
     const jitter = Phaser.Math.FloatBetween(-2.4, 2.4);
-    const x = projectile.body.x + trailDirection.x * PULSE_TRAIL_OFFSET + sideDirection.x * jitter;
-    const y = projectile.body.y + trailDirection.y * PULSE_TRAIL_OFFSET + sideDirection.y * jitter;
+    const x = projectile.body.x + trailDirection.x * PLAYER_PROJECTILE_TRAIL_OFFSET + sideDirection.x * jitter;
+    const y = projectile.body.y + trailDirection.y * PLAYER_PROJECTILE_TRAIL_OFFSET + sideDirection.y * jitter;
     const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.2, 4.2), projectile.trailColor, 0.7);
 
     particle.setDepth(7);
@@ -6646,23 +6503,23 @@ export class GameScene extends Phaser.Scene {
       y: y + trailDirection.y * 12,
       alpha: 0,
       scale: 0.18,
-      duration: PULSE_TRAIL_FADE_MS,
+      duration: PLAYER_PROJECTILE_TRAIL_FADE_MS,
       ease: 'Quad.easeOut',
       onComplete: () => particle.destroy()
     });
   }
 
-  private destroyPulseCannonProjectile(projectile: PulseCannonProjectile): void {
+  private destroyPlayerProjectile(projectile: PlayerProjectile): void {
     projectile.body.destroy(true);
     projectile.wrapMirrorBody.destroy(true);
   }
 
-  private clearPulseCannonProjectiles(): void {
-    for (const projectile of this.pulseCannonProjectiles) {
-      this.destroyPulseCannonProjectile(projectile);
+  private clearPlayerProjectiles(): void {
+    for (const projectile of this.playerProjectiles) {
+      this.destroyPlayerProjectile(projectile);
     }
 
-    this.pulseCannonProjectiles = [];
+    this.playerProjectiles = [];
   }
 
   private clearEnemyProjectiles(): void {
@@ -6673,7 +6530,7 @@ export class GameScene extends Phaser.Scene {
     this.enemyProjectiles = [];
   }
 
-  private applyProjectileGravity(projectile: PulseCannonProjectile | EnemyProjectile, deltaSeconds: number): void {
+  private applyProjectileGravity(projectile: PlayerProjectile | EnemyProjectile, deltaSeconds: number): void {
     if (!this.blackHole) {
       return;
     }
@@ -6682,7 +6539,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCapturedProjectile(
-    projectile: PulseCannonProjectile | EnemyProjectile,
+    projectile: PlayerProjectile | EnemyProjectile,
     deltaSeconds: number,
     mirrorViewRadius: number
   ): boolean {
@@ -6910,12 +6767,11 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private tryHitBasicEnemy(projectile: PulseCannonProjectile): boolean {
-    const hitHalfWidth = basicEnemy.hitHalfWidth + projectile.hitRadius;
-    const hitHalfLength = basicEnemy.hitHalfLength + projectile.hitRadius;
-
+  private tryHitBasicEnemy(projectile: PlayerProjectile): boolean {
     for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.basicEnemies[i];
+      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
+      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
       if (projectile.piercedTargets.has(enemy.body)) {
         continue;
       }
@@ -6929,7 +6785,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        enemy.hp -= projectile.damage;
+        this.damageEnemy(enemy, projectile.damage);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -6941,7 +6797,7 @@ export class GameScene extends Phaser.Scene {
           );
           this.spawnScrapPickup(
             'enemy',
-            SCRAP_PICKUP_VALUE_BY_ENEMY.chaser,
+            enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
@@ -6949,7 +6805,7 @@ export class GameScene extends Phaser.Scene {
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.basicEnemies.splice(i, 1);
-          this.grantXp(BASIC_ENEMY_XP_REWARD);
+          this.grantXp(enemy.stats.xpValue);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -6962,12 +6818,11 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private tryHitShooterEnemy(projectile: PulseCannonProjectile): boolean {
-    const hitHalfWidth = shooterEnemy.hitHalfWidth + projectile.hitRadius;
-    const hitHalfLength = shooterEnemy.hitHalfLength + projectile.hitRadius;
-
+  private tryHitShooterEnemy(projectile: PlayerProjectile): boolean {
     for (let i = this.shooterEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.shooterEnemies[i];
+      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
+      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
       if (projectile.piercedTargets.has(enemy.body)) {
         continue;
       }
@@ -6981,7 +6836,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        enemy.hp -= projectile.damage;
+        this.damageEnemy(enemy, projectile.damage);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -6993,7 +6848,7 @@ export class GameScene extends Phaser.Scene {
           );
           this.spawnScrapPickup(
             'enemy',
-            SCRAP_PICKUP_VALUE_BY_ENEMY.shooter,
+            enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
             enemy.velocity.clone().add(enemy.blackHoleVelocity)
@@ -7001,7 +6856,7 @@ export class GameScene extends Phaser.Scene {
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.shooterEnemies.splice(i, 1);
-          this.grantXp(shooterEnemyBalance.xpReward);
+          this.grantXp(enemy.stats.xpValue);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -7014,12 +6869,11 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private tryHitTankEnemy(projectile: PulseCannonProjectile): boolean {
-    const hitHalfWidth = tankEnemy.hitHalfWidth + projectile.hitRadius;
-    const hitHalfLength = tankEnemy.hitHalfLength + projectile.hitRadius;
-
+  private tryHitTankEnemy(projectile: PlayerProjectile): boolean {
     for (let i = this.tankEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.tankEnemies[i];
+      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
+      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
       if (projectile.piercedTargets.has(enemy.body)) {
         continue;
       }
@@ -7033,7 +6887,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        enemy.hp -= projectile.damage;
+        this.damageEnemy(enemy, projectile.damage);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -7045,7 +6899,7 @@ export class GameScene extends Phaser.Scene {
           );
           this.spawnScrapPickup(
             'enemy',
-            SCRAP_PICKUP_VALUE_BY_ENEMY.tank,
+            enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
@@ -7053,7 +6907,7 @@ export class GameScene extends Phaser.Scene {
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.tankEnemies.splice(i, 1);
-          this.grantXp(tankEnemyBalance.xpReward);
+          this.grantXp(enemy.stats.xpValue);
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -7066,7 +6920,7 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private tryHitEnemyWreckageDebris(projectile: PulseCannonProjectile): boolean {
+  private tryHitEnemyWreckageDebris(projectile: PlayerProjectile): boolean {
     for (let i = this.enemyWreckageDebris.length - 1; i >= 0; i -= 1) {
       const debris = this.enemyWreckageDebris[i];
       if (projectile.piercedTargets.has(debris.body)) {
@@ -7096,7 +6950,7 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private tryHitBasicAsteroid(projectile: PulseCannonProjectile): boolean {
+  private tryHitBasicAsteroid(projectile: PlayerProjectile): boolean {
     for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
       const asteroid = this.basicAsteroids[i];
       if (projectile.piercedTargets.has(asteroid.body)) {
@@ -7126,7 +6980,7 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
-  private applyAsteroidImpact(asteroid: BasicAsteroid, projectile: PulseCannonProjectile): void {
+  private applyAsteroidImpact(asteroid: BasicAsteroid, projectile: PlayerProjectile): void {
     const impactDirection = projectile.velocity.clone().normalize();
     const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
 
@@ -7565,11 +7419,11 @@ export class GameScene extends Phaser.Scene {
 
     const shieldCollider = this.getRammingShieldCollider();
     if (shieldCollider) {
-      const shieldPosition = this.getNearestWrappedRenderPosition(shieldCollider.center.x, shieldCollider.center.y);
+      const shieldPosition = this.getNearestWrappedRenderPosition(shieldCollider.centerX, shieldCollider.centerY);
       this.strokeOrientedEllipse(
         shieldPosition,
-        shieldCollider.right,
-        shieldCollider.forward,
+        new Phaser.Math.Vector2(shieldCollider.rightX, shieldCollider.rightY),
+        new Phaser.Math.Vector2(shieldCollider.forwardX, shieldCollider.forwardY),
         shieldCollider.halfWidth,
         shieldCollider.halfDepth,
         0x42f5d7,
@@ -7595,8 +7449,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        basicEnemy.hitHalfWidth,
-        basicEnemy.hitHalfLength,
+        basicEnemy.stats.hitHalfWidth,
+        basicEnemy.stats.hitHalfLength,
         0xffc857,
         0.8
       );
@@ -7604,8 +7458,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        basicEnemy.hitHalfWidth + playerHitRadius,
-        basicEnemy.hitHalfLength + playerHitRadius,
+        basicEnemy.stats.hitHalfWidth + playerHitRadius,
+        basicEnemy.stats.hitHalfLength + playerHitRadius,
         0xff5964,
         0.42
       );
@@ -7625,8 +7479,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        shooterEnemy.hitHalfWidth,
-        shooterEnemy.hitHalfLength,
+        shooterEnemy.stats.hitHalfWidth,
+        shooterEnemy.stats.hitHalfLength,
         0xff5964,
         0.8
       );
@@ -7646,8 +7500,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        tankEnemy.hitHalfWidth,
-        tankEnemy.hitHalfLength,
+        tankEnemy.stats.hitHalfWidth,
+        tankEnemy.stats.hitHalfLength,
         0xb48cff,
         0.84
       );
@@ -7655,8 +7509,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        tankEnemy.hitHalfWidth + playerHitRadius,
-        tankEnemy.hitHalfLength + playerHitRadius,
+        tankEnemy.stats.hitHalfWidth + playerHitRadius,
+        tankEnemy.stats.hitHalfLength + playerHitRadius,
         0xff5964,
         0.38
       );
@@ -7742,7 +7596,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawProjectileCollisionDebug(): void {
-    for (const projectile of this.pulseCannonProjectiles) {
+    for (const projectile of this.playerProjectiles) {
       const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
 
       if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, projectile.hitRadius)) {
@@ -7756,12 +7610,12 @@ export class GameScene extends Phaser.Scene {
     for (const projectile of this.enemyProjectiles) {
       const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
 
-      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, SHOOTER_PROJECTILE_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, projectile.hitRadius)) {
         continue;
       }
 
       this.collisionDebugGraphics.lineStyle(1, 0xff5964, projectile.capturedByBlackHole ? 0.22 : 0.62);
-      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, SHOOTER_PROJECTILE_HIT_RADIUS);
+      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, projectile.hitRadius);
     }
 
     for (const debris of this.enemyWreckageDebris) {
@@ -7933,8 +7787,8 @@ export class GameScene extends Phaser.Scene {
     const upgradeStatus =
       this.bankedUpgrades > 0 ? `Upgrade available x${this.bankedUpgrades}  Press U` : 'No upgrade banked';
     const shieldStatus = this.hasRammingShield()
-      ? `Shield ${Math.ceil(this.rammingShieldHp)} / ${this.getRammingShieldMaxHp()}${this.rammingShieldHp <= 0 ? '  BROKEN' : ''}\n` +
-        `Shield dash ${this.rammingShieldDashCharges} / ${this.getRammingShieldStats().dashMaxCharges}${time < this.rammingShieldEmpoweredUntil ? '  EMPOWERED' : ''}\n`
+      ? `Shield ${Math.ceil(this.rammingShieldState.hp)} / ${this.getRammingShieldMaxHp()}${this.rammingShieldState.hp <= 0 ? '  BROKEN' : ''}\n` +
+        `Shield dash ${this.rammingShieldState.dashCharges} / ${this.getRammingShieldStats().dashMaxCharges}${time < this.rammingShieldState.empoweredUntil ? '  EMPOWERED' : ''}\n`
       : '';
 
     this.hullText.setText(
@@ -7969,7 +7823,7 @@ export class GameScene extends Phaser.Scene {
     this.drawHudBar(hullX, pulseY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(pulseProgress, 0, 1), 0xffc857);
 
     if (this.hasRammingShield()) {
-      const shieldProgress = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldHp / this.getRammingShieldMaxHp() : 0;
+      const shieldProgress = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldState.hp / this.getRammingShieldMaxHp() : 0;
       this.drawHudBar(hullX, shieldY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(shieldProgress, 0, 1), 0x42f5d7);
     }
   }
@@ -8017,7 +7871,7 @@ export class GameScene extends Phaser.Scene {
       ? `Spawn director: step ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n`
       : '';
     const debugWeaponLine = this.debugState.collisionDebugEnabled
-      ? `Debug weapon: ${this.getActiveMainWeaponDefinition().displayName} dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveMainWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
+      ? `Debug weapon: ${this.getActiveMainWeaponDefinition().displayName} dmg x${this.debugState.weaponDamageMultiplier.toFixed(1)} / fire x${this.debugState.weaponFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveMainWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
@@ -8034,7 +7888,7 @@ export class GameScene extends Phaser.Scene {
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']} H${this.passiveUpgradeLevels['hull-plating']} E${this.passiveUpgradeLevels['engine-tuning']} C${this.passiveUpgradeLevels['damage-control']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
-        `Player shots: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
+        `Player shots: ${this.playerProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +

@@ -11,9 +11,9 @@ export interface DebugMenuValues {
   collisionDebugEnabled: boolean;
   blackHoleRadiiVisible: boolean;
   blackHoleFieldDamageEnabled: boolean;
-  pulseDamageMultiplier: number;
-  pulseFireRateMultiplier: number;
-  pulseCooldownSeconds: number;
+  weaponDamageMultiplier: number;
+  weaponFireRateMultiplier: number;
+  weaponCooldownSeconds: number;
   backgroundStarsVisible: boolean;
   starfieldFarParallax: number;
   starfieldMidParallax: number;
@@ -75,9 +75,9 @@ export interface DebugMenuCallbacks {
   restorePlayerHull: () => void;
   togglePlayerInvulnerability: () => void;
   killPlayer: () => void;
-  adjustPulseDamage: (delta: number) => void;
-  adjustPulseFireRate: (delta: number) => void;
-  adjustPulseCooldownSeconds: (deltaSeconds: number) => void;
+  adjustWeaponDamage: (delta: number) => void;
+  adjustWeaponFireRate: (delta: number) => void;
+  adjustWeaponCooldownSeconds: (deltaSeconds: number) => void;
   resetWeaponTuning: () => void;
   adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
   toggleBackgroundStars: () => void;

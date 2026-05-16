@@ -244,13 +244,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   y = addSection(columnX, y, 'Weapon');
   addValue('weapon', columnX, y);
   y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-  addButton('damage-down', columnX, y, 74, 'Dmg -', () => config.callbacks.adjustPulseDamage(-0.5));
-  addButton('damage-up', columnX + 80, y, 74, 'Dmg +', () => config.callbacks.adjustPulseDamage(0.5));
-  addButton('fire-down', columnX + 162, y, 74, 'Fire -', () => config.callbacks.adjustPulseFireRate(-0.5));
-  addButton('fire-up', columnX + 242, y, 74, 'Fire +', () => config.callbacks.adjustPulseFireRate(0.5));
+  addButton('damage-down', columnX, y, 74, 'Dmg -', () => config.callbacks.adjustWeaponDamage(-0.5));
+  addButton('damage-up', columnX + 80, y, 74, 'Dmg +', () => config.callbacks.adjustWeaponDamage(0.5));
+  addButton('fire-down', columnX + 162, y, 74, 'Fire -', () => config.callbacks.adjustWeaponFireRate(-0.5));
+  addButton('fire-up', columnX + 242, y, 74, 'Fire +', () => config.callbacks.adjustWeaponFireRate(0.5));
   y += BUTTON_HEIGHT + BUTTON_GAP;
-  addButton('cooldown-down', columnX, y, 154, 'Cooldown -', () => config.callbacks.adjustPulseCooldownSeconds(-0.05));
-  addButton('cooldown-up', columnX + 162, y, 154, 'Cooldown +', () => config.callbacks.adjustPulseCooldownSeconds(0.05));
+  addButton('cooldown-down', columnX, y, 154, 'Cooldown -', () => config.callbacks.adjustWeaponCooldownSeconds(-0.05));
+  addButton('cooldown-up', columnX + 162, y, 154, 'Cooldown +', () => config.callbacks.adjustWeaponCooldownSeconds(0.05));
   y += BUTTON_HEIGHT + ROW_GAP;
 
   y = addSection(columnX, y, 'Background');
@@ -496,7 +496,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue(
         'weapon',
-        `Damage x${values.pulseDamageMultiplier.toFixed(1)}\nFire x${values.pulseFireRateMultiplier.toFixed(1)}\nCooldown ${values.pulseCooldownSeconds.toFixed(2)}s`
+        `Damage x${values.weaponDamageMultiplier.toFixed(1)}\nFire x${values.weaponFireRateMultiplier.toFixed(1)}\nCooldown ${values.weaponCooldownSeconds.toFixed(2)}s`
       );
       setValue(
         'background',

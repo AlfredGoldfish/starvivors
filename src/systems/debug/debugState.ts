@@ -1,9 +1,9 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 import type { DebugMenuValues } from './debugTypes';
 
-const DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN = 1;
-const DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN = 0.1;
-const DEBUG_PULSE_COOLDOWN_MIN_SECONDS = 0.01;
+const DEBUG_WEAPON_DAMAGE_MULTIPLIER_MIN = 1;
+const DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN = 0.1;
+const DEBUG_WEAPON_COOLDOWN_MIN_SECONDS = 0.01;
 
 export class DebugState {
   collisionDebugEnabled = false;
@@ -13,8 +13,8 @@ export class DebugState {
   showBlackHoleRadii = false;
   blackHoleFieldDamageEnabled = true;
   debugGamePaused = false;
-  pulseDamageMultiplier = 1;
-  pulseFireRateMultiplier = 1;
+  weaponDamageMultiplier = 1;
+  weaponFireRateMultiplier = 1;
 
   resetForRun(): void {
     this.enemySpawningEnabled = true;
@@ -23,35 +23,35 @@ export class DebugState {
     this.showBlackHoleRadii = false;
     this.blackHoleFieldDamageEnabled = true;
     this.debugGamePaused = false;
-    this.pulseDamageMultiplier = 1;
-    this.pulseFireRateMultiplier = 1;
+    this.weaponDamageMultiplier = 1;
+    this.weaponFireRateMultiplier = 1;
   }
 
-  adjustPulseDamageMultiplier(delta: number): void {
-    this.pulseDamageMultiplier = Number(Math.max(DEBUG_PULSE_DAMAGE_MULTIPLIER_MIN, this.pulseDamageMultiplier + delta).toFixed(1));
+  adjustWeaponDamageMultiplier(delta: number): void {
+    this.weaponDamageMultiplier = Number(Math.max(DEBUG_WEAPON_DAMAGE_MULTIPLIER_MIN, this.weaponDamageMultiplier + delta).toFixed(1));
   }
 
-  adjustPulseFireRateMultiplier(delta: number): void {
-    this.pulseFireRateMultiplier = Number(
-      Math.max(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN, this.pulseFireRateMultiplier + delta).toFixed(1)
+  adjustWeaponFireRateMultiplier(delta: number): void {
+    this.weaponFireRateMultiplier = Number(
+      Math.max(DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN, this.weaponFireRateMultiplier + delta).toFixed(1)
     );
   }
 
-  adjustPulseCooldownSeconds(baseCooldownSeconds: number, currentCooldownSeconds: number, deltaSeconds: number): void {
-    const nextCooldownSeconds = Math.max(DEBUG_PULSE_COOLDOWN_MIN_SECONDS, currentCooldownSeconds + deltaSeconds);
+  adjustWeaponCooldownSeconds(baseCooldownSeconds: number, currentCooldownSeconds: number, deltaSeconds: number): void {
+    const nextCooldownSeconds = Math.max(DEBUG_WEAPON_COOLDOWN_MIN_SECONDS, currentCooldownSeconds + deltaSeconds);
 
-    this.pulseFireRateMultiplier = Number(
-      Math.max(DEBUG_PULSE_FIRE_RATE_MULTIPLIER_MIN, baseCooldownSeconds / nextCooldownSeconds).toFixed(2)
+    this.weaponFireRateMultiplier = Number(
+      Math.max(DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN, baseCooldownSeconds / nextCooldownSeconds).toFixed(2)
     );
   }
 
   resetWeaponTuning(): void {
-    this.pulseDamageMultiplier = 1;
-    this.pulseFireRateMultiplier = 1;
+    this.weaponDamageMultiplier = 1;
+    this.weaponFireRateMultiplier = 1;
   }
 
   createMenuValues(snapshot: {
-    pulseCooldownSeconds: number;
+    weaponCooldownSeconds: number;
     backgroundStarsVisible: boolean;
     starfieldFarParallax: number;
     starfieldMidParallax: number;
@@ -100,9 +100,9 @@ export class DebugState {
       collisionDebugEnabled: this.collisionDebugEnabled,
       blackHoleRadiiVisible: this.showBlackHoleRadii || this.collisionDebugEnabled,
       blackHoleFieldDamageEnabled: this.blackHoleFieldDamageEnabled,
-      pulseDamageMultiplier: this.pulseDamageMultiplier,
-      pulseFireRateMultiplier: this.pulseFireRateMultiplier,
-      pulseCooldownSeconds: snapshot.pulseCooldownSeconds,
+      weaponDamageMultiplier: this.weaponDamageMultiplier,
+      weaponFireRateMultiplier: this.weaponFireRateMultiplier,
+      weaponCooldownSeconds: snapshot.weaponCooldownSeconds,
       backgroundStarsVisible: snapshot.backgroundStarsVisible,
       starfieldFarParallax: snapshot.starfieldFarParallax,
       starfieldMidParallax: snapshot.starfieldMidParallax,
