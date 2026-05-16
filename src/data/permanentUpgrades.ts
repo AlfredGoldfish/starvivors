@@ -30,7 +30,7 @@ export const PERMANENT_UPGRADE_DEFINITIONS: PermanentUpgradeDefinition[] = [
   {
     id: 'pulse-capacitor',
     name: 'Pulse Capacitor',
-    description: '+5% starting Pulse Cannon damage per level.',
+    description: '+5% main weapon damage per level.',
     baseCost: 75,
     maxLevel: 5
   },
@@ -52,5 +52,4 @@ export const INITIAL_PERMANENT_UPGRADE_LEVELS: Record<PermanentUpgradeId, number
 
 export const HULL_REINFORCEMENT_MAX_HULL_BONUS = 10;
 export const ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER = 0.05;
-export const PULSE_CAPACITOR_DAMAGE_MULTIPLIER = 0.05;
 export const SALVAGE_TRAINING_CREDIT_MULTIPLIER = 0.05;

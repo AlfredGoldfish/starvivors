@@ -28,12 +28,22 @@ import {
   HULL_REINFORCEMENT_MAX_HULL_BONUS,
   INITIAL_PERMANENT_UPGRADE_LEVELS,
   PERMANENT_UPGRADE_DEFINITIONS,
-  PULSE_CAPACITOR_DAMAGE_MULTIPLIER,
   SALVAGE_TRAINING_CREDIT_MULTIPLIER,
   type PermanentUpgradeDefinition,
   type PermanentUpgradeId
 } from '../data/permanentUpgrades';
-import { pulseCannon } from '../data/weapons';
+import type { WeaponRegistryEntry } from '../data/weapons';
+import {
+  createPlayerWeaponRuntimeState,
+  getActiveMainWeaponDefinition,
+  getPlayerWeaponBaseCooldownMs,
+  getPlayerWeaponCooldownMs,
+  getPlayerWeaponDamageMultiplier,
+  getPlayerWeaponProjectileConfig,
+  getPlayerWeaponProjectileSpeed,
+  type PlayerWeaponRuntimeState,
+  type PlayerWeaponUpgradeState
+} from '../systems/playerWeapons';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
@@ -166,7 +176,6 @@ const DAMAGE_FLASH_MS = 90;
 const ENEMY_IMPACT_EXPLOSION_MS = 150;
 const ASTEROID_IMPACT_EXPLOSION_MS = 180;
 const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
-const PULSE_CANNON_ASTEROID_DAMAGE = 1;
 const PROJECTILE_HIT_RADIUS = 8;
 const PLAYER_MAX_HULL = 100;
 const PLAYER_HIT_RADIUS = 32;
@@ -213,9 +222,6 @@ const MINIMAP_WIDTH = 220;
 const MINIMAP_HEIGHT = 140;
 const MINIMAP_MARGIN = 16;
 const MINIMAP_PADDING = 8;
-const PULSE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
-const PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
-const PULSE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
 const PASSIVE_UPGRADE_MAX_LEVEL = 5;
 const HULL_PLATING_MAX_HULL_BONUS = 15;
 const HULL_PLATING_REPAIR = 15;
@@ -400,19 +406,19 @@ const UPGRADE_CHOICES: UpgradeDefinition[] = [
   {
     id: 'pulse-damage-1',
     category: 'pulse',
-    name: 'Pulse Damage I',
+    name: 'Weapon Damage I',
     description: '+25% projectile damage per level.'
   },
   {
     id: 'pulse-fire-rate-1',
     category: 'pulse',
-    name: 'Pulse Fire Rate I',
+    name: 'Weapon Fire Rate I',
     description: 'Reduces cooldown by 12% per level.'
   },
   {
     id: 'pulse-velocity-1',
     category: 'pulse',
-    name: 'Pulse Velocity I',
+    name: 'Weapon Velocity I',
     description: '+20% projectile speed per level.'
   },
   {
@@ -619,6 +625,7 @@ interface PulseCannonProjectile extends BlackHoleCapturedProjectileState {
   expiresAt: number;
   distanceRemaining: number;
   nextTrailAt: number;
+  trailColor: number;
 }
 
 interface EnemyProjectile extends BlackHoleCapturedProjectileState {
@@ -808,7 +815,9 @@ export class GameScene extends Phaser.Scene {
   private asteroidCameraViewCount = 0;
   private asteroidWrappedViewCount = 0;
   private asteroidWrapMirrorCount = 0;
-  private nextPulseCannonFireAt = 0;
+  private playerWeapons: PlayerWeaponRuntimeState = createPlayerWeaponRuntimeState(
+    getShipDefinition(DEFAULT_SHIP_ID).startingMainWeaponId
+  );
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
   private nextLeftStrafeThrusterAt = 0;
@@ -933,7 +942,7 @@ export class GameScene extends Phaser.Scene {
       this.updateBlackHolePlayerCollision();
       this.updatePlayerContactDamage(time);
       this.updateRammingShield(time, deltaSeconds);
-      this.updatePulseCannon(time);
+      this.updateActiveMainWeapon(time);
       this.updatePulseCannonProjectiles(time, deltaSeconds);
       this.updateEnemyProjectiles(time, deltaSeconds);
       this.updatePlayerDamageVisuals(time);
@@ -1013,8 +1022,8 @@ export class GameScene extends Phaser.Scene {
         adjustPulseCooldownSeconds: (deltaSeconds) =>
           this.runDebugMenuAction(() =>
             this.debugState.adjustPulseCooldownSeconds(
-              this.getPulseBaseCooldownMs() / 1000,
-              this.getPulseCooldownMs() / 1000,
+              this.getActiveMainWeaponBaseCooldownMs() / 1000,
+              this.getActiveMainWeaponCooldownMs() / 1000,
               deltaSeconds
             )
           ),
@@ -1124,7 +1133,7 @@ export class GameScene extends Phaser.Scene {
     const time = this.time.now;
 
     return this.debugState.createMenuValues({
-      pulseCooldownSeconds: this.getPulseCooldownMs() / 1000,
+      pulseCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
       backgroundStarsVisible: this.backgroundStarsVisible,
       starfieldFarParallax: this.farStarfieldParallax,
       starfieldMidParallax: this.midStarfieldParallax,
@@ -1342,9 +1351,9 @@ export class GameScene extends Phaser.Scene {
       hullPlatingLevel: this.passiveUpgradeLevels['hull-plating'],
       engineTuningLevel: this.passiveUpgradeLevels['engine-tuning'],
       damageControlLevel: this.passiveUpgradeLevels['damage-control'],
-      pulseDamageMultiplier: this.getPulseDamageMultiplier(),
-      pulseCooldownMs: this.getPulseCooldownMs(),
-      pulseProjectileSpeed: this.getPulseProjectileSpeed(),
+      pulseDamageMultiplier: this.getActiveMainWeaponDamageMultiplier(),
+      pulseCooldownMs: this.getActiveMainWeaponCooldownMs(),
+      pulseProjectileSpeed: this.getActiveMainWeaponProjectileSpeed(),
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
       playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
@@ -1636,7 +1645,7 @@ export class GameScene extends Phaser.Scene {
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
-    this.nextPulseCannonFireAt = 0;
+    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
     this.nextForwardThrusterAt = 0;
     this.nextReverseThrusterAt = 0;
     this.nextLeftStrafeThrusterAt = 0;
@@ -4845,9 +4854,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshUpgradeOverlayText(): void {
-    const damageMultiplier = this.getPulseDamageMultiplier();
-    const cooldownSeconds = this.getPulseCooldownMs() / 1000;
-    const speed = Math.round(this.getPulseProjectileSpeed());
+    const activeWeapon = this.getActiveMainWeaponDefinition();
+    const damageMultiplier = this.getActiveMainWeaponDamageMultiplier();
+    const cooldownSeconds = this.getActiveMainWeaponCooldownMs() / 1000;
+    const speed = Math.round(this.getActiveMainWeaponProjectileSpeed());
     const choiceLines = UPGRADE_CHOICES.map((upgrade, index) => {
       const level = this.getUpgradeLevel(upgrade);
       const maxLevel = upgrade.maxLevel ? `/${upgrade.maxLevel}` : '';
@@ -4859,7 +4869,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayText.setText(
       `UPGRADE SELECTION\n` +
         `Banked upgrades: ${this.bankedUpgrades}\n` +
-        `Pulse: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
+        `${activeWeapon.displayName}: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
         `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames\n\n` +
         `${choiceLines}\n\n` +
         `Press 1-6 to choose.  Esc closes without spending.`
@@ -5892,50 +5902,51 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getPulseDamageMultiplier(): number {
-    return (
-      1 +
-      this.pulseUpgradeLevels['pulse-damage-1'] * PULSE_DAMAGE_UPGRADE_MULTIPLIER +
-      this.getPermanentUpgradeLevel('pulse-capacitor') * PULSE_CAPACITOR_DAMAGE_MULTIPLIER
-    );
+  private getActiveMainWeaponDefinition(): WeaponRegistryEntry {
+    return getActiveMainWeaponDefinition(this.playerWeapons);
   }
 
-  private getPulseDamage(): number {
-    return PULSE_CANNON_ASTEROID_DAMAGE * this.getPulseDamageMultiplier() * this.getActiveDebugPulseDamageMultiplier();
+  private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
+    return {
+      projectileDamageLevel: this.pulseUpgradeLevels['pulse-damage-1'],
+      projectileFireRateLevel: this.pulseUpgradeLevels['pulse-fire-rate-1'],
+      projectileVelocityLevel: this.pulseUpgradeLevels['pulse-velocity-1'],
+      permanentDamageLevel: this.getPermanentUpgradeLevel('pulse-capacitor')
+    };
   }
 
-  private getPulseCooldownMs(): number {
-    return this.getPulseBaseCooldownMs() / this.getActiveDebugPulseFireRateMultiplier();
+  private getActiveMainWeaponDamageMultiplier(): number {
+    return getPlayerWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState());
   }
 
-  private getPulseBaseCooldownMs(): number {
-    return (
-      pulseCannon.cooldownSeconds *
-      1000 *
-      Math.pow(PULSE_FIRE_RATE_COOLDOWN_MULTIPLIER, this.pulseUpgradeLevels['pulse-fire-rate-1'])
-    );
+  private getActiveMainWeaponCooldownMs(): number {
+    return getPlayerWeaponCooldownMs(this.getActiveMainWeaponDefinition(), this.getPlayerWeaponUpgradeState(), {
+      damageMultiplier: this.getActiveDebugPulseDamageMultiplier(),
+      fireRateMultiplier: this.getActiveDebugPulseFireRateMultiplier()
+    });
   }
 
-  private getPulseProjectileSpeed(): number {
-    return (
-      pulseCannon.projectileSpeed *
-      (1 + this.pulseUpgradeLevels['pulse-velocity-1'] * PULSE_VELOCITY_UPGRADE_MULTIPLIER)
-    );
+  private getActiveMainWeaponBaseCooldownMs(): number {
+    return getPlayerWeaponBaseCooldownMs(this.getActiveMainWeaponDefinition(), this.getPlayerWeaponUpgradeState());
   }
 
-  private getPulseUpgradeHudSummary(): string {
+  private getActiveMainWeaponProjectileSpeed(): number {
+    return getPlayerWeaponProjectileSpeed(this.getActiveMainWeaponDefinition(), this.getPlayerWeaponUpgradeState());
+  }
+
+  private getActiveMainWeaponUpgradeHudSummary(): string {
     const damageLevel = this.pulseUpgradeLevels['pulse-damage-1'];
     const fireRateLevel = this.pulseUpgradeLevels['pulse-fire-rate-1'];
     const velocityLevel = this.pulseUpgradeLevels['pulse-velocity-1'];
 
     if (damageLevel + fireRateLevel + velocityLevel === 0) {
-      return 'Pulse upgrades none';
+      return 'Weapon upgrades none';
     }
 
-    return `Pulse upgrades D${damageLevel} R${fireRateLevel} V${velocityLevel}`;
+    return `Weapon upgrades D${damageLevel} R${fireRateLevel} V${velocityLevel}`;
   }
 
-  private updatePulseCannon(time: number): void {
+  private updateActiveMainWeapon(time: number): void {
     if (this.isPlayerDead || this.isUpgradeOverlayOpen) {
       return;
     }
@@ -5943,43 +5954,56 @@ export class GameScene extends Phaser.Scene {
     const isFiring =
       this.fireKey.isDown || this.input.activePointer.leftButtonDown() || this.input.activePointer.rightButtonDown();
 
-    if (!isFiring || time < this.nextPulseCannonFireAt) {
+    if (!isFiring || time < this.playerWeapons.nextMainWeaponFireAt) {
       return;
     }
 
-    this.firePulseCannon(time);
-    this.nextPulseCannonFireAt = time + this.getPulseCooldownMs();
+    const projectileConfig = this.fireActiveMainWeapon(time);
+    this.playerWeapons.nextMainWeaponFireAt = time + projectileConfig.cooldownMs;
   }
 
-  private firePulseCannon(time: number): void {
+  private fireActiveMainWeapon(time: number): { cooldownMs: number } {
+    const weapon = this.getActiveMainWeaponDefinition();
+    const projectileConfig = getPlayerWeaponProjectileConfig(weapon, this.getPlayerWeaponUpgradeState(), {
+      damageMultiplier: this.getActiveDebugPulseDamageMultiplier(),
+      fireRateMultiplier: this.getActiveDebugPulseFireRateMultiplier()
+    });
     const direction = this.getForwardDirection(this.player.rotation);
-    const projectileSpeed = this.getPulseProjectileSpeed();
     const spawnX = this.player.x + direction.x * PULSE_CANNON_MUZZLE_OFFSET;
     const spawnY = this.player.y + direction.y * PULSE_CANNON_MUZZLE_OFFSET;
-    const body = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
-    const wrapMirrorBody = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation);
+    const body = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation, weapon);
+    const wrapMirrorBody = this.createPulseCannonProjectile(spawnX, spawnY, this.player.rotation, weapon);
     wrapMirrorBody.setVisible(false);
 
     this.pulseCannonProjectiles.push({
       body,
       wrapMirrorBody,
-      velocity: direction.scale(projectileSpeed),
-      speed: projectileSpeed,
-      damage: this.getPulseDamage(),
-      expiresAt: time + pulseCannon.projectileLifetimeSeconds * 1000,
-      distanceRemaining: pulseCannon.projectileRange,
-      nextTrailAt: time
+      velocity: direction.scale(projectileConfig.projectileSpeed),
+      speed: projectileConfig.projectileSpeed,
+      damage: projectileConfig.damage,
+      expiresAt: time + projectileConfig.projectileLifetimeMs,
+      distanceRemaining: projectileConfig.projectileRange,
+      nextTrailAt: time,
+      trailColor: weapon.projectileVisual.trailColor
     });
+
+    return { cooldownMs: projectileConfig.cooldownMs };
   }
 
-  private createPulseCannonProjectile(x: number, y: number, rotation: number): Phaser.GameObjects.Container {
-    const glow = this.add.ellipse(0, 0, 18, 24, 0x42f5d7, 0.3);
-    const body = this.add.ellipse(0, 0, 8, 15, 0x73f2ff, 1);
-    body.setStrokeStyle(1, 0xf2fbff, 0.95);
+  private createPulseCannonProjectile(
+    x: number,
+    y: number,
+    rotation: number,
+    weapon: WeaponRegistryEntry
+  ): Phaser.GameObjects.Container {
+    const visual = weapon.projectileVisual;
+    const glow = this.add.ellipse(0, 0, visual.width, visual.height, visual.glowColor, visual.glowAlpha);
+    const body = this.add.ellipse(0, 0, visual.width * 0.44, visual.height * 0.63, visual.bodyColor, 1);
+    body.setStrokeStyle(1, visual.bodyStrokeColor, 0.95);
 
     const projectile = this.add.container(x, y, [glow, body]);
 
-    projectile.setSize(18, 24);
+    projectile.setSize(visual.width, visual.height);
     projectile.setRotation(rotation);
     projectile.setDepth(8);
 
@@ -6039,7 +6063,7 @@ export class GameScene extends Phaser.Scene {
     const jitter = Phaser.Math.FloatBetween(-2.4, 2.4);
     const x = projectile.body.x + trailDirection.x * PULSE_TRAIL_OFFSET + sideDirection.x * jitter;
     const y = projectile.body.y + trailDirection.y * PULSE_TRAIL_OFFSET + sideDirection.y * jitter;
-    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.2, 4.2), 0x42f5d7, 0.7);
+    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.2, 4.2), projectile.trailColor, 0.7);
 
     particle.setDepth(7);
     particle.setBlendMode(Phaser.BlendModes.ADD);
@@ -7288,10 +7312,11 @@ export class GameScene extends Phaser.Scene {
     const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / maxHull;
-    const pulseCooldownMs = this.getPulseCooldownMs();
-    const pulseRemainingMs = Math.max(0, this.nextPulseCannonFireAt - time);
-    const pulseProgress = pulseCooldownMs > 0 ? 1 - pulseRemainingMs / pulseCooldownMs : 1;
-    const pulseStatus = pulseRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(pulseRemainingMs / 1000)}s`;
+    const activeWeapon = this.getActiveMainWeaponDefinition();
+    const weaponCooldownMs = this.getActiveMainWeaponCooldownMs();
+    const weaponRemainingMs = Math.max(0, this.playerWeapons.nextMainWeaponFireAt - time);
+    const weaponProgress = weaponCooldownMs > 0 ? 1 - weaponRemainingMs / weaponCooldownMs : 1;
+    const weaponStatus = weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(weaponRemainingMs / 1000)}s`;
     const upgradeStatus =
       this.bankedUpgrades > 0 ? `Upgrade available x${this.bankedUpgrades}  Press U` : 'No upgrade banked';
     const shieldStatus = this.hasRammingShield()
@@ -7306,11 +7331,11 @@ export class GameScene extends Phaser.Scene {
         `Scrap ${this.runScrapTotal}\n` +
         `Banked upgrades ${this.bankedUpgrades}\n` +
         `${upgradeStatus}\n` +
-        `Pulse ${pulseStatus}\n` +
-        `${this.getPulseUpgradeHudSummary()}`
+        `${activeWeapon.displayName} ${weaponStatus}\n` +
+        `${this.getActiveMainWeaponUpgradeHudSummary()}`
     );
 
-    this.drawGameplayHudBars(hullProgress, xpProgress, pulseProgress);
+    this.drawGameplayHudBars(hullProgress, xpProgress, weaponProgress);
     this.updateUpgradeButton();
   }
 
@@ -7377,7 +7402,7 @@ export class GameScene extends Phaser.Scene {
       ? `Spawn director: step ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n`
       : '';
     const debugWeaponLine = this.debugState.collisionDebugEnabled
-      ? `Debug weapon: dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
+      ? `Debug weapon: ${this.getActiveMainWeaponDefinition().displayName} dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveMainWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
@@ -7394,7 +7419,7 @@ export class GameScene extends Phaser.Scene {
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']} H${this.passiveUpgradeLevels['hull-plating']} E${this.passiveUpgradeLevels['engine-tuning']} C${this.passiveUpgradeLevels['damage-control']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
-        `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
+        `Player shots: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +

@@ -9,10 +9,19 @@ export const interceptorMovement = {
 };
 
 export const pulseCannonBalance = {
+  damage: 1,
   cooldownSeconds: 1.25,
   projectileSpeed: 980,
   projectileLifetimeSeconds: 1.4,
   projectileRange: 1300
+};
+
+export const bulwarkCannonBalance = {
+  damage: 1.45,
+  cooldownSeconds: 1.65,
+  projectileSpeed: 820,
+  projectileLifetimeSeconds: 1.55,
+  projectileRange: 1260
 };
 
 // Temporary durability for damage-feedback visibility; revisit during balance/polish.

@@ -1,6 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
-import { pulseCannon } from './weapons';
+import { bulwarkCannon, pulseCannon, type WeaponId } from './weapons';
 
 export interface ShipRegistryEntry extends ContentRegistryEntry {
   id: ShipId;
@@ -13,6 +13,8 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   hitRadius: number;
   movementNotes: string;
   startingWeaponNotes: string;
+  startingMainWeaponId: WeaponId;
+  startingSecondaryWeaponId: WeaponId | null;
   speedRating: string;
   handlingRating: string;
   unlockCostCredits?: number;
@@ -47,6 +49,8 @@ export const shipRegistry: ShipRegistryEntry[] = [
     hitRadius: 32,
     movementNotes: 'Fast thrust, responsive strafing, light hull.',
     startingWeaponNotes: `${pulseCannon.displayName} starter`,
+    startingMainWeaponId: pulseCannon.id,
+    startingSecondaryWeaponId: null,
     speedRating: 'Fast',
     handlingRating: 'Responsive',
     textureKey: 'player-ship-spaceship-1',
@@ -59,13 +63,15 @@ export const shipRegistry: ShipRegistryEntry[] = [
     displayName: 'Bulwark',
     status: 'MVP',
     selectable: true,
-    description: 'Heavy ramming ship. Tough hull, slower handling. Ramming Shield coming next.',
+    description: 'Heavy ramming ship. Tough hull, slower handling, and a forward Ramming Shield.',
     role: 'Heavy rammer',
     baseHull: 150,
     baseMass: 5.5,
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
-    startingWeaponNotes: `${pulseCannon.displayName} starter. Ramming Shield coming next.`,
+    startingWeaponNotes: `${bulwarkCannon.displayName} starter. Ramming Shield is ship equipment.`,
+    startingMainWeaponId: bulwarkCannon.id,
+    startingSecondaryWeaponId: null,
     speedRating: 'Moderate',
     handlingRating: 'Heavy',
     unlockCostCredits: 100,
