@@ -32,10 +32,11 @@ import {
   type PermanentUpgradeDefinition,
   type PermanentUpgradeId
 } from '../data/permanentUpgrades';
-import type { WeaponRegistryEntry } from '../data/weapons';
+import { getWeaponDefinition, isProjectileWeapon, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
 import {
   createPlayerWeaponRuntimeState,
   getActiveMainWeaponDefinition,
+  getActiveSecondaryWeaponDefinition,
   getPlayerWeaponBaseCooldownMs,
   getPlayerWeaponCooldownMs,
   getPlayerWeaponDamageMultiplier,
@@ -401,6 +402,15 @@ interface UpgradeDefinition {
   description: string;
   maxLevel?: number;
 }
+
+interface SecondaryWeaponChoice {
+  category: 'secondary-weapon';
+  weaponId: WeaponId;
+  name: string;
+  description: string;
+}
+
+type UpgradeOverlayChoice = UpgradeDefinition | SecondaryWeaponChoice;
 
 const UPGRADE_CHOICES: UpgradeDefinition[] = [
   {
@@ -818,6 +828,7 @@ export class GameScene extends Phaser.Scene {
   private playerWeapons: PlayerWeaponRuntimeState = createPlayerWeaponRuntimeState(
     getShipDefinition(DEFAULT_SHIP_ID).startingMainWeaponId
   );
+  private hasResolvedSecondaryWeaponChoice = false;
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
   private nextLeftStrafeThrusterAt = 0;
@@ -1283,14 +1294,14 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       selectPulseUpgrade: (choiceNumber: number) => {
-        const upgrade = UPGRADE_CHOICES[choiceNumber - 1];
+        const choice = this.getUpgradeOverlayChoices()[choiceNumber - 1];
 
-        if (upgrade) {
+        if (choice) {
           if (!this.isUpgradeOverlayOpen && this.bankedUpgrades > 0 && !this.isPlayerDead) {
             this.openUpgradeOverlay(this.time.now);
           }
 
-          this.selectUpgrade(upgrade, this.time.now);
+          this.selectUpgradeOverlayChoice(choice, this.time.now);
         }
 
         return this.getTestHarnessState();
@@ -1321,6 +1332,10 @@ export class GameScene extends Phaser.Scene {
 
     if (query.get('testHarness') === 'rammingShield') {
       this.runTestHarnessRammingShield();
+    }
+
+    if (query.get('testHarness') === 'secondaryWeapons') {
+      this.runTestHarnessSecondaryWeapons();
     }
   }
 
@@ -1602,6 +1617,69 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessSecondaryWeapons(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-secondary-harness', 'fail');
+      document.body.setAttribute('data-starvivors-secondary-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.addCredits(100);
+    harness.unlockShip('bulwark');
+    harness.selectShip('interceptor');
+    this.startRun();
+    harness.grantXp(INITIAL_XP_THRESHOLD);
+    const interceptorChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
+    const interceptorSecondary = harness.selectPulseUpgrade(1);
+    const interceptorLaterChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
+    const interceptorRestarted = harness.restartRun();
+    harness.grantXp(INITIAL_XP_THRESHOLD);
+    const interceptorRestartChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
+
+    harness.selectShip('bulwark');
+    this.startRun();
+    harness.grantXp(INITIAL_XP_THRESHOLD);
+    const bulwarkChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
+    const bulwarkSecondary = harness.selectPulseUpgrade(1);
+    const shotsBefore = this.pulseCannonProjectiles.length;
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+
+    if (secondaryWeapon) {
+      this.usePlayerWeapon(secondaryWeapon, this.time.now + 1000);
+    }
+
+    const shotsAfter = this.pulseCannonProjectiles.length;
+    const pass =
+      interceptorChoices.includes('ramming-shield') &&
+      interceptorSecondary.rammingShieldMaxHp === RAMMING_SHIELD_MAX_HP &&
+      interceptorLaterChoices.length === 0 &&
+      interceptorRestarted.rammingShieldMaxHp === 0 &&
+      interceptorRestartChoices.includes('ramming-shield') &&
+      bulwarkChoices.includes('pulse-cannon') &&
+      bulwarkSecondary.rammingShieldMaxHp === RAMMING_SHIELD_MAX_HP &&
+      secondaryWeapon?.id === 'pulse-cannon' &&
+      shotsAfter === shotsBefore + 1;
+
+    document.body.setAttribute('data-starvivors-secondary-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-secondary-harness-details',
+      JSON.stringify({
+        interceptorChoices,
+        interceptorSecondary,
+        interceptorLaterChoices,
+        interceptorRestarted,
+        interceptorRestartChoices,
+        bulwarkChoices,
+        bulwarkSecondary,
+        secondaryWeaponId: secondaryWeapon?.id,
+        shotsBefore,
+        shotsAfter
+      })
+    );
+  }
+
   private rebuildWorld(): void {
     this.gameFlowState = 'running';
     const viewport = getViewportSize(this);
@@ -1616,6 +1694,8 @@ export class GameScene extends Phaser.Scene {
     this.shipSelectActionZones = [];
     this.shopScreen = undefined;
     this.shopActionZones = [];
+    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
+    this.hasResolvedSecondaryWeaponChoice = false;
     this.rammingShieldGraphics = undefined;
     this.rammingShieldHp = this.getRammingShieldMaxHp();
     this.nextRammingShieldRegenAt = 0;
@@ -1645,7 +1725,6 @@ export class GameScene extends Phaser.Scene {
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
-    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
     this.nextForwardThrusterAt = 0;
     this.nextReverseThrusterAt = 0;
     this.nextLeftStrafeThrusterAt = 0;
@@ -2118,11 +2197,31 @@ export class GameScene extends Phaser.Scene {
   }
 
   private hasRammingShield(): boolean {
-    return this.selectedShipId === 'bulwark';
+    return (
+      this.playerWeapons.activeMainWeaponId === 'ramming-shield' ||
+      this.playerWeapons.activeSecondaryWeaponId === 'ramming-shield'
+    );
   }
 
   private getRammingShieldMaxHp(): number {
     return this.hasRammingShield() ? RAMMING_SHIELD_MAX_HP : 0;
+  }
+
+  private ensureRammingShieldRuntime(): void {
+    if (!this.hasRammingShield()) {
+      return;
+    }
+
+    if (this.rammingShieldHp <= 0 && this.getRammingShieldMaxHp() > 0) {
+      this.rammingShieldHp = this.getRammingShieldMaxHp();
+    }
+
+    if (!this.rammingShieldGraphics && this.player) {
+      this.rammingShieldGraphics = this.add.graphics();
+      this.rammingShieldGraphics.setDepth(6);
+      this.player.add(this.rammingShieldGraphics);
+      this.updateRammingShieldVisual(this.time.now);
+    }
   }
 
   private getPlayerMass(): number {
@@ -3514,10 +3613,10 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < this.upgradeChoiceKeys.length; i += 1) {
       if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[i])) {
-        const upgrade = UPGRADE_CHOICES[i];
+        const choice = this.getUpgradeOverlayChoices()[i];
 
-        if (upgrade) {
-          this.selectUpgrade(upgrade, time);
+        if (choice) {
+          this.selectUpgradeOverlayChoice(choice, time);
         }
 
         return;
@@ -3632,6 +3731,70 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayText.setVisible(false);
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
+  }
+
+  private getUpgradeOverlayChoices(): UpgradeOverlayChoice[] {
+    const secondaryChoices = this.getSecondaryWeaponChoices();
+    return secondaryChoices.length > 0 ? secondaryChoices : UPGRADE_CHOICES;
+  }
+
+  private getSecondaryWeaponChoices(): SecondaryWeaponChoice[] {
+    if (this.hasResolvedSecondaryWeaponChoice || this.playerWeapons.activeSecondaryWeaponId) {
+      return [];
+    }
+
+    const primaryWeaponId = this.playerWeapons.activeMainWeaponId;
+    const seenWeaponIds = new Set<WeaponId>();
+
+    return shipRegistry
+      .filter((ship) => this.isShipUnlocked(ship.id))
+      .map((ship) => ship.startingMainWeaponId)
+      .filter((weaponId): weaponId is WeaponId => {
+        if (weaponId === primaryWeaponId || weaponId === this.playerWeapons.activeSecondaryWeaponId) {
+          return false;
+        }
+
+        const weapon = getWeaponDefinition(weaponId);
+        if (!weapon.eligibleAsSecondary || !weapon.slotCompatibility.includes('secondary') || seenWeaponIds.has(weaponId)) {
+          return false;
+        }
+
+        seenWeaponIds.add(weaponId);
+        return true;
+      })
+      .map((weaponId) => {
+        const weapon = getWeaponDefinition(weaponId);
+
+        return {
+          category: 'secondary-weapon',
+          weaponId,
+          name: `Equip Secondary: ${weapon.displayName}`,
+          description: `${weapon.description} Fills the right-click weapon slot.`
+        };
+      });
+  }
+
+  private selectUpgradeOverlayChoice(choice: UpgradeOverlayChoice, time: number): void {
+    if (choice.category === 'secondary-weapon') {
+      this.selectSecondaryWeapon(choice.weaponId, time);
+      return;
+    }
+
+    this.selectUpgrade(choice, time);
+  }
+
+  private selectSecondaryWeapon(weaponId: WeaponId, time: number): void {
+    if (this.bankedUpgrades <= 0 || this.playerWeapons.activeSecondaryWeaponId) {
+      this.closeUpgradeOverlay(time);
+      return;
+    }
+
+    this.playerWeapons.activeSecondaryWeaponId = weaponId;
+    this.hasResolvedSecondaryWeaponChoice = true;
+    this.playerWeapons.nextSecondaryWeaponFireAt = 0;
+    this.ensureRammingShieldRuntime();
+    this.bankedUpgrades -= 1;
+    this.closeUpgradeOverlay(time);
   }
 
   private selectUpgrade(upgrade: UpgradeDefinition, time: number): void {
@@ -4858,13 +5021,19 @@ export class GameScene extends Phaser.Scene {
     const damageMultiplier = this.getActiveMainWeaponDamageMultiplier();
     const cooldownSeconds = this.getActiveMainWeaponCooldownMs() / 1000;
     const speed = Math.round(this.getActiveMainWeaponProjectileSpeed());
-    const choiceLines = UPGRADE_CHOICES.map((upgrade, index) => {
-      const level = this.getUpgradeLevel(upgrade);
-      const maxLevel = upgrade.maxLevel ? `/${upgrade.maxLevel}` : '';
-      const maxLabel = this.isUpgradeAtMaxLevel(upgrade) ? '  MAX' : '';
+    const choices = this.getUpgradeOverlayChoices();
+    const choiceLines = choices.map((choice, index) => {
+      if (choice.category === 'secondary-weapon') {
+        return `${index + 1}. ${choice.name}\n   ${choice.description}`;
+      }
 
-      return `${index + 1}. ${upgrade.name}  Lv ${level}${maxLevel}${maxLabel}\n   ${upgrade.description}`;
+      const level = this.getUpgradeLevel(choice);
+      const maxLevel = choice.maxLevel ? `/${choice.maxLevel}` : '';
+      const maxLabel = this.isUpgradeAtMaxLevel(choice) ? '  MAX' : '';
+
+      return `${index + 1}. ${choice.name}  Lv ${level}${maxLevel}${maxLabel}\n   ${choice.description}`;
     }).join('\n\n');
+    const choicePrompt = choices.length > 0 ? `Press 1-${choices.length} to choose.  Esc closes without spending.` : 'Esc closes.';
 
     this.upgradeOverlayText.setText(
       `UPGRADE SELECTION\n` +
@@ -4872,7 +5041,7 @@ export class GameScene extends Phaser.Scene {
         `${activeWeapon.displayName}: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
         `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames\n\n` +
         `${choiceLines}\n\n` +
-        `Press 1-6 to choose.  Esc closes without spending.`
+        choicePrompt
     );
   }
 
@@ -5906,6 +6075,10 @@ export class GameScene extends Phaser.Scene {
     return getActiveMainWeaponDefinition(this.playerWeapons);
   }
 
+  private getActiveSecondaryWeaponDefinition(): WeaponRegistryEntry | undefined {
+    return getActiveSecondaryWeaponDefinition(this.playerWeapons);
+  }
+
   private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
     return {
       projectileDamageLevel: this.pulseUpgradeLevels['pulse-damage-1'],
@@ -5951,19 +6124,42 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isFiring =
-      this.fireKey.isDown || this.input.activePointer.leftButtonDown() || this.input.activePointer.rightButtonDown();
+    const isPrimaryFiring = this.fireKey.isDown || this.input.activePointer.leftButtonDown();
+    if (isPrimaryFiring && time >= this.playerWeapons.nextMainWeaponFireAt) {
+      const result = this.usePlayerWeapon(this.getActiveMainWeaponDefinition(), time);
+      this.playerWeapons.nextMainWeaponFireAt = time + result.cooldownMs;
+    }
 
-    if (!isFiring || time < this.playerWeapons.nextMainWeaponFireAt) {
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+    if (secondaryWeapon && this.input.activePointer.rightButtonDown() && time >= this.playerWeapons.nextSecondaryWeaponFireAt) {
+      const result = this.usePlayerWeapon(secondaryWeapon, time);
+      this.playerWeapons.nextSecondaryWeaponFireAt = time + result.cooldownMs;
+    }
+  }
+
+  private usePlayerWeapon(weapon: WeaponRegistryEntry, time: number): { cooldownMs: number } {
+    if (weapon.behaviorType === 'ramming-shield') {
+      this.useRammingShieldWeapon(time);
+      return { cooldownMs: RAMMING_SHIELD_CONTACT_COOLDOWN_MS };
+    }
+
+    return this.fireProjectileWeapon(weapon, time);
+  }
+
+  private useRammingShieldWeapon(time: number): void {
+    if (!this.hasRammingShield()) {
       return;
     }
 
-    const projectileConfig = this.fireActiveMainWeapon(time);
-    this.playerWeapons.nextMainWeaponFireAt = time + projectileConfig.cooldownMs;
+    this.rammingShieldImpactFlashUntil = time + 140;
+    this.updateRammingShieldVisual(time);
   }
 
-  private fireActiveMainWeapon(time: number): { cooldownMs: number } {
-    const weapon = this.getActiveMainWeaponDefinition();
+  private fireProjectileWeapon(weapon: WeaponRegistryEntry, time: number): { cooldownMs: number } {
+    if (!isProjectileWeapon(weapon) || !weapon.projectileVisual) {
+      return { cooldownMs: 0 };
+    }
+
     const projectileConfig = getPlayerWeaponProjectileConfig(weapon, this.getPlayerWeaponUpgradeState(), {
       damageMultiplier: this.getActiveDebugPulseDamageMultiplier(),
       fireRateMultiplier: this.getActiveDebugPulseFireRateMultiplier()
@@ -5997,6 +6193,10 @@ export class GameScene extends Phaser.Scene {
     weapon: WeaponRegistryEntry
   ): Phaser.GameObjects.Container {
     const visual = weapon.projectileVisual;
+    if (!visual) {
+      throw new Error(`${weapon.displayName} does not define projectile visuals.`);
+    }
+
     const glow = this.add.ellipse(0, 0, visual.width, visual.height, visual.glowColor, visual.glowAlpha);
     const body = this.add.ellipse(0, 0, visual.width * 0.44, visual.height * 0.63, visual.bodyColor, 1);
     body.setStrokeStyle(1, visual.bodyStrokeColor, 0.95);
@@ -7313,10 +7513,12 @@ export class GameScene extends Phaser.Scene {
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / maxHull;
     const activeWeapon = this.getActiveMainWeaponDefinition();
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const weaponCooldownMs = this.getActiveMainWeaponCooldownMs();
     const weaponRemainingMs = Math.max(0, this.playerWeapons.nextMainWeaponFireAt - time);
     const weaponProgress = weaponCooldownMs > 0 ? 1 - weaponRemainingMs / weaponCooldownMs : 1;
     const weaponStatus = weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(weaponRemainingMs / 1000)}s`;
+    const secondaryStatus = secondaryWeapon ? secondaryWeapon.displayName : 'Empty';
     const upgradeStatus =
       this.bankedUpgrades > 0 ? `Upgrade available x${this.bankedUpgrades}  Press U` : 'No upgrade banked';
     const shieldStatus = this.hasRammingShield()
@@ -7331,7 +7533,8 @@ export class GameScene extends Phaser.Scene {
         `Scrap ${this.runScrapTotal}\n` +
         `Banked upgrades ${this.bankedUpgrades}\n` +
         `${upgradeStatus}\n` +
-        `${activeWeapon.displayName} ${weaponStatus}\n` +
+        `Primary ${activeWeapon.displayName} ${weaponStatus}\n` +
+        `Secondary ${secondaryStatus}\n` +
         `${this.getActiveMainWeaponUpgradeHudSummary()}`
     );
 

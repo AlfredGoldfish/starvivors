@@ -1,8 +1,9 @@
 import type { ContentRegistryEntry } from './contentStatus';
-import { bulwarkCannonBalance, pulseCannonBalance } from './balance';
+import { pulseCannonBalance } from './balance';
 
-export type WeaponId = 'pulse-cannon' | 'bulwark-cannon';
+export type WeaponId = 'pulse-cannon' | 'ramming-shield';
 export type WeaponSlotType = 'main' | 'secondary';
+export type WeaponBehaviorType = 'projectile' | 'ramming-shield';
 
 export interface ProjectileVisualDefinition {
   glowColor: number;
@@ -18,13 +19,16 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   id: WeaponId;
   displayName: string;
   description: string;
-  slotType: WeaponSlotType;
-  damage: number;
-  cooldownSeconds: number;
-  projectileSpeed: number;
-  projectileLifetimeSeconds: number;
-  projectileRange: number;
-  projectileVisual: ProjectileVisualDefinition;
+  behaviorType: WeaponBehaviorType;
+  slotCompatibility: WeaponSlotType[];
+  startingShipId: string;
+  eligibleAsSecondary: boolean;
+  damage?: number;
+  cooldownSeconds?: number;
+  projectileSpeed?: number;
+  projectileLifetimeSeconds?: number;
+  projectileRange?: number;
+  projectileVisual?: ProjectileVisualDefinition;
 }
 
 export const pulseCannon: WeaponRegistryEntry = {
@@ -32,7 +36,10 @@ export const pulseCannon: WeaponRegistryEntry = {
   displayName: 'Pulse Cannon',
   status: 'Implemented',
   description: 'Fast main cannon tuned for the Interceptor.',
-  slotType: 'main',
+  behaviorType: 'projectile',
+  slotCompatibility: ['main', 'secondary'],
+  startingShipId: 'interceptor',
+  eligibleAsSecondary: true,
   damage: pulseCannonBalance.damage,
   cooldownSeconds: pulseCannonBalance.cooldownSeconds,
   projectileSpeed: pulseCannonBalance.projectileSpeed,
@@ -49,30 +56,23 @@ export const pulseCannon: WeaponRegistryEntry = {
   }
 };
 
-export const bulwarkCannon: WeaponRegistryEntry = {
-  id: 'bulwark-cannon',
-  displayName: 'Bulwark Cannon',
+export const rammingShield: WeaponRegistryEntry = {
+  id: 'ramming-shield',
+  displayName: 'Ramming Shield',
   status: 'MVP',
-  description: 'Heavy placeholder main cannon for the Bulwark.',
-  slotType: 'main',
-  damage: bulwarkCannonBalance.damage,
-  cooldownSeconds: bulwarkCannonBalance.cooldownSeconds,
-  projectileSpeed: bulwarkCannonBalance.projectileSpeed,
-  projectileLifetimeSeconds: bulwarkCannonBalance.projectileLifetimeSeconds,
-  projectileRange: bulwarkCannonBalance.projectileRange,
-  projectileVisual: {
-    glowColor: 0xffc857,
-    glowAlpha: 0.28,
-    bodyColor: 0xffd98a,
-    bodyStrokeColor: 0xfff4cf,
-    trailColor: 0xffc857,
-    width: 22,
-    height: 28
-  }
+  description: 'Rechargeable forward impact shield tuned for Bulwark ramming.',
+  behaviorType: 'ramming-shield',
+  slotCompatibility: ['main', 'secondary'],
+  startingShipId: 'bulwark',
+  eligibleAsSecondary: true
 };
 
-export const weaponRegistry: WeaponRegistryEntry[] = [pulseCannon, bulwarkCannon];
+export const weaponRegistry: WeaponRegistryEntry[] = [pulseCannon, rammingShield];
 
 export function getWeaponDefinition(weaponId: WeaponId): WeaponRegistryEntry {
   return weaponRegistry.find((weapon) => weapon.id === weaponId) ?? pulseCannon;
+}
+
+export function isProjectileWeapon(weapon: WeaponRegistryEntry): boolean {
+  return weapon.behaviorType === 'projectile';
 }

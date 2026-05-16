@@ -4,6 +4,7 @@ export interface PlayerWeaponRuntimeState {
   activeMainWeaponId: WeaponRegistryEntry['id'];
   activeSecondaryWeaponId: WeaponRegistryEntry['id'] | null;
   nextMainWeaponFireAt: number;
+  nextSecondaryWeaponFireAt: number;
 }
 
 export interface PlayerWeaponUpgradeState {
@@ -35,12 +36,17 @@ export function createPlayerWeaponRuntimeState(activeMainWeaponId: WeaponRegistr
   return {
     activeMainWeaponId,
     activeSecondaryWeaponId: null,
-    nextMainWeaponFireAt: 0
+    nextMainWeaponFireAt: 0,
+    nextSecondaryWeaponFireAt: 0
   };
 }
 
 export function getActiveMainWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry {
   return getWeaponDefinition(state.activeMainWeaponId);
+}
+
+export function getActiveSecondaryWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry | undefined {
+  return state.activeSecondaryWeaponId ? getWeaponDefinition(state.activeSecondaryWeaponId) : undefined;
 }
 
 export function getPlayerWeaponDamageMultiplier(upgrades: PlayerWeaponUpgradeState): number {
@@ -56,7 +62,7 @@ export function getPlayerWeaponBaseCooldownMs(
   upgrades: PlayerWeaponUpgradeState
 ): number {
   return (
-    weapon.cooldownSeconds *
+    (weapon.cooldownSeconds ?? 0) *
     1000 *
     Math.pow(PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER, upgrades.projectileFireRateLevel)
   );
@@ -74,7 +80,7 @@ export function getPlayerWeaponProjectileSpeed(
   weapon: WeaponRegistryEntry,
   upgrades: PlayerWeaponUpgradeState
 ): number {
-  return weapon.projectileSpeed * (1 + upgrades.projectileVelocityLevel * PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER);
+  return (weapon.projectileSpeed ?? 0) * (1 + upgrades.projectileVelocityLevel * PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER);
 }
 
 export function getPlayerWeaponProjectileConfig(
@@ -83,10 +89,10 @@ export function getPlayerWeaponProjectileConfig(
   debugTuning: PlayerWeaponDebugTuning
 ): PlayerWeaponProjectileConfig {
   return {
-    damage: weapon.damage * getPlayerWeaponDamageMultiplier(upgrades) * debugTuning.damageMultiplier,
+    damage: (weapon.damage ?? 0) * getPlayerWeaponDamageMultiplier(upgrades) * debugTuning.damageMultiplier,
     cooldownMs: getPlayerWeaponCooldownMs(weapon, upgrades, debugTuning),
     projectileSpeed: getPlayerWeaponProjectileSpeed(weapon, upgrades),
-    projectileLifetimeMs: weapon.projectileLifetimeSeconds * 1000,
-    projectileRange: weapon.projectileRange
+    projectileLifetimeMs: (weapon.projectileLifetimeSeconds ?? 0) * 1000,
+    projectileRange: weapon.projectileRange ?? 0
   };
 }

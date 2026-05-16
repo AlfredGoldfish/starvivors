@@ -16,14 +16,6 @@ export const pulseCannonBalance = {
   projectileRange: 1300
 };
 
-export const bulwarkCannonBalance = {
-  damage: 1.45,
-  cooldownSeconds: 1.65,
-  projectileSpeed: 820,
-  projectileLifetimeSeconds: 1.55,
-  projectileRange: 1260
-};
-
 // Temporary durability for damage-feedback visibility; revisit during balance/polish.
 export const basicEnemyBalance = {
   moveSpeed: 95,

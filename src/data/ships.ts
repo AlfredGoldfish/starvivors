@@ -1,6 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
-import { bulwarkCannon, pulseCannon, type WeaponId } from './weapons';
+import { pulseCannon, rammingShield, type WeaponId } from './weapons';
 
 export interface ShipRegistryEntry extends ContentRegistryEntry {
   id: ShipId;
@@ -69,8 +69,8 @@ export const shipRegistry: ShipRegistryEntry[] = [
     baseMass: 5.5,
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
-    startingWeaponNotes: `${bulwarkCannon.displayName} starter. Ramming Shield is ship equipment.`,
-    startingMainWeaponId: bulwarkCannon.id,
+    startingWeaponNotes: `${rammingShield.displayName} starter`,
+    startingMainWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
     speedRating: 'Moderate',
     handlingRating: 'Heavy',
