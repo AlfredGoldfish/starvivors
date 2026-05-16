@@ -69,6 +69,7 @@ export interface DebugMenuCallbacks {
   spawnScrap: () => void;
   clearScrap: () => void;
   addScrap: (amount: number) => void;
+  addCredits: (amount: number) => void;
   clearPlayerProjectiles: () => void;
   clearEnemyProjectiles: () => void;
   restorePlayerHull: () => void;

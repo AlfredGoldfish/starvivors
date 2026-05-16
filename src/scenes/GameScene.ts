@@ -886,11 +886,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    this.updateDebugMenuInput(time);
+
     if (this.gameFlowState === 'mainMenu' || this.gameFlowState === 'shop' || this.gameFlowState === 'shipSelect') {
+      this.refreshDebugMenu();
       return;
     }
-
-    this.updateDebugMenuInput(time);
 
     this.updateUpgradeOverlayInput(time);
 
@@ -959,7 +960,7 @@ export class GameScene extends Phaser.Scene {
     >;
     this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
     this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
-    this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F3);
+    this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
     this.upgradeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
@@ -974,6 +975,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createDebugMenu(): void {
+    this.debugMenu?.destroy();
     this.debugMenu = createDebugMenu(this, {
       callbacks: {
         close: () => this.closeDebugMenu(this.time.now),
@@ -993,6 +995,7 @@ export class GameScene extends Phaser.Scene {
         spawnScrap: () => this.runDebugMenuAction(() => this.spawnDebugScrapPickup()),
         clearScrap: () => this.runDebugMenuAction(() => this.clearScrapPickups()),
         addScrap: (amount) => this.runDebugMenuAction(() => this.addRunScrap(amount)),
+        addCredits: (amount) => this.runDebugMenuAction(() => this.addDebugCredits(amount)),
         clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPulseCannonProjectiles()),
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
@@ -1072,6 +1075,27 @@ export class GameScene extends Phaser.Scene {
     action();
     this.refreshDebugMenu();
     this.updateCollisionDebugOverlay();
+  }
+
+  private addDebugCredits(amount: number): void {
+    const shouldReopenDebugMenu = this.debugMenu?.isOpen() ?? false;
+    this.totalCredits = Math.max(0, this.totalCredits + amount);
+
+    if (this.gameFlowState === 'mainMenu') {
+      this.showMainMenu();
+    } else if (this.gameFlowState === 'shipSelect') {
+      this.showShipSelect();
+    } else if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    } else if (this.gameFlowState === 'results') {
+      this.showResultsScreen();
+    } else {
+      this.updateGameplayHud(this.time.now);
+    }
+
+    if (shouldReopenDebugMenu) {
+      this.openDebugMenu(this.time.now);
+    }
   }
 
   private toggleDebugGamePause(time: number): void {
@@ -1780,6 +1804,7 @@ export class GameScene extends Phaser.Scene {
     this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 292, 240, 42, 'Shop', () =>
       this.showShop('mainMenu')
     );
+    this.createDebugMenu();
   }
 
   private showShipSelect(): void {
@@ -1900,6 +1925,7 @@ export class GameScene extends Phaser.Scene {
       'Back',
       () => this.showMainMenu()
     );
+    this.createDebugMenu();
   }
 
   private getShipActionLabel(ship: ShipRegistryEntry): string {
@@ -2067,6 +2093,7 @@ export class GameScene extends Phaser.Scene {
     this.addScreenButton(this.shopScreen, this.shopActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 180, 38, 'Back', () =>
       this.handleShopBack()
     );
+    this.createDebugMenu();
   }
 
   private getPermanentUpgradeLevel(id: PermanentUpgradeId): number {
@@ -2623,7 +2650,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnDebugEnemy(enemyType: DebugEnemyType): void {
-    if (this.isPlayerDead) {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
       return;
     }
 
@@ -2652,7 +2679,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnDebugAsteroid(tier: DebugAsteroidTier): void {
-    if (this.isPlayerDead) {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
       return;
     }
 
@@ -3053,7 +3080,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnDebugEnemyWreckageDebris(): void {
-    if (!this.player) {
+    if (!this.isGameplayWorldActive() || !this.player || this.isPlayerDead) {
       return;
     }
 
@@ -3250,7 +3277,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnDebugScrapPickup(): void {
-    if (!this.player) {
+    if (!this.isGameplayWorldActive() || !this.player || this.isPlayerDead) {
       return;
     }
 
@@ -3426,6 +3453,10 @@ export class GameScene extends Phaser.Scene {
 
   private isDebugMenuAvailable(): boolean {
     return import.meta.env.DEV || this.debugState.collisionDebugEnabled;
+  }
+
+  private isGameplayWorldActive(): boolean {
+    return this.gameFlowState === 'running' || this.gameFlowState === 'results';
   }
 
   private openDebugMenu(time: number): void {
@@ -5531,7 +5562,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private killPlayer(): void {
-    if (this.isPlayerDead) {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
       return;
     }
 
@@ -5550,6 +5581,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private restorePlayerHull(): void {
+    if (!this.isGameplayWorldActive() || !this.player) {
+      return;
+    }
+
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
     this.player.setVisible(true);
@@ -5640,6 +5675,9 @@ export class GameScene extends Phaser.Scene {
     this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 220, 38, 'Shop', () =>
       this.showShop('results')
     );
+    if (!this.debugMenu) {
+      this.createDebugMenu();
+    }
   }
 
   private updateBasicEnemies(deltaSeconds: number): void {
@@ -7340,7 +7378,7 @@ export class GameScene extends Phaser.Scene {
       : '';
     const debugWeaponLine = this.debugState.collisionDebugEnabled
       ? `Debug weapon: dmg x${this.debugState.pulseDamageMultiplier.toFixed(1)} / fire x${this.debugState.pulseFireRateMultiplier.toFixed(1)} / cooldown ${(this.getPulseCooldownMs() / 1000).toFixed(2)}s\n` +
-        `Debug weapon tuning: F3 menu\n`
+        `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
       ? `Black hole PNG layers: selected ${this.debugSelectedBlackHolePngLayerIndex + 1} / ${this.blackHole?.getPngLayerCount() ?? 0} / visual x${this.debugBlackHoleVisualScale.toFixed(1)} / layers ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
@@ -7361,7 +7399,7 @@ export class GameScene extends Phaser.Scene {
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
-        `Debug menu: F3 ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
+        `Debug menu: Z ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
         `Collision visuals: ${this.debugState.collisionDebugEnabled ? 'on' : 'off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +

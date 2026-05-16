@@ -153,6 +153,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('add-scrap', columnX + 216, y, 100, '+100', () => config.callbacks.addScrap(100));
   y += BUTTON_HEIGHT + ROW_GAP;
 
+  y = addSection(columnX, y, 'Credits');
+  addValue('credits', columnX, y);
+  y += VALUE_LINE_HEIGHT + BUTTON_GAP;
+  addButton('add-credits', columnX, y, COLUMN_WIDTH, '+100 credits', () => config.callbacks.addCredits(100));
+  y += BUTTON_HEIGHT + ROW_GAP;
+
   y = addSection(columnX, y, 'Black Hole');
   addValue('black-hole', columnX, y);
   y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
@@ -481,6 +487,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
       setValue('debris', `Active: ${values.activeDebris}`);
       setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
+      setValue('credits', `Banked: ${values.totalCredits}`);
       setValue(
         'player',
         `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
