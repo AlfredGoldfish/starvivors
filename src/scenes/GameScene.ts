@@ -16,11 +16,13 @@ import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
 import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
+import bulwarkShipUrl from '../../assets/ships/bulwark.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
 import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
+import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER,
   HULL_REINFORCEMENT_MAX_HULL_BONUS,
@@ -369,7 +371,7 @@ type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
-type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop';
+type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop' | 'shipSelect';
 type ShopBackTarget = 'mainMenu' | 'results';
 
 interface UpgradeDefinition {
@@ -460,6 +462,8 @@ const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
 };
 
 interface StarvivorsTestHarnessState {
+  selectedShipId: ShipId;
+  selectedShipName: string;
   hull: number;
   maxHull: number;
   isPlayerDead: boolean;
@@ -733,6 +737,8 @@ export class GameScene extends Phaser.Scene {
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
   private mainMenuScreen?: Phaser.GameObjects.Container;
   private mainMenuActionZones: Phaser.GameObjects.Zone[] = [];
+  private shipSelectScreen?: Phaser.GameObjects.Container;
+  private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
   private shopScreen?: Phaser.GameObjects.Container;
   private shopActionZones: Phaser.GameObjects.Zone[] = [];
   private shopBackTarget: ShopBackTarget = 'mainMenu';
@@ -760,6 +766,7 @@ export class GameScene extends Phaser.Scene {
   private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
   private gameFlowState: GameFlowState = 'mainMenu';
+  private selectedShipId: ShipId = DEFAULT_SHIP_ID;
   private playerHull = PLAYER_MAX_HULL;
   private runScrapTotal = 0;
   private lastRunScrapTotal = 0;
@@ -834,6 +841,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image(ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY, enemyWreckageDebrisUrl);
     this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapPickupUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
+    this.load.image('player-ship-bulwark', bulwarkShipUrl);
     for (const blackHoleTexture of BLACK_HOLE_FULL_TEXTURES) {
       this.load.image(blackHoleTexture.key, blackHoleTexture.url);
     }
@@ -852,7 +860,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
-    if (this.gameFlowState === 'mainMenu' || this.gameFlowState === 'shop') {
+    if (this.gameFlowState === 'mainMenu' || this.gameFlowState === 'shop' || this.gameFlowState === 'shipSelect') {
       return;
     }
 
@@ -1227,7 +1235,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getTestHarnessState(): StarvivorsTestHarnessState {
+    const selectedShip = this.getSelectedShipDefinition();
+
     return {
+      selectedShipId: selectedShip.id,
+      selectedShipName: selectedShip.displayName,
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
@@ -1389,6 +1401,8 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
     this.mainMenuActionZones = [];
+    this.shipSelectScreen = undefined;
+    this.shipSelectActionZones = [];
     this.shopScreen = undefined;
     this.shopActionZones = [];
     this.playerVelocity.set(0, 0);
@@ -1504,7 +1518,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startRun(): void {
+    const selectedShip = this.getSelectedShipDefinition();
+
+    if (!selectedShip.selectable) {
+      this.selectedShipId = DEFAULT_SHIP_ID;
+    }
+
     this.destroyMainMenuScreen();
+    this.destroyShipSelectScreen();
     this.destroyShopScreen();
     this.destroyResultsScreen();
     this.rebuildWorld();
@@ -1516,6 +1537,8 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu = undefined;
     this.shopScreen = undefined;
     this.shopActionZones = [];
+    this.shipSelectScreen = undefined;
+    this.shipSelectActionZones = [];
     this.resultsScreen = undefined;
     this.resultsActionZones = [];
 
@@ -1524,7 +1547,7 @@ export class GameScene extends Phaser.Scene {
     const centerX = width / 2;
     const centerY = height / 2;
     const panelWidth = Math.min(width - 48, 520);
-    const panelHeight = 320;
+    const panelHeight = 374;
     const panelX = -panelWidth / 2;
     const panelY = -panelHeight / 2;
     const background = this.add.graphics();
@@ -1551,24 +1574,176 @@ export class GameScene extends Phaser.Scene {
         align: 'center'
       })
       .setOrigin(0.5, 0);
+    const selectedShip = this.add
+      .text(0, panelY + 132, `Ship ${this.getSelectedShipDefinition().displayName}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#9fb5d1',
+        align: 'center'
+      })
+      .setOrigin(0.5, 0);
 
     this.mainMenuScreen = this.add
-      .container(centerX, centerY, [background, title, credits])
+      .container(centerX, centerY, [background, title, credits, selectedShip])
       .setScrollFactor(0)
       .setDepth(1300);
 
-    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 178, 240, 42, 'Start Run', () =>
+    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 184, 240, 42, 'Start Run', () =>
       this.startRun()
     );
-    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 232, 240, 42, 'Shop', () =>
+    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 238, 240, 42, 'Ship Select', () =>
+      this.showShipSelect()
+    );
+    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 292, 240, 42, 'Shop', () =>
       this.showShop('mainMenu')
     );
+  }
+
+  private showShipSelect(): void {
+    this.gameFlowState = 'shipSelect';
+    this.destroyMainMenuScreen();
+    this.destroyShipSelectScreen();
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const panelWidth = Math.min(width - 48, 760);
+    const panelHeight = Math.min(height - 48, 500);
+    const panelX = -panelWidth / 2;
+    const panelY = -panelHeight / 2;
+    const rowX = panelX + 32;
+    const rowWidth = panelWidth - 64;
+    const rowHeight = 128;
+    const rowTop = panelY + 98;
+    const rowGap = 14;
+    const buttonWidth = 142;
+    const buttonHeight = 36;
+    const previewSize = 78;
+    const selectedShip = this.getSelectedShipDefinition();
+
+    const background = this.add.graphics();
+    background.fillStyle(0x02040a, 1);
+    background.fillRect(-width / 2, -height / 2, width, height);
+    background.fillStyle(0x071018, 0.96);
+    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.lineStyle(2, 0x42f5d7, 0.82);
+    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+
+    const title = this.add
+      .text(panelX + 32, panelY + 28, 'SHIP SELECT', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '18px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0, 0);
+    const selectedLabel = this.add
+      .text(panelX + 32, panelY + 54, `Selected ${selectedShip.displayName}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#c8f7ff'
+      })
+      .setOrigin(0, 0);
+
+    this.shipSelectScreen = this.add
+      .container(centerX, centerY, [background, title, selectedLabel])
+      .setScrollFactor(0)
+      .setDepth(1300);
+
+    for (let i = 0; i < shipRegistry.length; i += 1) {
+      const ship = shipRegistry[i];
+      const rowY = rowTop + i * (rowHeight + rowGap);
+      const isSelected = ship.id === this.selectedShipId;
+      const isAvailable = ship.selectable;
+      const statusLabel = isAvailable ? (isSelected ? 'Selected' : 'Available') : 'Coming Soon';
+      const borderColor = isSelected ? 0x42f5d7 : isAvailable ? 0x52627f : 0x39445a;
+      const textColor = isAvailable ? '#f2fbff' : '#8090a6';
+      const rowTextWidth = rowWidth - previewSize - buttonWidth - 68;
+      const rowTextX = rowX + previewSize + 24;
+
+      background.fillStyle(isSelected ? 0x102633 : 0x111a24, 0.94);
+      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+      background.lineStyle(2, borderColor, isSelected ? 0.9 : 0.72);
+      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+
+      const preview = this.add
+        .image(rowX + 48, rowY + rowHeight / 2, ship.textureKey)
+        .setDisplaySize(previewSize, previewSize)
+        .setRotation(ship.visualRotation)
+        .setAlpha(isAvailable ? 1 : 0.56);
+      const text = this.add
+        .text(
+          rowTextX,
+          rowY + 14,
+          `${ship.displayName}  ${statusLabel}\n${ship.description}\nRole: ${ship.role}  Hull: ${ship.baseHull}\nMove: ${ship.movementNotes}\nWeapon: ${ship.startingWeaponNotes}`,
+          {
+            fontFamily: 'Consolas, "Courier New", monospace',
+            fontSize: '14px',
+            color: textColor,
+            fixedWidth: rowTextWidth,
+            lineSpacing: 2,
+            wordWrap: { width: rowTextWidth, useAdvancedWrap: true }
+          }
+        )
+        .setOrigin(0, 0);
+      this.shipSelectScreen.add([preview, text]);
+
+      this.addScreenButton(
+        this.shipSelectScreen,
+        this.shipSelectActionZones,
+        centerX,
+        centerY,
+        rowX + rowWidth - buttonWidth / 2 - 18,
+        rowY + (rowHeight - buttonHeight) / 2,
+        buttonWidth,
+        buttonHeight,
+        this.getShipActionLabel(ship),
+        () => this.handleShipAction(ship),
+        isAvailable
+      );
+    }
+
+    this.addScreenButton(
+      this.shipSelectScreen,
+      this.shipSelectActionZones,
+      centerX,
+      centerY,
+      0,
+      panelY + panelHeight - 58,
+      180,
+      38,
+      'Back',
+      () => this.showMainMenu()
+    );
+  }
+
+  private getShipActionLabel(ship: ShipRegistryEntry): string {
+    if (!ship.selectable) {
+      return 'Locked';
+    }
+
+    return ship.id === this.selectedShipId ? 'Start Run' : 'Select';
+  }
+
+  private handleShipAction(ship: ShipRegistryEntry): void {
+    if (!ship.selectable) {
+      return;
+    }
+
+    if (ship.id === this.selectedShipId) {
+      this.startRun();
+      return;
+    }
+
+    this.selectedShipId = ship.id;
+    this.showShipSelect();
   }
 
   private showShop(backTarget: ShopBackTarget): void {
     this.shopBackTarget = backTarget;
     this.gameFlowState = 'shop';
     this.destroyShopScreen();
+    this.destroyShipSelectScreen();
 
     if (backTarget === 'mainMenu') {
       this.destroyMainMenuScreen();
@@ -1587,6 +1762,13 @@ export class GameScene extends Phaser.Scene {
     const rowX = panelX + 32;
     const rowWidth = panelWidth - 64;
     const rowHeight = 54;
+    const rowTop = panelY + 106;
+    const rowGap = 10;
+    const buttonWidth = 124;
+    const buttonHeight = 32;
+    const buttonX = panelX + panelWidth - 92;
+    const textX = rowX + 14;
+    const textWidth = rowWidth - buttonWidth - 42;
 
     const background = this.add.graphics();
     background.fillStyle(0x02040a, backTarget === 'results' ? 0.82 : 1);
@@ -1596,51 +1778,61 @@ export class GameScene extends Phaser.Scene {
     background.lineStyle(2, 0x42f5d7, 0.82);
     background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
 
-    for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
-      const rowY = panelY + 110 + i * (rowHeight + 8);
-      background.fillStyle(0x111a24, 0.94);
-      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
-      background.lineStyle(1, 0x52627f, 0.82);
-      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
-    }
-
-    const text = this.add
-      .text(
-        0,
-        panelY + 28,
-        `SHOP\nCredits ${this.totalCredits}\n\n` +
-          PERMANENT_UPGRADE_DEFINITIONS.map((upgrade) => this.getPermanentUpgradeShopLine(upgrade)).join('\n\n'),
-        {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '15px',
-          color: '#f2fbff',
-          fixedWidth: panelWidth - 64,
-          lineSpacing: 2
-        }
-      )
-      .setOrigin(0.5, 0);
+    const title = this.add
+      .text(panelX + 32, panelY + 28, 'SHOP', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '18px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0, 0);
+    const credits = this.add
+      .text(panelX + 32, panelY + 52, `Credits ${this.totalCredits}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#c8f7ff'
+      })
+      .setOrigin(0, 0);
 
     this.shopScreen = this.add
-      .container(centerX, centerY, [background, text])
+      .container(centerX, centerY, [background, title, credits])
       .setScrollFactor(0)
       .setDepth(1300);
 
     for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
+      const rowY = rowTop + i * (rowHeight + rowGap);
       const upgrade = PERMANENT_UPGRADE_DEFINITIONS[i];
-      const rowY = panelY + 118 + i * (rowHeight + 8);
+      const level = this.getPermanentUpgradeLevel(upgrade.id);
       const isMaxed = this.isPermanentUpgradeMaxed(upgrade);
       const canPurchase = this.canPurchasePermanentUpgrade(upgrade);
       const label = isMaxed ? 'Maxed' : canPurchase ? 'Buy' : 'Need Credits';
+      const costLabel = isMaxed ? 'Maxed' : `Cost ${this.getPermanentUpgradeCost(upgrade)}`;
+
+      background.fillStyle(0x111a24, 0.94);
+      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+      background.lineStyle(1, 0x52627f, 0.82);
+      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+
+      const rowText = this.add
+        .text(textX, rowY + 9, `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}\n${upgrade.description}  ${costLabel}`, {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '14px',
+          color: '#f2fbff',
+          fixedWidth: textWidth,
+          lineSpacing: 2,
+          wordWrap: { width: textWidth, useAdvancedWrap: true }
+        })
+        .setOrigin(0, 0);
+      this.shopScreen.add(rowText);
 
       this.addScreenButton(
         this.shopScreen,
         this.shopActionZones,
         centerX,
         centerY,
-        panelX + panelWidth - 92,
-        rowY,
-        124,
-        32,
+        buttonX,
+        rowY + (rowHeight - buttonHeight) / 2,
+        buttonWidth,
+        buttonHeight,
         label,
         () => this.purchasePermanentUpgrade(upgrade),
         canPurchase
@@ -1652,20 +1844,16 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private getPermanentUpgradeShopLine(upgrade: PermanentUpgradeDefinition): string {
-    const level = this.getPermanentUpgradeLevel(upgrade.id);
-    const cost = this.getPermanentUpgradeCost(upgrade);
-    const costLabel = level >= upgrade.maxLevel ? 'Maxed' : `${cost} credits`;
-
-    return `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}\n${upgrade.description}  Cost: ${costLabel}`;
-  }
-
   private getPermanentUpgradeLevel(id: PermanentUpgradeId): number {
     return this.permanentUpgradeLevels[id];
   }
 
   private getPermanentUpgradeCost(upgrade: PermanentUpgradeDefinition): number {
     return upgrade.baseCost * (this.getPermanentUpgradeLevel(upgrade.id) + 1);
+  }
+
+  private getSelectedShipDefinition(): ShipRegistryEntry {
+    return getShipDefinition(this.selectedShipId);
   }
 
   private isPermanentUpgradeMaxed(upgrade: PermanentUpgradeDefinition): boolean {
@@ -1707,6 +1895,16 @@ export class GameScene extends Phaser.Scene {
     this.mainMenuActionZones = [];
     this.mainMenuScreen?.destroy(true);
     this.mainMenuScreen = undefined;
+  }
+
+  private destroyShipSelectScreen(): void {
+    for (const zone of this.shipSelectActionZones) {
+      zone.destroy();
+    }
+
+    this.shipSelectActionZones = [];
+    this.shipSelectScreen?.destroy(true);
+    this.shipSelectScreen = undefined;
   }
 
   private destroyShopScreen(): void {
@@ -1902,10 +2100,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
-    const sprite = this.add.image(0, 0, PLAYER_SHIP_TEXTURE_KEY);
+    const shipDefinition = this.getSelectedShipDefinition();
+    const sprite = this.add.image(0, 0, shipDefinition.textureKey);
     sprite.setOrigin(0.5, 0.5);
-    sprite.setDisplaySize(PLAYER_SHIP_DISPLAY_SIZE, PLAYER_SHIP_DISPLAY_SIZE);
-    sprite.setRotation(PLAYER_SHIP_VISUAL_ROTATION);
+    sprite.setDisplaySize(shipDefinition.displaySize, shipDefinition.displaySize);
+    sprite.setRotation(shipDefinition.visualRotation);
     this.playerSprite = sprite;
 
     const ship = this.add.container(x, y, [sprite]);
@@ -2923,7 +3122,7 @@ export class GameScene extends Phaser.Scene {
 
     this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
 
-    this.playerVelocity.scale(Math.pow(interceptorMovement.lowFrictionDamping, deltaSeconds * 60));
+    this.playerVelocity.scale(Math.pow(this.getSelectedShipDefinition().movement.lowFrictionDamping, deltaSeconds * 60));
 
     if (this.playerVelocity.lengthSq() < PLAYER_REST_SPEED * PLAYER_REST_SPEED) {
       this.playerVelocity.set(0, 0);
@@ -3185,7 +3384,7 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerMaxHull(): number {
     return (
-      PLAYER_MAX_HULL +
+      this.getSelectedShipDefinition().baseHull +
       this.passiveUpgradeLevels['hull-plating'] * HULL_PLATING_MAX_HULL_BONUS +
       this.getPermanentUpgradeLevel('hull-reinforcement') * HULL_REINFORCEMENT_MAX_HULL_BONUS
     );
@@ -3200,20 +3399,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerThrustAcceleration(): number {
-    return interceptorMovement.thrustAcceleration * this.getPlayerAccelerationMultiplier();
+    return this.getSelectedShipDefinition().movement.thrustAcceleration * this.getPlayerAccelerationMultiplier();
   }
 
   private getPlayerReverseThrustAcceleration(): number {
-    return interceptorMovement.reverseThrustAcceleration * this.getPlayerAccelerationMultiplier();
+    return this.getSelectedShipDefinition().movement.reverseThrustAcceleration * this.getPlayerAccelerationMultiplier();
   }
 
   private getPlayerStrafeThrustAcceleration(): number {
-    return interceptorMovement.strafeThrustAcceleration * this.getPlayerAccelerationMultiplier();
+    return this.getSelectedShipDefinition().movement.strafeThrustAcceleration * this.getPlayerAccelerationMultiplier();
   }
 
   private getPlayerMaxSpeed(): number {
     return Math.round(
-      interceptorMovement.maxSpeed *
+      this.getSelectedShipDefinition().movement.maxSpeed *
         (1 + this.passiveUpgradeLevels['engine-tuning'] * ENGINE_TUNING_MAX_SPEED_MULTIPLIER)
     );
   }
@@ -6649,6 +6848,11 @@ export class GameScene extends Phaser.Scene {
 
     if (this.gameFlowState === 'shop') {
       this.showShop(this.shopBackTarget);
+      return;
+    }
+
+    if (this.gameFlowState === 'shipSelect') {
+      this.showShipSelect();
       return;
     }
 
