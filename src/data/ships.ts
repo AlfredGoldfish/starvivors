@@ -1,5 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
+import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
 import { pulseCannon, rammingShield, type WeaponId } from './weapons';
 
 export interface ShipRegistryEntry extends ContentRegistryEntry {
@@ -8,8 +9,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   selectable: boolean;
   description: string;
   role: string;
-  baseHull: number;
-  baseMass: number;
+  baseStats: PlayerBaseStats;
   hitRadius: number;
   movementNotes: string;
   startingWeaponNotes: string;
@@ -44,8 +44,15 @@ export const shipRegistry: ShipRegistryEntry[] = [
     selectable: true,
     description: 'Current default ship. Fast, responsive, and tuned for evasive Pulse Cannon runs.',
     role: 'Agile striker',
-    baseHull: 100,
-    baseMass: 3,
+    baseStats: {
+      ...DEFAULT_PLAYER_BASE_STATS,
+      maxHull: 100,
+      mass: 3,
+      moveSpeed: interceptorMovement.maxSpeed,
+      thrust: interceptorMovement.thrustAcceleration,
+      brake: interceptorMovement.reverseThrustAcceleration,
+      strafe: interceptorMovement.strafeThrustAcceleration
+    },
     hitRadius: 32,
     movementNotes: 'Fast thrust, responsive strafing, light hull.',
     startingWeaponNotes: `${pulseCannon.displayName} starter`,
@@ -65,8 +72,15 @@ export const shipRegistry: ShipRegistryEntry[] = [
     selectable: true,
     description: 'Heavy ramming ship. Tough hull, slower handling, and a forward Ramming Shield.',
     role: 'Heavy rammer',
-    baseHull: 150,
-    baseMass: 5.5,
+    baseStats: {
+      ...DEFAULT_PLAYER_BASE_STATS,
+      maxHull: 150,
+      mass: 5.5,
+      moveSpeed: Math.round(interceptorMovement.maxSpeed * 0.85),
+      thrust: Math.round(interceptorMovement.thrustAcceleration * 0.75),
+      brake: Math.round(interceptorMovement.reverseThrustAcceleration * 0.75),
+      strafe: Math.round(interceptorMovement.strafeThrustAcceleration * 0.72)
+    },
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
     startingWeaponNotes: `${rammingShield.displayName} starter`,

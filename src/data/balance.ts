@@ -17,18 +17,18 @@ export const pulseCannonBalance = {
 };
 
 export const rammingShieldBalance = {
-  shieldMaxHp: 60,
+  shieldMaxHp: 180,
   shieldRegenDelaySeconds: 3,
   shieldRegenRatePerSecond: 10,
   dashMaxCharges: 3,
   dashChargeRechargeSeconds: 6,
-  dashImpulse: 260,
+  dashImpulse: 520,
   dashEmpoweredWindowSeconds: 1.5,
   dashRamDamageMultiplier: 3,
   dashRequiresShieldHp: true,
   frontArcDegrees: 108,
   range: 72,
-  width: 92,
+  width: 184,
   baseDamage: 1.2,
   speedDamageMultiplier: 0.018,
   strongRamSpeed: 160,

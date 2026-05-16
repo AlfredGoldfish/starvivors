@@ -11,7 +11,6 @@ export interface PlayerWeaponUpgradeState {
   projectileDamageLevel: number;
   projectileFireRateLevel: number;
   projectileVelocityLevel: number;
-  permanentDamageLevel: number;
 }
 
 export interface PlayerWeaponDebugTuning {
@@ -30,7 +29,6 @@ export interface PlayerWeaponProjectileConfig {
 export const PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
 export const PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
 export const PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
-export const PERMANENT_PLAYER_WEAPON_DAMAGE_MULTIPLIER = 0.05;
 
 export function createPlayerWeaponRuntimeState(activeMainWeaponId: WeaponRegistryEntry['id']): PlayerWeaponRuntimeState {
   return {
@@ -50,11 +48,7 @@ export function getActiveSecondaryWeaponDefinition(state: PlayerWeaponRuntimeSta
 }
 
 export function getPlayerWeaponDamageMultiplier(upgrades: PlayerWeaponUpgradeState): number {
-  return (
-    1 +
-    upgrades.projectileDamageLevel * PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER +
-    upgrades.permanentDamageLevel * PERMANENT_PLAYER_WEAPON_DAMAGE_MULTIPLIER
-  );
+  return 1 + upgrades.projectileDamageLevel * PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER;
 }
 
 export function getPlayerWeaponBaseCooldownMs(
