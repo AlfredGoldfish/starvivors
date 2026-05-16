@@ -145,6 +145,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   addButton('clear-debris', columnX + 162, y, 154, 'Clear debris', config.callbacks.clearDebris);
   y += BUTTON_HEIGHT + ROW_GAP;
 
+  y = addSection(columnX, y, 'Scrap');
+  addValue('scrap', columnX, y);
+  y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+  addButton('spawn-scrap', columnX, y, 101, 'Spawn', config.callbacks.spawnScrap);
+  addButton('clear-scrap', columnX + 108, y, 101, 'Clear', config.callbacks.clearScrap);
+  addButton('add-scrap', columnX + 216, y, 100, '+100', () => config.callbacks.addScrap(100));
+  y += BUTTON_HEIGHT + ROW_GAP;
+
   y = addSection(columnX, y, 'Black Hole');
   addValue('black-hole', columnX, y);
   y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
@@ -472,6 +480,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
       setValue('debris', `Active: ${values.activeDebris}`);
+      setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}`);
       setValue(
         'player',
         `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${

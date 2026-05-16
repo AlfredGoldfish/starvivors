@@ -45,6 +45,8 @@ export interface DebugMenuValues {
   activeEnemies: number;
   activeAsteroids: number;
   activeDebris: number;
+  activeScrapPickups: number;
+  runScrapTotal: number;
   playerProjectiles: number;
   enemyProjectiles: number;
   playerHull: number;
@@ -63,6 +65,9 @@ export interface DebugMenuCallbacks {
   clearAsteroids: () => void;
   spawnDebris: () => void;
   clearDebris: () => void;
+  spawnScrap: () => void;
+  clearScrap: () => void;
+  addScrap: (amount: number) => void;
   clearPlayerProjectiles: () => void;
   clearEnemyProjectiles: () => void;
   restorePlayerHull: () => void;

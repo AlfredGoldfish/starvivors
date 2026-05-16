@@ -15,6 +15,7 @@ import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
 import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
 import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
+import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
@@ -47,6 +48,7 @@ const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
 const SHOOTER_ENEMY_TEXTURE_KEY = 'shooter-enemy-spaceship';
 const TANK_ENEMY_TEXTURE_KEY = 'tank-enemy-spaceship';
 const ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY = 'enemy-wreckage-debris';
+const SCRAP_PICKUP_TEXTURE_KEY = 'scrap-pickup';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
@@ -290,6 +292,16 @@ const BLACK_HOLE_DEBRIS_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   massResistance: 0.34
 };
 
+const BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
+  radialBaseAcceleration: 150,
+  radialExtraAcceleration: 1380,
+  swirlBaseAcceleration: 132,
+  swirlExtraAcceleration: 1280,
+  maxSpeed: 680,
+  mass: 0.55,
+  massResistance: 0.28
+};
+
 const ENEMY_WRECKAGE_DEBRIS_DISPLAY_SIZE = 34;
 const ENEMY_WRECKAGE_DEBRIS_HIT_RADIUS = 15;
 const ENEMY_WRECKAGE_DEBRIS_LIFETIME_MS = 45000;
@@ -312,6 +324,30 @@ const ENEMY_WRECKAGE_DEBRIS_MASS_BY_ENEMY: Record<EnemySpawnType, number> = {
   tank: 1.75
 };
 
+const SCRAP_PICKUP_DISPLAY_SIZE = 24;
+const SCRAP_PICKUP_RADIUS = 18;
+const SCRAP_PICKUP_COLLECT_RADIUS = 46;
+const SCRAP_PICKUP_LIFETIME_MS = 60000;
+const SCRAP_PICKUP_MAX_ACTIVE = 160;
+const SCRAP_PICKUP_MASS = 0.55;
+const SCRAP_PICKUP_MIN_SPEED = 24;
+const SCRAP_PICKUP_MAX_SPEED = 100;
+const SCRAP_PICKUP_INHERITED_VELOCITY = 0.25;
+const SCRAP_PICKUP_DEBUG_VALUE = 10;
+const SCRAP_PICKUP_VALUE_BY_ENEMY: Record<EnemySpawnType, number> = {
+  chaser: 3,
+  shooter: 6,
+  tank: 14
+};
+const SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER: Record<AsteroidTier, number> = {
+  1: 1,
+  2: 3,
+  3: 6,
+  4: 10,
+  5: 16
+};
+const SCRAP_PICKUP_VALUE_FROM_DEBRIS = 2;
+
 type PulseUpgradeId = 'pulse-damage-1' | 'pulse-fire-rate-1' | 'pulse-velocity-1';
 type PassiveUpgradeId = 'hull-plating' | 'engine-tuning' | 'damage-control';
 type UpgradeId = PulseUpgradeId | PassiveUpgradeId;
@@ -320,6 +356,7 @@ type UpgradeCategory = 'pulse' | 'passive';
 type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
+type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
 
 interface UpgradeDefinition {
   id: UpgradeId;
@@ -413,6 +450,8 @@ interface StarvivorsTestHarnessState {
   maxHull: number;
   isPlayerDead: boolean;
   playerXp: number;
+  runScrapTotal: number;
+  lastRunScrapTotal: number;
   nextXpThreshold: number;
   bankedUpgrades: number;
   isUpgradeOverlayOpen: boolean;
@@ -433,6 +472,7 @@ interface StarvivorsTestHarnessState {
   shooterEnemies: number;
   tankEnemies: number;
   asteroids: number;
+  scrapPickups: number;
   projectiles: number;
   enemyProjectiles: number;
 }
@@ -605,6 +645,19 @@ interface EnemyWreckageDebris {
   expiresAt: number;
 }
 
+interface ScrapPickup {
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  velocity: Phaser.Math.Vector2;
+  value: number;
+  mass: number;
+  source: ScrapSourceType;
+  pickupRadius: number;
+  expiresAt: number;
+  rotationSpeed: number;
+  bobPhase: number;
+}
+
 interface AsteroidBreakupProfile {
   mode: AsteroidBreakupProfileMode;
   preferredTier?: AsteroidTier;
@@ -681,8 +734,11 @@ export class GameScene extends Phaser.Scene {
   private tankEnemies: TankEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
   private enemyWreckageDebris: EnemyWreckageDebris[] = [];
+  private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
   private playerHull = PLAYER_MAX_HULL;
+  private runScrapTotal = 0;
+  private lastRunScrapTotal = 0;
   private playerInvulnerableUntil = 0;
   private isPlayerDead = false;
   private playerXp = 0;
@@ -747,6 +803,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
     this.load.image(TANK_ENEMY_TEXTURE_KEY, enemyTankUrl);
     this.load.image(ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY, enemyWreckageDebrisUrl);
+    this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapPickupUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
     for (const blackHoleTexture of BLACK_HOLE_FULL_TEXTURES) {
       this.load.image(blackHoleTexture.key, blackHoleTexture.url);
@@ -793,6 +850,7 @@ export class GameScene extends Phaser.Scene {
       this.updateBlackHole(time, deltaSeconds, true);
       this.updateEnemyWreckageDebris(time, deltaSeconds);
       this.wrapPlayer();
+      this.updateScrapPickups(time, deltaSeconds);
       this.updateBlackHolePlayerCollision();
       this.updatePlayerContactDamage(time);
       this.updatePulseCannon(time);
@@ -853,6 +911,9 @@ export class GameScene extends Phaser.Scene {
         clearAsteroids: () => this.runDebugMenuAction(() => this.clearAsteroids()),
         spawnDebris: () => this.runDebugMenuAction(() => this.spawnDebugEnemyWreckageDebris()),
         clearDebris: () => this.runDebugMenuAction(() => this.clearEnemyWreckageDebris()),
+        spawnScrap: () => this.runDebugMenuAction(() => this.spawnDebugScrapPickup()),
+        clearScrap: () => this.runDebugMenuAction(() => this.clearScrapPickups()),
+        addScrap: (amount) => this.runDebugMenuAction(() => this.addRunScrap(amount)),
         clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPulseCannonProjectiles()),
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
@@ -992,6 +1053,8 @@ export class GameScene extends Phaser.Scene {
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
       activeDebris: this.enemyWreckageDebris.length,
+      activeScrapPickups: this.scrapPickups.length,
+      runScrapTotal: this.runScrapTotal,
       playerProjectiles: this.pulseCannonProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
@@ -1123,6 +1186,8 @@ export class GameScene extends Phaser.Scene {
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
       playerXp: this.playerXp,
+      runScrapTotal: this.runScrapTotal,
+      lastRunScrapTotal: this.lastRunScrapTotal,
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
@@ -1143,6 +1208,7 @@ export class GameScene extends Phaser.Scene {
       shooterEnemies: this.shooterEnemies.length,
       tankEnemies: this.tankEnemies.length,
       asteroids: this.basicAsteroids.length,
+      scrapPickups: this.scrapPickups.length,
       projectiles: this.pulseCannonProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length
     };
@@ -1273,6 +1339,7 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu = undefined;
     this.playerVelocity.set(0, 0);
     this.playerHull = PLAYER_MAX_HULL;
+    this.runScrapTotal = 0;
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
     this.playerXp = 0;
@@ -1286,6 +1353,7 @@ export class GameScene extends Phaser.Scene {
     this.tankEnemies = [];
     this.basicAsteroids = [];
     this.enemyWreckageDebris = [];
+    this.scrapPickups = [];
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -2160,6 +2228,203 @@ export class GameScene extends Phaser.Scene {
     const x = wrapCoordinate(this.player.x + forward.x * 120, this.arena.width);
     const y = wrapCoordinate(this.player.y + forward.y * 120, this.arena.height);
     this.spawnEnemyWreckageDebris('shooter', x, y, this.playerVelocity);
+  }
+
+  private spawnScrapPickup(
+    source: ScrapSourceType,
+    value: number,
+    x: number,
+    y: number,
+    inheritedVelocity: Phaser.Math.Vector2
+  ): void {
+    if (value <= 0) {
+      return;
+    }
+
+    if (this.scrapPickups.length >= SCRAP_PICKUP_MAX_ACTIVE) {
+      this.destroyScrapPickup(this.scrapPickups.shift());
+    }
+
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const speed = Phaser.Math.FloatBetween(SCRAP_PICKUP_MIN_SPEED, SCRAP_PICKUP_MAX_SPEED);
+    const spread = Phaser.Math.FloatBetween(0, SCRAP_PICKUP_RADIUS * 1.6);
+    const spawnX = wrapCoordinate(x + Math.cos(angle) * spread, this.arena.width);
+    const spawnY = wrapCoordinate(y + Math.sin(angle) * spread, this.arena.height);
+    const body = this.createScrapPickupBody(spawnX, spawnY);
+    const wrapMirrorBody = this.createScrapPickupBody(spawnX, spawnY);
+    wrapMirrorBody.setVisible(false);
+
+    this.scrapPickups.push({
+      body,
+      wrapMirrorBody,
+      velocity: new Phaser.Math.Vector2(
+        inheritedVelocity.x * SCRAP_PICKUP_INHERITED_VELOCITY + Math.cos(angle) * speed,
+        inheritedVelocity.y * SCRAP_PICKUP_INHERITED_VELOCITY + Math.sin(angle) * speed
+      ).limit(GAMEPLAY_MAX_VELOCITY),
+      value,
+      mass: SCRAP_PICKUP_MASS,
+      source,
+      pickupRadius: SCRAP_PICKUP_COLLECT_RADIUS,
+      expiresAt: this.time.now + SCRAP_PICKUP_LIFETIME_MS,
+      rotationSpeed: Phaser.Math.FloatBetween(0.9, 2.2) * (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
+      bobPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+    });
+  }
+
+  private createScrapPickupBody(x: number, y: number): Phaser.GameObjects.Container {
+    const glow = this.add.ellipse(0, 0, SCRAP_PICKUP_DISPLAY_SIZE * 1.55, SCRAP_PICKUP_DISPLAY_SIZE * 1.55, 0x73f2ff, 0.18);
+    const sprite = this.add.image(0, 0, SCRAP_PICKUP_TEXTURE_KEY);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
+    sprite.setTint(0xdaf8ff);
+
+    const body = this.add.container(x, y, [glow, sprite]);
+    body.setSize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
+    body.setDepth(7);
+    body.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+
+    return body;
+  }
+
+  private updateScrapPickups(time: number, deltaSeconds: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    for (let i = this.scrapPickups.length - 1; i >= 0; i -= 1) {
+      const scrap = this.scrapPickups[i];
+
+      if (this.applyBlackHoleToScrap(scrap, i, deltaSeconds)) {
+        continue;
+      }
+
+      if (time >= scrap.expiresAt) {
+        this.destroyScrapPickup(scrap);
+        this.scrapPickups.splice(i, 1);
+        continue;
+      }
+
+      scrap.body.x = wrapCoordinate(scrap.body.x + scrap.velocity.x * deltaSeconds, this.arena.width);
+      scrap.body.y = wrapCoordinate(scrap.body.y + scrap.velocity.y * deltaSeconds, this.arena.height);
+      scrap.body.rotation += scrap.rotationSpeed * deltaSeconds;
+      scrap.body.setScale(1 + Math.sin(time * 0.005 + scrap.bobPhase) * 0.08);
+      this.updateToroidalRenderMirror(scrap.body, scrap.wrapMirrorBody, SCRAP_PICKUP_RADIUS);
+
+      const offsetToPlayer = this.getWrappedDirection(scrap.body.x, scrap.body.y, this.player.x, this.player.y);
+
+      if (offsetToPlayer.lengthSq() <= scrap.pickupRadius * scrap.pickupRadius) {
+        this.collectScrapPickup(scrap);
+        this.scrapPickups.splice(i, 1);
+      }
+    }
+  }
+
+  private applyBlackHoleToScrap(scrap: ScrapPickup, index: number, deltaSeconds: number): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    const result = this.blackHole.applyWhirlpoolToVelocity(
+      scrap.body.x,
+      scrap.body.y,
+      scrap.velocity,
+      deltaSeconds,
+      {
+        ...BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING,
+        mass: scrap.mass
+      },
+      this.arena,
+      this.getActiveDebugBlackHoleFieldTuning()
+    );
+
+    if (result.isInsideEventHorizon) {
+      this.destroyScrapPickup(scrap);
+      this.scrapPickups.splice(index, 1);
+      return true;
+    }
+
+    return false;
+  }
+
+  private collectScrapPickup(scrap: ScrapPickup): void {
+    this.addRunScrap(scrap.value);
+    this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrap.value);
+    this.destroyScrapPickup(scrap);
+  }
+
+  private addRunScrap(amount: number): void {
+    if (amount <= 0) {
+      return;
+    }
+
+    this.runScrapTotal += amount;
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private emitScrapPickupFeedback(x: number, y: number, value: number): void {
+    const position = this.getNearestWrappedRenderPosition(x, y);
+    const particleCount = Phaser.Math.Clamp(4 + Math.ceil(value / 4), 5, 12);
+    const flash = this.add.circle(position.x, position.y, 9, 0x73f2ff, 0.38);
+
+    flash.setDepth(12);
+    flash.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.8,
+      duration: 150,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    for (let i = 0; i < particleCount; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(10, 28);
+      const particle = this.add.circle(position.x, position.y, Phaser.Math.FloatBetween(1.5, 3), 0xdaf8ff, 0.82);
+
+      particle.setDepth(12);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+
+      this.tweens.add({
+        targets: particle,
+        x: position.x + Math.cos(angle) * distance,
+        y: position.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.2,
+        duration: 180,
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  private destroyScrapPickup(scrap: ScrapPickup | undefined): void {
+    if (!scrap) {
+      return;
+    }
+
+    scrap.body.destroy(true);
+    scrap.wrapMirrorBody.destroy(true);
+  }
+
+  private clearScrapPickups(): void {
+    for (const scrap of this.scrapPickups) {
+      this.destroyScrapPickup(scrap);
+    }
+
+    this.scrapPickups = [];
+  }
+
+  private spawnDebugScrapPickup(): void {
+    if (!this.player) {
+      return;
+    }
+
+    const forward = this.getForwardDirection(this.player.rotation);
+    const x = wrapCoordinate(this.player.x + forward.x * 105, this.arena.width);
+    const y = wrapCoordinate(this.player.y + forward.y * 105, this.arena.height);
+    this.spawnScrapPickup('debris', SCRAP_PICKUP_DEBUG_VALUE, x, y, this.playerVelocity);
   }
 
   private createAsteroidInstance(
@@ -4171,6 +4436,7 @@ export class GameScene extends Phaser.Scene {
   private killPlayer(): void {
     this.isPlayerDead = true;
     this.playerHull = 0;
+    this.lastRunScrapTotal = this.runScrapTotal;
     this.playerVelocity.set(0, 0);
     this.player.setVisible(true);
     this.playerSprite.setTint(0xff5964);
@@ -4866,6 +5132,13 @@ export class GameScene extends Phaser.Scene {
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
           );
+          this.spawnScrapPickup(
+            'enemy',
+            SCRAP_PICKUP_VALUE_BY_ENEMY.chaser,
+            enemy.body.x,
+            enemy.body.y,
+            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
+          );
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.basicEnemies.splice(i, 1);
@@ -4902,6 +5175,13 @@ export class GameScene extends Phaser.Scene {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
           this.spawnEnemyWreckageDebris(
             'shooter',
+            enemy.body.x,
+            enemy.body.y,
+            enemy.velocity.clone().add(enemy.blackHoleVelocity)
+          );
+          this.spawnScrapPickup(
+            'enemy',
+            SCRAP_PICKUP_VALUE_BY_ENEMY.shooter,
             enemy.body.x,
             enemy.body.y,
             enemy.velocity.clone().add(enemy.blackHoleVelocity)
@@ -4946,6 +5226,13 @@ export class GameScene extends Phaser.Scene {
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
           );
+          this.spawnScrapPickup(
+            'enemy',
+            SCRAP_PICKUP_VALUE_BY_ENEMY.tank,
+            enemy.body.x,
+            enemy.body.y,
+            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
+          );
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
           this.tankEnemies.splice(i, 1);
@@ -4972,6 +5259,7 @@ export class GameScene extends Phaser.Scene {
         debris.hp -= projectile.damage;
 
         if (debris.hp <= 0) {
+          this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
           this.destroyEnemyWreckageDebris(debris, true);
           this.enemyWreckageDebris.splice(i, 1);
         } else {
@@ -5029,6 +5317,7 @@ export class GameScene extends Phaser.Scene {
 
     if (grantReward) {
       this.grantXp(ASTEROID_XP_REWARD_BY_TIER[asteroid.tier]);
+      this.spawnScrapPickup('asteroid', SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER[asteroid.tier], x, y, velocity);
     }
 
     this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
@@ -5381,6 +5670,7 @@ export class GameScene extends Phaser.Scene {
       this.drawEnemyCollisionDebug();
       this.drawAsteroidCollisionDebug();
       this.drawDebrisCollisionDebug();
+      this.drawScrapCollisionDebug();
     }
 
     this.drawBlackHoleCollisionDebug();
@@ -5560,6 +5850,21 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private drawScrapCollisionDebug(): void {
+    for (const scrap of this.scrapPickups) {
+      const scrapPosition = this.getNearestWrappedRenderPosition(scrap.body.x, scrap.body.y);
+
+      if (!this.isCircleInCameraView(scrapPosition.x, scrapPosition.y, scrap.pickupRadius)) {
+        continue;
+      }
+
+      this.collisionDebugGraphics.lineStyle(1, 0x73f2ff, 0.74);
+      this.collisionDebugGraphics.strokeCircle(scrapPosition.x, scrapPosition.y, SCRAP_PICKUP_RADIUS);
+      this.collisionDebugGraphics.lineStyle(1, 0xdaf8ff, 0.28);
+      this.collisionDebugGraphics.strokeCircle(scrapPosition.x, scrapPosition.y, scrap.pickupRadius);
+    }
+  }
+
   private drawBlackHoleCollisionDebug(): void {
     if (!this.blackHole) {
       return;
@@ -5713,6 +6018,13 @@ export class GameScene extends Phaser.Scene {
       this.minimapGraphics.strokeCircle(position.x, position.y, 5.4);
     }
 
+    for (const scrap of this.scrapPickups) {
+      const position = this.getMinimapPosition(scrap.body.x, scrap.body.y, innerX, innerY, innerWidth, innerHeight);
+
+      this.minimapGraphics.fillStyle(0x73f2ff, 0.86);
+      this.minimapGraphics.fillCircle(position.x, position.y, 1.8);
+    }
+
     if (this.blackHole) {
       const position = this.getMinimapPosition(this.blackHole.body.x, this.blackHole.body.y, innerX, innerY, innerWidth, innerHeight);
 
@@ -5775,6 +6087,7 @@ export class GameScene extends Phaser.Scene {
       `Time ${survivalTime}\n` +
         `Hull ${this.playerHull} / ${maxHull}  ${status}\n` +
         `XP ${this.playerXp} / ${this.nextXpThreshold}\n` +
+        `Scrap ${this.runScrapTotal}\n` +
         `Banked upgrades ${this.bankedUpgrades}\n` +
         `${upgradeStatus}\n` +
         `Pulse ${pulseStatus}\n` +
@@ -5856,6 +6169,7 @@ export class GameScene extends Phaser.Scene {
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
+        `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']} H${this.passiveUpgradeLevels['hull-plating']} E${this.passiveUpgradeLevels['engine-tuning']} C${this.passiveUpgradeLevels['damage-control']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
         `Pulse: ${this.pulseCannonProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
