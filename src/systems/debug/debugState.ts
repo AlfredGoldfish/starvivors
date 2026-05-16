@@ -85,6 +85,7 @@ export class DebugState {
     activeDebris: number;
     activeScrapPickups: number;
     runScrapTotal: number;
+    totalCredits: number;
     playerProjectiles: number;
     enemyProjectiles: number;
     playerHull: number;
@@ -135,6 +136,7 @@ export class DebugState {
       activeDebris: snapshot.activeDebris,
       activeScrapPickups: snapshot.activeScrapPickups,
       runScrapTotal: snapshot.runScrapTotal,
+      totalCredits: snapshot.totalCredits,
       playerProjectiles: snapshot.playerProjectiles,
       enemyProjectiles: snapshot.enemyProjectiles,
       playerHull: snapshot.playerHull,

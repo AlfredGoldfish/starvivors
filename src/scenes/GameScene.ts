@@ -334,6 +334,7 @@ const SCRAP_PICKUP_MIN_SPEED = 24;
 const SCRAP_PICKUP_MAX_SPEED = 100;
 const SCRAP_PICKUP_INHERITED_VELOCITY = 0.25;
 const SCRAP_PICKUP_DEBUG_VALUE = 10;
+const SCRAP_TO_CREDIT_RATE = 1;
 const SCRAP_PICKUP_VALUE_BY_ENEMY: Record<EnemySpawnType, number> = {
   chaser: 3,
   shooter: 6,
@@ -452,6 +453,9 @@ interface StarvivorsTestHarnessState {
   playerXp: number;
   runScrapTotal: number;
   lastRunScrapTotal: number;
+  totalCredits: number;
+  lastRunCreditsEarned: number;
+  hasPaidRunCredits: boolean;
   nextXpThreshold: number;
   bankedUpgrades: number;
   isUpgradeOverlayOpen: boolean;
@@ -714,7 +718,8 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
-  private deathText?: Phaser.GameObjects.Text;
+  private resultsScreen?: Phaser.GameObjects.Container;
+  private resultsRestartZone?: Phaser.GameObjects.Zone;
   private farStarfield!: Phaser.GameObjects.TileSprite;
   private midStarfield!: Phaser.GameObjects.TileSprite;
   private nearStarfield!: Phaser.GameObjects.TileSprite;
@@ -739,6 +744,10 @@ export class GameScene extends Phaser.Scene {
   private playerHull = PLAYER_MAX_HULL;
   private runScrapTotal = 0;
   private lastRunScrapTotal = 0;
+  private totalCredits = 0;
+  private lastRunCreditsEarned = 0;
+  private hasPaidRunCredits = false;
+  private lastRunSurvivalMs = 0;
   private playerInvulnerableUntil = 0;
   private isPlayerDead = false;
   private playerXp = 0;
@@ -832,6 +841,17 @@ export class GameScene extends Phaser.Scene {
       this.updateBackgroundTiles(time);
       this.updateGameplayHud(time);
       this.updateMinimap();
+      this.updateDebugText(time);
+      return;
+    }
+
+    if (this.isPlayerDead) {
+      this.updatePlayerMovement(time, 0);
+      this.updateCollisionDebugOverlay();
+      this.updateBackgroundTiles(time);
+      this.updateGameplayHud(time);
+      this.updateMinimap();
+      this.refreshDebugMenu();
       this.updateDebugText(time);
       return;
     }
@@ -1055,6 +1075,7 @@ export class GameScene extends Phaser.Scene {
       activeDebris: this.enemyWreckageDebris.length,
       activeScrapPickups: this.scrapPickups.length,
       runScrapTotal: this.runScrapTotal,
+      totalCredits: this.totalCredits,
       playerProjectiles: this.pulseCannonProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
@@ -1188,6 +1209,9 @@ export class GameScene extends Phaser.Scene {
       playerXp: this.playerXp,
       runScrapTotal: this.runScrapTotal,
       lastRunScrapTotal: this.lastRunScrapTotal,
+      totalCredits: this.totalCredits,
+      lastRunCreditsEarned: this.lastRunCreditsEarned,
+      hasPaidRunCredits: this.hasPaidRunCredits,
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
@@ -1340,12 +1364,16 @@ export class GameScene extends Phaser.Scene {
     this.playerVelocity.set(0, 0);
     this.playerHull = PLAYER_MAX_HULL;
     this.runScrapTotal = 0;
+    this.lastRunCreditsEarned = 0;
+    this.hasPaidRunCredits = false;
+    this.lastRunSurvivalMs = 0;
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
     this.playerXp = 0;
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
-    this.deathText = undefined;
+    this.resultsScreen = undefined;
+    this.resultsRestartZone = undefined;
     this.pulseCannonProjectiles = [];
     this.enemyProjectiles = [];
     this.basicEnemies = [];
@@ -4434,15 +4462,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private killPlayer(): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
     this.isPlayerDead = true;
     this.playerHull = 0;
     this.lastRunScrapTotal = this.runScrapTotal;
+    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
+    this.payRunCredits();
     this.playerVelocity.set(0, 0);
     this.player.setVisible(true);
     this.playerSprite.setTint(0xff5964);
     this.playerSprite.setAlpha(0.62);
     this.updateGameplayHud(this.time.now);
-    this.showDeathText();
+    this.showResultsScreen();
   }
 
   private restorePlayerHull(): void {
@@ -4458,24 +4492,101 @@ export class GameScene extends Phaser.Scene {
       this.playerInvulnerableUntil = 0;
     }
 
-    this.deathText?.destroy();
-    this.deathText = undefined;
+    this.resultsRestartZone?.destroy();
+    this.resultsRestartZone = undefined;
+    this.resultsScreen?.destroy(true);
+    this.resultsScreen = undefined;
     this.updateGameplayHud(this.time.now);
   }
 
-  private showDeathText(): void {
-    this.deathText = this.add
-      .text(this.scale.width / 2, this.scale.height / 2, 'HULL BREACHED\nPRESS R TO RESTART', {
+  private payRunCredits(): void {
+    if (this.hasPaidRunCredits) {
+      return;
+    }
+
+    this.lastRunCreditsEarned = this.lastRunScrapTotal * SCRAP_TO_CREDIT_RATE;
+    this.totalCredits += this.lastRunCreditsEarned;
+    this.hasPaidRunCredits = true;
+  }
+
+  private showResultsScreen(): void {
+    this.resultsRestartZone?.destroy();
+    this.resultsRestartZone = undefined;
+    this.resultsScreen?.destroy(true);
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const panelWidth = Math.min(width - 48, 520);
+    const panelHeight = 318;
+    const panelX = -panelWidth / 2;
+    const panelY = -panelHeight / 2;
+    const buttonWidth = 240;
+    const buttonHeight = 42;
+    const buttonX = -buttonWidth / 2;
+    const buttonY = panelY + panelHeight - 72;
+    const elapsedSeconds = Math.max(0, Math.floor(this.lastRunSurvivalMs / 1000));
+
+    const background = this.add.graphics();
+    background.fillStyle(0x02040a, 0.78);
+    background.fillRect(-width / 2, -height / 2, width, height);
+    background.fillStyle(0x071018, 0.96);
+    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.lineStyle(2, 0x42f5d7, 0.82);
+    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.fillStyle(0x111a24, 0.98);
+    background.fillRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
+    background.lineStyle(2, 0x42f5d7, 0.88);
+    background.strokeRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
+
+    const text = this.add
+      .text(
+        0,
+        panelY + 28,
+        `RUN RESULTS\n\n` +
+          `Survival time        ${this.formatSurvivalTime(elapsedSeconds)}\n` +
+          `Scrap collected      ${this.lastRunScrapTotal}\n` +
+          `Credits earned       ${this.lastRunCreditsEarned}\n` +
+          `Total credits        ${this.totalCredits}\n\n` +
+          `Conversion: ${SCRAP_TO_CREDIT_RATE} scrap = ${SCRAP_TO_CREDIT_RATE} credit\n` +
+          `Press R to restart`,
+        {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '18px',
+          color: '#f2fbff',
+          align: 'left',
+          fixedWidth: panelWidth - 64,
+          lineSpacing: 5
+        }
+      )
+      .setOrigin(0.5, 0);
+
+    const buttonText = this.add
+      .text(0, buttonY + buttonHeight / 2, 'Continue / Restart Run', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '30px',
+        fontSize: '16px',
         color: '#f2fbff',
-        align: 'center',
-        backgroundColor: 'rgba(2, 4, 10, 0.78)',
-        padding: { x: 20, y: 16 }
+        align: 'center'
       })
-      .setOrigin(0.5)
+      .setOrigin(0.5);
+
+    this.resultsScreen = this.add
+      .container(centerX, centerY, [background, text, buttonText])
       .setScrollFactor(0)
-      .setDepth(1001);
+      .setDepth(1250);
+
+    this.resultsRestartZone = this.add
+      .zone(centerX + buttonX, centerY + buttonY, buttonWidth, buttonHeight)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1251)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event?.stopPropagation();
+        this.rebuildWorld();
+      });
   }
 
   private updateBasicEnemies(deltaSeconds: number): void {

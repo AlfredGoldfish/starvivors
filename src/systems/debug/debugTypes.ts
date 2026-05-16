@@ -47,6 +47,7 @@ export interface DebugMenuValues {
   activeDebris: number;
   activeScrapPickups: number;
   runScrapTotal: number;
+  totalCredits: number;
   playerProjectiles: number;
   enemyProjectiles: number;
   playerHull: number;
