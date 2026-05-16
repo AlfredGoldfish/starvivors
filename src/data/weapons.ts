@@ -1,5 +1,5 @@
 import type { ContentRegistryEntry } from './contentStatus';
-import { pulseCannonBalance } from './balance';
+import { pulseCannonBalance, rammingShieldBalance } from './balance';
 
 export type WeaponId = 'pulse-cannon' | 'ramming-shield';
 export type WeaponSlotType = 'main' | 'secondary';
@@ -29,6 +29,7 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   projectileLifetimeSeconds?: number;
   projectileRange?: number;
   projectileVisual?: ProjectileVisualDefinition;
+  rammingShield?: typeof rammingShieldBalance;
 }
 
 export const pulseCannon: WeaponRegistryEntry = {
@@ -64,7 +65,8 @@ export const rammingShield: WeaponRegistryEntry = {
   behaviorType: 'ramming-shield',
   slotCompatibility: ['main', 'secondary'],
   startingShipId: 'bulwark',
-  eligibleAsSecondary: true
+  eligibleAsSecondary: true,
+  rammingShield: rammingShieldBalance
 };
 
 export const weaponRegistry: WeaponRegistryEntry[] = [pulseCannon, rammingShield];

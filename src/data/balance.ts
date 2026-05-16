@@ -16,6 +16,27 @@ export const pulseCannonBalance = {
   projectileRange: 1300
 };
 
+export const rammingShieldBalance = {
+  shieldMaxHp: 60,
+  shieldRegenDelaySeconds: 3,
+  shieldRegenRatePerSecond: 10,
+  dashMaxCharges: 3,
+  dashChargeRechargeSeconds: 6,
+  dashImpulse: 260,
+  dashEmpoweredWindowSeconds: 1.5,
+  dashRamDamageMultiplier: 3,
+  dashRequiresShieldHp: true,
+  frontArcDegrees: 108,
+  range: 72,
+  width: 92,
+  baseDamage: 1.2,
+  speedDamageMultiplier: 0.018,
+  strongRamSpeed: 160,
+  maxDamage: 6,
+  contactCooldownMs: 450,
+  brokenDamageMultiplier: 0.35
+};
+
 // Temporary durability for damage-feedback visibility; revisit during balance/polish.
 export const basicEnemyBalance = {
   moveSpeed: 95,
