@@ -14,9 +14,6 @@ import {
   type WorldForceSample
 } from './worldForces';
 
-const BLACK_HOLE_SPAWN_OFFSET_X = 700;
-const BLACK_HOLE_SPAWN_OFFSET_Y = 120;
-const BLACK_HOLE_SAFE_SPAWN_DISTANCE = 700;
 const BLACK_HOLE_DRIFT_SPEED = 24;
 const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_CORE_RADIUS = 82;
@@ -232,9 +229,7 @@ export class BlackHoleSystem {
   private coreScaleMultiplier = 1;
   private visualPhase: number;
 
-  constructor(private readonly scene: Phaser.Scene, arena: ArenaSize, center: Phaser.Math.Vector2) {
-    const position = this.getSpawnPosition(arena, center);
-
+  constructor(private readonly scene: Phaser.Scene, spawnPosition: Phaser.Math.Vector2) {
     this.ensureLensTextureLayers();
     this.lensTextureImages = this.createLensTextureImages(false);
     this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
@@ -242,13 +237,13 @@ export class BlackHoleSystem {
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
     this.body = scene.add
-      .container(position.x, position.y, [
+      .container(spawnPosition.x, spawnPosition.y, [
         ...this.lensTextureImages,
         this.bodyGraphics
       ])
       .setDepth(6);
     this.wrapMirrorBody = scene.add
-      .container(position.x, position.y, [
+      .container(spawnPosition.x, spawnPosition.y, [
         ...this.wrapMirrorLensTextureImages,
         this.wrapMirrorGraphics
       ])
@@ -440,30 +435,6 @@ export class BlackHoleSystem {
 
   private get lensFieldScale(): number {
     return this.visualScaleMultiplier;
-  }
-
-  private getSpawnPosition(arena: ArenaSize, center: Phaser.Math.Vector2): Phaser.Math.Vector2 {
-    const fixedX = wrapCoordinate(center.x + BLACK_HOLE_SPAWN_OFFSET_X, arena.width);
-    const fixedY = wrapCoordinate(center.y + BLACK_HOLE_SPAWN_OFFSET_Y, arena.height);
-    const fixedOffset = this.getWrappedDirection(center.x, center.y, fixedX, fixedY, arena);
-
-    if (fixedOffset.length() >= BLACK_HOLE_SAFE_SPAWN_DISTANCE) {
-      return new Phaser.Math.Vector2(fixedX, fixedY);
-    }
-
-    for (let i = 0; i < 12; i += 1) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(BLACK_HOLE_SAFE_SPAWN_DISTANCE, BLACK_HOLE_SAFE_SPAWN_DISTANCE * 1.45);
-      const x = wrapCoordinate(center.x + Math.cos(angle) * distance, arena.width);
-      const y = wrapCoordinate(center.y + Math.sin(angle) * distance, arena.height);
-      const offset = this.getWrappedDirection(center.x, center.y, x, y, arena);
-
-      if (offset.length() >= BLACK_HOLE_SAFE_SPAWN_DISTANCE) {
-        return new Phaser.Math.Vector2(x, y);
-      }
-    }
-
-    return new Phaser.Math.Vector2(wrapCoordinate(center.x + BLACK_HOLE_SAFE_SPAWN_DISTANCE, arena.width), center.y);
   }
 
   private getWrappedDirection(

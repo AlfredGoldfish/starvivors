@@ -17,7 +17,7 @@ import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
-import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
+import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
 import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
@@ -223,6 +223,7 @@ const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE = 0.5;
 const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA = 5;
 const BLACK_HOLE_ENEMY_FIELD_DAMPING = 0.988;
 const BLACK_HOLE_PLAYER_FIELD_MASS = 4.8;
+const BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO = 0.16;
 
 const BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER: Record<number, number> = {
   1: 1,
@@ -358,6 +359,8 @@ type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
+type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop';
+type ShopBackTarget = 'mainMenu' | 'results';
 
 interface UpgradeDefinition {
   id: UpgradeId;
@@ -718,8 +721,13 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
+  private mainMenuScreen?: Phaser.GameObjects.Container;
+  private mainMenuActionZones: Phaser.GameObjects.Zone[] = [];
+  private shopScreen?: Phaser.GameObjects.Container;
+  private shopActionZones: Phaser.GameObjects.Zone[] = [];
+  private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: Phaser.GameObjects.Container;
-  private resultsRestartZone?: Phaser.GameObjects.Zone;
+  private resultsActionZones: Phaser.GameObjects.Zone[] = [];
   private farStarfield!: Phaser.GameObjects.TileSprite;
   private midStarfield!: Phaser.GameObjects.TileSprite;
   private nearStarfield!: Phaser.GameObjects.TileSprite;
@@ -741,6 +749,7 @@ export class GameScene extends Phaser.Scene {
   private enemyWreckageDebris: EnemyWreckageDebris[] = [];
   private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
+  private gameFlowState: GameFlowState = 'mainMenu';
   private playerHull = PLAYER_MAX_HULL;
   private runScrapTotal = 0;
   private lastRunScrapTotal = 0;
@@ -826,12 +835,16 @@ export class GameScene extends Phaser.Scene {
   create(): void {
     this.createInput();
     this.createBackgroundTextures();
-    this.rebuildWorld();
+    this.showMainMenu();
     this.installTestHarness();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
 
   update(time: number, delta: number): void {
+    if (this.gameFlowState === 'mainMenu' || this.gameFlowState === 'shop') {
+      return;
+    }
+
     this.updateDebugMenuInput(time);
 
     this.updateUpgradeOverlayInput(time);
@@ -1154,7 +1167,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       restartRun: () => {
-        this.rebuildWorld();
+        this.startRun();
         return this.getTestHarnessState();
       },
       openUpgradeOverlay: () => {
@@ -1197,6 +1210,7 @@ export class GameScene extends Phaser.Scene {
     this.debugState.collisionDebugEnabled = query.get('collisionDebug') === '1';
 
     if (query.get('testHarness') === 'smoke') {
+      this.startRun();
       this.runTestHarnessSmoke();
     }
   }
@@ -1355,12 +1369,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private rebuildWorld(): void {
+    this.gameFlowState = 'running';
     const viewport = getViewportSize(this);
     this.arena = createArenaSize(viewport);
     const center = getArenaCenter(this.arena);
 
     this.children.removeAll(true);
     this.debugMenu = undefined;
+    this.mainMenuScreen = undefined;
+    this.mainMenuActionZones = [];
+    this.shopScreen = undefined;
+    this.shopActionZones = [];
     this.playerVelocity.set(0, 0);
     this.playerHull = PLAYER_MAX_HULL;
     this.runScrapTotal = 0;
@@ -1373,7 +1392,7 @@ export class GameScene extends Phaser.Scene {
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
     this.resultsScreen = undefined;
-    this.resultsRestartZone = undefined;
+    this.resultsActionZones = [];
     this.pulseCannonProjectiles = [];
     this.enemyProjectiles = [];
     this.basicEnemies = [];
@@ -1428,7 +1447,7 @@ export class GameScene extends Phaser.Scene {
     this.createShooterEnemies(center);
     this.createTankEnemies(center);
     this.createBasicAsteroids(center);
-    this.blackHole = new BlackHoleSystem(this, this.arena, center);
+    this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
     this.resetBackgroundPlayerTracking();
@@ -1471,6 +1490,262 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateDebugText(0);
+  }
+
+  private startRun(): void {
+    this.destroyMainMenuScreen();
+    this.destroyShopScreen();
+    this.destroyResultsScreen();
+    this.rebuildWorld();
+  }
+
+  private showMainMenu(): void {
+    this.gameFlowState = 'mainMenu';
+    this.children.removeAll(true);
+    this.debugMenu = undefined;
+    this.shopScreen = undefined;
+    this.shopActionZones = [];
+    this.resultsScreen = undefined;
+    this.resultsActionZones = [];
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const panelWidth = Math.min(width - 48, 520);
+    const panelHeight = 320;
+    const panelX = -panelWidth / 2;
+    const panelY = -panelHeight / 2;
+    const background = this.add.graphics();
+    background.fillStyle(0x02040a, 1);
+    background.fillRect(-width / 2, -height / 2, width, height);
+    background.fillStyle(0x071018, 0.96);
+    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.lineStyle(2, 0x42f5d7, 0.82);
+    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+
+    const title = this.add
+      .text(0, panelY + 38, 'STARVIVORS', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '38px',
+        color: '#f2fbff',
+        align: 'center'
+      })
+      .setOrigin(0.5, 0);
+    const credits = this.add
+      .text(0, panelY + 104, `Credits ${this.totalCredits}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '20px',
+        color: '#c8f7ff',
+        align: 'center'
+      })
+      .setOrigin(0.5, 0);
+
+    this.mainMenuScreen = this.add
+      .container(centerX, centerY, [background, title, credits])
+      .setScrollFactor(0)
+      .setDepth(1300);
+
+    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 178, 240, 42, 'Start Run', () =>
+      this.startRun()
+    );
+    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 232, 240, 42, 'Shop', () =>
+      this.showShop('mainMenu')
+    );
+  }
+
+  private showShop(backTarget: ShopBackTarget): void {
+    this.shopBackTarget = backTarget;
+    this.gameFlowState = 'shop';
+    this.destroyShopScreen();
+
+    if (backTarget === 'mainMenu') {
+      this.destroyMainMenuScreen();
+    } else {
+      this.destroyResultsScreen();
+    }
+
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const panelWidth = Math.min(width - 48, 680);
+    const panelHeight = Math.min(height - 48, 430);
+    const panelX = -panelWidth / 2;
+    const panelY = -panelHeight / 2;
+    const rowX = panelX + 32;
+    const rowWidth = panelWidth - 64;
+    const upgrades = ['Hull Reinforcement', 'Engine Tuning', 'Pulse Damage', 'Scrap Value'];
+
+    const background = this.add.graphics();
+    background.fillStyle(0x02040a, backTarget === 'results' ? 0.82 : 1);
+    background.fillRect(-width / 2, -height / 2, width, height);
+    background.fillStyle(0x071018, 0.96);
+    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.lineStyle(2, 0x42f5d7, 0.82);
+    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+
+    for (let i = 0; i < upgrades.length; i += 1) {
+      const rowY = panelY + 122 + i * 54;
+      background.fillStyle(0x111a24, 0.94);
+      background.fillRoundedRect(rowX, rowY, rowWidth, 40, 6);
+      background.lineStyle(1, 0x52627f, 0.82);
+      background.strokeRoundedRect(rowX, rowY, rowWidth, 40, 6);
+    }
+
+    const text = this.add
+      .text(
+        0,
+        panelY + 28,
+        `SHOP\nCredits ${this.totalCredits}\n\n` +
+          upgrades.map((upgrade) => `${upgrade.padEnd(22, ' ')} Coming Soon`).join('\n\n'),
+        {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '18px',
+          color: '#f2fbff',
+          fixedWidth: panelWidth - 64,
+          lineSpacing: 4
+        }
+      )
+      .setOrigin(0.5, 0);
+
+    this.shopScreen = this.add
+      .container(centerX, centerY, [background, text])
+      .setScrollFactor(0)
+      .setDepth(1300);
+
+    this.addScreenButton(this.shopScreen, this.shopActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 180, 38, 'Back', () =>
+      this.handleShopBack()
+    );
+  }
+
+  private handleShopBack(): void {
+    const backTarget = this.shopBackTarget;
+    this.destroyShopScreen();
+
+    if (backTarget === 'results' && this.isPlayerDead) {
+      this.gameFlowState = 'results';
+      this.showResultsScreen();
+      return;
+    }
+
+    this.showMainMenu();
+  }
+
+  private destroyMainMenuScreen(): void {
+    for (const zone of this.mainMenuActionZones) {
+      zone.destroy();
+    }
+
+    this.mainMenuActionZones = [];
+    this.mainMenuScreen?.destroy(true);
+    this.mainMenuScreen = undefined;
+  }
+
+  private destroyShopScreen(): void {
+    for (const zone of this.shopActionZones) {
+      zone.destroy();
+    }
+
+    this.shopActionZones = [];
+    this.shopScreen?.destroy(true);
+    this.shopScreen = undefined;
+  }
+
+  private destroyResultsScreen(): void {
+    for (const zone of this.resultsActionZones) {
+      zone.destroy();
+    }
+
+    this.resultsActionZones = [];
+    this.resultsScreen?.destroy(true);
+    this.resultsScreen = undefined;
+  }
+
+  private addScreenButton(
+    container: Phaser.GameObjects.Container,
+    actionZones: Phaser.GameObjects.Zone[],
+    screenCenterX: number,
+    screenCenterY: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    label: string,
+    callback: () => void
+  ): void {
+    const buttonBackground = this.add.graphics();
+    buttonBackground.fillStyle(0x111a24, 0.98);
+    buttonBackground.fillRoundedRect(x - width / 2, y, width, height, 6);
+    buttonBackground.lineStyle(2, 0x42f5d7, 0.88);
+    buttonBackground.strokeRoundedRect(x - width / 2, y, width, height, 6);
+
+    const buttonText = this.add
+      .text(x, y + height / 2, label, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#f2fbff',
+        align: 'center'
+      })
+      .setOrigin(0.5);
+
+    const zone = this.add
+      .zone(screenCenterX + x - width / 2, screenCenterY + y, width, height)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1301)
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event?.stopPropagation();
+        callback();
+      });
+
+    container.add([buttonBackground, buttonText]);
+    actionZones.push(zone);
+  }
+
+  private getRandomBlackHoleZoneSpawnPosition(
+    viewport: ViewportSize,
+    playerStart: Phaser.Math.Vector2
+  ): Phaser.Math.Vector2 {
+    const zoneColumns = Math.max(1, Math.floor(this.arena.width / viewport.width));
+    const zoneRows = Math.max(1, Math.floor(this.arena.height / viewport.height));
+    const playerZoneColumn = Phaser.Math.Clamp(Math.floor(playerStart.x / viewport.width), 0, zoneColumns - 1);
+    const playerZoneRow = Phaser.Math.Clamp(Math.floor(playerStart.y / viewport.height), 0, zoneRows - 1);
+    const availableZones: Array<{ column: number; row: number }> = [];
+
+    for (let row = 0; row < zoneRows; row += 1) {
+      for (let column = 0; column < zoneColumns; column += 1) {
+        if (column === playerZoneColumn && row === playerZoneRow) {
+          continue;
+        }
+
+        availableZones.push({ column, row });
+      }
+    }
+
+    const zone = Phaser.Utils.Array.GetRandom(availableZones) ?? { column: playerZoneColumn, row: playerZoneRow };
+    const zoneX = zone.column * viewport.width;
+    const zoneY = zone.row * viewport.height;
+    const zoneCenterX = zoneX + viewport.width / 2;
+    const zoneCenterY = zoneY + viewport.height / 2;
+    const centerExclusionRadius = Math.min(viewport.width, viewport.height) * BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO;
+
+    for (let i = 0; i < 16; i += 1) {
+      const x = Phaser.Math.FloatBetween(zoneX, zoneX + viewport.width);
+      const y = Phaser.Math.FloatBetween(zoneY, zoneY + viewport.height);
+      const distanceFromZoneCenter = Phaser.Math.Distance.Between(x, y, zoneCenterX, zoneCenterY);
+
+      if (distanceFromZoneCenter >= centerExclusionRadius) {
+        return new Phaser.Math.Vector2(wrapCoordinate(x, this.arena.width), wrapCoordinate(y, this.arena.height));
+      }
+    }
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(zoneX + viewport.width * 0.25, this.arena.width),
+      wrapCoordinate(zoneY + viewport.height * 0.25, this.arena.height)
+    );
   }
 
   private createBackgroundTextures(): void {
@@ -2537,7 +2812,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isPlayerDead) {
       if (Phaser.Input.Keyboard.JustDown(this.restartKey)) {
-        this.rebuildWorld();
+        this.startRun();
       }
 
       return;
@@ -2602,7 +2877,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.debugMenu.isOpen() && this.isPlayerDead && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
-      this.rebuildWorld();
+      this.startRun();
       return;
     }
 
@@ -4467,6 +4742,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isPlayerDead = true;
+    this.gameFlowState = 'results';
     this.playerHull = 0;
     this.lastRunScrapTotal = this.runScrapTotal;
     this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
@@ -4492,10 +4768,7 @@ export class GameScene extends Phaser.Scene {
       this.playerInvulnerableUntil = 0;
     }
 
-    this.resultsRestartZone?.destroy();
-    this.resultsRestartZone = undefined;
-    this.resultsScreen?.destroy(true);
-    this.resultsScreen = undefined;
+    this.destroyResultsScreen();
     this.updateGameplayHud(this.time.now);
   }
 
@@ -4510,22 +4783,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showResultsScreen(): void {
-    this.resultsRestartZone?.destroy();
-    this.resultsRestartZone = undefined;
-    this.resultsScreen?.destroy(true);
+    this.gameFlowState = 'results';
+    this.destroyResultsScreen();
 
     const width = this.scale.width;
     const height = this.scale.height;
     const centerX = width / 2;
     const centerY = height / 2;
     const panelWidth = Math.min(width - 48, 520);
-    const panelHeight = 318;
+    const panelHeight = Math.min(height - 48, 430);
     const panelX = -panelWidth / 2;
     const panelY = -panelHeight / 2;
-    const buttonWidth = 240;
-    const buttonHeight = 42;
-    const buttonX = -buttonWidth / 2;
-    const buttonY = panelY + panelHeight - 72;
     const elapsedSeconds = Math.max(0, Math.floor(this.lastRunSurvivalMs / 1000));
 
     const background = this.add.graphics();
@@ -4535,10 +4803,6 @@ export class GameScene extends Phaser.Scene {
     background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
     background.lineStyle(2, 0x42f5d7, 0.82);
     background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    background.fillStyle(0x111a24, 0.98);
-    background.fillRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
-    background.lineStyle(2, 0x42f5d7, 0.88);
-    background.strokeRoundedRect(buttonX, buttonY, buttonWidth, buttonHeight, 6);
 
     const text = this.add
       .text(
@@ -4562,31 +4826,20 @@ export class GameScene extends Phaser.Scene {
       )
       .setOrigin(0.5, 0);
 
-    const buttonText = this.add
-      .text(0, buttonY + buttonHeight / 2, 'Continue / Restart Run', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#f2fbff',
-        align: 'center'
-      })
-      .setOrigin(0.5);
-
     this.resultsScreen = this.add
-      .container(centerX, centerY, [background, text, buttonText])
+      .container(centerX, centerY, [background, text])
       .setScrollFactor(0)
       .setDepth(1250);
 
-    this.resultsRestartZone = this.add
-      .zone(centerX + buttonX, centerY + buttonY, buttonWidth, buttonHeight)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(1251)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        pointer.event?.stopPropagation();
-        this.rebuildWorld();
-      });
+    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 150, 220, 38, 'Restart Run', () =>
+      this.startRun()
+    );
+    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 104, 220, 38, 'Main Menu', () =>
+      this.showMainMenu()
+    );
+    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 220, 38, 'Shop', () =>
+      this.showShop('results')
+    );
   }
 
   private updateBasicEnemies(deltaSeconds: number): void {
@@ -6297,6 +6550,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleResize(): void {
+    if (this.gameFlowState === 'mainMenu') {
+      this.showMainMenu();
+      return;
+    }
+
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+      return;
+    }
+
+    if (this.gameFlowState === 'results') {
+      this.showResultsScreen();
+      return;
+    }
+
     this.rebuildWorld();
   }
 }
