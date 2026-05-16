@@ -21,6 +21,16 @@ import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type V
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
 import { interceptorMovement, shooterEnemyBalance, tankEnemyBalance } from '../data/balance';
+import {
+  ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER,
+  HULL_REINFORCEMENT_MAX_HULL_BONUS,
+  INITIAL_PERMANENT_UPGRADE_LEVELS,
+  PERMANENT_UPGRADE_DEFINITIONS,
+  PULSE_CAPACITOR_DAMAGE_MULTIPLIER,
+  SALVAGE_TRAINING_CREDIT_MULTIPLIER,
+  type PermanentUpgradeDefinition,
+  type PermanentUpgradeId
+} from '../data/permanentUpgrades';
 import { pulseCannon } from '../data/weapons';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
@@ -784,6 +794,7 @@ export class GameScene extends Phaser.Scene {
   private debugMenu?: DebugMenuController;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
+  private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
@@ -1381,7 +1392,6 @@ export class GameScene extends Phaser.Scene {
     this.shopScreen = undefined;
     this.shopActionZones = [];
     this.playerVelocity.set(0, 0);
-    this.playerHull = PLAYER_MAX_HULL;
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
     this.hasPaidRunCredits = false;
@@ -1417,6 +1427,7 @@ export class GameScene extends Phaser.Scene {
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
     this.pulseUpgradeLevels = { ...INITIAL_PULSE_UPGRADE_LEVELS };
     this.passiveUpgradeLevels = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
+    this.playerHull = this.getPlayerMaxHull();
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
     this.totalUpgradePauseMs = 0;
@@ -1575,7 +1586,7 @@ export class GameScene extends Phaser.Scene {
     const panelY = -panelHeight / 2;
     const rowX = panelX + 32;
     const rowWidth = panelWidth - 64;
-    const upgrades = ['Hull Reinforcement', 'Engine Tuning', 'Pulse Damage', 'Scrap Value'];
+    const rowHeight = 54;
 
     const background = this.add.graphics();
     background.fillStyle(0x02040a, backTarget === 'results' ? 0.82 : 1);
@@ -1585,12 +1596,12 @@ export class GameScene extends Phaser.Scene {
     background.lineStyle(2, 0x42f5d7, 0.82);
     background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
 
-    for (let i = 0; i < upgrades.length; i += 1) {
-      const rowY = panelY + 122 + i * 54;
+    for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
+      const rowY = panelY + 110 + i * (rowHeight + 8);
       background.fillStyle(0x111a24, 0.94);
-      background.fillRoundedRect(rowX, rowY, rowWidth, 40, 6);
+      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
       background.lineStyle(1, 0x52627f, 0.82);
-      background.strokeRoundedRect(rowX, rowY, rowWidth, 40, 6);
+      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
     }
 
     const text = this.add
@@ -1598,13 +1609,13 @@ export class GameScene extends Phaser.Scene {
         0,
         panelY + 28,
         `SHOP\nCredits ${this.totalCredits}\n\n` +
-          upgrades.map((upgrade) => `${upgrade.padEnd(22, ' ')} Coming Soon`).join('\n\n'),
+          PERMANENT_UPGRADE_DEFINITIONS.map((upgrade) => this.getPermanentUpgradeShopLine(upgrade)).join('\n\n'),
         {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '18px',
+          fontSize: '15px',
           color: '#f2fbff',
           fixedWidth: panelWidth - 64,
-          lineSpacing: 4
+          lineSpacing: 2
         }
       )
       .setOrigin(0.5, 0);
@@ -1614,9 +1625,65 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1300);
 
+    for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
+      const upgrade = PERMANENT_UPGRADE_DEFINITIONS[i];
+      const rowY = panelY + 118 + i * (rowHeight + 8);
+      const isMaxed = this.isPermanentUpgradeMaxed(upgrade);
+      const canPurchase = this.canPurchasePermanentUpgrade(upgrade);
+      const label = isMaxed ? 'Maxed' : canPurchase ? 'Buy' : 'Need Credits';
+
+      this.addScreenButton(
+        this.shopScreen,
+        this.shopActionZones,
+        centerX,
+        centerY,
+        panelX + panelWidth - 92,
+        rowY,
+        124,
+        32,
+        label,
+        () => this.purchasePermanentUpgrade(upgrade),
+        canPurchase
+      );
+    }
+
     this.addScreenButton(this.shopScreen, this.shopActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 180, 38, 'Back', () =>
       this.handleShopBack()
     );
+  }
+
+  private getPermanentUpgradeShopLine(upgrade: PermanentUpgradeDefinition): string {
+    const level = this.getPermanentUpgradeLevel(upgrade.id);
+    const cost = this.getPermanentUpgradeCost(upgrade);
+    const costLabel = level >= upgrade.maxLevel ? 'Maxed' : `${cost} credits`;
+
+    return `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}\n${upgrade.description}  Cost: ${costLabel}`;
+  }
+
+  private getPermanentUpgradeLevel(id: PermanentUpgradeId): number {
+    return this.permanentUpgradeLevels[id];
+  }
+
+  private getPermanentUpgradeCost(upgrade: PermanentUpgradeDefinition): number {
+    return upgrade.baseCost * (this.getPermanentUpgradeLevel(upgrade.id) + 1);
+  }
+
+  private isPermanentUpgradeMaxed(upgrade: PermanentUpgradeDefinition): boolean {
+    return this.getPermanentUpgradeLevel(upgrade.id) >= upgrade.maxLevel;
+  }
+
+  private canPurchasePermanentUpgrade(upgrade: PermanentUpgradeDefinition): boolean {
+    return !this.isPermanentUpgradeMaxed(upgrade) && this.totalCredits >= this.getPermanentUpgradeCost(upgrade);
+  }
+
+  private purchasePermanentUpgrade(upgrade: PermanentUpgradeDefinition): void {
+    if (!this.canPurchasePermanentUpgrade(upgrade)) {
+      return;
+    }
+
+    this.totalCredits -= this.getPermanentUpgradeCost(upgrade);
+    this.permanentUpgradeLevels[upgrade.id] += 1;
+    this.showShop(this.shopBackTarget);
   }
 
   private handleShopBack(): void {
@@ -1672,20 +1739,22 @@ export class GameScene extends Phaser.Scene {
     width: number,
     height: number,
     label: string,
-    callback: () => void
+    callback: () => void,
+    isEnabled = true
   ): void {
     const buttonBackground = this.add.graphics();
-    buttonBackground.fillStyle(0x111a24, 0.98);
+    buttonBackground.fillStyle(isEnabled ? 0x111a24 : 0x151922, 0.98);
     buttonBackground.fillRoundedRect(x - width / 2, y, width, height, 6);
-    buttonBackground.lineStyle(2, 0x42f5d7, 0.88);
+    buttonBackground.lineStyle(2, isEnabled ? 0x42f5d7 : 0x52627f, isEnabled ? 0.88 : 0.6);
     buttonBackground.strokeRoundedRect(x - width / 2, y, width, height, 6);
 
     const buttonText = this.add
       .text(x, y + height / 2, label, {
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '16px',
-        color: '#f2fbff',
-        align: 'center'
+        color: isEnabled ? '#f2fbff' : '#8090a6',
+        align: 'center',
+        fixedWidth: width - 10
       })
       .setOrigin(0.5);
 
@@ -1694,12 +1763,17 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(1301)
-      .setInteractive({ useHandCursor: true })
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
       .on('pointerup', (pointer: Phaser.Input.Pointer) => {
         pointer.event?.stopPropagation();
-        callback();
+        if (isEnabled) {
+          callback();
+        }
       });
+
+    if (isEnabled) {
+      zone.setInteractive({ useHandCursor: true });
+    }
 
     container.add([buttonBackground, buttonText]);
     actionZones.push(zone);
@@ -3110,11 +3184,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerMaxHull(): number {
-    return PLAYER_MAX_HULL + this.passiveUpgradeLevels['hull-plating'] * HULL_PLATING_MAX_HULL_BONUS;
+    return (
+      PLAYER_MAX_HULL +
+      this.passiveUpgradeLevels['hull-plating'] * HULL_PLATING_MAX_HULL_BONUS +
+      this.getPermanentUpgradeLevel('hull-reinforcement') * HULL_REINFORCEMENT_MAX_HULL_BONUS
+    );
   }
 
   private getPlayerAccelerationMultiplier(): number {
-    return 1 + this.passiveUpgradeLevels['engine-tuning'] * ENGINE_TUNING_ACCELERATION_MULTIPLIER;
+    return (
+      1 +
+      this.passiveUpgradeLevels['engine-tuning'] * ENGINE_TUNING_ACCELERATION_MULTIPLIER +
+      this.getPermanentUpgradeLevel('engine-calibration') * ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER
+    );
   }
 
   private getPlayerThrustAcceleration(): number {
@@ -4777,9 +4859,15 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.lastRunCreditsEarned = this.lastRunScrapTotal * SCRAP_TO_CREDIT_RATE;
+    this.lastRunCreditsEarned = Math.floor(
+      this.lastRunScrapTotal * SCRAP_TO_CREDIT_RATE * this.getScrapCreditMultiplier()
+    );
     this.totalCredits += this.lastRunCreditsEarned;
     this.hasPaidRunCredits = true;
+  }
+
+  private getScrapCreditMultiplier(): number {
+    return 1 + this.getPermanentUpgradeLevel('salvage-training') * SALVAGE_TRAINING_CREDIT_MULTIPLIER;
   }
 
   private showResultsScreen(): void {
@@ -4813,7 +4901,7 @@ export class GameScene extends Phaser.Scene {
           `Scrap collected      ${this.lastRunScrapTotal}\n` +
           `Credits earned       ${this.lastRunCreditsEarned}\n` +
           `Total credits        ${this.totalCredits}\n\n` +
-          `Conversion: ${SCRAP_TO_CREDIT_RATE} scrap = ${SCRAP_TO_CREDIT_RATE} credit\n` +
+          `Conversion: ${SCRAP_TO_CREDIT_RATE} scrap = ${SCRAP_TO_CREDIT_RATE} credit x${this.getScrapCreditMultiplier().toFixed(2)}\n` +
           `Press R to restart`,
         {
           fontFamily: 'Consolas, "Courier New", monospace',
@@ -5055,7 +5143,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPulseDamageMultiplier(): number {
-    return 1 + this.pulseUpgradeLevels['pulse-damage-1'] * PULSE_DAMAGE_UPGRADE_MULTIPLIER;
+    return (
+      1 +
+      this.pulseUpgradeLevels['pulse-damage-1'] * PULSE_DAMAGE_UPGRADE_MULTIPLIER +
+      this.getPermanentUpgradeLevel('pulse-capacitor') * PULSE_CAPACITOR_DAMAGE_MULTIPLIER
+    );
   }
 
   private getPulseDamage(): number {
