@@ -9,8 +9,13 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   description: string;
   role: string;
   baseHull: number;
+  baseMass: number;
+  hitRadius: number;
   movementNotes: string;
   startingWeaponNotes: string;
+  speedRating: string;
+  handlingRating: string;
+  unlockCostCredits?: number;
   textureKey: string;
   displaySize: number;
   visualRotation: number;
@@ -38,8 +43,12 @@ export const shipRegistry: ShipRegistryEntry[] = [
     description: 'Current default ship. Fast, responsive, and tuned for evasive Pulse Cannon runs.',
     role: 'Agile striker',
     baseHull: 100,
+    baseMass: 3,
+    hitRadius: 32,
     movementNotes: 'Fast thrust, responsive strafing, light hull.',
     startingWeaponNotes: `${pulseCannon.displayName} starter`,
+    speedRating: 'Fast',
+    handlingRating: 'Responsive',
     textureKey: 'player-ship-spaceship-1',
     displaySize: 118,
     visualRotation: Math.PI,
@@ -48,17 +57,28 @@ export const shipRegistry: ShipRegistryEntry[] = [
   {
     id: 'bulwark',
     displayName: 'Bulwark',
-    status: 'WIP',
-    selectable: false,
-    description: 'Heavy ramming ship planned for a future playable pass.',
+    status: 'MVP',
+    selectable: true,
+    description: 'Heavy ramming ship. Tough hull, slower handling. Ramming Shield coming next.',
     role: 'Heavy rammer',
-    baseHull: 160,
-    movementNotes: 'Future slower, heavier handling.',
-    startingWeaponNotes: 'Future Ramming Shield',
+    baseHull: 150,
+    baseMass: 5.5,
+    hitRadius: 35,
+    movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
+    startingWeaponNotes: `${pulseCannon.displayName} starter. Ramming Shield coming next.`,
+    speedRating: 'Moderate',
+    handlingRating: 'Heavy',
+    unlockCostCredits: 100,
     textureKey: 'player-ship-bulwark',
     displaySize: 128,
     visualRotation: Math.PI,
-    movement: interceptorMovement
+    movement: {
+      ...interceptorMovement,
+      thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.75),
+      reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.75),
+      strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.72),
+      maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.85)
+    }
   }
 ];
 

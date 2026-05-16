@@ -464,6 +464,7 @@ const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
 interface StarvivorsTestHarnessState {
   selectedShipId: ShipId;
   selectedShipName: string;
+  unlockedShipIds: ShipId[];
   hull: number;
   maxHull: number;
   isPlayerDead: boolean;
@@ -500,6 +501,9 @@ interface StarvivorsTestHarnessState {
 
 interface StarvivorsTestHarness {
   getState: () => StarvivorsTestHarnessState;
+  addCredits: (amount: number) => StarvivorsTestHarnessState;
+  unlockShip: (shipId: ShipId) => StarvivorsTestHarnessState;
+  selectShip: (shipId: ShipId) => StarvivorsTestHarnessState;
   grantXp: (amount: number) => StarvivorsTestHarnessState;
   damagePlayer: (damage?: number) => StarvivorsTestHarnessState;
   expireInvulnerability: () => StarvivorsTestHarnessState;
@@ -767,6 +771,7 @@ export class GameScene extends Phaser.Scene {
   private blackHole?: BlackHoleSystem;
   private gameFlowState: GameFlowState = 'mainMenu';
   private selectedShipId: ShipId = DEFAULT_SHIP_ID;
+  private unlockedShipIds = new Set<ShipId>([DEFAULT_SHIP_ID]);
   private playerHull = PLAYER_MAX_HULL;
   private runScrapTotal = 0;
   private lastRunScrapTotal = 0;
@@ -1123,6 +1128,28 @@ export class GameScene extends Phaser.Scene {
 
     window.starvivorsTestHarness = {
       getState: () => this.getTestHarnessState(),
+      addCredits: (amount: number) => {
+        this.totalCredits = Math.max(0, this.totalCredits + amount);
+        return this.getTestHarnessState();
+      },
+      unlockShip: (shipId: ShipId) => {
+        const ship = getShipDefinition(shipId);
+
+        if (ship.selectable) {
+          this.unlockedShipIds.add(ship.id);
+        }
+
+        return this.getTestHarnessState();
+      },
+      selectShip: (shipId: ShipId) => {
+        const ship = getShipDefinition(shipId);
+
+        if (this.canStartRunWithShip(ship)) {
+          this.selectedShipId = ship.id;
+        }
+
+        return this.getTestHarnessState();
+      },
       grantXp: (amount: number) => {
         this.grantXp(amount);
         return this.getTestHarnessState();
@@ -1232,6 +1259,10 @@ export class GameScene extends Phaser.Scene {
       this.startRun();
       this.runTestHarnessSmoke();
     }
+
+    if (query.get('testHarness') === 'bulwark') {
+      this.runTestHarnessBulwark();
+    }
   }
 
   private getTestHarnessState(): StarvivorsTestHarnessState {
@@ -1240,6 +1271,7 @@ export class GameScene extends Phaser.Scene {
     return {
       selectedShipId: selectedShip.id,
       selectedShipName: selectedShip.displayName,
+      unlockedShipIds: [...this.unlockedShipIds],
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
@@ -1391,6 +1423,59 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessBulwark(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-bulwark-harness', 'fail');
+      document.body.setAttribute('data-starvivors-bulwark-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    const locked = harness.selectShip('bulwark');
+    harness.addCredits(100);
+    const unlocked = harness.unlockShip('bulwark');
+    const selected = harness.selectShip('bulwark');
+    this.startRun();
+    const started = harness.getState();
+    const afterXp = harness.grantXp(BASIC_ENEMY_XP_REWARD);
+    const afterScrap = harness.getState();
+    this.addRunScrap(10);
+    const afterScrapGain = harness.getState();
+    const restarted = harness.restartRun();
+    const pass =
+      locked.selectedShipId === DEFAULT_SHIP_ID &&
+      unlocked.unlockedShipIds.includes('bulwark') &&
+      selected.selectedShipId === 'bulwark' &&
+      started.selectedShipId === 'bulwark' &&
+      started.hull === 150 &&
+      started.maxHull === 150 &&
+      started.playerMaxSpeed === 425 &&
+      started.playerAccelerationMultiplier === 1 &&
+      afterXp.playerXp === BASIC_ENEMY_XP_REWARD &&
+      afterScrap.runScrapTotal === 0 &&
+      afterScrapGain.runScrapTotal === 10 &&
+      restarted.selectedShipId === 'bulwark' &&
+      restarted.hull === 150 &&
+      restarted.maxHull === 150 &&
+      !restarted.isPlayerDead;
+
+    document.body.setAttribute('data-starvivors-bulwark-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-bulwark-harness-details',
+      JSON.stringify({
+        locked,
+        unlocked,
+        selected,
+        started,
+        afterXp,
+        afterScrap,
+        afterScrapGain,
+        restarted
+      })
+    );
+  }
+
   private rebuildWorld(): void {
     this.gameFlowState = 'running';
     const viewport = getViewportSize(this);
@@ -1520,7 +1605,7 @@ export class GameScene extends Phaser.Scene {
   private startRun(): void {
     const selectedShip = this.getSelectedShipDefinition();
 
-    if (!selectedShip.selectable) {
+    if (!this.canStartRunWithShip(selectedShip)) {
       this.selectedShipId = DEFAULT_SHIP_ID;
     }
 
@@ -1654,10 +1739,12 @@ export class GameScene extends Phaser.Scene {
       const ship = shipRegistry[i];
       const rowY = rowTop + i * (rowHeight + rowGap);
       const isSelected = ship.id === this.selectedShipId;
-      const isAvailable = ship.selectable;
-      const statusLabel = isAvailable ? (isSelected ? 'Selected' : 'Available') : 'Coming Soon';
+      const isUnlocked = this.isShipUnlocked(ship.id);
+      const canUnlock = this.canUnlockShip(ship);
+      const isAvailable = this.canStartRunWithShip(ship);
+      const statusLabel = isAvailable ? (isSelected ? 'Selected' : 'Available') : this.getShipLockedLabel(ship);
       const borderColor = isSelected ? 0x42f5d7 : isAvailable ? 0x52627f : 0x39445a;
-      const textColor = isAvailable ? '#f2fbff' : '#8090a6';
+      const textColor = isUnlocked ? '#f2fbff' : '#8090a6';
       const rowTextWidth = rowWidth - previewSize - buttonWidth - 68;
       const rowTextX = rowX + previewSize + 24;
 
@@ -1670,12 +1757,12 @@ export class GameScene extends Phaser.Scene {
         .image(rowX + 48, rowY + rowHeight / 2, ship.textureKey)
         .setDisplaySize(previewSize, previewSize)
         .setRotation(ship.visualRotation)
-        .setAlpha(isAvailable ? 1 : 0.56);
+        .setAlpha(isUnlocked ? 1 : 0.56);
       const text = this.add
         .text(
           rowTextX,
           rowY + 14,
-          `${ship.displayName}  ${statusLabel}\n${ship.description}\nRole: ${ship.role}  Hull: ${ship.baseHull}\nMove: ${ship.movementNotes}\nWeapon: ${ship.startingWeaponNotes}`,
+          `${ship.displayName}  ${statusLabel}\n${ship.description}\nRole: ${ship.role}  Hull: ${ship.baseHull}  Speed: ${ship.speedRating}  Handling: ${ship.handlingRating}\nMove: ${ship.movementNotes}\nWeapon: ${ship.startingWeaponNotes}`,
           {
             fontFamily: 'Consolas, "Courier New", monospace',
             fontSize: '14px',
@@ -1699,7 +1786,7 @@ export class GameScene extends Phaser.Scene {
         buttonHeight,
         this.getShipActionLabel(ship),
         () => this.handleShipAction(ship),
-        isAvailable
+        isAvailable || canUnlock
       );
     }
 
@@ -1722,11 +1809,20 @@ export class GameScene extends Phaser.Scene {
       return 'Locked';
     }
 
+    if (!this.isShipUnlocked(ship.id)) {
+      return this.canUnlockShip(ship) ? `Unlock ${ship.unlockCostCredits}` : `Need ${ship.unlockCostCredits}`;
+    }
+
     return ship.id === this.selectedShipId ? 'Start Run' : 'Select';
   }
 
   private handleShipAction(ship: ShipRegistryEntry): void {
     if (!ship.selectable) {
+      return;
+    }
+
+    if (!this.isShipUnlocked(ship.id)) {
+      this.unlockShip(ship);
       return;
     }
 
@@ -1737,6 +1833,37 @@ export class GameScene extends Phaser.Scene {
 
     this.selectedShipId = ship.id;
     this.showShipSelect();
+  }
+
+  private isShipUnlocked(shipId: ShipId): boolean {
+    return this.unlockedShipIds.has(shipId);
+  }
+
+  private canStartRunWithShip(ship: ShipRegistryEntry): boolean {
+    return ship.selectable && this.isShipUnlocked(ship.id);
+  }
+
+  private canUnlockShip(ship: ShipRegistryEntry): boolean {
+    return ship.selectable && !this.isShipUnlocked(ship.id) && ship.unlockCostCredits !== undefined && this.totalCredits >= ship.unlockCostCredits;
+  }
+
+  private unlockShip(ship: ShipRegistryEntry): void {
+    if (!this.canUnlockShip(ship) || ship.unlockCostCredits === undefined) {
+      return;
+    }
+
+    this.totalCredits -= ship.unlockCostCredits;
+    this.unlockedShipIds.add(ship.id);
+    this.selectedShipId = ship.id;
+    this.showShipSelect();
+  }
+
+  private getShipLockedLabel(ship: ShipRegistryEntry): string {
+    if (!ship.selectable) {
+      return 'Coming Soon';
+    }
+
+    return ship.unlockCostCredits === undefined ? 'Locked' : `Locked ${ship.unlockCostCredits} credits`;
   }
 
   private showShop(backTarget: ShopBackTarget): void {
@@ -1854,6 +1981,24 @@ export class GameScene extends Phaser.Scene {
 
   private getSelectedShipDefinition(): ShipRegistryEntry {
     return getShipDefinition(this.selectedShipId);
+  }
+
+  private getPlayerMass(): number {
+    return this.getSelectedShipDefinition().baseMass;
+  }
+
+  private getPlayerHitRadius(): number {
+    return this.getSelectedShipDefinition().hitRadius;
+  }
+
+  private getPlayerBlackHoleWhirlpoolTuning(): BlackHoleWhirlpoolTuning {
+    const massMultiplier = this.getPlayerMass() / PLAYER_MASS;
+
+    return {
+      ...BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING,
+      mass: BLACK_HOLE_PLAYER_FIELD_MASS * massMultiplier,
+      massResistance: Math.min(0.72, BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING.massResistance * Math.sqrt(massMultiplier))
+    };
   }
 
   private isPermanentUpgradeMaxed(upgrade: PermanentUpgradeDefinition): boolean {
@@ -2480,12 +2625,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const playerWhirlpoolTuning = this.getPlayerBlackHoleWhirlpoolTuning();
     const result = this.blackHole.applyWhirlpoolToVelocity(
       this.player.x,
       this.player.y,
       this.playerVelocity,
       deltaSeconds,
-      BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING,
+      playerWhirlpoolTuning,
       this.arena,
       this.getActiveDebugBlackHoleFieldTuning(true)
     );
@@ -3136,7 +3282,7 @@ export class GameScene extends Phaser.Scene {
     this.playerVelocity.limit(
       Math.max(
         this.getPlayerMaxSpeed(),
-        BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING.maxSpeed * this.getActiveDebugBlackHoleFieldTuning().maxVelocityMultiplier
+        this.getPlayerBlackHoleWhirlpoolTuning().maxSpeed * this.getActiveDebugBlackHoleFieldTuning().maxVelocityMultiplier
       )
     );
 
@@ -4689,8 +4835,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemyContact(): PlayerEnemyContact | undefined {
-    const hitHalfWidth = basicEnemy.hitHalfWidth + PLAYER_HIT_RADIUS;
-    const hitHalfLength = basicEnemy.hitHalfLength + PLAYER_HIT_RADIUS;
+    const playerHitRadius = this.getPlayerHitRadius();
+    const hitHalfWidth = basicEnemy.hitHalfWidth + playerHitRadius;
+    const hitHalfLength = basicEnemy.hitHalfLength + playerHitRadius;
 
     for (const enemy of this.basicEnemies) {
       const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
@@ -4711,8 +4858,8 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    const tankHitHalfWidth = tankEnemy.hitHalfWidth + PLAYER_HIT_RADIUS;
-    const tankHitHalfLength = tankEnemy.hitHalfLength + PLAYER_HIT_RADIUS;
+    const tankHitHalfWidth = tankEnemy.hitHalfWidth + playerHitRadius;
+    const tankHitHalfLength = tankEnemy.hitHalfLength + playerHitRadius;
 
     for (const enemy of this.tankEnemies) {
       const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
@@ -4737,9 +4884,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getAsteroidContact(): PlayerAsteroidContact | undefined {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     for (const asteroid of this.basicAsteroids) {
       const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, this.player.x, this.player.y);
-      const hitRadius = asteroid.hitRadius + PLAYER_HIT_RADIUS;
+      const hitRadius = asteroid.hitRadius + playerHitRadius;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
         return {
@@ -4755,9 +4904,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getDebrisContact(): PlayerDebrisContact | undefined {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     for (const debris of this.enemyWreckageDebris) {
       const offset = this.getWrappedDirection(debris.body.x, debris.body.y, this.player.x, this.player.y);
-      const hitRadius = debris.hitRadius + PLAYER_HIT_RADIUS;
+      const hitRadius = debris.hitRadius + playerHitRadius;
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
         return {
@@ -4804,8 +4955,9 @@ export class GameScene extends Phaser.Scene {
 
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
     const normal = contact.normal;
-    const playerShare = this.getMassResponseShare(contact.mass, PLAYER_MASS);
-    const enemyShare = this.getMassResponseShare(PLAYER_MASS, contact.mass);
+    const playerMass = this.getPlayerMass();
+    const playerShare = this.getMassResponseShare(contact.mass, playerMass);
+    const enemyShare = this.getMassResponseShare(playerMass, contact.mass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -4829,8 +4981,9 @@ export class GameScene extends Phaser.Scene {
   private applyPlayerAsteroidKnockback(contact: PlayerAsteroidContact, time: number): void {
     const normal = contact.normal;
     const asteroidMass = this.getAsteroidMass(contact.asteroid.tier);
-    const playerShare = this.getMassResponseShare(asteroidMass, PLAYER_MASS);
-    const asteroidShare = this.getMassResponseShare(PLAYER_MASS, asteroidMass);
+    const playerMass = this.getPlayerMass();
+    const playerShare = this.getMassResponseShare(asteroidMass, playerMass);
+    const asteroidShare = this.getMassResponseShare(playerMass, asteroidMass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -4853,8 +5006,9 @@ export class GameScene extends Phaser.Scene {
 
   private applyPlayerDebrisKnockback(contact: PlayerDebrisContact, time: number): void {
     const normal = contact.normal;
-    const playerShare = this.getMassResponseShare(contact.debris.mass, PLAYER_MASS);
-    const debrisShare = this.getMassResponseShare(PLAYER_MASS, contact.debris.mass);
+    const playerMass = this.getPlayerMass();
+    const playerShare = this.getMassResponseShare(contact.debris.mass, playerMass);
+    const debrisShare = this.getMassResponseShare(playerMass, contact.debris.mass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -4918,9 +5072,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerContactImpactPoint(normal: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     return new Phaser.Math.Vector2(
-      wrapCoordinate(this.player.x - normal.x * PLAYER_HIT_RADIUS, this.arena.width),
-      wrapCoordinate(this.player.y - normal.y * PLAYER_HIT_RADIUS, this.arena.height)
+      wrapCoordinate(this.player.x - normal.x * playerHitRadius, this.arena.width),
+      wrapCoordinate(this.player.y - normal.y * playerHitRadius, this.arena.height)
     );
   }
 
@@ -5302,7 +5458,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, this.player.x, this.player.y);
-    const hitRadius = PLAYER_HIT_RADIUS + SHOOTER_PROJECTILE_HIT_RADIUS;
+    const hitRadius = this.getPlayerHitRadius() + SHOOTER_PROJECTILE_HIT_RADIUS;
 
     if (offset.lengthSq() > hitRadius * hitRadius) {
       return false;
@@ -6389,14 +6545,16 @@ export class GameScene extends Phaser.Scene {
     const playerPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
 
     this.collisionDebugGraphics.lineStyle(2, 0x73f2ff, 0.82);
-    this.collisionDebugGraphics.strokeCircle(playerPosition.x, playerPosition.y, PLAYER_HIT_RADIUS);
+    this.collisionDebugGraphics.strokeCircle(playerPosition.x, playerPosition.y, this.getPlayerHitRadius());
   }
 
   private drawEnemyCollisionDebug(): void {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     for (const enemy of this.basicEnemies) {
       const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
 
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, BASIC_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, BASIC_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
         continue;
       }
 
@@ -6416,8 +6574,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        basicEnemy.hitHalfWidth + PLAYER_HIT_RADIUS,
-        basicEnemy.hitHalfLength + PLAYER_HIT_RADIUS,
+        basicEnemy.hitHalfWidth + playerHitRadius,
+        basicEnemy.hitHalfLength + playerHitRadius,
         0xff5964,
         0.42
       );
@@ -6426,7 +6584,7 @@ export class GameScene extends Phaser.Scene {
     for (const enemy of this.shooterEnemies) {
       const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
 
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
         continue;
       }
 
@@ -6447,7 +6605,7 @@ export class GameScene extends Phaser.Scene {
     for (const enemy of this.tankEnemies) {
       const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
 
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, TANK_ENEMY_DISPLAY_SIZE * 0.5 + PLAYER_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, TANK_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
         continue;
       }
 
@@ -6467,8 +6625,8 @@ export class GameScene extends Phaser.Scene {
         enemyPosition,
         enemyRight,
         enemyForward,
-        tankEnemy.hitHalfWidth + PLAYER_HIT_RADIUS,
-        tankEnemy.hitHalfLength + PLAYER_HIT_RADIUS,
+        tankEnemy.hitHalfWidth + playerHitRadius,
+        tankEnemy.hitHalfLength + playerHitRadius,
         0xff5964,
         0.38
       );
@@ -6476,32 +6634,36 @@ export class GameScene extends Phaser.Scene {
   }
 
   private drawAsteroidCollisionDebug(): void {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     for (const asteroid of this.basicAsteroids) {
       const asteroidPosition = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
 
-      if (!this.isCircleInCameraView(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + PLAYER_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + playerHitRadius)) {
         continue;
       }
 
       this.collisionDebugGraphics.lineStyle(2, 0x9fd8ff, 0.78);
       this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius);
       this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.38);
-      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + PLAYER_HIT_RADIUS);
+      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + playerHitRadius);
     }
   }
 
   private drawDebrisCollisionDebug(): void {
+    const playerHitRadius = this.getPlayerHitRadius();
+
     for (const debris of this.enemyWreckageDebris) {
       const debrisPosition = this.getNearestWrappedRenderPosition(debris.body.x, debris.body.y);
 
-      if (!this.isCircleInCameraView(debrisPosition.x, debrisPosition.y, debris.hitRadius + PLAYER_HIT_RADIUS)) {
+      if (!this.isCircleInCameraView(debrisPosition.x, debrisPosition.y, debris.hitRadius + playerHitRadius)) {
         continue;
       }
 
       this.collisionDebugGraphics.lineStyle(1, 0xc7d4dc, 0.74);
       this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius);
       this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.32);
-      this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius + PLAYER_HIT_RADIUS);
+      this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius + playerHitRadius);
     }
   }
 
