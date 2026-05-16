@@ -17,6 +17,7 @@ import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
 import bulwarkShipUrl from '../../assets/ships/bulwark.png';
+import rammingShieldUrl from '../../assets/ships/ramming shield.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
@@ -73,6 +74,7 @@ const TANK_ENEMY_TEXTURE_KEY = 'tank-enemy-spaceship';
 const ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY = 'enemy-wreckage-debris';
 const SCRAP_PICKUP_TEXTURE_KEY = 'scrap-pickup';
 const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
+const RAMMING_SHIELD_TEXTURE_KEY = 'ramming-shield';
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
   { key: 'asteroid-variant-2', url: asteroidVariant2Url },
@@ -198,6 +200,8 @@ const PLAYER_CONTACT_MAX_SEPARATION = 18;
 const PLAYER_REST_SPEED = 2;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
+const RAMMING_SHIELD_TEXTURE_CROP = { x: 208, y: 250, width: 295, height: 73 };
+const RAMMING_SHIELD_COLLIDER_DEPTH = 42;
 const DEBUG_ELLIPSE_SEGMENTS = 28;
 const DEBUG_GRID_MINOR_SPACING = 240;
 const DEBUG_GRID_MAJOR_SPACING = 480;
@@ -717,6 +721,7 @@ interface PlayerEnemyContact {
   penetration: number;
   damage: number;
   mass: number;
+  hitRammingShield?: boolean;
 }
 
 interface PlayerAsteroidContact {
@@ -724,6 +729,7 @@ interface PlayerAsteroidContact {
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;
+  hitRammingShield?: boolean;
 }
 
 interface PlayerDebrisContact {
@@ -731,13 +737,28 @@ interface PlayerDebrisContact {
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;
+  hitRammingShield?: boolean;
+}
+
+interface RammingShieldCollider {
+  center: Phaser.Math.Vector2;
+  forward: Phaser.Math.Vector2;
+  right: Phaser.Math.Vector2;
+  halfWidth: number;
+  halfDepth: number;
+}
+
+interface RammingShieldCollision {
+  normal: Phaser.Math.Vector2;
+  penetration: number;
+  impact: Phaser.Math.Vector2;
 }
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
-  private rammingShieldGraphics?: Phaser.GameObjects.Graphics;
+  private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
   private hudGraphics!: Phaser.GameObjects.Graphics;
@@ -879,6 +900,7 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapPickupUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
     this.load.image('player-ship-bulwark', bulwarkShipUrl);
+    this.load.image(RAMMING_SHIELD_TEXTURE_KEY, rammingShieldUrl);
     for (const blackHoleTexture of BLACK_HOLE_FULL_TEXTURES) {
       this.load.image(blackHoleTexture.key, blackHoleTexture.url);
     }
@@ -1566,9 +1588,10 @@ export class GameScene extends Phaser.Scene {
     const forward = this.getForwardDirection(this.player.rotation);
 
     if (enemy) {
+      const shieldRange = this.getRammingShieldStats().range;
       enemy.body.setPosition(
-        wrapCoordinate(this.player.x + forward.x * 20, this.arena.width),
-        wrapCoordinate(this.player.y + forward.y * 20, this.arena.height)
+        wrapCoordinate(this.player.x + forward.x * shieldRange, this.arena.width),
+        wrapCoordinate(this.player.y + forward.y * shieldRange, this.arena.height)
       );
       enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
       this.playerVelocity.set(forward.x * 240, forward.y * 240);
@@ -1691,7 +1714,7 @@ export class GameScene extends Phaser.Scene {
     this.shopActionZones = [];
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
     this.hasResolvedSecondaryWeaponChoice = false;
-    this.rammingShieldGraphics = undefined;
+    this.rammingShieldImage = undefined;
     this.rammingShieldHp = this.getRammingShieldMaxHp();
     this.nextRammingShieldRegenAt = 0;
     this.rammingShieldImpactFlashUntil = 0;
@@ -2230,10 +2253,9 @@ export class GameScene extends Phaser.Scene {
       this.nextRammingShieldDashChargeAt = 0;
     }
 
-    if (!this.rammingShieldGraphics && this.player) {
-      this.rammingShieldGraphics = this.add.graphics();
-      this.rammingShieldGraphics.setDepth(6);
-      this.player.add(this.rammingShieldGraphics);
+    if (!this.rammingShieldImage && this.player) {
+      this.rammingShieldImage = this.createRammingShieldImage();
+      this.player.add(this.rammingShieldImage);
       this.updateRammingShieldVisual(this.time.now);
     }
   }
@@ -2509,13 +2531,30 @@ export class GameScene extends Phaser.Scene {
 
     const ship = this.add.container(x, y, [sprite]);
     if (this.hasRammingShield()) {
-      this.rammingShieldGraphics = this.add.graphics();
+      this.rammingShieldImage = this.createRammingShieldImage();
       this.updateRammingShieldVisual(this.time.now);
-      ship.add(this.rammingShieldGraphics);
+      ship.add(this.rammingShieldImage);
     }
     ship.setDepth(10);
 
     return ship;
+  }
+
+  private createRammingShieldImage(): Phaser.GameObjects.Image {
+    const stats = this.getRammingShieldStats();
+    const shield = this.add.image(0, -stats.range, RAMMING_SHIELD_TEXTURE_KEY);
+
+    shield.setOrigin(0.5, 0.55);
+    shield.setCrop(
+      RAMMING_SHIELD_TEXTURE_CROP.x,
+      RAMMING_SHIELD_TEXTURE_CROP.y,
+      RAMMING_SHIELD_TEXTURE_CROP.width,
+      RAMMING_SHIELD_TEXTURE_CROP.height
+    );
+    shield.setDisplaySize(stats.width, RAMMING_SHIELD_COLLIDER_DEPTH);
+    shield.setDepth(6);
+
+    return shield;
   }
 
   private createBasicEnemies(center: Phaser.Math.Vector2): void {
@@ -5210,44 +5249,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateRammingShieldVisual(time: number): void {
-    if (!this.rammingShieldGraphics || !this.hasRammingShield()) {
+    if (!this.rammingShieldImage || !this.hasRammingShield()) {
       return;
     }
 
     const shieldRatio = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldHp / this.getRammingShieldMaxHp() : 0;
     const isBroken = this.rammingShieldHp <= 0;
     const isFlashing = time < this.rammingShieldImpactFlashUntil;
-    const alpha = isBroken ? 0.18 : 0.28 + shieldRatio * 0.32 + (isFlashing ? 0.22 : 0);
-    const color = isBroken ? 0xff5964 : isFlashing ? 0xf2fbff : 0x42f5d7;
+    const alpha = isBroken ? 0.22 : 0.54 + shieldRatio * 0.28 + (isFlashing ? 0.18 : 0);
+    const tint = isBroken ? 0xff5964 : isFlashing ? 0xf2fbff : 0xffffff;
     const stats = this.getRammingShieldStats();
-    const shieldY = -stats.range;
-    const halfWidth = stats.width / 2;
-    const depth = 24;
 
-    this.rammingShieldGraphics.clear();
-    this.rammingShieldGraphics.fillStyle(color, alpha * 0.38);
-    this.rammingShieldGraphics.beginPath();
-    this.rammingShieldGraphics.moveTo(-halfWidth * 0.72, shieldY + depth * 0.42);
-    this.rammingShieldGraphics.lineTo(0, shieldY - depth * 0.72);
-    this.rammingShieldGraphics.lineTo(halfWidth * 0.72, shieldY + depth * 0.42);
-    this.rammingShieldGraphics.closePath();
-    this.rammingShieldGraphics.fillPath();
-    this.rammingShieldGraphics.lineStyle(isBroken ? 2 : 3, color, alpha);
-    this.rammingShieldGraphics.beginPath();
-    this.rammingShieldGraphics.moveTo(-halfWidth, shieldY + depth * 0.38);
-    for (let i = 1; i <= 10; i += 1) {
-      const t = i / 10;
-      const x = Phaser.Math.Linear(-halfWidth, halfWidth, t);
-      const y = (1 - t) * (1 - t) * (shieldY + depth * 0.38) + 2 * (1 - t) * t * (shieldY - depth) + t * t * (shieldY + depth * 0.38);
-      this.rammingShieldGraphics.lineTo(x, y);
-    }
-    this.rammingShieldGraphics.strokePath();
-
-    if (isBroken) {
-      this.rammingShieldGraphics.lineStyle(1, 0xffc857, 0.42);
-      this.rammingShieldGraphics.lineBetween(-18, shieldY - 4, -2, shieldY + 12);
-      this.rammingShieldGraphics.lineBetween(8, shieldY - 10, 22, shieldY + 8);
-    }
+    this.rammingShieldImage.setPosition(0, -stats.range);
+    this.rammingShieldImage.setDisplaySize(stats.width, RAMMING_SHIELD_COLLIDER_DEPTH);
+    this.rammingShieldImage.setAlpha(Math.min(1, alpha));
+    this.rammingShieldImage.setTint(tint);
+    this.rammingShieldImage.setVisible(true);
   }
 
   private getEnemyContact(): PlayerEnemyContact | undefined {
@@ -5256,6 +5273,22 @@ export class GameScene extends Phaser.Scene {
     const hitHalfLength = basicEnemy.hitHalfLength + playerHitRadius;
 
     for (const enemy of this.basicEnemies) {
+      const shieldCollision = this.getRammingShieldCircleCollision(
+        enemy.body.x,
+        enemy.body.y,
+        Math.max(basicEnemy.hitHalfWidth, basicEnemy.hitHalfLength)
+      );
+      if (shieldCollision) {
+        return {
+          enemy,
+          normal: shieldCollision.normal,
+          penetration: shieldCollision.penetration,
+          damage: ENEMY_CONTACT_DAMAGE,
+          mass: BASIC_ENEMY_MASS,
+          hitRammingShield: true
+        };
+      }
+
       const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       const enemyForward = this.getForwardDirection(enemy.body.rotation);
       const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
@@ -5278,6 +5311,22 @@ export class GameScene extends Phaser.Scene {
     const tankHitHalfLength = tankEnemy.hitHalfLength + playerHitRadius;
 
     for (const enemy of this.tankEnemies) {
+      const shieldCollision = this.getRammingShieldCircleCollision(
+        enemy.body.x,
+        enemy.body.y,
+        Math.max(tankEnemy.hitHalfWidth, tankEnemy.hitHalfLength)
+      );
+      if (shieldCollision) {
+        return {
+          enemy,
+          normal: shieldCollision.normal,
+          penetration: shieldCollision.penetration,
+          damage: tankEnemyBalance.contactDamage,
+          mass: tankEnemyBalance.mass,
+          hitRammingShield: true
+        };
+      }
+
       const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       const enemyForward = this.getForwardDirection(enemy.body.rotation);
       const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
@@ -5303,6 +5352,17 @@ export class GameScene extends Phaser.Scene {
     const playerHitRadius = this.getPlayerHitRadius();
 
     for (const asteroid of this.basicAsteroids) {
+      const shieldCollision = this.getRammingShieldCircleCollision(asteroid.body.x, asteroid.body.y, asteroid.hitRadius);
+      if (shieldCollision) {
+        return {
+          asteroid,
+          normal: shieldCollision.normal,
+          penetration: shieldCollision.penetration,
+          damage: ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier],
+          hitRammingShield: true
+        };
+      }
+
       const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, this.player.x, this.player.y);
       const hitRadius = asteroid.hitRadius + playerHitRadius;
 
@@ -5323,6 +5383,17 @@ export class GameScene extends Phaser.Scene {
     const playerHitRadius = this.getPlayerHitRadius();
 
     for (const debris of this.enemyWreckageDebris) {
+      const shieldCollision = this.getRammingShieldCircleCollision(debris.body.x, debris.body.y, debris.hitRadius);
+      if (shieldCollision) {
+        return {
+          debris,
+          normal: shieldCollision.normal,
+          penetration: shieldCollision.penetration,
+          damage: debris.damage,
+          hitRammingShield: true
+        };
+      }
+
       const offset = this.getWrappedDirection(debris.body.x, debris.body.y, this.player.x, this.player.y);
       const hitRadius = debris.hitRadius + playerHitRadius;
 
@@ -5339,82 +5410,112 @@ export class GameScene extends Phaser.Scene {
     return undefined;
   }
 
-  private resolvePlayerEnemyContact(contact: PlayerEnemyContact, time: number): void {
-    this.applyPlayerEnemyKnockback(contact, time);
-    const shieldResult = this.tryResolveRammingShieldHit(contact.enemy.body, contact.normal, contact.damage, time, () =>
-      this.damageRammedEnemy(contact.enemy, time)
+  private getRammingShieldCollider(): RammingShieldCollider | undefined {
+    if (!this.hasRammingShield() || this.rammingShieldHp <= 0) {
+      return undefined;
+    }
+
+    const stats = this.getRammingShieldStats();
+    const forward = this.getForwardDirection(this.player.rotation);
+    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
+    const center = new Phaser.Math.Vector2(
+      wrapCoordinate(this.player.x + forward.x * stats.range, this.arena.width),
+      wrapCoordinate(this.player.y + forward.y * stats.range, this.arena.height)
     );
 
-    if (time >= this.playerInvulnerableUntil && shieldResult.hullDamage > 0) {
+    return {
+      center,
+      forward,
+      right,
+      halfWidth: stats.width / 2,
+      halfDepth: RAMMING_SHIELD_COLLIDER_DEPTH / 2
+    };
+  }
+
+  private getRammingShieldCircleCollision(
+    targetX: number,
+    targetY: number,
+    targetRadius: number
+  ): RammingShieldCollision | undefined {
+    const collider = this.getRammingShieldCollider();
+    if (!collider) {
+      return undefined;
+    }
+
+    const offsetFromShield = this.getWrappedDirection(collider.center.x, collider.center.y, targetX, targetY);
+    const localX = offsetFromShield.dot(collider.right);
+    const localY = offsetFromShield.dot(collider.forward);
+    const overlapX = collider.halfWidth + targetRadius - Math.abs(localX);
+    const overlapY = collider.halfDepth + targetRadius - Math.abs(localY);
+
+    if (overlapX <= 0 || overlapY <= 0) {
+      return undefined;
+    }
+
+    const normal = this.getCollisionNormal(this.getWrappedDirection(targetX, targetY, this.player.x, this.player.y));
+
+    return {
+      normal,
+      penetration: Math.min(overlapX, overlapY),
+      impact: new Phaser.Math.Vector2(targetX, targetY)
+    };
+  }
+
+  private resolvePlayerEnemyContact(contact: PlayerEnemyContact, time: number): void {
+    this.applyPlayerEnemyKnockback(contact, time);
+    if (contact.hitRammingShield) {
+      this.applyRammingShieldImpact(contact.enemy.body, time, () => this.damageRammedEnemy(contact.enemy, time));
+      this.blockDamageWithRammingShield(contact.damage, time, contact.enemy.body.x, contact.enemy.body.y);
+      return;
+    }
+
+    if (time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(shieldResult.hullDamage, time, impact.x, impact.y);
+      this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
 
   private resolvePlayerAsteroidContact(contact: PlayerAsteroidContact, time: number): void {
     this.applyPlayerAsteroidKnockback(contact, time);
-    const shieldResult = this.tryResolveRammingShieldHit(contact.asteroid.body, contact.normal, contact.damage, time, () =>
-      this.damageRammedAsteroid(contact.asteroid, time)
-    );
+    if (contact.hitRammingShield) {
+      this.applyRammingShieldImpact(contact.asteroid.body, time, () => this.damageRammedAsteroid(contact.asteroid, time));
+      this.blockDamageWithRammingShield(contact.damage, time, contact.asteroid.body.x, contact.asteroid.body.y);
+      return;
+    }
 
-    if (time >= this.playerInvulnerableUntil && shieldResult.hullDamage > 0) {
+    if (time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
-      this.damagePlayer(shieldResult.hullDamage, time, impact.x, impact.y);
+      this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
 
   private resolvePlayerDebrisContact(contact: PlayerDebrisContact, time: number): void {
     this.applyPlayerDebrisKnockback(contact, time);
-    const shieldResult = this.tryResolveRammingShieldHit(contact.debris.body, contact.normal, contact.damage, time, () =>
-      this.damageRammedDebris(contact.debris, time)
-    );
+    if (contact.hitRammingShield) {
+      this.applyRammingShieldImpact(contact.debris.body, time, () => this.damageRammedDebris(contact.debris, time));
+      this.blockDamageWithRammingShield(contact.damage, time, contact.debris.body.x, contact.debris.body.y);
+      return;
+    }
 
-    if (time >= this.playerInvulnerableUntil && shieldResult.hullDamage > 0) {
+    if (time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(shieldResult.hullDamage, time, impact.x, impact.y);
+      this.damagePlayer(contact.damage, time, impact.x, impact.y);
     }
   }
 
-  private tryResolveRammingShieldHit(
+  private applyRammingShieldImpact(
     target: Phaser.GameObjects.GameObject,
-    contactNormal: Phaser.Math.Vector2,
-    contactDamage: number,
     time: number,
     damageTarget: () => void
-  ): { hullDamage: number; didShieldHit: boolean } {
-    if (!this.hasRammingShield()) {
-      return { hullDamage: contactDamage, didShieldHit: false };
-    }
-
-    const isFrontHit = this.isRammingShieldFrontHit(contactNormal);
-    const canApplyImpact = isFrontHit && this.canApplyRammingShieldDamage(target, time);
-    if (canApplyImpact) {
+  ): void {
+    if (this.hasRammingShield() && this.rammingShieldHp > 0 && this.canApplyRammingShieldDamage(target, time)) {
       damageTarget();
       this.rammingShieldTargetCooldowns.set(target, time + this.getRammingShieldStats().contactCooldownMs);
       this.rammingShieldImpactFlashUntil = time + 140;
     }
-
-    const canApplyContactDamage = !this.debugState.playerInvulnerable && time >= this.playerInvulnerableUntil;
-
-    return {
-      hullDamage: canApplyContactDamage ? this.absorbDamageWithRammingShield(contactDamage, time) : 0,
-      didShieldHit: isFrontHit || this.rammingShieldHp > 0
-    };
-  }
-
-  private isRammingShieldFrontHit(contactNormal: Phaser.Math.Vector2): boolean {
-    const forward = this.getForwardDirection(this.player.rotation);
-    const targetDirection = contactNormal.clone().negate();
-
-    if (targetDirection.lengthSq() <= 0.0001) {
-      return false;
-    }
-
-    const arcCos = Math.cos(Phaser.Math.DegToRad(this.getRammingShieldStats().frontArcDegrees / 2));
-    return targetDirection.normalize().dot(forward) >= arcCos;
   }
 
   private canApplyRammingShieldDamage(target: Phaser.GameObjects.GameObject, time: number): boolean {
@@ -5431,15 +5532,26 @@ export class GameScene extends Phaser.Scene {
     return Math.max(0, Math.min(stats.maxDamage, stats.baseDamage + strongRamBonus) * activeMultiplier * dashMultiplier);
   }
 
-  private absorbDamageWithRammingShield(damage: number, time: number): number {
+  private blockDamageWithRammingShield(damage: number, time: number, impactX: number, impactY: number): boolean {
     if (!this.hasRammingShield() || this.rammingShieldHp <= 0 || damage <= 0) {
-      return damage;
+      return false;
     }
 
-    const absorbedDamage = Math.min(this.rammingShieldHp, damage);
-    this.damageRammingShield(absorbedDamage, time);
+    if (this.debugState.playerInvulnerable) {
+      this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
+      return true;
+    }
 
-    return Math.max(0, damage - absorbedDamage);
+    if (time < this.playerInvulnerableUntil) {
+      return true;
+    }
+
+    this.damageRammingShield(damage, time);
+    this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
+    this.emitShipCollisionImpactExplosion(impactX, impactY);
+    this.updateGameplayHud(time);
+
+    return true;
   }
 
   private damageRammingShield(damage: number, time: number): void {
@@ -5707,7 +5819,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const hullDamage = options.bypassShield ? damage : this.absorbDamageWithRammingShield(damage, time);
+    const hullDamage = damage;
     this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
     if (hullDamage <= 0) {
       this.updateGameplayHud(time);
@@ -6089,6 +6201,16 @@ export class GameScene extends Phaser.Scene {
   private tryHitPlayerWithEnemyProjectile(projectile: EnemyProjectile, time: number): boolean {
     if (this.isPlayerDead) {
       return false;
+    }
+
+    const shieldCollision = this.getRammingShieldCircleCollision(
+      projectile.body.x,
+      projectile.body.y,
+      SHOOTER_PROJECTILE_HIT_RADIUS
+    );
+    if (shieldCollision) {
+      this.blockDamageWithRammingShield(projectile.damage, time, projectile.body.x, projectile.body.y);
+      return true;
     }
 
     const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, this.player.x, this.player.y);
@@ -7239,6 +7361,20 @@ export class GameScene extends Phaser.Scene {
 
     this.collisionDebugGraphics.lineStyle(2, 0x73f2ff, 0.82);
     this.collisionDebugGraphics.strokeCircle(playerPosition.x, playerPosition.y, this.getPlayerHitRadius());
+
+    const shieldCollider = this.getRammingShieldCollider();
+    if (shieldCollider) {
+      const shieldPosition = this.getNearestWrappedRenderPosition(shieldCollider.center.x, shieldCollider.center.y);
+      this.strokeOrientedEllipse(
+        shieldPosition,
+        shieldCollider.right,
+        shieldCollider.forward,
+        shieldCollider.halfWidth,
+        shieldCollider.halfDepth,
+        0x42f5d7,
+        0.78
+      );
+    }
   }
 
   private drawEnemyCollisionDebug(): void {
