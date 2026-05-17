@@ -244,15 +244,12 @@ const PLAYER_CONTACT_MAX_IMPULSE = 460;
 const PLAYER_CONTACT_RELATIVE_SPEED_SCALE = 0.42;
 const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
 const PLAYER_CONTACT_MAX_SEPARATION = 18;
-const PLAYER_CONTROL_INERTIA_SCALE = 0.72;
-const PLAYER_CONTROL_MASS_EXPONENT = 0.45;
 const CONTACT_IMPACT_MIN_DAMAGE_SPEED = 90;
 const CONTACT_IMPACT_SPEED_DAMAGE_SCALE = 0.018;
 const CONTACT_IMPACT_MASS_DAMAGE_SCALE = 0.08;
 const CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER = 1.35;
 const RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE = 0.08;
 const ENEMY_VELOCITY_RESPONSE = 3.6;
-const ENEMY_VELOCITY_MASS_EXPONENT = 0.38;
 const PLAYER_REST_SPEED = 2;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
@@ -1012,6 +1009,20 @@ export class GameScene extends Phaser.Scene {
           }
         }),
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
+        adjustPlayerThrustScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerThrustScale(delta)),
+        adjustPlayerBrakeScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerBrakeScale(delta)),
+        adjustPlayerStrafeScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerStrafeScale(delta)),
+        adjustPlayerInertiaScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerInertiaScale(delta)),
+        adjustPlayerControlMassExponent: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustPlayerControlMassExponent(delta)),
+        adjustEnemySpeedScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustEnemySpeedScale(delta)),
+        adjustEnemyResponseScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustEnemyResponseScale(delta)),
+        adjustEnemyMassExponent: (delta) => this.runDebugMenuAction(() => this.debugState.adjustEnemyMassExponent(delta)),
+        adjustAsteroidCollisionDamageScale: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustAsteroidCollisionDamageScale(delta)),
+        adjustAsteroidCollisionImpulseScale: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustAsteroidCollisionImpulseScale(delta)),
+        resetPhysicsTuning: () => this.runDebugMenuAction(() => this.debugState.resetPhysicsTuning()),
         adjustWeaponDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponDamageMultiplier(delta)),
         adjustWeaponFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponFireRateMultiplier(delta)),
         adjustWeaponCooldownSeconds: (deltaSeconds) =>
@@ -1128,6 +1139,7 @@ export class GameScene extends Phaser.Scene {
     const time = this.time.now;
 
     return this.debugState.createMenuValues({
+      selectedShipName: this.getSelectedShipDefinition().displayName,
       weaponCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
       backgroundStarsVisible: this.backgroundStarsVisible,
       starfieldFarParallax: this.farStarfieldParallax,
@@ -1167,6 +1179,16 @@ export class GameScene extends Phaser.Scene {
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
       playerMaxHull: this.getPlayerMaxHull(),
+      playerMass: this.getPlayerMass(),
+      playerSpeed: this.playerVelocity.length(),
+      playerMaxSpeed: this.getPlayerMaxSpeed(),
+      playerThrust: this.getPlayerThrustAcceleration(),
+      playerBrake: this.getPlayerReverseThrustAcceleration(),
+      playerStrafe: this.getPlayerStrafeThrustAcceleration(),
+      rammingShieldHp: this.rammingShieldState.hp,
+      rammingShieldMaxHp: this.getRammingShieldMaxHp(),
+      rammingShieldDashCharges: this.rammingShieldState.dashCharges,
+      rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
       nextEnemySpawnSeconds: Math.max(0, this.nextEnemySpawnAt - time) / 1000
     });
   }
@@ -3551,8 +3573,8 @@ export class GameScene extends Phaser.Scene {
         mass: this.getPlayerMass(),
         deltaSeconds,
         referenceMass: PLAYER_MASS,
-        massExponent: PLAYER_CONTROL_MASS_EXPONENT,
-        accelerationScale: PLAYER_CONTROL_INERTIA_SCALE,
+        massExponent: this.debugState.playerControlMassExponent,
+        accelerationScale: this.debugState.playerInertiaScale,
         maxSpeed: this.getPlayerMaxSpeed()
       });
     }
@@ -3898,15 +3920,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerThrustAcceleration(): number {
-    return this.getResolvedPlayerStats().thrust;
+    return this.getResolvedPlayerStats().thrust * this.debugState.playerThrustScale;
   }
 
   private getPlayerReverseThrustAcceleration(): number {
-    return this.getResolvedPlayerStats().brake;
+    return this.getResolvedPlayerStats().brake * this.debugState.playerBrakeScale;
   }
 
   private getPlayerStrafeThrustAcceleration(): number {
-    return this.getResolvedPlayerStats().strafe;
+    return this.getResolvedPlayerStats().strafe * this.debugState.playerStrafeScale;
   }
 
   private getPlayerMaxSpeed(): number {
@@ -6144,7 +6166,8 @@ export class GameScene extends Phaser.Scene {
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        targetVelocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
+        const enemyMoveSpeed = this.getEnemyDebugMoveSpeed(enemy);
+        targetVelocity.set(direction.x * enemyMoveSpeed, direction.y * enemyMoveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
@@ -6183,13 +6206,13 @@ export class GameScene extends Phaser.Scene {
 
         if (distance > enemy.stats.preferredRange) {
           targetVelocity.set(
-            directionToPlayer.x * enemy.stats.moveSpeed,
-            directionToPlayer.y * enemy.stats.moveSpeed
+            directionToPlayer.x * this.getEnemyDebugMoveSpeed(enemy),
+            directionToPlayer.y * this.getEnemyDebugMoveSpeed(enemy)
           );
         } else if (distance < enemy.stats.retreatThreshold) {
           targetVelocity.set(
-            -directionToPlayer.x * enemy.stats.moveSpeed * 0.72,
-            -directionToPlayer.y * enemy.stats.moveSpeed * 0.72
+            -directionToPlayer.x * this.getEnemyDebugMoveSpeed(enemy) * 0.72,
+            -directionToPlayer.y * this.getEnemyDebugMoveSpeed(enemy) * 0.72
           );
         }
 
@@ -6226,7 +6249,8 @@ export class GameScene extends Phaser.Scene {
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        targetVelocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
+        const enemyMoveSpeed = this.getEnemyDebugMoveSpeed(enemy);
+        targetVelocity.set(direction.x * enemyMoveSpeed, direction.y * enemyMoveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
 
@@ -6253,13 +6277,17 @@ export class GameScene extends Phaser.Scene {
     steerVelocityToward({
       velocity: enemy.velocity,
       targetVelocity,
-      response: ENEMY_VELOCITY_RESPONSE,
+      response: ENEMY_VELOCITY_RESPONSE * this.debugState.enemyResponseScale,
       deltaSeconds,
       mass: enemy.stats.mass,
       referenceMass: basicEnemy.stats.mass,
-      massExponent: ENEMY_VELOCITY_MASS_EXPONENT,
-      maxSpeed: enemy.stats.moveSpeed
+      massExponent: this.debugState.enemyMassExponent,
+      maxSpeed: this.getEnemyDebugMoveSpeed(enemy)
     });
+  }
+
+  private getEnemyDebugMoveSpeed(enemy: BasicEnemy | ShooterEnemy | TankEnemy): number {
+    return enemy.stats.moveSpeed * this.debugState.enemySpeedScale;
   }
 
   private fireShooterProjectile(enemy: ShooterEnemy, direction: Phaser.Math.Vector2, time: number): void {
@@ -6440,10 +6468,10 @@ export class GameScene extends Phaser.Scene {
           targetMass: secondMass,
           impactSpeed: closingSpeed,
           minImpactSpeed: ASTEROID_COLLISION_MIN_DAMAGE_SPEED,
-          speedDamageScale: ASTEROID_COLLISION_SPEED_DAMAGE_SCALE,
+          speedDamageScale: ASTEROID_COLLISION_SPEED_DAMAGE_SCALE * this.debugState.asteroidCollisionDamageScale,
           massDamageScale: ASTEROID_COLLISION_MASS_DAMAGE_SCALE,
           minDamage: 0,
-          maxDamage: ASTEROID_COLLISION_MAX_DAMAGE
+          maxDamage: ASTEROID_COLLISION_MAX_DAMAGE * this.debugState.asteroidCollisionDamageScale
         });
 
         applyCollisionImpulse({
@@ -6452,9 +6480,9 @@ export class GameScene extends Phaser.Scene {
           secondVelocity: second.velocity,
           firstMass,
           secondMass,
-          minImpulse: ASTEROID_COLLISION_MIN_IMPULSE,
-          maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE,
-          relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE,
+          minImpulse: ASTEROID_COLLISION_MIN_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
+          maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
+          relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE * this.debugState.asteroidCollisionImpulseScale,
           firstMaxSpeed: ASTEROID_TIER_CONFIG[first.tier].maxVelocity,
           secondMaxSpeed: ASTEROID_TIER_CONFIG[second.tier].maxVelocity,
           restitution: ASTEROID_COLLISION_RESTITUTION,

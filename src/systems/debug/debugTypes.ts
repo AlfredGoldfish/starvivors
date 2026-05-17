@@ -4,6 +4,7 @@ export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
 
 export interface DebugMenuValues {
+  selectedShipName: string;
   enemySpawningEnabled: boolean;
   asteroidSpawningAvailable: boolean;
   asteroidSpawningEnabled: boolean;
@@ -52,6 +53,26 @@ export interface DebugMenuValues {
   enemyProjectiles: number;
   playerHull: number;
   playerMaxHull: number;
+  playerMass: number;
+  playerSpeed: number;
+  playerMaxSpeed: number;
+  playerThrust: number;
+  playerBrake: number;
+  playerStrafe: number;
+  playerThrustScale: number;
+  playerBrakeScale: number;
+  playerStrafeScale: number;
+  playerInertiaScale: number;
+  playerControlMassExponent: number;
+  enemySpeedScale: number;
+  enemyResponseScale: number;
+  enemyMassExponent: number;
+  asteroidCollisionDamageScale: number;
+  asteroidCollisionImpulseScale: number;
+  rammingShieldHp: number;
+  rammingShieldMaxHp: number;
+  rammingShieldDashCharges: number;
+  rammingShieldDashMaxCharges: number;
   spawnDirectorSummary: string;
 }
 
@@ -75,6 +96,17 @@ export interface DebugMenuCallbacks {
   restorePlayerHull: () => void;
   togglePlayerInvulnerability: () => void;
   killPlayer: () => void;
+  adjustPlayerThrustScale: (delta: number) => void;
+  adjustPlayerBrakeScale: (delta: number) => void;
+  adjustPlayerStrafeScale: (delta: number) => void;
+  adjustPlayerInertiaScale: (delta: number) => void;
+  adjustPlayerControlMassExponent: (delta: number) => void;
+  adjustEnemySpeedScale: (delta: number) => void;
+  adjustEnemyResponseScale: (delta: number) => void;
+  adjustEnemyMassExponent: (delta: number) => void;
+  adjustAsteroidCollisionDamageScale: (delta: number) => void;
+  adjustAsteroidCollisionImpulseScale: (delta: number) => void;
+  resetPhysicsTuning: () => void;
   adjustWeaponDamage: (delta: number) => void;
   adjustWeaponFireRate: (delta: number) => void;
   adjustWeaponCooldownSeconds: (deltaSeconds: number) => void;
