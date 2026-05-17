@@ -67,13 +67,22 @@ import {
   ensureRammingShieldRuntime,
   getRammingShieldCircleCollision as getRammingShieldCircleCollisionResult,
   getRammingShieldCollider as getRammingShieldColliderData,
-  getRammingShieldDamage as getRammingShieldDamageValue,
   getRammingShieldStats,
   markRammingShieldDamageApplied,
   updateRammingShieldRuntime,
   type RammingShieldCollider,
   type RammingShieldRuntimeState
 } from '../systems/rammingShield';
+import {
+  applyAccelerationWithMass,
+  applyCollisionImpulse,
+  calculateImpactDamage,
+  getClosingSpeed,
+  getMassResponseShare,
+  getRelativeSpeed,
+  getRelativeVelocity,
+  steerVelocityToward
+} from '../systems/physics';
 import {
   BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
   BLACK_HOLE_LENSING_ARC_MAX_COUNT,
@@ -200,6 +209,17 @@ const BASIC_ASTEROID_COUNT = 9;
 const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 const ASTEROID_MAX_ROTATION_SPEED = 0.26;
 const ASTEROID_SAFE_SPAWN_RADIUS = 520;
+const ASTEROID_COLLISION_COOLDOWN_MS = 260;
+const ASTEROID_COLLISION_MIN_DAMAGE_SPEED = 55;
+const ASTEROID_COLLISION_SPEED_DAMAGE_SCALE = 0.011;
+const ASTEROID_COLLISION_MASS_DAMAGE_SCALE = 0.035;
+const ASTEROID_COLLISION_MAX_DAMAGE = 3.5;
+const ASTEROID_COLLISION_MIN_IMPULSE = 18;
+const ASTEROID_COLLISION_MAX_IMPULSE = 210;
+const ASTEROID_COLLISION_IMPULSE_SPEED_SCALE = 0.26;
+const ASTEROID_COLLISION_RESTITUTION = 0.58;
+const ASTEROID_COLLISION_SEPARATION_PERCENT = 0.48;
+const ASTEROID_COLLISION_MAX_SEPARATION = 22;
 const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
 const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
 const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
@@ -224,6 +244,15 @@ const PLAYER_CONTACT_MAX_IMPULSE = 460;
 const PLAYER_CONTACT_RELATIVE_SPEED_SCALE = 0.42;
 const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
 const PLAYER_CONTACT_MAX_SEPARATION = 18;
+const PLAYER_CONTROL_INERTIA_SCALE = 0.72;
+const PLAYER_CONTROL_MASS_EXPONENT = 0.45;
+const CONTACT_IMPACT_MIN_DAMAGE_SPEED = 90;
+const CONTACT_IMPACT_SPEED_DAMAGE_SCALE = 0.018;
+const CONTACT_IMPACT_MASS_DAMAGE_SCALE = 0.08;
+const CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER = 1.35;
+const RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE = 0.08;
+const ENEMY_VELOCITY_RESPONSE = 3.6;
+const ENEMY_VELOCITY_MASS_EXPONENT = 0.38;
 const PLAYER_REST_SPEED = 2;
 const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
@@ -788,6 +817,7 @@ export class GameScene extends Phaser.Scene {
   private nextRightStrafeThrusterAt = 0;
   private nextDebugUpdateAt = 0;
   private nextPlayerContactImpulseAt = 0;
+  private asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
@@ -1690,6 +1720,7 @@ export class GameScene extends Phaser.Scene {
     this.nextRightStrafeThrusterAt = 0;
     this.nextDebugUpdateAt = 0;
     this.nextPlayerContactImpulseAt = 0;
+    this.asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
     this.nextBlackHolePlayerDamageAt = 0;
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
@@ -3491,24 +3522,39 @@ export class GameScene extends Phaser.Scene {
     const forward = this.getForwardDirection(this.player.rotation);
     const right = new Phaser.Math.Vector2(-forward.y, forward.x);
 
+    const playerAcceleration = new Phaser.Math.Vector2(0, 0);
+
     if (thrustForward) {
-      this.playerVelocity.x += forward.x * this.getPlayerThrustAcceleration() * deltaSeconds;
-      this.playerVelocity.y += forward.y * this.getPlayerThrustAcceleration() * deltaSeconds;
+      playerAcceleration.x += forward.x * this.getPlayerThrustAcceleration();
+      playerAcceleration.y += forward.y * this.getPlayerThrustAcceleration();
     }
 
     if (thrustReverse) {
-      this.playerVelocity.x -= forward.x * this.getPlayerReverseThrustAcceleration() * deltaSeconds;
-      this.playerVelocity.y -= forward.y * this.getPlayerReverseThrustAcceleration() * deltaSeconds;
+      playerAcceleration.x -= forward.x * this.getPlayerReverseThrustAcceleration();
+      playerAcceleration.y -= forward.y * this.getPlayerReverseThrustAcceleration();
     }
 
     if (strafeLeft) {
-      this.playerVelocity.x -= right.x * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
-      this.playerVelocity.y -= right.y * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
+      playerAcceleration.x -= right.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y -= right.y * this.getPlayerStrafeThrustAcceleration();
     }
 
     if (strafeRight) {
-      this.playerVelocity.x += right.x * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
-      this.playerVelocity.y += right.y * this.getPlayerStrafeThrustAcceleration() * deltaSeconds;
+      playerAcceleration.x += right.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y += right.y * this.getPlayerStrafeThrustAcceleration();
+    }
+
+    if (playerAcceleration.lengthSq() > 0) {
+      applyAccelerationWithMass({
+        velocity: this.playerVelocity,
+        acceleration: playerAcceleration,
+        mass: this.getPlayerMass(),
+        deltaSeconds,
+        referenceMass: PLAYER_MASS,
+        massExponent: PLAYER_CONTROL_MASS_EXPONENT,
+        accelerationScale: PLAYER_CONTROL_INERTIA_SCALE,
+        maxSpeed: this.getPlayerMaxSpeed()
+      });
     }
 
     this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
@@ -5401,47 +5447,50 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolvePlayerEnemyContact(contact: PlayerEnemyContact, time: number): void {
+    const impactDamage = this.getPlayerEnemyImpactDamage(contact);
     this.applyPlayerEnemyKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.enemy.body, time, () => this.damageRammedEnemy(contact.enemy, time));
-      this.blockDamageWithRammingShield(contact.damage, time, contact.enemy.body.x, contact.enemy.body.y);
+      this.blockDamageWithRammingShield(impactDamage, time, contact.enemy.body.x, contact.enemy.body.y);
       return;
     }
 
-    if (time >= this.playerInvulnerableUntil) {
+    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(contact.damage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y);
     }
   }
 
   private resolvePlayerAsteroidContact(contact: PlayerAsteroidContact, time: number): void {
+    const impactDamage = this.getPlayerAsteroidImpactDamage(contact);
     this.applyPlayerAsteroidKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.asteroid.body, time, () => this.damageRammedAsteroid(contact.asteroid, time));
-      this.blockDamageWithRammingShield(contact.damage, time, contact.asteroid.body.x, contact.asteroid.body.y);
+      this.blockDamageWithRammingShield(impactDamage, time, contact.asteroid.body.x, contact.asteroid.body.y);
       return;
     }
 
-    if (time >= this.playerInvulnerableUntil) {
+    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
-      this.damagePlayer(contact.damage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y);
     }
   }
 
   private resolvePlayerDebrisContact(contact: PlayerDebrisContact, time: number): void {
+    const impactDamage = this.getPlayerDebrisImpactDamage(contact);
     this.applyPlayerDebrisKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.debris.body, time, () => this.damageRammedDebris(contact.debris, time));
-      this.blockDamageWithRammingShield(contact.damage, time, contact.debris.body.x, contact.debris.body.y);
+      this.blockDamageWithRammingShield(impactDamage, time, contact.debris.body.x, contact.debris.body.y);
       return;
     }
 
-    if (time >= this.playerInvulnerableUntil) {
+    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(contact.damage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y);
     }
   }
 
@@ -5456,8 +5505,63 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getRammingShieldDamage(time = this.time.now): number {
-    return getRammingShieldDamageValue(this.rammingShieldState, this.playerVelocity.length(), time, this.getResolvedPlayerStats());
+  private getPlayerEnemyImpactDamage(contact: PlayerEnemyContact): number {
+    return this.getPlayerContactImpactDamage(contact.damage, contact.mass, this.getEnemyContactVelocity(contact.enemy), contact.normal);
+  }
+
+  private getPlayerAsteroidImpactDamage(contact: PlayerAsteroidContact): number {
+    return this.getPlayerContactImpactDamage(
+      contact.damage,
+      this.getAsteroidMass(contact.asteroid.tier),
+      contact.asteroid.velocity,
+      contact.normal
+    );
+  }
+
+  private getPlayerDebrisImpactDamage(contact: PlayerDebrisContact): number {
+    return this.getPlayerContactImpactDamage(contact.damage, contact.debris.mass, contact.debris.velocity, contact.normal);
+  }
+
+  private getPlayerContactImpactDamage(
+    legacyDamage: number,
+    targetMass: number,
+    targetVelocity: Phaser.Math.Vector2,
+    normal: Phaser.Math.Vector2
+  ): number {
+    const relativeVelocity = getRelativeVelocity(this.playerVelocity, targetVelocity);
+    const closingSpeed = getClosingSpeed(relativeVelocity, normal);
+
+    return calculateImpactDamage({
+      baseDamage: 0,
+      attackerMass: targetMass,
+      targetMass: this.getPlayerMass(),
+      impactSpeed: closingSpeed,
+      minImpactSpeed: CONTACT_IMPACT_MIN_DAMAGE_SPEED,
+      speedDamageScale: CONTACT_IMPACT_SPEED_DAMAGE_SCALE,
+      massDamageScale: CONTACT_IMPACT_MASS_DAMAGE_SCALE,
+      minDamage: 0,
+      maxDamage: legacyDamage * CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER
+    });
+  }
+
+  private getRammingShieldDamage(targetVelocity: Phaser.Math.Vector2, targetMass: number, time = this.time.now): number {
+    const stats = this.getRammingShieldStats();
+    const activeMultiplier = this.rammingShieldState.hp > 0 ? 1 : stats.brokenDamageMultiplier;
+    const dashMultiplier = time < this.rammingShieldState.empoweredUntil ? stats.dashRamDamageMultiplier : 1;
+    const playerStats = this.getResolvedPlayerStats();
+    const impactDamage = calculateImpactDamage({
+      baseDamage: stats.baseDamage,
+      attackerMass: playerStats.mass,
+      targetMass,
+      impactSpeed: getRelativeSpeed(this.playerVelocity, targetVelocity),
+      minImpactSpeed: stats.strongRamSpeed,
+      speedDamageScale: stats.speedDamageMultiplier,
+      massDamageScale: RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE,
+      minDamage: 0,
+      maxDamage: stats.maxDamage
+    });
+
+    return impactDamage * activeMultiplier * dashMultiplier * playerStats.damage;
   }
 
   private damageEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, damage: number): void {
@@ -5532,7 +5636,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, time: number): void {
-    const damage = this.getRammingShieldDamage(time);
+    const damage = this.getRammingShieldDamage(this.getEnemyTotalVelocity(enemy), enemy.stats.mass, time);
     if (damage <= 0) {
       return;
     }
@@ -5623,7 +5727,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedDebris(debris: EnemyWreckageDebris, time: number): void {
-    const damage = this.getRammingShieldDamage(time);
+    const damage = this.getRammingShieldDamage(debris.velocity, debris.mass, time);
     if (damage <= 0) {
       return;
     }
@@ -5644,7 +5748,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedAsteroid(asteroid: BasicAsteroid, time: number): void {
-    const damage = this.getRammingShieldDamage(time);
+    const damage = this.getRammingShieldDamage(asteroid.velocity, this.getAsteroidMass(asteroid.tier), time);
     if (damage <= 0) {
       return;
     }
@@ -5674,11 +5778,19 @@ export class GameScene extends Phaser.Scene {
     asteroid.velocity.limit(tierConfig.maxVelocity);
   }
 
+  private getEnemyContactVelocity(enemy: BasicEnemy | ShooterEnemy | TankEnemy): Phaser.Math.Vector2 {
+    return enemy.velocity.clone().add(enemy.knockbackVelocity);
+  }
+
+  private getEnemyTotalVelocity(enemy: BasicEnemy | ShooterEnemy | TankEnemy): Phaser.Math.Vector2 {
+    return this.getEnemyContactVelocity(enemy).add(enemy.blackHoleVelocity);
+  }
+
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
     const normal = contact.normal;
     const playerMass = this.getPlayerMass();
-    const playerShare = this.getMassResponseShare(contact.mass, playerMass);
-    const enemyShare = this.getMassResponseShare(playerMass, contact.mass);
+    const playerShare = getMassResponseShare(contact.mass, playerMass);
+    const enemyShare = getMassResponseShare(playerMass, contact.mass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -5688,14 +5800,20 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const impulse = this.getContactImpulse(normal, contact.enemy.velocity.clone().add(contact.enemy.knockbackVelocity));
-
-    this.playerVelocity.x += normal.x * impulse * playerShare;
-    this.playerVelocity.y += normal.y * impulse * playerShare;
-    this.playerVelocity.limit(this.getPlayerMaxSpeed());
-    contact.enemy.knockbackVelocity.x -= normal.x * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
-    contact.enemy.knockbackVelocity.y -= normal.y * impulse * enemyShare * ENEMY_CONTACT_RESTITUTION_SHARE;
-    contact.enemy.knockbackVelocity.limit(GAMEPLAY_MAX_VELOCITY);
+    applyCollisionImpulse({
+      normal,
+      firstVelocity: this.playerVelocity,
+      secondVelocity: contact.enemy.knockbackVelocity,
+      firstMass: playerMass,
+      secondMass: contact.mass,
+      minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
+      maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
+      relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+      firstMaxSpeed: this.getPlayerMaxSpeed(),
+      secondMaxSpeed: GAMEPLAY_MAX_VELOCITY,
+      restitution: ENEMY_CONTACT_RESTITUTION_SHARE,
+      relativeVelocity: getRelativeVelocity(this.playerVelocity, this.getEnemyContactVelocity(contact.enemy))
+    });
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
   }
 
@@ -5703,8 +5821,8 @@ export class GameScene extends Phaser.Scene {
     const normal = contact.normal;
     const asteroidMass = this.getAsteroidMass(contact.asteroid.tier);
     const playerMass = this.getPlayerMass();
-    const playerShare = this.getMassResponseShare(asteroidMass, playerMass);
-    const asteroidShare = this.getMassResponseShare(playerMass, asteroidMass);
+    const playerShare = getMassResponseShare(asteroidMass, playerMass);
+    const asteroidShare = getMassResponseShare(playerMass, asteroidMass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -5714,22 +5832,26 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const impulse = this.getContactImpulse(normal, contact.asteroid.velocity);
-
-    this.playerVelocity.x += normal.x * impulse * playerShare;
-    this.playerVelocity.y += normal.y * impulse * playerShare;
-    this.playerVelocity.limit(this.getPlayerMaxSpeed());
-    contact.asteroid.velocity.x -= normal.x * impulse * asteroidShare;
-    contact.asteroid.velocity.y -= normal.y * impulse * asteroidShare;
-    contact.asteroid.velocity.limit(ASTEROID_TIER_CONFIG[contact.asteroid.tier].maxVelocity);
+    applyCollisionImpulse({
+      normal,
+      firstVelocity: this.playerVelocity,
+      secondVelocity: contact.asteroid.velocity,
+      firstMass: playerMass,
+      secondMass: asteroidMass,
+      minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
+      maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
+      relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+      firstMaxSpeed: this.getPlayerMaxSpeed(),
+      secondMaxSpeed: ASTEROID_TIER_CONFIG[contact.asteroid.tier].maxVelocity
+    });
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
   }
 
   private applyPlayerDebrisKnockback(contact: PlayerDebrisContact, time: number): void {
     const normal = contact.normal;
     const playerMass = this.getPlayerMass();
-    const playerShare = this.getMassResponseShare(contact.debris.mass, playerMass);
-    const debrisShare = this.getMassResponseShare(playerMass, contact.debris.mass);
+    const playerShare = getMassResponseShare(contact.debris.mass, playerMass);
+    const debrisShare = getMassResponseShare(playerMass, contact.debris.mass);
     const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
@@ -5739,34 +5861,23 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const impulse = this.getContactImpulse(normal, contact.debris.velocity);
-
-    this.playerVelocity.x += normal.x * impulse * playerShare;
-    this.playerVelocity.y += normal.y * impulse * playerShare;
-    this.playerVelocity.limit(this.getPlayerMaxSpeed());
-    contact.debris.velocity.x -= normal.x * impulse * debrisShare;
-    contact.debris.velocity.y -= normal.y * impulse * debrisShare;
-    contact.debris.velocity.limit(GAMEPLAY_MAX_VELOCITY);
+    applyCollisionImpulse({
+      normal,
+      firstVelocity: this.playerVelocity,
+      secondVelocity: contact.debris.velocity,
+      firstMass: playerMass,
+      secondMass: contact.debris.mass,
+      minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
+      maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
+      relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+      firstMaxSpeed: this.getPlayerMaxSpeed(),
+      secondMaxSpeed: GAMEPLAY_MAX_VELOCITY
+    });
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
   }
 
   private getAsteroidMass(tier: AsteroidTier): number {
     return ASTEROID_TIER_CONFIG[tier].massBudget;
-  }
-
-  private getMassResponseShare(otherMass: number, selfMass: number): number {
-    return otherMass / (selfMass + otherMass);
-  }
-
-  private getContactImpulse(normal: Phaser.Math.Vector2, otherVelocity: Phaser.Math.Vector2): number {
-    const relativeVelocity = this.playerVelocity.clone().subtract(otherVelocity);
-    const closingSpeed = Math.max(0, -relativeVelocity.dot(normal));
-
-    return Phaser.Math.Clamp(
-      PLAYER_CONTACT_MIN_IMPULSE + closingSpeed * PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
-      PLAYER_CONTACT_MIN_IMPULSE,
-      PLAYER_CONTACT_MAX_IMPULSE
-    );
   }
 
   private getCollisionNormal(offset: Phaser.Math.Vector2): Phaser.Math.Vector2 {
@@ -6029,13 +6140,15 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.basicEnemies[i];
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      enemy.velocity.set(0, 0);
+      const targetVelocity = new Phaser.Math.Vector2(0, 0);
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        enemy.velocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
+        targetVelocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
+
+      this.steerEnemyVelocity(enemy, targetVelocity, deltaSeconds);
 
       if (this.applyBlackHoleToBasicEnemy(enemy, i, deltaSeconds, this.time.now)) {
         continue;
@@ -6061,8 +6174,7 @@ export class GameScene extends Phaser.Scene {
       const enemy = this.shooterEnemies[i];
       const offsetToPlayer = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       const distance = offsetToPlayer.length();
-
-      enemy.velocity.set(0, 0);
+      const targetVelocity = new Phaser.Math.Vector2(0, 0);
 
       if (distance > 0) {
         const directionToPlayer = offsetToPlayer.clone().scale(1 / distance);
@@ -6070,12 +6182,12 @@ export class GameScene extends Phaser.Scene {
         enemy.body.rotation = Math.atan2(directionToPlayer.x, -directionToPlayer.y);
 
         if (distance > enemy.stats.preferredRange) {
-          enemy.velocity.set(
+          targetVelocity.set(
             directionToPlayer.x * enemy.stats.moveSpeed,
             directionToPlayer.y * enemy.stats.moveSpeed
           );
         } else if (distance < enemy.stats.retreatThreshold) {
-          enemy.velocity.set(
+          targetVelocity.set(
             -directionToPlayer.x * enemy.stats.moveSpeed * 0.72,
             -directionToPlayer.y * enemy.stats.moveSpeed * 0.72
           );
@@ -6086,6 +6198,8 @@ export class GameScene extends Phaser.Scene {
           enemy.nextFireAt = time + enemy.stats.attackCooldown * 1000;
         }
       }
+
+      this.steerEnemyVelocity(enemy, targetVelocity, deltaSeconds);
 
       if (this.applyBlackHoleToShooterEnemy(enemy, i, deltaSeconds, time)) {
         continue;
@@ -6108,13 +6222,15 @@ export class GameScene extends Phaser.Scene {
     for (let i = this.tankEnemies.length - 1; i >= 0; i -= 1) {
       const enemy = this.tankEnemies[i];
       const direction = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      enemy.velocity.set(0, 0);
+      const targetVelocity = new Phaser.Math.Vector2(0, 0);
 
       if (direction.lengthSq() > 0) {
         direction.normalize();
-        enemy.velocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
+        targetVelocity.set(direction.x * enemy.stats.moveSpeed, direction.y * enemy.stats.moveSpeed);
         enemy.body.rotation = Math.atan2(direction.x, -direction.y);
       }
+
+      this.steerEnemyVelocity(enemy, targetVelocity, deltaSeconds);
 
       if (this.applyBlackHoleToTankEnemy(enemy, i, deltaSeconds, this.time.now)) {
         continue;
@@ -6127,6 +6243,23 @@ export class GameScene extends Phaser.Scene {
       enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, deltaSeconds * 60));
       this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, TANK_ENEMY_DISPLAY_SIZE * 0.5);
     }
+  }
+
+  private steerEnemyVelocity(
+    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
+    targetVelocity: Phaser.Math.Vector2,
+    deltaSeconds: number
+  ): void {
+    steerVelocityToward({
+      velocity: enemy.velocity,
+      targetVelocity,
+      response: ENEMY_VELOCITY_RESPONSE,
+      deltaSeconds,
+      mass: enemy.stats.mass,
+      referenceMass: basicEnemy.stats.mass,
+      massExponent: ENEMY_VELOCITY_MASS_EXPONENT,
+      maxSpeed: enemy.stats.moveSpeed
+    });
   }
 
   private fireShooterProjectile(enemy: ShooterEnemy, direction: Phaser.Math.Vector2, time: number): void {
@@ -6251,6 +6384,142 @@ export class GameScene extends Phaser.Scene {
       asteroid.body.y = wrapCoordinate(asteroid.body.y + asteroid.velocity.y * deltaSeconds, this.arena.height);
       asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
       this.updateAsteroidWrapMirror(asteroid);
+    }
+
+    this.resolveAsteroidCollisions(this.time.now);
+  }
+
+  private resolveAsteroidCollisions(time: number): void {
+    const destroyedAsteroids = new Set<BasicAsteroid>();
+
+    for (let i = 0; i < this.basicAsteroids.length; i += 1) {
+      const first = this.basicAsteroids[i];
+      if (destroyedAsteroids.has(first)) {
+        continue;
+      }
+
+      for (let j = i + 1; j < this.basicAsteroids.length; j += 1) {
+        const second = this.basicAsteroids[j];
+        if (destroyedAsteroids.has(second)) {
+          continue;
+        }
+
+        const offset = this.getWrappedDirection(second.body.x, second.body.y, first.body.x, first.body.y);
+        const hitRadius = first.hitRadius + second.hitRadius;
+        const distance = offset.length();
+
+        if (distance > hitRadius) {
+          continue;
+        }
+
+        const normal = this.getCollisionNormal(offset);
+        const penetration = hitRadius - distance;
+        const firstMass = this.getAsteroidMass(first.tier);
+        const secondMass = this.getAsteroidMass(second.tier);
+        const firstShare = getMassResponseShare(secondMass, firstMass);
+        const secondShare = getMassResponseShare(firstMass, secondMass);
+        const separation = Math.min(
+          penetration * ASTEROID_COLLISION_SEPARATION_PERCENT,
+          ASTEROID_COLLISION_MAX_SEPARATION
+        );
+
+        this.nudgeWrappedObject(first.body, normal, separation * firstShare);
+        this.nudgeWrappedObject(second.body, normal, -separation * secondShare);
+        this.updateAsteroidWrapMirror(first);
+        this.updateAsteroidWrapMirror(second);
+
+        if (!this.canApplyAsteroidCollisionDamage(first, second, time)) {
+          continue;
+        }
+
+        const relativeVelocity = getRelativeVelocity(first.velocity, second.velocity);
+        const closingSpeed = getClosingSpeed(relativeVelocity, normal);
+        const impactDamage = calculateImpactDamage({
+          baseDamage: 0,
+          attackerMass: firstMass,
+          targetMass: secondMass,
+          impactSpeed: closingSpeed,
+          minImpactSpeed: ASTEROID_COLLISION_MIN_DAMAGE_SPEED,
+          speedDamageScale: ASTEROID_COLLISION_SPEED_DAMAGE_SCALE,
+          massDamageScale: ASTEROID_COLLISION_MASS_DAMAGE_SCALE,
+          minDamage: 0,
+          maxDamage: ASTEROID_COLLISION_MAX_DAMAGE
+        });
+
+        applyCollisionImpulse({
+          normal,
+          firstVelocity: first.velocity,
+          secondVelocity: second.velocity,
+          firstMass,
+          secondMass,
+          minImpulse: ASTEROID_COLLISION_MIN_IMPULSE,
+          maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE,
+          relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE,
+          firstMaxSpeed: ASTEROID_TIER_CONFIG[first.tier].maxVelocity,
+          secondMaxSpeed: ASTEROID_TIER_CONFIG[second.tier].maxVelocity,
+          restitution: ASTEROID_COLLISION_RESTITUTION,
+          relativeVelocity
+        });
+
+        if (impactDamage <= 0) {
+          this.markAsteroidCollisionDamageApplied(first, second, time);
+          continue;
+        }
+
+        first.hp -= impactDamage;
+        second.hp -= impactDamage;
+        this.emitAsteroidImpactExplosion(
+          wrapCoordinate((first.body.x + second.body.x) * 0.5, this.arena.width),
+          wrapCoordinate((first.body.y + second.body.y) * 0.5, this.arena.height),
+          Math.max(first.tier, second.tier) as AsteroidTier
+        );
+        this.flashDamageSprites(first.body, first.wrapMirrorBody, second.body, second.wrapMirrorBody);
+        this.markAsteroidCollisionDamageApplied(first, second, time);
+
+        if (first.hp <= 0) {
+          destroyedAsteroids.add(first);
+        }
+
+        if (second.hp <= 0) {
+          destroyedAsteroids.add(second);
+        }
+      }
+    }
+
+    this.destroyAsteroidsFromCollision(destroyedAsteroids);
+  }
+
+  private canApplyAsteroidCollisionDamage(first: BasicAsteroid, second: BasicAsteroid, time: number): boolean {
+    return time >= (this.asteroidCollisionCooldowns.get(first.body)?.get(second.body) ?? 0);
+  }
+
+  private markAsteroidCollisionDamageApplied(first: BasicAsteroid, second: BasicAsteroid, time: number): void {
+    let firstCooldowns = this.asteroidCollisionCooldowns.get(first.body);
+    let secondCooldowns = this.asteroidCollisionCooldowns.get(second.body);
+
+    if (!firstCooldowns) {
+      firstCooldowns = new WeakMap<object, number>();
+      this.asteroidCollisionCooldowns.set(first.body, firstCooldowns);
+    }
+
+    if (!secondCooldowns) {
+      secondCooldowns = new WeakMap<object, number>();
+      this.asteroidCollisionCooldowns.set(second.body, secondCooldowns);
+    }
+
+    const nextDamageAt = time + ASTEROID_COLLISION_COOLDOWN_MS;
+    firstCooldowns.set(second.body, nextDamageAt);
+    secondCooldowns.set(first.body, nextDamageAt);
+  }
+
+  private destroyAsteroidsFromCollision(destroyedAsteroids: Set<BasicAsteroid>): void {
+    const indexes = Array.from(destroyedAsteroids)
+      .map((asteroid) => this.basicAsteroids.indexOf(asteroid))
+      .filter((index) => index >= 0)
+      .sort((a, b) => b - a);
+
+    for (const index of indexes) {
+      this.destroyBasicAsteroid(index, false);
     }
   }
 

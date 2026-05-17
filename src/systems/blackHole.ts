@@ -13,9 +13,15 @@ import {
   type WorldForceSource,
   type WorldForceSample
 } from './worldForces';
+import { steerVelocityToward } from './physics';
 
 const BLACK_HOLE_DRIFT_SPEED = 24;
 const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
+const BLACK_HOLE_DRIFT_RESPONSE = 0.18;
+const BLACK_HOLE_DRIFT_TURN_RATE = 0.055;
+const BLACK_HOLE_DRIFT_MASS = 18;
+const BLACK_HOLE_DRIFT_REFERENCE_MASS = 3;
+const BLACK_HOLE_DRIFT_MASS_EXPONENT = 0.28;
 const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
@@ -227,6 +233,7 @@ export class BlackHoleSystem {
   private damageRadiusMultiplier = 1;
   private visualScaleMultiplier = 1;
   private coreScaleMultiplier = 1;
+  private driftAngle = BLACK_HOLE_DRIFT_ANGLE;
   private visualPhase: number;
 
   constructor(private readonly scene: Phaser.Scene, spawnPosition: Phaser.Math.Vector2) {
@@ -289,6 +296,20 @@ export class BlackHoleSystem {
     this.coreScaleMultiplier = Math.max(0, coreScaleMultiplier);
     this.setLensLengthMultiplier(lensLengthMultiplier);
     if (shouldMove) {
+      this.driftAngle += BLACK_HOLE_DRIFT_TURN_RATE * deltaSeconds;
+      steerVelocityToward({
+        velocity: this.velocity,
+        targetVelocity: new Phaser.Math.Vector2(
+          Math.cos(this.driftAngle) * BLACK_HOLE_DRIFT_SPEED,
+          Math.sin(this.driftAngle) * BLACK_HOLE_DRIFT_SPEED
+        ),
+        response: BLACK_HOLE_DRIFT_RESPONSE,
+        deltaSeconds,
+        mass: BLACK_HOLE_DRIFT_MASS,
+        referenceMass: BLACK_HOLE_DRIFT_REFERENCE_MASS,
+        massExponent: BLACK_HOLE_DRIFT_MASS_EXPONENT,
+        maxSpeed: BLACK_HOLE_DRIFT_SPEED
+      });
       this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);
       this.body.y = wrapCoordinate(this.body.y + this.velocity.y * deltaSeconds, arena.height);
     }
