@@ -1,5 +1,4 @@
 import { getWeaponDefinition, type WeaponRegistryEntry } from '../data/weapons';
-import type { PlayerStats } from '../data/stats';
 
 export interface PlayerWeaponRuntimeState {
   activeMainWeaponId: WeaponRegistryEntry['id'];
@@ -19,22 +18,6 @@ export interface PlayerWeaponDebugTuning {
   fireRateMultiplier: number;
 }
 
-export interface PlayerWeaponProjectileConfig {
-  damage: number;
-  cooldownMs: number;
-  projectileSpeed: number;
-  projectileLifetimeMs: number;
-  projectileRange: number;
-  projectileAreaScale: number;
-  projectileCount: number;
-  pierce: number;
-}
-
-export const PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
-export const PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
-export const PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
-export const PLAYER_PROJECTILE_COUNT_CAP = 6;
-
 export function createPlayerWeaponRuntimeState(activeMainWeaponId: WeaponRegistryEntry['id']): PlayerWeaponRuntimeState {
   return {
     activeMainWeaponId,
@@ -50,62 +33,4 @@ export function getActiveMainWeaponDefinition(state: PlayerWeaponRuntimeState): 
 
 export function getActiveSecondaryWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry | undefined {
   return state.activeSecondaryWeaponId ? getWeaponDefinition(state.activeSecondaryWeaponId) : undefined;
-}
-
-export function getPlayerWeaponDamageMultiplier(upgrades: PlayerWeaponUpgradeState): number {
-  return 1 + upgrades.projectileDamageLevel * PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER;
-}
-
-export function getPlayerWeaponBaseCooldownMs(
-  weapon: WeaponRegistryEntry,
-  upgrades: PlayerWeaponUpgradeState
-): number {
-  return (
-    (weapon.cooldownSeconds ?? 0) *
-    1000 *
-    Math.pow(PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER, upgrades.projectileFireRateLevel)
-  );
-}
-
-export function getPlayerWeaponCooldownMs(
-  weapon: WeaponRegistryEntry,
-  upgrades: PlayerWeaponUpgradeState,
-  playerStats: PlayerStats,
-  debugTuning: PlayerWeaponDebugTuning
-): number {
-  return getPlayerWeaponBaseCooldownMs(weapon, upgrades) / (playerStats.attackSpeed * debugTuning.fireRateMultiplier);
-}
-
-export function getPlayerWeaponProjectileSpeed(
-  weapon: WeaponRegistryEntry,
-  upgrades: PlayerWeaponUpgradeState,
-  playerStats: PlayerStats
-): number {
-  return (
-    (weapon.projectileSpeed ?? 0) *
-    (1 + upgrades.projectileVelocityLevel * PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER) *
-    playerStats.projectileSpeed
-  );
-}
-
-export function getPlayerWeaponProjectileCount(playerStats: PlayerStats): number {
-  return Math.min(PLAYER_PROJECTILE_COUNT_CAP, Math.max(1, 1 + Math.floor(playerStats.amount)));
-}
-
-export function getPlayerWeaponProjectileConfig(
-  weapon: WeaponRegistryEntry,
-  upgrades: PlayerWeaponUpgradeState,
-  playerStats: PlayerStats,
-  debugTuning: PlayerWeaponDebugTuning
-): PlayerWeaponProjectileConfig {
-  return {
-    damage: (weapon.damage ?? 0) * getPlayerWeaponDamageMultiplier(upgrades) * playerStats.damage * debugTuning.damageMultiplier,
-    cooldownMs: getPlayerWeaponCooldownMs(weapon, upgrades, playerStats, debugTuning),
-    projectileSpeed: getPlayerWeaponProjectileSpeed(weapon, upgrades, playerStats),
-    projectileLifetimeMs: (weapon.projectileLifetimeSeconds ?? 0) * 1000 * playerStats.duration,
-    projectileRange: (weapon.projectileRange ?? 0) * playerStats.duration,
-    projectileAreaScale: playerStats.area,
-    projectileCount: getPlayerWeaponProjectileCount(playerStats),
-    pierce: Math.max(0, Math.floor(playerStats.pierce))
-  };
 }

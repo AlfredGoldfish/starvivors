@@ -30,6 +30,22 @@ interface DebugButton {
   setLabel: (label: string) => void;
 }
 
+interface DebugNumberInput {
+  element: HTMLInputElement;
+  tabId: DebugTabId;
+  baseY: number;
+  x: number;
+  width: number;
+  getValue: (values: DebugMenuValues) => number;
+  setValue: (value: number) => void;
+}
+
+interface DebugNumberInputConfig {
+  getValue: (values: DebugMenuValues) => number;
+  setValue: (value: number) => void;
+  step?: number;
+}
+
 const PANEL_WIDTH = 344;
 const PANEL_PADDING = 14;
 const COLUMN_WIDTH = 316;
@@ -75,6 +91,42 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'add-scrap': 'Add 100 run scrap without spawning pickups.',
   'add-credits': 'Add 100 permanent credits for shop and economy testing.',
   'ship-stats': 'Live player ship stats after ship selection, upgrades, and debug physics tuning.',
+  'ship-loadout-interceptor': 'Editable Interceptor defaults for live movement and hull tuning. Save useful values as markdown before converting them into source defaults.',
+  'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, mass, hull, and hit-radius tuning. Save useful values as markdown before converting them into source defaults.',
+  'interceptor-hull-down': 'Decrease Interceptor base hull for loadout testing.',
+  'interceptor-hull-up': 'Increase Interceptor base hull for loadout testing.',
+  'interceptor-mass-down': 'Decrease Interceptor mass. Lower mass improves control response and reduces impact weight.',
+  'interceptor-mass-up': 'Increase Interceptor mass. Higher mass makes impacts heavier and movement harder to control.',
+  'interceptor-speed-down': 'Decrease Interceptor max movement speed.',
+  'interceptor-speed-up': 'Increase Interceptor max movement speed.',
+  'interceptor-thrust-down': 'Decrease Interceptor forward thrust acceleration.',
+  'interceptor-thrust-up': 'Increase Interceptor forward thrust acceleration.',
+  'interceptor-brake-down': 'Decrease Interceptor reverse/brake acceleration.',
+  'interceptor-brake-up': 'Increase Interceptor reverse/brake acceleration.',
+  'interceptor-strafe-down': 'Decrease Interceptor side-thrust acceleration.',
+  'interceptor-strafe-up': 'Increase Interceptor side-thrust acceleration.',
+  'interceptor-hit-down': 'Decrease Interceptor collision radius.',
+  'interceptor-hit-up': 'Increase Interceptor collision radius.',
+  'interceptor-save': 'Download the current Interceptor debug loadout as markdown.',
+  'interceptor-load': 'Load an Interceptor debug loadout markdown file.',
+  'interceptor-reset': 'Clear Interceptor debug loadout overrides.',
+  'bulwark-hull-down': 'Decrease Bulwark base hull for loadout testing.',
+  'bulwark-hull-up': 'Increase Bulwark base hull for loadout testing.',
+  'bulwark-mass-down': 'Decrease Bulwark mass. Lower mass improves control response and reduces impact weight.',
+  'bulwark-mass-up': 'Increase Bulwark mass. Higher mass makes dash rams heavier and normal movement harder to control.',
+  'bulwark-speed-down': 'Decrease Bulwark max movement speed.',
+  'bulwark-speed-up': 'Increase Bulwark max movement speed.',
+  'bulwark-thrust-down': 'Decrease Bulwark forward thruster output.',
+  'bulwark-thrust-up': 'Increase Bulwark forward thruster output.',
+  'bulwark-brake-down': 'Decrease Bulwark reverse/brake thruster output.',
+  'bulwark-brake-up': 'Increase Bulwark reverse/brake thruster output.',
+  'bulwark-strafe-down': 'Decrease Bulwark side-thruster output.',
+  'bulwark-strafe-up': 'Increase Bulwark side-thruster output.',
+  'bulwark-hit-down': 'Decrease Bulwark collision radius.',
+  'bulwark-hit-up': 'Increase Bulwark collision radius.',
+  'bulwark-save': 'Download the current Bulwark debug loadout as markdown.',
+  'bulwark-load': 'Load a Bulwark debug loadout markdown file.',
+  'bulwark-reset': 'Clear Bulwark debug loadout overrides.',
   'shield-state': 'Shows Ramming Shield HP and dash charges when the shield is equipped.',
   projectiles: 'Shows active player and enemy projectile counts.',
   'clear-player-projectiles': 'Remove active player projectiles without changing enemies or rewards.',
@@ -87,7 +139,64 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'cooldown-down': 'Shorten the current weapon cooldown.',
   'cooldown-up': 'Lengthen the current weapon cooldown.',
   'weapon-reset': 'Reset temporary weapon damage and fire-rate tuning.',
+  'weapon-loadout-pulse-cannon': 'Editable Pulse Cannon weapon defaults for live projectile tuning. Save useful values as markdown before converting them into source defaults.',
+  'pulse-damage-down': 'Decrease Pulse Cannon base projectile damage.',
+  'pulse-damage-up': 'Increase Pulse Cannon base projectile damage.',
+  'pulse-cooldown-down': 'Shorten Pulse Cannon base cooldown.',
+  'pulse-cooldown-up': 'Lengthen Pulse Cannon base cooldown.',
+  'pulse-speed-down': 'Decrease Pulse Cannon projectile speed.',
+  'pulse-speed-up': 'Increase Pulse Cannon projectile speed.',
+  'pulse-life-down': 'Decrease Pulse Cannon projectile lifetime.',
+  'pulse-life-up': 'Increase Pulse Cannon projectile lifetime.',
+  'pulse-range-down': 'Decrease Pulse Cannon projectile range.',
+  'pulse-range-up': 'Increase Pulse Cannon projectile range.',
+  'pulse-save': 'Download the current Pulse Cannon debug loadout as markdown.',
+  'pulse-load': 'Load a Pulse Cannon debug loadout markdown file.',
+  'pulse-reset': 'Clear Pulse Cannon debug loadout overrides.',
+  'weapon-loadout-ramming-shield': 'Editable Ramming Shield weapon defaults for live shield, dash, and ram-damage tuning. Save useful values as markdown before converting them into source defaults.',
+  'shield-hp-down': 'Decrease Ramming Shield maximum shield HP.',
+  'shield-hp-up': 'Increase Ramming Shield maximum shield HP.',
+  'shield-regen-down': 'Decrease Ramming Shield HP regeneration rate.',
+  'shield-regen-up': 'Increase Ramming Shield HP regeneration rate.',
+  'shield-charges-down': 'Decrease Ramming Shield dash charge count.',
+  'shield-charges-up': 'Increase Ramming Shield dash charge count.',
+  'shield-recharge-down': 'Shorten Ramming Shield dash recharge time.',
+  'shield-recharge-up': 'Lengthen Ramming Shield dash recharge time.',
+  'shield-impulse-down': 'Decrease Ramming Shield dash impulse.',
+  'shield-impulse-up': 'Increase Ramming Shield dash impulse.',
+  'shield-ram-down': 'Decrease empowered dash ram damage multiplier.',
+  'shield-ram-up': 'Increase empowered dash ram damage multiplier.',
+  'shield-base-down': 'Decrease Ramming Shield base ram damage.',
+  'shield-base-up': 'Increase Ramming Shield base ram damage.',
+  'shield-max-down': 'Decrease Ramming Shield maximum ram damage clamp.',
+  'shield-max-up': 'Increase Ramming Shield maximum ram damage clamp.',
+  'shield-size-down': 'Decrease Ramming Shield collider width.',
+  'shield-size-up': 'Increase Ramming Shield collider width.',
+  'shield-save': 'Download the current Ramming Shield debug loadout as markdown.',
+  'shield-load': 'Load a Ramming Shield debug loadout markdown file.',
+  'shield-reset': 'Clear Ramming Shield debug loadout overrides.',
   'physics-player': 'Live player movement values after ship stats and debug physics multipliers.',
+  'physics-global': 'Global physical speed and impact-damage caps. These are safety limits for chaotic momentum testing.',
+  'global-speed-down': 'Decrease the maximum speed allowed for physical bodies.',
+  'global-speed-up': 'Increase the maximum speed allowed for physical bodies.',
+  'global-impact-cap-down': 'Decrease the emergency global cap for one impact damage event.',
+  'global-impact-cap-up': 'Increase the emergency global cap for one impact damage event.',
+  'player-impact-cap-down': 'Decrease max impact damage caused by the player body.',
+  'player-impact-cap-up': 'Increase max impact damage caused by the player body.',
+  'enemy-impact-cap-down': 'Decrease max impact damage caused by enemy ships.',
+  'enemy-impact-cap-up': 'Increase max impact damage caused by enemy ships.',
+  'asteroid-impact-cap-down': 'Decrease max impact damage caused by asteroids.',
+  'asteroid-impact-cap-up': 'Increase max impact damage caused by asteroids.',
+  'debris-impact-cap-down': 'Decrease max impact damage caused by debris.',
+  'debris-impact-cap-up': 'Increase max impact damage caused by debris.',
+  'player-impact-scale-down': 'Decrease how much player impact damage scales with speed.',
+  'player-impact-scale-up': 'Increase how much player impact damage scales with speed.',
+  'enemy-impact-scale-down': 'Decrease how much enemy impact damage scales with speed.',
+  'enemy-impact-scale-up': 'Increase how much enemy impact damage scales with speed.',
+  'asteroid-impact-scale-down': 'Decrease how much asteroid impact damage scales with speed.',
+  'asteroid-impact-scale-up': 'Increase how much asteroid impact damage scales with speed.',
+  'debris-impact-scale-down': 'Decrease how much debris impact damage scales with speed.',
+  'debris-impact-scale-up': 'Increase how much debris impact damage scales with speed.',
   'player-thrust-down': 'Decrease forward thrust. Lower values make acceleration weaker.',
   'player-thrust-up': 'Increase forward thrust. Higher values make acceleration stronger.',
   'player-brake-down': 'Decrease reverse/brake thrust.',
@@ -201,6 +310,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   const buttons: DebugButton[] = [];
   const buttonHitAreas: Phaser.GameObjects.Zone[] = [];
   const valueHitAreas: Phaser.GameObjects.Zone[] = [];
+  const numberInputs: DebugNumberInput[] = [];
   const tabButtons: DebugButton[] = [];
   const contentButtons: DebugButton[] = [];
   const tabContents = new Map<DebugTabId, Phaser.GameObjects.Container>();
@@ -336,9 +446,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildShipTab(): void {
     let y = CONTENT_TOP;
-    y = addSection('ship', y, 'Ship Stats');
+    y = addSection('ship', y, 'Active Ship');
     addValue('ship-stats', 'ship', y, VALUE_LINE_HEIGHT * 8);
     y += VALUE_LINE_HEIGHT * 8 + ROW_GAP;
+    y = addShipLoadoutControls(y, 'interceptor', 'Interceptor');
+    y = addShipLoadoutControls(y, 'bulwark', 'Bulwark');
     y = addSection('ship', y, 'Ramming Shield');
     addValue('shield-state', 'ship', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + ROW_GAP;
@@ -352,7 +464,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildWeaponsTab(): void {
     let y = CONTENT_TOP;
-    y = addSection('weapons', y, 'Weapon Tuning');
+    y = addSection('weapons', y, 'Global Weapon Multipliers');
     addValue('weapon', 'weapons', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
     addButton('weapons', 'damage-down', panelX + PANEL_PADDING, y, 74, 'Dmg -', () => config.callbacks.adjustWeaponDamage(-0.5));
@@ -364,41 +476,304 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('weapons', 'cooldown-up', panelX + PANEL_PADDING + 162, y, 154, 'Cooldown +', () => config.callbacks.adjustWeaponCooldownSeconds(0.05));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('weapons', 'weapon-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset weapon tuning', config.callbacks.resetWeaponTuning);
-    setTabContentHeight('weapons', y + BUTTON_HEIGHT + PANEL_PADDING);
+    y += BUTTON_HEIGHT + ROW_GAP;
+    y = addProjectileWeaponLoadoutControls(y);
+    y = addRammingShieldLoadoutControls(y);
+    setTabContentHeight('weapons', y + PANEL_PADDING);
+  }
+
+  function addShipLoadoutControls(y: number, shipId: 'interceptor' | 'bulwark', label: string): number {
+    y = addSection('ship', y, `${label} Loadout`);
+    addValue(`ship-loadout-${shipId}`, 'ship', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-hull`, y, 'Hull', () => config.callbacks.adjustShipLoadoutStat(shipId, 'maxHull', -5), () => config.callbacks.adjustShipLoadoutStat(shipId, 'maxHull', 5), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Hull ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'maxHull', value),
+      step: 5
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-mass`, y, 'Mass', () => config.callbacks.adjustShipLoadoutStat(shipId, 'mass', -0.25), () => config.callbacks.adjustShipLoadoutStat(shipId, 'mass', 0.25), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Mass ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'mass', value),
+      step: 0.25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-speed`, y, 'Speed', () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', 10), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Speed ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'moveSpeed', value),
+      step: 10
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-thrust`, y, 'Thrust', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 10), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Thrust ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'thrust', value),
+      step: 10
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-brake`, y, 'Brake', () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', 10), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Brake ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'brake', value),
+      step: 10
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-strafe`, y, 'Strafe', () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', 10), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Strafe ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'strafe', value),
+      step: 10
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('ship', `${shipId}-hit`, y, 'Hit', () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', 1), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Hit ([\d.]+)/),
+      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'hitRadius', value),
+      step: 1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('ship', `${shipId}-save`, panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveShipLoadout(shipId));
+    addButton('ship', `${shipId}-load`, panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadShipLoadout(shipId));
+    addButton('ship', `${shipId}-reset`, panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetShipLoadout(shipId));
+    return y + BUTTON_HEIGHT + ROW_GAP;
+  }
+
+  function addProjectileWeaponLoadoutControls(y: number): number {
+    y = addSection('weapons', y, 'Pulse Cannon Loadout');
+    addValue('weapon-loadout-pulse-cannon', 'weapons', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButtonPair('weapons', 'pulse-damage', y, 'Damage', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'damage', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'damage', 0.1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Damage ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'damage', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'pulse-cooldown', y, 'Cooldown', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'cooldownSeconds', -0.05), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'cooldownSeconds', 0.05), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Cooldown ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'cooldownSeconds', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'pulse-speed', y, 'Speed', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', -25), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', 25), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Speed ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'pulse-life', y, 'Life', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', 0.1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Lifetime ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'pulse-range', y, 'Range', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', -50), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', 50), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Range ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileRange', value),
+      step: 50
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('weapons', 'pulse-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('pulse-cannon'));
+    addButton('weapons', 'pulse-load', panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadWeaponLoadout('pulse-cannon'));
+    addButton('weapons', 'pulse-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetWeaponLoadout('pulse-cannon'));
+    return y + BUTTON_HEIGHT + ROW_GAP;
+  }
+
+  function addRammingShieldLoadoutControls(y: number): number {
+    y = addSection('weapons', y, 'Ramming Shield Loadout');
+    addValue('weapon-loadout-ramming-shield', 'weapons', y, VALUE_LINE_HEIGHT * 5);
+    y += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-hp', y, 'HP', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', 10), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Shield ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', value),
+      step: 10
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-regen', y, 'Regen', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', 1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Regen ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', value),
+      step: 1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-charges', y, 'Charges', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashMaxCharges', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashMaxCharges', 1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dash ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashMaxCharges', value),
+      step: 1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-recharge', y, 'Recharge', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashChargeRechargeSeconds', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashChargeRechargeSeconds', 0.25), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /@ ([\d.]+)s/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashChargeRechargeSeconds', value),
+      step: 0.25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-impulse', y, 'Impulse', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', -25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', 25), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Imp ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashImpulse', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-ram', y, 'Ram x', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', 0.25), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Ram x([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', value),
+      step: 0.25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-base', y, 'BaseD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'baseDamage', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'baseDamage', 0.1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dmg ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'baseDamage', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-max', y, 'MaxD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'maxDamage', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'maxDamage', 0.25), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dmg [\d.]+-([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'maxDamage', value),
+      step: 0.25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-size', y, 'Width', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', -5), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', 5), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Width ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'width', value),
+      step: 5
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('weapons', 'shield-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('ramming-shield'));
+    addButton('weapons', 'shield-load', panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadWeaponLoadout('ramming-shield'));
+    addButton('weapons', 'shield-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetWeaponLoadout('ramming-shield'));
+    return y + BUTTON_HEIGHT + ROW_GAP;
   }
 
   function buildPhysicsTab(): void {
     let y = CONTENT_TOP;
+    y = addSection('physics', y, 'Global Physics');
+    addValue('physics-global', 'physics', y, VALUE_LINE_HEIGHT * 7);
+    y += VALUE_LINE_HEIGHT * 7 + BUTTON_GAP;
+    addButtonPair('physics', 'global-speed', y, 'MaxSpd', () => config.callbacks.adjustGlobalMaxSpeed(-100), () => config.callbacks.adjustGlobalMaxSpeed(100), {
+      getValue: (values) => values.globalMaxSpeed,
+      setValue: (value) => config.callbacks.setPhysicsTuning('globalMaxSpeed', value),
+      step: 100
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'global-impact-cap', y, 'GCap', () => config.callbacks.adjustGlobalImpactDamageCap(-50), () => config.callbacks.adjustGlobalImpactDamageCap(50), {
+      getValue: (values) => values.globalImpactDamageCap,
+      setValue: (value) => config.callbacks.setPhysicsTuning('globalImpactDamageCap', value),
+      step: 50
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'player-impact-cap', y, 'PCap', () => config.callbacks.adjustImpactDamageCap('player', -25), () => config.callbacks.adjustImpactDamageCap('player', 25), {
+      getValue: (values) => values.playerImpactDamageCap,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerImpactDamageCap', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'enemy-impact-cap', y, 'ECap', () => config.callbacks.adjustImpactDamageCap('enemy', -25), () => config.callbacks.adjustImpactDamageCap('enemy', 25), {
+      getValue: (values) => values.enemyImpactDamageCap,
+      setValue: (value) => config.callbacks.setPhysicsTuning('enemyImpactDamageCap', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'asteroid-impact-cap', y, 'ACap', () => config.callbacks.adjustImpactDamageCap('asteroid', -25), () => config.callbacks.adjustImpactDamageCap('asteroid', 25), {
+      getValue: (values) => values.asteroidImpactDamageCap,
+      setValue: (value) => config.callbacks.setPhysicsTuning('asteroidImpactDamageCap', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'debris-impact-cap', y, 'DCap', () => config.callbacks.adjustImpactDamageCap('debris', -25), () => config.callbacks.adjustImpactDamageCap('debris', 25), {
+      getValue: (values) => values.debrisImpactDamageCap,
+      setValue: (value) => config.callbacks.setPhysicsTuning('debrisImpactDamageCap', value),
+      step: 25
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'player-impact-scale', y, 'PScale', () => config.callbacks.adjustImpactDamageScale('player', -0.01), () => config.callbacks.adjustImpactDamageScale('player', 0.01), {
+      getValue: (values) => values.playerImpactDamageScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerImpactDamageScale', value),
+      step: 0.01
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'enemy-impact-scale', y, 'EScale', () => config.callbacks.adjustImpactDamageScale('enemy', -0.01), () => config.callbacks.adjustImpactDamageScale('enemy', 0.01), {
+      getValue: (values) => values.enemyImpactDamageScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('enemyImpactDamageScale', value),
+      step: 0.01
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'asteroid-impact-scale', y, 'AScale', () => config.callbacks.adjustImpactDamageScale('asteroid', -0.01), () => config.callbacks.adjustImpactDamageScale('asteroid', 0.01), {
+      getValue: (values) => values.asteroidImpactDamageScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('asteroidImpactDamageScale', value),
+      step: 0.01
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('physics', 'debris-impact-scale', y, 'DScale', () => config.callbacks.adjustImpactDamageScale('debris', -0.01), () => config.callbacks.adjustImpactDamageScale('debris', 0.01), {
+      getValue: (values) => values.debrisImpactDamageScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('debrisImpactDamageScale', value),
+      step: 0.01
+    });
+    y += BUTTON_HEIGHT + ROW_GAP;
+
     y = addSection('physics', y, 'Player Physics');
     addValue('physics-player', 'physics', y, VALUE_LINE_HEIGHT * 7);
     y += VALUE_LINE_HEIGHT * 7 + BUTTON_GAP;
-    addButtonPair('physics', 'player-thrust', y, 'Thrust', () => config.callbacks.adjustPlayerThrustScale(-0.05), () => config.callbacks.adjustPlayerThrustScale(0.05));
+    addButtonPair('physics', 'player-thrust', y, 'Thrust', () => config.callbacks.adjustPlayerThrustScale(-0.05), () => config.callbacks.adjustPlayerThrustScale(0.05), {
+      getValue: (values) => values.playerThrustScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerThrustScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-brake', y, 'Brake', () => config.callbacks.adjustPlayerBrakeScale(-0.05), () => config.callbacks.adjustPlayerBrakeScale(0.05));
+    addButtonPair('physics', 'player-brake', y, 'Brake', () => config.callbacks.adjustPlayerBrakeScale(-0.05), () => config.callbacks.adjustPlayerBrakeScale(0.05), {
+      getValue: (values) => values.playerBrakeScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerBrakeScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-strafe', y, 'Strafe', () => config.callbacks.adjustPlayerStrafeScale(-0.05), () => config.callbacks.adjustPlayerStrafeScale(0.05));
+    addButtonPair('physics', 'player-strafe', y, 'Strafe', () => config.callbacks.adjustPlayerStrafeScale(-0.05), () => config.callbacks.adjustPlayerStrafeScale(0.05), {
+      getValue: (values) => values.playerStrafeScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerStrafeScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-inertia', y, 'Inertia', () => config.callbacks.adjustPlayerInertiaScale(-0.05), () => config.callbacks.adjustPlayerInertiaScale(0.05));
+    addButtonPair('physics', 'player-inertia', y, 'Inertia', () => config.callbacks.adjustPlayerInertiaScale(-0.05), () => config.callbacks.adjustPlayerInertiaScale(0.05), {
+      getValue: (values) => values.playerInertiaScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerInertiaScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-mass-exp', y, 'MassExp', () => config.callbacks.adjustPlayerControlMassExponent(-0.05), () => config.callbacks.adjustPlayerControlMassExponent(0.05));
+    addButtonPair('physics', 'player-mass-exp', y, 'MassExp', () => config.callbacks.adjustPlayerControlMassExponent(-0.05), () => config.callbacks.adjustPlayerControlMassExponent(0.05), {
+      getValue: (values) => values.playerControlMassExponent,
+      setValue: (value) => config.callbacks.setPhysicsTuning('playerControlMassExponent', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('physics', y, 'Enemy Physics');
     addValue('physics-enemy', 'physics', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-speed', y, 'Speed', () => config.callbacks.adjustEnemySpeedScale(-0.05), () => config.callbacks.adjustEnemySpeedScale(0.05));
+    addButtonPair('physics', 'enemy-speed', y, 'Speed', () => config.callbacks.adjustEnemySpeedScale(-0.05), () => config.callbacks.adjustEnemySpeedScale(0.05), {
+      getValue: (values) => values.enemySpeedScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('enemySpeedScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-response', y, 'Thrust', () => config.callbacks.adjustEnemyResponseScale(-0.05), () => config.callbacks.adjustEnemyResponseScale(0.05));
+    addButtonPair('physics', 'enemy-response', y, 'Thrust', () => config.callbacks.adjustEnemyResponseScale(-0.05), () => config.callbacks.adjustEnemyResponseScale(0.05), {
+      getValue: (values) => values.enemyResponseScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('enemyResponseScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-mass-exp', y, 'MassExp', () => config.callbacks.adjustEnemyMassExponent(-0.05), () => config.callbacks.adjustEnemyMassExponent(0.05));
+    addButtonPair('physics', 'enemy-mass-exp', y, 'MassExp', () => config.callbacks.adjustEnemyMassExponent(-0.05), () => config.callbacks.adjustEnemyMassExponent(0.05), {
+      getValue: (values) => values.enemyMassExponent,
+      setValue: (value) => config.callbacks.setPhysicsTuning('enemyMassExponent', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('physics', y, 'Asteroid Collisions');
     addValue('physics-asteroids', 'physics', y, VALUE_LINE_HEIGHT * 2);
     y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-    addButtonPair('physics', 'asteroid-damage', y, 'Damage', () => config.callbacks.adjustAsteroidCollisionDamageScale(-0.05), () => config.callbacks.adjustAsteroidCollisionDamageScale(0.05));
+    addButtonPair('physics', 'asteroid-damage', y, 'Damage', () => config.callbacks.adjustAsteroidCollisionDamageScale(-0.05), () => config.callbacks.adjustAsteroidCollisionDamageScale(0.05), {
+      getValue: (values) => values.asteroidCollisionDamageScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('asteroidCollisionDamageScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'asteroid-impulse', y, 'Impulse', () => config.callbacks.adjustAsteroidCollisionImpulseScale(-0.05), () => config.callbacks.adjustAsteroidCollisionImpulseScale(0.05));
+    addButtonPair('physics', 'asteroid-impulse', y, 'Impulse', () => config.callbacks.adjustAsteroidCollisionImpulseScale(-0.05), () => config.callbacks.adjustAsteroidCollisionImpulseScale(0.05), {
+      getValue: (values) => values.asteroidCollisionImpulseScale,
+      setValue: (value) => config.callbacks.setPhysicsTuning('asteroidCollisionImpulseScale', value),
+      step: 0.05
+    });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('physics', 'physics-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset physics tuning', config.callbacks.resetPhysicsTuning);
     setTabContentHeight('physics', y + BUTTON_HEIGHT + PANEL_PADDING);
@@ -555,10 +930,81 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y: number,
     label: string,
     downCallback: () => void,
-    upCallback: () => void
+    upCallback: () => void,
+    numberInput?: DebugNumberInputConfig
   ): void {
-    addButton(tabId, `${keyPrefix}-down`, panelX + PANEL_PADDING, y, 154, `${label} -`, downCallback);
-    addButton(tabId, `${keyPrefix}-up`, panelX + PANEL_PADDING + 162, y, 154, `${label} +`, upCallback);
+    if (!numberInput) {
+      addButton(tabId, `${keyPrefix}-down`, panelX + PANEL_PADDING, y, 154, `${label} -`, downCallback);
+      addButton(tabId, `${keyPrefix}-up`, panelX + PANEL_PADDING + 162, y, 154, `${label} +`, upCallback);
+      return;
+    }
+
+    addButton(tabId, `${keyPrefix}-down`, panelX + PANEL_PADDING, y, 74, `${label} -`, downCallback);
+    addNumberInput(tabId, keyPrefix, panelX + PANEL_PADDING + 81, y, 154, numberInput);
+    addButton(tabId, `${keyPrefix}-up`, panelX + PANEL_PADDING + 242, y, 74, `${label} +`, upCallback);
+  }
+
+  function addNumberInput(
+    tabId: DebugTabId,
+    key: string,
+    x: number,
+    y: number,
+    width: number,
+    inputConfig: DebugNumberInputConfig
+  ): void {
+    if (typeof document === 'undefined') {
+      return;
+    }
+
+    const element = document.createElement('input');
+    element.type = 'number';
+    element.step = `${inputConfig.step ?? 0.01}`;
+    element.dataset.debugKey = key;
+    Object.assign(element.style, {
+      position: 'fixed',
+      display: 'none',
+      zIndex: '1500',
+      boxSizing: 'border-box',
+      height: `${BUTTON_HEIGHT}px`,
+      background: '#071018',
+      border: '1px solid #52627f',
+      color: '#f2fbff',
+      fontFamily: 'Consolas, "Courier New", monospace',
+      fontSize: '12px',
+      textAlign: 'center',
+      outline: 'none',
+      padding: '0 4px'
+    });
+
+    const applyValue = () => {
+      const value = Number(element.value);
+      if (Number.isFinite(value)) {
+        inputConfig.setValue(value);
+      }
+    };
+
+    element.addEventListener('pointerdown', (event) => event.stopPropagation());
+    element.addEventListener('keydown', (event) => {
+      event.stopPropagation();
+      if (event.key === 'Enter') {
+        applyValue();
+        element.blur();
+      }
+      if (event.key === 'Escape') {
+        element.blur();
+      }
+    });
+    element.addEventListener('blur', applyValue);
+    document.body.appendChild(element);
+    numberInputs.push({
+      element,
+      tabId,
+      baseY: y,
+      x,
+      width,
+      getValue: inputConfig.getValue,
+      setValue: inputConfig.setValue
+    });
   }
 
   function addSection(tabId: DebugTabId, y: number, label: string): number {
@@ -731,6 +1177,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       const tabId = hitArea.getData('tabId') as DebugTabId | undefined;
       hitArea.setY(baseY + (tabId === activeTab ? scrollOffset : 0));
     }
+
+    refreshNumberInputPositions();
   }
 
   function refreshButtonInputs(): void {
@@ -768,6 +1216,33 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
     if (!open) {
       hideTooltip();
+    }
+
+    refreshNumberInputVisibility();
+  }
+
+  function refreshNumberInputPositions(): void {
+    const rect = scene.game.canvas.getBoundingClientRect();
+    const scaleX = rect.width / scene.scale.width;
+    const scaleY = rect.height / scene.scale.height;
+
+    for (const input of numberInputs) {
+      input.element.style.left = `${rect.left + input.x * scaleX}px`;
+      input.element.style.top = `${rect.top + (input.baseY + (input.tabId === activeTab ? scrollOffset : 0)) * scaleY}px`;
+      input.element.style.width = `${input.width * scaleX}px`;
+      input.element.style.height = `${BUTTON_HEIGHT * scaleY}px`;
+    }
+  }
+
+  function refreshNumberInputVisibility(): void {
+    const visibleTop = CONTENT_TOP;
+    const visibleBottom = scene.scale.height - PANEL_PADDING;
+
+    for (const input of numberInputs) {
+      const y = input.baseY + (input.tabId === activeTab ? scrollOffset : 0);
+      const isVisible = open && input.tabId === activeTab && y >= visibleTop - BUTTON_HEIGHT && y <= visibleBottom;
+      input.element.style.display = isVisible ? 'block' : 'none';
+      input.element.disabled = !isVisible;
     }
   }
 
@@ -812,6 +1287,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     buttonsByKey.get(key)?.setLabel(value);
   }
 
+  function parseSummaryValue(summary: string, pattern: RegExp): number {
+    const match = summary.match(pattern);
+    const value = Number(match?.[1]);
+    return Number.isFinite(value) ? value : 0;
+  }
+
   return {
     open: () => {
       open = true;
@@ -831,6 +1312,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     },
     isOpen: () => open,
     update: (values: DebugMenuValues) => {
+      for (const input of numberInputs) {
+        if (typeof document !== 'undefined' && document.activeElement !== input.element) {
+          const value = input.getValue(values);
+          input.element.value = Number.isFinite(value) ? `${value}` : '';
+        }
+      }
+      refreshNumberInputPositions();
+      refreshNumberInputVisibility();
       setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
       setValue(
         'player',
@@ -843,6 +1332,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         'ship-stats',
         `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${values.playerSpeed.toFixed(1)} / ${values.playerMaxSpeed.toFixed(1)}\nThrust ${values.playerThrust.toFixed(1)}\nBrake ${values.playerBrake.toFixed(1)}\nStrafe ${values.playerStrafe.toFixed(1)}`
       );
+      setValue('ship-loadout-interceptor', values.shipTuningSummaries.interceptor);
+      setValue('ship-loadout-bulwark', values.shipTuningSummaries.bulwark);
       setValue(
         'shield-state',
         values.rammingShieldMaxHp > 0
@@ -853,6 +1344,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setValue(
         'weapon',
         `Damage x${values.weaponDamageMultiplier.toFixed(1)}\nFire x${values.weaponFireRateMultiplier.toFixed(1)}\nCooldown ${values.weaponCooldownSeconds.toFixed(2)}s`
+      );
+      setValue('weapon-loadout-pulse-cannon', values.weaponTuningSummaries['pulse-cannon']);
+      setValue('weapon-loadout-ramming-shield', values.weaponTuningSummaries['ramming-shield']);
+      setValue(
+        'physics-global',
+        `Global max ${values.globalMaxSpeed.toFixed(1)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
+          `Caps P/E/A/D ${values.playerImpactDamageCap.toFixed(0)}/${values.enemyImpactDamageCap.toFixed(0)}/${values.asteroidImpactDamageCap.toFixed(0)}/${values.debrisImpactDamageCap.toFixed(0)}\n` +
+          `Scale P/E/A/D ${values.playerImpactDamageScale.toFixed(3)}/${values.enemyImpactDamageScale.toFixed(3)}/${values.asteroidImpactDamageScale.toFixed(3)}/${values.debrisImpactDamageScale.toFixed(3)}`
       );
       setValue(
         'physics-player',
@@ -914,6 +1413,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       }
       for (const hitArea of valueHitAreas) {
         hitArea.destroy();
+      }
+      for (const input of numberInputs) {
+        input.element.remove();
       }
       tooltipBackground.destroy();
       tooltipText.destroy();

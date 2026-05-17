@@ -1,5 +1,5 @@
-import { getWeaponDefinition } from '../data/weapons';
 import type { PlayerStats } from '../data/stats';
+import type { RammingShieldStats } from '../data/weapons';
 
 export interface RammingShieldRuntimeState {
   hp: number;
@@ -44,24 +44,12 @@ export interface RammingShieldCircleCollision {
   penetration: number;
 }
 
-export function getRammingShieldStats() {
-  const stats = getWeaponDefinition('ramming-shield').rammingShield;
-
-  if (!stats) {
-    throw new Error('Ramming Shield stats are required.');
-  }
-
-  return stats;
-}
-
-export function createRammingShieldRuntimeState(isEquipped: boolean): RammingShieldRuntimeState {
-  const stats = getRammingShieldStats();
-
+export function createRammingShieldRuntimeState(isEquipped: boolean, stats?: RammingShieldStats): RammingShieldRuntimeState {
   return {
-    hp: isEquipped ? stats.shieldMaxHp : 0,
+    hp: isEquipped && stats ? stats.shieldMaxHp : 0,
     nextRegenAt: 0,
     impactFlashUntil: 0,
-    dashCharges: isEquipped ? stats.dashMaxCharges : 0,
+    dashCharges: isEquipped && stats ? stats.dashMaxCharges : 0,
     nextDashChargeAt: 0,
     empoweredUntil: 0,
     nextBlockDamageAt: 0,
@@ -69,9 +57,7 @@ export function createRammingShieldRuntimeState(isEquipped: boolean): RammingShi
   };
 }
 
-export function ensureRammingShieldRuntime(state: RammingShieldRuntimeState): void {
-  const stats = getRammingShieldStats();
-
+export function ensureRammingShieldRuntime(state: RammingShieldRuntimeState, stats: RammingShieldStats): void {
   if (state.hp <= 0) {
     state.hp = stats.shieldMaxHp;
   }
@@ -82,19 +68,15 @@ export function ensureRammingShieldRuntime(state: RammingShieldRuntimeState): vo
   }
 }
 
-export function updateRammingShieldRuntime(state: RammingShieldRuntimeState, time: number, deltaSeconds: number): void {
-  const stats = getRammingShieldStats();
-
+export function updateRammingShieldRuntime(state: RammingShieldRuntimeState, stats: RammingShieldStats, time: number, deltaSeconds: number): void {
   if (state.hp < stats.shieldMaxHp && time >= state.nextRegenAt) {
     state.hp = Math.min(stats.shieldMaxHp, state.hp + stats.shieldRegenRatePerSecond * deltaSeconds);
   }
 
-  updateRammingShieldDashRecharge(state, time);
+  updateRammingShieldDashRecharge(state, stats, time);
 }
 
-export function updateRammingShieldDashRecharge(state: RammingShieldRuntimeState, time: number): void {
-  const stats = getRammingShieldStats();
-
+export function updateRammingShieldDashRecharge(state: RammingShieldRuntimeState, stats: RammingShieldStats, time: number): void {
   if (state.dashCharges >= stats.dashMaxCharges) {
     state.nextDashChargeAt = 0;
     return;
@@ -113,18 +95,15 @@ export function updateRammingShieldDashRecharge(state: RammingShieldRuntimeState
   state.nextDashChargeAt = state.dashCharges >= stats.dashMaxCharges ? 0 : time + stats.dashChargeRechargeSeconds * 1000;
 }
 
-export function canActivateRammingShieldDash(state: RammingShieldRuntimeState): boolean {
-  const stats = getRammingShieldStats();
-
+export function canActivateRammingShieldDash(state: RammingShieldRuntimeState, stats: RammingShieldStats): boolean {
   return state.hp > 0 && state.dashCharges > 0 && (!stats.dashRequiresShieldHp || state.hp > 0);
 }
 
-export function activateRammingShieldDash(state: RammingShieldRuntimeState, time: number, playerStats: PlayerStats): boolean {
-  if (!canActivateRammingShieldDash(state)) {
+export function activateRammingShieldDash(state: RammingShieldRuntimeState, stats: RammingShieldStats, time: number, playerStats: PlayerStats): boolean {
+  if (!canActivateRammingShieldDash(state, stats)) {
     return false;
   }
 
-  const stats = getRammingShieldStats();
   state.dashCharges = Math.max(0, state.dashCharges - 1);
 
   if (state.nextDashChargeAt <= 0) {
@@ -136,13 +115,13 @@ export function activateRammingShieldDash(state: RammingShieldRuntimeState, time
   return true;
 }
 
-export function damageRammingShield(state: RammingShieldRuntimeState, damage: number, time: number): void {
+export function damageRammingShield(state: RammingShieldRuntimeState, stats: RammingShieldStats, damage: number, time: number): void {
   if (damage <= 0) {
     return;
   }
 
   state.hp = Math.max(0, state.hp - damage);
-  state.nextRegenAt = time + getRammingShieldStats().shieldRegenDelaySeconds * 1000;
+  state.nextRegenAt = time + stats.shieldRegenDelaySeconds * 1000;
   state.impactFlashUntil = time + 140;
 }
 
@@ -150,13 +129,18 @@ export function canApplyRammingShieldDamage(state: RammingShieldRuntimeState, ta
   return time >= (state.targetCooldowns.get(target) ?? 0);
 }
 
-export function markRammingShieldDamageApplied(state: RammingShieldRuntimeState, target: object, time: number): void {
-  state.targetCooldowns.set(target, time + getRammingShieldStats().contactCooldownMs);
+export function markRammingShieldDamageApplied(state: RammingShieldRuntimeState, stats: RammingShieldStats, target: object, time: number): void {
+  state.targetCooldowns.set(target, time + stats.contactCooldownMs);
   state.impactFlashUntil = time + 140;
 }
 
-export function getRammingShieldDamage(state: RammingShieldRuntimeState, speed: number, time: number, playerStats: PlayerStats): number {
-  const stats = getRammingShieldStats();
+export function getRammingShieldDamage(
+  state: RammingShieldRuntimeState,
+  stats: RammingShieldStats,
+  speed: number,
+  time: number,
+  playerStats: PlayerStats
+): number {
   const strongRamBonus = Math.max(0, speed - stats.strongRamSpeed) * stats.speedDamageMultiplier;
   const activeMultiplier = state.hp > 0 ? 1 : stats.brokenDamageMultiplier;
   const dashMultiplier = time < state.empoweredUntil ? stats.dashRamDamageMultiplier : 1;
@@ -164,8 +148,7 @@ export function getRammingShieldDamage(state: RammingShieldRuntimeState, speed: 
   return Math.max(0, Math.min(stats.maxDamage, stats.baseDamage + strongRamBonus) * activeMultiplier * dashMultiplier * playerStats.damage);
 }
 
-export function getRammingShieldCollider(input: RammingShieldColliderInput): RammingShieldCollider {
-  const stats = getRammingShieldStats();
+export function getRammingShieldCollider(input: RammingShieldColliderInput, stats: RammingShieldStats): RammingShieldCollider {
   const centerX = wrapCoordinate(input.playerX + input.forward.x * stats.range, input.arenaWidth);
   const centerY = wrapCoordinate(input.playerY + input.forward.y * stats.range, input.arenaHeight);
 

@@ -1,4 +1,7 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
+import type { ShipId } from '../../data/ships';
+import type { WeaponId } from '../../data/weapons';
+import type { DebugImpactSourceType, DebugPhysicsTuningKey, DebugShipStatKey, DebugWeaponStatKey } from './debugState';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
@@ -69,10 +72,22 @@ export interface DebugMenuValues {
   enemyMassExponent: number;
   asteroidCollisionDamageScale: number;
   asteroidCollisionImpulseScale: number;
+  globalMaxSpeed: number;
+  globalImpactDamageCap: number;
+  playerImpactDamageCap: number;
+  enemyImpactDamageCap: number;
+  asteroidImpactDamageCap: number;
+  debrisImpactDamageCap: number;
+  playerImpactDamageScale: number;
+  enemyImpactDamageScale: number;
+  asteroidImpactDamageScale: number;
+  debrisImpactDamageScale: number;
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
   rammingShieldDashCharges: number;
   rammingShieldDashMaxCharges: number;
+  shipTuningSummaries: Record<ShipId, string>;
+  weaponTuningSummaries: Record<WeaponId, string>;
   spawnDirectorSummary: string;
 }
 
@@ -106,11 +121,26 @@ export interface DebugMenuCallbacks {
   adjustEnemyMassExponent: (delta: number) => void;
   adjustAsteroidCollisionDamageScale: (delta: number) => void;
   adjustAsteroidCollisionImpulseScale: (delta: number) => void;
+  adjustGlobalMaxSpeed: (delta: number) => void;
+  adjustGlobalImpactDamageCap: (delta: number) => void;
+  adjustImpactDamageCap: (source: DebugImpactSourceType, delta: number) => void;
+  adjustImpactDamageScale: (source: DebugImpactSourceType, delta: number) => void;
+  setPhysicsTuning: (key: DebugPhysicsTuningKey, value: number) => void;
   resetPhysicsTuning: () => void;
   adjustWeaponDamage: (delta: number) => void;
   adjustWeaponFireRate: (delta: number) => void;
   adjustWeaponCooldownSeconds: (deltaSeconds: number) => void;
   resetWeaponTuning: () => void;
+  adjustShipLoadoutStat: (shipId: ShipId, stat: DebugShipStatKey, delta: number) => void;
+  setShipLoadoutStat: (shipId: ShipId, stat: DebugShipStatKey, value: number) => void;
+  resetShipLoadout: (shipId: ShipId) => void;
+  saveShipLoadout: (shipId: ShipId) => void;
+  loadShipLoadout: (shipId: ShipId) => void;
+  adjustWeaponLoadoutStat: (weaponId: WeaponId, stat: DebugWeaponStatKey, delta: number) => void;
+  setWeaponLoadoutStat: (weaponId: WeaponId, stat: DebugWeaponStatKey, value: number) => void;
+  resetWeaponLoadout: (weaponId: WeaponId) => void;
+  saveWeaponLoadout: (weaponId: WeaponId) => void;
+  loadWeaponLoadout: (weaponId: WeaponId) => void;
   adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
   toggleBackgroundStars: () => void;
   resetStarfieldParallax: () => void;

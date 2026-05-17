@@ -1,7 +1,13 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
 import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
-import { pulseCannon, rammingShield, type WeaponId } from './weapons';
+import { pulseCannon, rammingShield, type RammingShieldStats, type WeaponId } from './weapons';
+
+export interface ShipWeaponBonusDefinition {
+  rammingShield?: Partial<RammingShieldStats> & {
+    dashImpulseMultiplier?: number;
+  };
+}
 
 export interface ShipRegistryEntry extends ContentRegistryEntry {
   id: ShipId;
@@ -15,6 +21,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   startingWeaponNotes: string;
   startingMainWeaponId: WeaponId;
   startingSecondaryWeaponId: WeaponId | null;
+  defaultPrimaryWeaponBonuses?: Partial<Record<WeaponId, ShipWeaponBonusDefinition>>;
   speedRating: string;
   handlingRating: string;
   unlockCostCredits?: number;
@@ -77,15 +84,24 @@ export const shipRegistry: ShipRegistryEntry[] = [
       maxHull: 150,
       mass: 5.5,
       moveSpeed: Math.round(interceptorMovement.maxSpeed * 0.85),
-      thrust: Math.round(interceptorMovement.thrustAcceleration * 0.75),
-      brake: Math.round(interceptorMovement.reverseThrustAcceleration * 0.75),
-      strafe: Math.round(interceptorMovement.strafeThrustAcceleration * 0.72)
+      thrust: Math.round(interceptorMovement.thrustAcceleration * 0.35),
+      brake: Math.round(interceptorMovement.reverseThrustAcceleration * 0.45),
+      strafe: Math.round(interceptorMovement.strafeThrustAcceleration * 0.3)
     },
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
     startingWeaponNotes: `${rammingShield.displayName} starter`,
     startingMainWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
+    defaultPrimaryWeaponBonuses: {
+      'ramming-shield': {
+        rammingShield: {
+          dashMaxCharges: 6,
+          dashChargeRechargeSeconds: 2,
+          dashImpulseMultiplier: 1.25
+        }
+      }
+    },
     speedRating: 'Moderate',
     handlingRating: 'Heavy',
     unlockCostCredits: 100,
@@ -94,9 +110,9 @@ export const shipRegistry: ShipRegistryEntry[] = [
     visualRotation: Math.PI,
     movement: {
       ...interceptorMovement,
-      thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.75),
-      reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.75),
-      strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.72),
+      thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.35),
+      reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.45),
+      strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.3),
       maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.85)
     }
   }
