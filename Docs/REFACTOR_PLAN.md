@@ -15,7 +15,7 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 1, shared types and constants: complete.
 - Phase 2, combat feedback extraction: complete.
 - Phase 3, presentation systems: complete.
-- Phase 4, entity runtime systems: in progress. Projectile, asteroid, enemy, debris, pickup runtime/spawning, and world impact response/loops have been extracted; hit resolution remains in `GameScene`.
+- Phase 4, entity runtime systems: in progress. Projectile, asteroid, enemy, debris, pickup runtime/spawning, world impact response/loops, and projectile hit scanning have been extracted; hit side effects remain in `GameScene`.
 - Phase 5, screens and flow: pending.
 - Phase 6, debug tooling split: pending.
 - Phase 7, final cleanup: pending.
@@ -38,3 +38,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 4 scrap pickup spawning extraction: `npm.cmd run build` passed.
 - Phase 4 shared world impact response extraction: `npm.cmd run build` passed.
 - Phase 4 world impact loop extraction: `npm.cmd run build` passed.
+- Phase 4 projectile hit scanning extraction: `npm.cmd run build` passed.

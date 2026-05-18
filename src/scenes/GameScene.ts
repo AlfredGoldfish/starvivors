@@ -60,6 +60,10 @@ import {
   updatePlayerProjectiles as updatePlayerProjectilesSystem
 } from '../systems/projectileWeapons';
 import {
+  tryHitCircleTargets,
+  tryHitEllipseTargets
+} from '../systems/projectileHits';
+import {
   clearEnemyProjectiles as clearEnemyProjectilesSystem,
   fireShooterProjectile as fireShooterProjectileSystem,
   updateEnemyProjectiles as updateEnemyProjectilesSystem
@@ -7702,23 +7706,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private tryHitBasicEnemy(projectile: PlayerProjectile): boolean {
-    for (let i = this.basicEnemies.length - 1; i >= 0; i -= 1) {
-      const enemy = this.basicEnemies[i];
-      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
-      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
-      if (projectile.piercedTargets.has(enemy.body)) {
-        continue;
-      }
-
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
-
-      if (normalizedHit <= 1) {
-        projectile.piercedTargets.add(enemy.body);
+    return tryHitEllipseTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.basicEnemies,
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      onHit: (enemy, i) => {
         this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
@@ -7745,32 +7738,17 @@ export class GameScene extends Phaser.Scene {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
-
-        return true;
       }
-    }
-
-    return false;
+    });
   }
 
   private tryHitShooterEnemy(projectile: PlayerProjectile): boolean {
-    for (let i = this.shooterEnemies.length - 1; i >= 0; i -= 1) {
-      const enemy = this.shooterEnemies[i];
-      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
-      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
-      if (projectile.piercedTargets.has(enemy.body)) {
-        continue;
-      }
-
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
-
-      if (normalizedHit <= 1) {
-        projectile.piercedTargets.add(enemy.body);
+    return tryHitEllipseTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.shooterEnemies,
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      onHit: (enemy, i) => {
         this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
@@ -7797,32 +7775,17 @@ export class GameScene extends Phaser.Scene {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
-
-        return true;
       }
-    }
-
-    return false;
+    });
   }
 
   private tryHitTankEnemy(projectile: PlayerProjectile): boolean {
-    for (let i = this.tankEnemies.length - 1; i >= 0; i -= 1) {
-      const enemy = this.tankEnemies[i];
-      const hitHalfWidth = enemy.stats.hitHalfWidth + projectile.hitRadius;
-      const hitHalfLength = enemy.stats.hitHalfLength + projectile.hitRadius;
-      if (projectile.piercedTargets.has(enemy.body)) {
-        continue;
-      }
-
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
-
-      if (normalizedHit <= 1) {
-        projectile.piercedTargets.add(enemy.body);
+    return tryHitEllipseTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.tankEnemies,
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      onHit: (enemy, i) => {
         this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
@@ -7849,26 +7812,16 @@ export class GameScene extends Phaser.Scene {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
-
-        return true;
       }
-    }
-
-    return false;
+    });
   }
 
   private tryHitEnemyWreckageDebris(projectile: PlayerProjectile): boolean {
-    for (let i = this.enemyWreckageDebris.length - 1; i >= 0; i -= 1) {
-      const debris = this.enemyWreckageDebris[i];
-      if (projectile.piercedTargets.has(debris.body)) {
-        continue;
-      }
-
-      const offset = this.getWrappedDirection(debris.body.x, debris.body.y, projectile.body.x, projectile.body.y);
-      const hitRadius = debris.hitRadius + projectile.hitRadius;
-
-      if (offset.lengthSq() <= hitRadius * hitRadius) {
-        projectile.piercedTargets.add(debris.body);
+    return tryHitCircleTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.enemyWreckageDebris,
+      onHit: (debris, i) => {
         this.damageDebris(debris, projectile.damage, 'player', true);
 
         if (debris.hp <= 0) {
@@ -7879,26 +7832,16 @@ export class GameScene extends Phaser.Scene {
           this.flashDamageSprites(debris.body, debris.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
-
-        return true;
       }
-    }
-
-    return false;
+    });
   }
 
   private tryHitBasicAsteroid(projectile: PlayerProjectile): boolean {
-    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
-      const asteroid = this.basicAsteroids[i];
-      if (projectile.piercedTargets.has(asteroid.body)) {
-        continue;
-      }
-
-      const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, projectile.body.x, projectile.body.y);
-      const hitRadius = asteroid.hitRadius + projectile.hitRadius;
-
-      if (offset.lengthSq() <= hitRadius * hitRadius) {
-        projectile.piercedTargets.add(asteroid.body);
+    return tryHitCircleTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.basicAsteroids,
+      onHit: (asteroid, i) => {
         this.damageAsteroid(asteroid, projectile.damage, 'player', true);
 
         if (asteroid.hp <= 0) {
@@ -7909,12 +7852,8 @@ export class GameScene extends Phaser.Scene {
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
           this.applyAsteroidImpact(asteroid, projectile);
         }
-
-        return true;
       }
-    }
-
-    return false;
+    });
   }
 
   private applyAsteroidImpact(asteroid: BasicAsteroid, projectile: PlayerProjectile): void {
