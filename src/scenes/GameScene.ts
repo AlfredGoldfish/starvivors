@@ -148,6 +148,7 @@ import {
 } from '../systems/debug/blackHoleDebugTuning';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { BlackHoleDebugControls } from '../systems/debug/blackHoleDebugControls';
+import { DebugMenuHost } from '../systems/debug/debugMenuHost';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
   clearBasicAsteroids as clearBasicAsteroidsSystem,
@@ -178,7 +179,6 @@ import {
   resolveBodyImpactCollision as resolveBodyImpactCollisionSystem,
   resolveWorldImpactCollisions as resolveWorldImpactCollisionsSystem
 } from '../systems/worldImpacts';
-import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import { createMainMenuScreen } from '../ui/mainMenuScreen';
 import { createResultsScreen } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
@@ -467,7 +467,7 @@ export class GameScene extends Phaser.Scene {
   private isUpgradeOverlayOpen = false;
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
-  private debugMenu?: DebugMenuController;
+  private debugMenuHost?: DebugMenuHost;
   private blackHoleDebugControls!: BlackHoleDebugControls;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
@@ -540,7 +540,7 @@ export class GameScene extends Phaser.Scene {
       getState: () => ({
         collisionDebugEnabled: this.debugState.collisionDebugEnabled,
         isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-        isDebugMenuOpen: this.debugMenu?.isOpen() ?? false,
+        isDebugMenuOpen: this.debugMenuHost?.isOpen() ?? false,
         isPlayerDead: this.isPlayerDead,
         lensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
         lensDensity: this.debugBlackHoleLensDensity,
@@ -666,8 +666,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createDebugMenu(): void {
-    this.debugMenu?.destroy();
-    this.debugMenu = createDebugMenu(this, {
+    this.debugMenuHost = new DebugMenuHost({
+      scene: this,
+      getValues: () => this.getDebugMenuValues(),
       callbacks: {
         close: () => this.closeDebugMenu(this.time.now),
         toggleDebugPause: () => this.runDebugMenuAction(() => this.toggleDebugGamePause(this.time.now)),
@@ -831,7 +832,7 @@ export class GameScene extends Phaser.Scene {
         resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
       }
     });
-    this.refreshDebugMenu();
+    this.debugMenuHost.create();
   }
 
   private runDebugMenuAction(action: () => void): void {
@@ -841,7 +842,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private addDebugCredits(amount: number): void {
-    const shouldReopenDebugMenu = this.debugMenu?.isOpen() ?? false;
+    const shouldReopenDebugMenu = this.debugMenuHost?.isOpen() ?? false;
     this.totalCredits = Math.max(0, this.totalCredits + amount);
 
     if (this.gameFlowState === 'mainMenu') {
@@ -876,11 +877,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshDebugMenu(): void {
-    if (!this.debugMenu) {
-      return;
-    }
-
-    this.debugMenu.update(this.getDebugMenuValues());
+    this.debugMenuHost?.refresh();
   }
 
   private getDebugMenuValues() {
@@ -1539,10 +1536,10 @@ export class GameScene extends Phaser.Scene {
     this.arena = createArenaSize(viewport);
     const center = getArenaCenter(this.arena);
 
-    this.debugMenu?.destroy();
+    this.debugMenuHost?.destroy();
     this.children.removeAll(true);
     this.combatFeedback.clear();
-    this.debugMenu = undefined;
+    this.debugMenuHost = undefined;
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
@@ -1662,7 +1659,7 @@ export class GameScene extends Phaser.Scene {
   private showMainMenu(): void {
     this.gameFlowState = 'mainMenu';
     this.children.removeAll(true);
-    this.debugMenu = undefined;
+    this.debugMenuHost = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
     this.shipSelectScreen = undefined;
@@ -2220,7 +2217,7 @@ export class GameScene extends Phaser.Scene {
     if (
       this.isPlayerDead ||
       this.isUpgradeOverlayOpen ||
-      this.debugMenu?.isOpen() ||
+      this.debugMenuHost?.isOpen() ||
       !this.debugState.enemySpawningEnabled ||
       time < this.nextEnemySpawnAt
     ) {
@@ -3088,11 +3085,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDebugMenuInput(time: number): void {
-    if (!this.debugMenu || !this.isDebugMenuAvailable()) {
+    if (!this.debugMenuHost?.isCreated() || !this.isDebugMenuAvailable()) {
       return;
     }
 
-    if (this.debugMenu.isOpen() && this.isPlayerDead && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+    if (this.debugMenuHost.isOpen() && this.isPlayerDead && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
       this.startRun();
       return;
     }
@@ -3102,7 +3099,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
 
-      if (this.debugMenu.isOpen()) {
+      if (this.debugMenuHost.isOpen()) {
         this.closeDebugMenu(time);
       } else {
         this.openDebugMenu(time);
@@ -3119,20 +3116,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private openDebugMenu(time: number): void {
-    if (!this.debugMenu || this.debugMenu.isOpen() || this.isUpgradeOverlayOpen) {
+    if (!this.debugMenuHost?.isCreated() || this.debugMenuHost.isOpen() || this.isUpgradeOverlayOpen) {
       return;
     }
 
-    this.debugMenu.open();
+    this.debugMenuHost.open();
     this.refreshDebugMenu();
   }
 
   private closeDebugMenu(time: number): void {
-    if (!this.debugMenu?.isOpen()) {
+    if (!this.debugMenuHost?.isOpen()) {
       return;
     }
 
-    this.debugMenu.close();
+    this.debugMenuHost.close();
     this.updateGameplayHud(time);
   }
 
@@ -5349,7 +5346,7 @@ export class GameScene extends Phaser.Scene {
       onMainMenu: () => this.showMainMenu(),
       onShop: () => this.showShop('results')
     });
-    if (!this.debugMenu) {
+    if (!this.debugMenuHost?.isCreated()) {
       this.createDebugMenu();
     }
   }
@@ -5722,7 +5719,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const pointer = this.input.activePointer;
-    const isPointerBlockedByDebugMenu = this.debugMenu?.containsPointer(pointer) ?? false;
+    const isPointerBlockedByDebugMenu = this.debugMenuHost?.containsPointer(pointer) ?? false;
     const isPrimaryFiring = this.fireKey.isDown || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
     if (isPrimaryFiring && time >= this.playerWeapons.nextMainWeaponFireAt) {
       const result = this.usePlayerWeapon(this.getActiveMainWeaponDefinition(), 'main', time);
@@ -6557,7 +6554,7 @@ export class GameScene extends Phaser.Scene {
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
-        `Debug menu: Z ${this.debugMenu?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
+        `Debug menu: Z ${this.debugMenuHost?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
         `Collision visuals: ${this.debugState.collisionDebugEnabled ? 'on' : 'off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +
