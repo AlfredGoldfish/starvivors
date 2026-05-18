@@ -45,7 +45,7 @@ import {
   type UpgradeId,
   type UpgradeDefinition
 } from '../data/upgrades';
-import { getWeaponDefinition, isProjectileWeapon, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
+import { getWeaponDefinition, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
 import {
   createPlayerWeaponRuntimeState,
   getActiveMainWeaponDefinition,
@@ -53,6 +53,7 @@ import {
   type PlayerWeaponRuntimeState,
   type PlayerWeaponUpgradeState
 } from '../systems/playerWeapons';
+import { fireProjectileWeapon as fireProjectileWeaponSystem } from '../systems/projectileWeapons';
 import {
   activateRammingShieldDash,
   canApplyRammingShieldDamage,
@@ -7768,75 +7769,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fireProjectileWeapon(resolved: ResolvedWeaponStats, time: number): { cooldownMs: number } {
-    const weapon = resolved.weapon;
-    if (!isProjectileWeapon(weapon) || !weapon.projectileVisual) {
-      return { cooldownMs: 0 };
-    }
+    const result = fireProjectileWeaponSystem({
+      scene: this,
+      resolved,
+      time,
+      playerX: this.player.x,
+      playerY: this.player.y,
+      playerRotation: this.player.rotation,
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation)
+    });
 
-    const projectileConfig = resolved.projectile;
-    if (!projectileConfig) {
-      return { cooldownMs: 0 };
-    }
-    const direction = this.getForwardDirection(this.player.rotation);
-    const spawnX = this.player.x + direction.x * PLAYER_PROJECTILE_MUZZLE_OFFSET;
-    const spawnY = this.player.y + direction.y * PLAYER_PROJECTILE_MUZZLE_OFFSET;
-
-    for (let index = 0; index < projectileConfig.projectileCount; index += 1) {
-      const spreadOffset = index - (projectileConfig.projectileCount - 1) / 2;
-      const projectileRotation = this.player.rotation + spreadOffset * 0.08;
-      const projectileDirection = this.getForwardDirection(projectileRotation);
-      const body = this.createPlayerProjectile(spawnX, spawnY, projectileRotation, weapon, projectileConfig.projectileAreaScale);
-      const wrapMirrorBody = this.createPlayerProjectile(
-        spawnX,
-        spawnY,
-        projectileRotation,
-        weapon,
-        projectileConfig.projectileAreaScale
-      );
-      wrapMirrorBody.setVisible(false);
-
-      this.playerProjectiles.push({
-        body,
-        wrapMirrorBody,
-        velocity: projectileDirection.scale(projectileConfig.projectileSpeed),
-        speed: projectileConfig.projectileSpeed,
-        damage: projectileConfig.damage,
-        hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileConfig.projectileAreaScale,
-        pierceRemaining: projectileConfig.pierce,
-        piercedTargets: new WeakSet<object>(),
-        expiresAt: time + projectileConfig.projectileLifetimeMs,
-        distanceRemaining: projectileConfig.projectileRange,
-        nextTrailAt: time,
-        trailColor: weapon.projectileVisual.trailColor
-      });
-    }
-
-    return { cooldownMs: projectileConfig.cooldownMs };
-  }
-
-  private createPlayerProjectile(
-    x: number,
-    y: number,
-    rotation: number,
-    weapon: WeaponRegistryEntry,
-    areaScale = 1
-  ): Phaser.GameObjects.Container {
-    const visual = weapon.projectileVisual;
-    if (!visual) {
-      throw new Error(`${weapon.displayName} does not define projectile visuals.`);
-    }
-
-    const glow = this.add.ellipse(0, 0, visual.width * areaScale, visual.height * areaScale, visual.glowColor, visual.glowAlpha);
-    const body = this.add.ellipse(0, 0, visual.width * 0.44 * areaScale, visual.height * 0.63 * areaScale, visual.bodyColor, 1);
-    body.setStrokeStyle(1, visual.bodyStrokeColor, 0.95);
-
-    const projectile = this.add.container(x, y, [glow, body]);
-
-    projectile.setSize(visual.width * areaScale, visual.height * areaScale);
-    projectile.setRotation(rotation);
-    projectile.setDepth(8);
-
-    return projectile;
+    this.playerProjectiles.push(...result.projectiles);
+    return { cooldownMs: result.cooldownMs };
   }
 
   private updatePlayerProjectiles(time: number, deltaSeconds: number): void {
