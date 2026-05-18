@@ -60,6 +60,11 @@ import {
   updatePlayerProjectiles as updatePlayerProjectilesSystem
 } from '../systems/projectileWeapons';
 import {
+  clearEnemyProjectiles as clearEnemyProjectilesSystem,
+  fireShooterProjectile as fireShooterProjectileSystem,
+  updateEnemyProjectiles as updateEnemyProjectilesSystem
+} from '../systems/enemyProjectiles';
+import {
   activateRammingShieldDash,
   canApplyRammingShieldDamage,
   createRammingShieldRuntimeState,
@@ -309,7 +314,6 @@ import {
   SHOOTER_ENEMY_DISPLAY_SIZE,
   SHOOTER_ENEMY_TEXTURE_KEY,
   SHOOTER_ENEMY_VISUAL_ROTATION,
-  SHOOTER_PROJECTILE_HIT_RADIUS,
   STAR_COLORS,
   STARFIELD_FAR_TEXTURE_KEY,
   STARFIELD_MID_TEXTURE_KEY,
@@ -7191,73 +7195,32 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fireShooterProjectile(enemy: ShooterEnemy, direction: Phaser.Math.Vector2, time: number): void {
-    const spawnDistance = SHOOTER_ENEMY_DISPLAY_SIZE * 0.42;
-    const spawnX = wrapCoordinate(enemy.body.x + direction.x * spawnDistance, this.arena.width);
-    const spawnY = wrapCoordinate(enemy.body.y + direction.y * spawnDistance, this.arena.height);
-    const rotation = Math.atan2(direction.x, -direction.y);
-    const body = this.createEnemyProjectile(spawnX, spawnY, rotation, enemy.stats.projectileSize);
-    const wrapMirrorBody = this.createEnemyProjectile(spawnX, spawnY, rotation, enemy.stats.projectileSize);
-    wrapMirrorBody.setVisible(false);
-
-    this.enemyProjectiles.push({
-      body,
-      wrapMirrorBody,
-      velocity: direction.clone().scale(enemy.stats.projectileSpeed),
-      speed: enemy.stats.projectileSpeed,
-      damage: enemy.stats.attackDamage,
-      hitRadius: enemy.stats.projectileSize,
-      expiresAt: time + enemy.stats.projectileLifetimeSeconds * 1000,
-      distanceRemaining: enemy.stats.projectileRange
-    });
-  }
-
-  private createEnemyProjectile(x: number, y: number, rotation: number, hitRadius = SHOOTER_PROJECTILE_HIT_RADIUS): Phaser.GameObjects.Container {
-    const visualSize = hitRadius * 2.2;
-    const glow = this.add.ellipse(0, 0, visualSize, visualSize, 0xff5964, 0.28);
-    const body = this.add.ellipse(0, 0, hitRadius * 1.1, hitRadius * 1.78, 0xff8f4f, 0.94);
-    body.setStrokeStyle(1, 0xfff0b8, 0.86);
-
-    const projectile = this.add.container(x, y, [glow, body]);
-
-    projectile.setSize(visualSize, visualSize);
-    projectile.setRotation(rotation);
-    projectile.setDepth(8);
-
-    return projectile;
+    this.enemyProjectiles.push(
+      fireShooterProjectileSystem({
+        scene: this,
+        arena: this.arena,
+        enemy,
+        direction,
+        time
+      })
+    );
   }
 
   private updateEnemyProjectiles(time: number, deltaSeconds: number): void {
-    if (this.isPlayerDead) {
-      return;
-    }
-
-    for (let i = this.enemyProjectiles.length - 1; i >= 0; i -= 1) {
-      const projectile = this.enemyProjectiles[i];
-      this.applyProjectileGravity(projectile, deltaSeconds);
-      const travelDistance = projectile.speed * deltaSeconds;
-
-      projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
-      projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
-      projectile.distanceRemaining -= travelDistance;
-      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, projectile.hitRadius);
-
-      if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, projectile.hitRadius)) {
-          this.destroyEnemyProjectile(projectile);
-          this.enemyProjectiles.splice(i, 1);
-        }
-
-        continue;
-      }
-
-      if (this.tryHitPlayerWithEnemyProjectile(projectile, time)) {
-        this.destroyEnemyProjectile(projectile);
-        this.enemyProjectiles.splice(i, 1);
-      } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-        this.destroyEnemyProjectile(projectile);
-        this.enemyProjectiles.splice(i, 1);
-      }
-    }
+    this.enemyProjectiles = updateEnemyProjectilesSystem({
+      arena: this.arena,
+      projectiles: this.enemyProjectiles,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      applyProjectileGravity: (projectile, gravityDeltaSeconds) =>
+        this.applyProjectileGravity(projectile, gravityDeltaSeconds),
+      updateCapturedProjectile: (projectile, capturedDeltaSeconds, mirrorViewRadius) =>
+        this.updateCapturedProjectile(projectile, capturedDeltaSeconds, mirrorViewRadius),
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
+      tryHitPlayer: (projectile) => this.tryHitPlayerWithEnemyProjectile(projectile, time)
+    });
   }
 
   private tryHitPlayerWithEnemyProjectile(projectile: EnemyProjectile, time: number): boolean {
@@ -7288,11 +7251,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     return true;
-  }
-
-  private destroyEnemyProjectile(projectile: EnemyProjectile): void {
-    projectile.body.destroy(true);
-    projectile.wrapMirrorBody.destroy(true);
   }
 
   private updateBasicAsteroids(deltaSeconds: number): void {
@@ -7815,11 +7773,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearEnemyProjectiles(): void {
-    for (const projectile of this.enemyProjectiles) {
-      this.destroyEnemyProjectile(projectile);
-    }
-
-    this.enemyProjectiles = [];
+    this.enemyProjectiles = clearEnemyProjectilesSystem(this.enemyProjectiles);
   }
 
   private applyProjectileGravity(projectile: PlayerProjectile | EnemyProjectile, deltaSeconds: number): void {
