@@ -137,7 +137,10 @@ import {
   spawnAsteroidFragments as spawnAsteroidFragmentsSystem,
   updateBasicAsteroidRuntime
 } from '../systems/asteroids';
-import { updateBasicEnemies as updateBasicEnemiesSystem } from '../systems/enemies';
+import {
+  updateBasicEnemies as updateBasicEnemiesSystem,
+  updateShooterEnemies as updateShooterEnemiesSystem
+} from '../systems/enemies';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -7070,52 +7073,25 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateShooterEnemies(time: number, deltaSeconds: number): void {
-    for (let i = this.shooterEnemies.length - 1; i >= 0; i -= 1) {
-      const enemy = this.shooterEnemies[i];
-      const offsetToPlayer = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      const distance = offsetToPlayer.length();
-      const targetVelocity = new Phaser.Math.Vector2(0, 0);
-
-      if (distance > 0) {
-        const directionToPlayer = offsetToPlayer.clone().scale(1 / distance);
-
-        enemy.body.rotation = Math.atan2(directionToPlayer.x, -directionToPlayer.y);
-
-        if (distance > enemy.stats.preferredRange) {
-          targetVelocity.set(
-            directionToPlayer.x * this.getEnemyDebugMoveSpeed(enemy),
-            directionToPlayer.y * this.getEnemyDebugMoveSpeed(enemy)
-          );
-        } else if (distance < enemy.stats.retreatThreshold) {
-          targetVelocity.set(
-            -directionToPlayer.x * this.getEnemyDebugMoveSpeed(enemy) * 0.72,
-            -directionToPlayer.y * this.getEnemyDebugMoveSpeed(enemy) * 0.72
-          );
-        }
-
-        if (!this.isPlayerDead && time >= enemy.nextFireAt) {
-          this.fireShooterProjectile(enemy, directionToPlayer, time);
-          enemy.nextFireAt = time + enemy.stats.attackCooldown * 1000;
-        }
-      }
-
-      this.steerEnemyVelocity(enemy, targetVelocity, deltaSeconds);
-
-      if (this.applyBlackHoleToShooterEnemy(enemy, i, deltaSeconds, time)) {
-        continue;
-      }
-
-      const totalVelocity = enemy.velocity
-        .clone()
-        .add(enemy.knockbackVelocity)
-        .add(enemy.blackHoleVelocity)
-        .limit(this.getGlobalMaxSpeed());
-
-      enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * deltaSeconds, this.arena.width);
-      enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * deltaSeconds, this.arena.height);
-      enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, deltaSeconds * 60));
-      this.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5);
-    }
+    updateShooterEnemiesSystem({
+      arena: this.arena,
+      enemies: this.shooterEnemies,
+      playerX: this.player.x,
+      playerY: this.player.y,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
+      getEnemyMoveSpeed: (enemy) => this.getEnemyDebugMoveSpeed(enemy),
+      steerEnemyVelocity: (enemy, targetVelocity, steerDeltaSeconds) =>
+        this.steerEnemyVelocity(enemy, targetVelocity, steerDeltaSeconds),
+      applyBlackHoleToEnemy: (enemy, index, blackHoleDeltaSeconds, blackHoleTime) =>
+        this.applyBlackHoleToShooterEnemy(enemy, index, blackHoleDeltaSeconds, blackHoleTime),
+      fireShooterProjectile: (enemy, directionToPlayer, fireTime) =>
+        this.fireShooterProjectile(enemy, directionToPlayer, fireTime),
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius)
+    });
   }
 
   private updateTankEnemies(deltaSeconds: number): void {
