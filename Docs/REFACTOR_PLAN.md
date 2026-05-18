@@ -43,3 +43,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 5 main menu screen extraction: `npm.cmd run build` passed.
 - Phase 5 ship select screen extraction: `npm.cmd run build` passed.
 - Phase 5 shop screen extraction: `npm.cmd run build` passed.
+- Phase 5 results screen extraction: `npm.cmd run build` passed.

@@ -163,6 +163,7 @@ import {
 } from '../systems/worldImpacts';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import { createMainMenuScreen } from '../ui/mainMenuScreen';
+import { createResultsScreen } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
@@ -407,8 +408,7 @@ export class GameScene extends Phaser.Scene {
   private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
   private shopScreen?: ScreenHandle;
   private shopBackTarget: ShopBackTarget = 'mainMenu';
-  private resultsScreen?: Phaser.GameObjects.Container;
-  private resultsActionZones: Phaser.GameObjects.Zone[] = [];
+  private resultsScreen?: ScreenHandle;
   private starfield!: StarfieldSystem;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
@@ -1539,7 +1539,6 @@ export class GameScene extends Phaser.Scene {
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
     this.resultsScreen = undefined;
-    this.resultsActionZones = [];
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.basicEnemies = [];
@@ -1647,7 +1646,6 @@ export class GameScene extends Phaser.Scene {
     this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
     this.resultsScreen = undefined;
-    this.resultsActionZones = [];
 
     this.mainMenuScreen = createMainMenuScreen({
       scene: this,
@@ -2366,13 +2364,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyResultsScreen(): void {
-    for (const zone of this.resultsActionZones) {
-      zone.destroy();
-    }
-
-    this.resultsActionZones = [];
-    this.resultsScreen?.destroy(true);
-    this.resultsScreen = undefined;
+    this.resultsScreen = destroyScreenHandle(this.resultsScreen);
   }
 
   private addScreenButton(
@@ -6657,60 +6649,22 @@ export class GameScene extends Phaser.Scene {
     this.gameFlowState = 'results';
     this.destroyResultsScreen();
 
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const panelWidth = Math.min(width - 48, 520);
-    const panelHeight = Math.min(height - 48, 430);
-    const panelX = -panelWidth / 2;
-    const panelY = -panelHeight / 2;
     const elapsedSeconds = Math.max(0, Math.floor(this.lastRunSurvivalMs / 1000));
 
-    const background = this.add.graphics();
-    background.fillStyle(0x02040a, 0.78);
-    background.fillRect(-width / 2, -height / 2, width, height);
-    background.fillStyle(0x071018, 0.96);
-    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    background.lineStyle(2, 0x42f5d7, 0.82);
-    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-
-    const text = this.add
-      .text(
-        0,
-        panelY + 28,
-        `RUN RESULTS\n\n` +
-          `Survival time        ${this.formatSurvivalTime(elapsedSeconds)}\n` +
-          `Scrap collected      ${this.lastRunScrapTotal}\n` +
-          `Credits earned       ${this.lastRunCreditsEarned}\n` +
-          `Total credits        ${this.totalCredits}\n\n` +
-          `Conversion: ${SCRAP_TO_CREDIT_RATE} scrap = ${SCRAP_TO_CREDIT_RATE} credit x${this.getScrapCreditMultiplier().toFixed(2)}\n` +
-          `Press R to restart`,
-        {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '18px',
-          color: '#f2fbff',
-          align: 'left',
-          fixedWidth: panelWidth - 64,
-          lineSpacing: 5
-        }
-      )
-      .setOrigin(0.5, 0);
-
-    this.resultsScreen = this.add
-      .container(centerX, centerY, [background, text])
-      .setScrollFactor(0)
-      .setDepth(1250);
-
-    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 150, 220, 38, 'Restart Run', () =>
-      this.startRun()
-    );
-    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 104, 220, 38, 'Main Menu', () =>
-      this.showMainMenu()
-    );
-    this.addScreenButton(this.resultsScreen, this.resultsActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 220, 38, 'Shop', () =>
-      this.showShop('results')
-    );
+    this.resultsScreen = createResultsScreen({
+      scene: this,
+      survivalTimeLabel: this.formatSurvivalTime(elapsedSeconds),
+      scrapCollected: this.lastRunScrapTotal,
+      creditsEarned: this.lastRunCreditsEarned,
+      totalCredits: this.totalCredits,
+      scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
+      scrapCreditMultiplier: this.getScrapCreditMultiplier(),
+      isActionActive: () => this.gameFlowState === 'results',
+      resetCursor: () => this.resetUiCursor(),
+      onRestartRun: () => this.startRun(),
+      onMainMenu: () => this.showMainMenu(),
+      onShop: () => this.showShop('results')
+    });
     if (!this.debugMenu) {
       this.createDebugMenu();
     }
