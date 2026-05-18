@@ -153,6 +153,7 @@ import {
   spawnScrapPickup as spawnScrapPickupSystem,
   updateScrapPickups as updateScrapPickupsSystem
 } from '../systems/pickups';
+import { resolveBodyImpactCollision as resolveBodyImpactCollisionSystem } from '../systems/worldImpacts';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -7362,65 +7363,17 @@ export class GameScene extends Phaser.Scene {
     damageFirst: (damage: number) => void;
     damageSecond: (damage: number) => void;
   }): void {
-    if (!this.canApplyWorldCollisionDamage(input.firstBody, input.secondBody, input.time)) {
-      return;
-    }
-
-    const offset = this.getWrappedDirection(input.secondBody.x, input.secondBody.y, input.firstBody.x, input.firstBody.y);
-    const normal = this.getCollisionNormal(offset);
-    const relativeVelocity = getRelativeVelocity(input.firstTotalVelocity, input.secondTotalVelocity);
-    const closingSpeed = getClosingSpeed(relativeVelocity, normal);
-    const hitRadius = input.firstRadius + input.secondRadius;
-    const penetration = Math.max(0, hitRadius - offset.length());
-    const separation = Math.min(penetration * ASTEROID_COLLISION_SEPARATION_PERCENT, ASTEROID_COLLISION_MAX_SEPARATION);
-    const firstShare = getMassResponseShare(input.secondMass, input.firstMass);
-    const secondShare = getMassResponseShare(input.firstMass, input.secondMass);
-
-    this.nudgeWrappedObject(input.firstBody, normal, separation * firstShare);
-    this.nudgeWrappedObject(input.secondBody, normal, -separation * secondShare);
-    applyCollisionImpulse({
-      normal,
-      firstVelocity: input.firstVelocity,
-      secondVelocity: input.secondVelocity,
-      firstMass: input.firstMass,
-      secondMass: input.secondMass,
-      minImpulse: ASTEROID_COLLISION_MIN_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
-      maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
-      relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE * this.debugState.asteroidCollisionImpulseScale,
-      firstMaxSpeed: input.firstMaxSpeed,
-      secondMaxSpeed: input.secondMaxSpeed,
-      restitution: ASTEROID_COLLISION_RESTITUTION,
-      relativeVelocity
+    resolveBodyImpactCollisionSystem({
+      arena: this.arena,
+      ...input,
+      asteroidCollisionImpulseScale: this.debugState.asteroidCollisionImpulseScale,
+      canApplyWorldCollisionDamage: (first, second, time) => this.canApplyWorldCollisionDamage(first, second, time),
+      markWorldCollisionDamageApplied: (first, second, time) => this.markWorldCollisionDamageApplied(first, second, time),
+      getCollisionNormal: (offset) => this.getCollisionNormal(offset),
+      nudgeWrappedObject: (object, normal, distance) => this.nudgeWrappedObject(object, normal, distance),
+      calculatePhysicalImpactDamage: (impactInput) => this.calculatePhysicalImpactDamage(impactInput),
+      emitImpactExplosion: (x, y) => this.emitShipCollisionImpactExplosion(x, y)
     });
-
-    const damageToFirst = this.calculatePhysicalImpactDamage({
-      source: input.secondSource,
-      baseDamage: 0,
-      attackerMass: input.secondMass,
-      targetMass: input.firstMass,
-      impactSpeed: closingSpeed
-    });
-    const damageToSecond = this.calculatePhysicalImpactDamage({
-      source: input.firstSource,
-      baseDamage: 0,
-      attackerMass: input.firstMass,
-      targetMass: input.secondMass,
-      impactSpeed: closingSpeed
-    });
-
-    this.markWorldCollisionDamageApplied(input.firstBody, input.secondBody, input.time);
-    if (damageToFirst > 0) {
-      input.damageFirst(damageToFirst);
-    }
-    if (damageToSecond > 0) {
-      input.damageSecond(damageToSecond);
-    }
-    if (damageToFirst > 0 || damageToSecond > 0) {
-      this.emitShipCollisionImpactExplosion(
-        wrapCoordinate((input.firstBody.x + input.secondBody.x) * 0.5, this.arena.width),
-        wrapCoordinate((input.firstBody.y + input.secondBody.y) * 0.5, this.arena.height)
-      );
-    }
   }
 
   private isCircleCollision(firstX: number, firstY: number, firstRadius: number, secondX: number, secondY: number, secondRadius: number): boolean {
