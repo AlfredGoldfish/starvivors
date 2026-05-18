@@ -142,6 +142,11 @@ import {
   updateShooterEnemies as updateShooterEnemiesSystem,
   updateTankEnemies as updateTankEnemiesSystem
 } from '../systems/enemies';
+import {
+  clearEnemyWreckageDebris as clearEnemyWreckageDebrisSystem,
+  destroyEnemyWreckageDebris as destroyEnemyWreckageDebrisSystem,
+  updateEnemyWreckageDebris as updateEnemyWreckageDebrisSystem
+} from '../systems/debris';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -3398,31 +3403,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateEnemyWreckageDebris(time: number, deltaSeconds: number): void {
-    if (this.isPlayerDead) {
-      return;
-    }
-
-    for (let i = this.enemyWreckageDebris.length - 1; i >= 0; i -= 1) {
-      const debris = this.enemyWreckageDebris[i];
-
-      if (this.applyBlackHoleToDebris(debris, i, deltaSeconds)) {
-        continue;
-      }
-
-      if (time >= debris.expiresAt) {
-        this.destroyEnemyWreckageDebris(debris);
-        this.enemyWreckageDebris.splice(i, 1);
-        continue;
-      }
-
-      debris.body.x = wrapCoordinate(debris.body.x + debris.velocity.x * deltaSeconds, this.arena.width);
-      debris.body.y = wrapCoordinate(debris.body.y + debris.velocity.y * deltaSeconds, this.arena.height);
-      debris.body.rotation += debris.rotationSpeed * deltaSeconds;
-      this.updateToroidalRenderMirror(debris.body, debris.wrapMirrorBody, debris.hitRadius);
-    }
+    this.enemyWreckageDebris = updateEnemyWreckageDebrisSystem({
+      arena: this.arena,
+      debris: this.enemyWreckageDebris,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      applyBlackHoleToDebris: (debris, blackHoleDeltaSeconds) =>
+        this.applyBlackHoleToDebris(debris, blackHoleDeltaSeconds),
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius)
+    });
   }
 
-  private applyBlackHoleToDebris(debris: EnemyWreckageDebris, index: number, deltaSeconds: number): boolean {
+  private applyBlackHoleToDebris(debris: EnemyWreckageDebris, deltaSeconds: number): boolean {
     if (!this.blackHole) {
       return false;
     }
@@ -3443,7 +3437,6 @@ export class GameScene extends Phaser.Scene {
 
     if (result.isInsideEventHorizon) {
       this.destroyEnemyWreckageDebris(debris);
-      this.enemyWreckageDebris.splice(index, 1);
       return true;
     }
 
@@ -3459,16 +3452,11 @@ export class GameScene extends Phaser.Scene {
       this.emitShipBulletImpactExplosion(debris.body.x, debris.body.y);
     }
 
-    debris.body.destroy(true);
-    debris.wrapMirrorBody.destroy(true);
+    destroyEnemyWreckageDebrisSystem(debris);
   }
 
   private clearEnemyWreckageDebris(): void {
-    for (const debris of this.enemyWreckageDebris) {
-      this.destroyEnemyWreckageDebris(debris);
-    }
-
-    this.enemyWreckageDebris = [];
+    this.enemyWreckageDebris = clearEnemyWreckageDebrisSystem(this.enemyWreckageDebris);
   }
 
   private spawnDebugEnemyWreckageDebris(): void {
