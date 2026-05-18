@@ -150,6 +150,7 @@ import {
 import {
   clearScrapPickups as clearScrapPickupsSystem,
   destroyScrapPickup as destroyScrapPickupSystem,
+  spawnScrapPickup as spawnScrapPickupSystem,
   updateScrapPickups as updateScrapPickupsSystem
 } from '../systems/pickups';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
@@ -288,7 +289,6 @@ import {
   ENEMY_WRECKAGE_DEBRIS_MIN_SPEED,
   ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY,
   FORWARD_THRUSTER_INTERVAL_MS,
-  GAMEPLAY_MAX_VELOCITY,
   IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE,
   IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
   INITIAL_ASTEROID_TIERS,
@@ -316,12 +316,6 @@ import {
   SCRAP_PICKUP_COLLECT_RADIUS,
   SCRAP_PICKUP_DEBUG_VALUE,
   SCRAP_PICKUP_DISPLAY_SIZE,
-  SCRAP_PICKUP_INHERITED_VELOCITY,
-  SCRAP_PICKUP_LIFETIME_MS,
-  SCRAP_PICKUP_MASS,
-  SCRAP_PICKUP_MAX_ACTIVE,
-  SCRAP_PICKUP_MAX_SPEED,
-  SCRAP_PICKUP_MIN_SPEED,
   SCRAP_PICKUP_RADIUS,
   SCRAP_PICKUP_TEXTURE_KEY,
   SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER,
@@ -3498,37 +3492,17 @@ export class GameScene extends Phaser.Scene {
     y: number,
     inheritedVelocity: Phaser.Math.Vector2
   ): void {
-    if (value <= 0) {
-      return;
-    }
-
-    if (this.scrapPickups.length >= SCRAP_PICKUP_MAX_ACTIVE) {
-      this.destroyScrapPickup(this.scrapPickups.shift());
-    }
-
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const speed = Phaser.Math.FloatBetween(SCRAP_PICKUP_MIN_SPEED, SCRAP_PICKUP_MAX_SPEED);
-    const spread = Phaser.Math.FloatBetween(0, SCRAP_PICKUP_RADIUS * 1.6);
-    const spawnX = wrapCoordinate(x + Math.cos(angle) * spread, this.arena.width);
-    const spawnY = wrapCoordinate(y + Math.sin(angle) * spread, this.arena.height);
-    const body = this.createScrapPickupBody(spawnX, spawnY);
-    const wrapMirrorBody = this.createScrapPickupBody(spawnX, spawnY);
-    wrapMirrorBody.setVisible(false);
-
-    this.scrapPickups.push({
-      body,
-      wrapMirrorBody,
-      velocity: new Phaser.Math.Vector2(
-        inheritedVelocity.x * SCRAP_PICKUP_INHERITED_VELOCITY + Math.cos(angle) * speed,
-        inheritedVelocity.y * SCRAP_PICKUP_INHERITED_VELOCITY + Math.sin(angle) * speed
-      ).limit(GAMEPLAY_MAX_VELOCITY),
-      value,
-      mass: SCRAP_PICKUP_MASS,
+    this.scrapPickups = spawnScrapPickupSystem({
+      arena: this.arena,
+      pickups: this.scrapPickups,
       source,
+      value,
+      x,
+      y,
+      inheritedVelocity,
       pickupRadius: SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet,
-      expiresAt: this.time.now + SCRAP_PICKUP_LIFETIME_MS,
-      rotationSpeed: Phaser.Math.FloatBetween(0.9, 2.2) * (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
-      bobPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
+      time: this.time.now,
+      createPickupBody: (spawnX, spawnY) => this.createScrapPickupBody(spawnX, spawnY)
     });
   }
 
