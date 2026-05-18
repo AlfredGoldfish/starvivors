@@ -2,7 +2,7 @@
 
 This repository is the STARVIVORS project.
 
-Use these documents as the working MVP source of truth for future Codex tasks. Some older documents still describe the original scaffold phase; prefer the current source tree and `Docs/REFACTOR_PLAN.md` when they conflict.
+Use these documents as the working MVP source of truth for future Codex tasks. Some older documents still describe the original scaffold phase; prefer the current source tree when they conflict. The completed refactor tracker is archived at `Docs/Old_Documents/REFACTOR_PLAN.md`.
 
 ## Current Task Boundary
 
@@ -67,9 +67,9 @@ Do not ask Codex to build or refactor the entire game in a single unsafe diff.
 
 Do not wire WIP or future content into active gameplay unless the prompt explicitly says to implement it.
 
-During the refactor:
+After the completed organization refactor:
 
 - Read the current source before moving code.
-- Keep `npm.cmd run build` passing after each phase.
+- Keep `npm.cmd run build` passing after each focused change.
 - Preserve query-string smoke harnesses and debug menu behavior.
 - Leave unrelated local artifacts such as Vite logs out of commits.
