@@ -163,6 +163,7 @@ import {
 } from '../systems/worldImpacts';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import { createMainMenuScreen } from '../ui/mainMenuScreen';
+import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import type {
   AsteroidBreakupProfile,
@@ -400,6 +401,7 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
   private mainMenuScreen?: ScreenHandle;
+  private shipSelectScreenHandle?: ScreenHandle;
   private shipSelectScreen?: Phaser.GameObjects.Container;
   private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
   private shopScreen?: Phaser.GameObjects.Container;
@@ -1515,8 +1517,8 @@ export class GameScene extends Phaser.Scene {
     this.combatFeedback.clear();
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
+    this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
-    this.shipSelectActionZones = [];
     this.shopScreen = undefined;
     this.shopActionZones = [];
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
@@ -1644,8 +1646,8 @@ export class GameScene extends Phaser.Scene {
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
     this.shopActionZones = [];
+    this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
-    this.shipSelectActionZones = [];
     this.resultsScreen = undefined;
     this.resultsActionZones = [];
 
@@ -1667,95 +1669,21 @@ export class GameScene extends Phaser.Scene {
     this.destroyMainMenuScreen();
     this.destroyShipSelectScreen();
 
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const frameMargin = 3;
-    const panelWidth = width - frameMargin * 2;
-    const panelHeight = height - frameMargin * 2;
-    const panelX = -width / 2 + frameMargin;
-    const panelY = -height / 2 + frameMargin;
-    const innerPadding = 24;
-    const headerHeight = 66;
-    const footerHeight = 54;
-    const columnTop = panelY + headerHeight + 12;
-    const columnHeight = panelHeight - headerHeight - footerHeight - 24;
-    const columnGap = 16;
-    const listWidth = Math.max(220, Math.min(280, panelWidth * 0.22));
-    const rightWidth = Math.max(260, Math.min(330, panelWidth * 0.26));
-    const middleWidth = panelWidth - innerPadding * 2 - listWidth - rightWidth - columnGap * 2;
-    const listX = panelX + innerPadding;
-    const middleX = listX + listWidth + columnGap;
-    const rightX = middleX + middleWidth + columnGap;
-    const selectedShip = getShipDefinition(this.hangarPreviewShipId);
-
-    const background = this.add.graphics();
-    background.fillStyle(0x02040a, 1);
-    background.fillRect(-width / 2, -height / 2, width, height);
-    background.lineStyle(4, 0x42f5d7, 0.9);
-    background.strokeRect(panelX, panelY, panelWidth, panelHeight);
-    background.lineStyle(2, 0x102633, 0.94);
-    background.strokeRect(panelX + 7, panelY + 7, panelWidth - 14, panelHeight - 14);
-    background.lineStyle(1, 0x52627f, 0.6);
-    background.lineBetween(panelX + innerPadding, panelY + headerHeight, panelX + panelWidth - innerPadding, panelY + headerHeight);
-
-    const title = this.add
-      .text(0, panelY + 22, 'SHIP HANGAR', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '22px',
-        color: '#f2fbff',
-        align: 'center',
-        fixedWidth: panelWidth
-      })
-      .setOrigin(0.5, 0);
-    const credits = this.add
-      .text(panelX + panelWidth - innerPadding, panelY + 25, `Credits ${this.totalCredits}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
-        color: '#c8f7ff'
-      })
-      .setOrigin(1, 0);
-
-    this.shipSelectScreen = this.add
-      .container(centerX, centerY, [background, title, credits])
-      .setScrollFactor(0)
-      .setDepth(1300);
-
-    this.drawHangarPanel(background, listX, columnTop, listWidth, columnHeight, 'SHIP LIST');
-    this.drawHangarPanel(background, middleX, columnTop, middleWidth, columnHeight, 'SELECTED SHIP');
-    this.drawHangarPanel(background, rightX, columnTop, rightWidth, columnHeight, 'PRIMARY SYSTEM');
-    this.renderShipListPanel(background, listX, columnTop, listWidth, columnHeight);
-    this.renderSelectedShipCard(background, selectedShip, middleX, columnTop, middleWidth, columnHeight);
-    this.renderPrimarySystemPanel(background, selectedShip, rightX, columnTop, rightWidth, columnHeight);
-
-    const actionEnabled = this.isShipUnlocked(selectedShip.id) || this.canUnlockShip(selectedShip);
-    this.addScreenButton(
-      this.shipSelectScreen,
-      this.shipSelectActionZones,
-      centerX,
-      centerY,
-      middleX + middleWidth / 2,
-      panelY + panelHeight - footerHeight + 8,
-      190,
-      38,
-      this.getShipActionLabel(selectedShip),
-      () => this.handleShipAction(selectedShip),
-      actionEnabled
-    );
-
-    this.addScreenButton(
-      this.shipSelectScreen,
-      this.shipSelectActionZones,
-      centerX,
-      centerY,
-      panelX + panelWidth - innerPadding - 75,
-      panelY + panelHeight - footerHeight + 8,
-      150,
-      38,
-      'Back',
-      () => this.showMainMenu()
-    );
+    this.shipSelectScreenHandle = createShipSelectScreen({
+      scene: this,
+      totalCredits: this.totalCredits,
+      selectedShipId: this.selectedShipId,
+      hangarPreviewShipId: this.hangarPreviewShipId,
+      unlockedShipIds: this.unlockedShipIds,
+      isActionActive: () => this.gameFlowState === 'shipSelect',
+      resetCursor: () => this.resetUiCursor(),
+      onPreviewShip: (shipId) => {
+        this.hangarPreviewShipId = shipId;
+        this.showShipSelect();
+      },
+      onShipAction: (ship) => this.handleShipAction(ship),
+      onBack: () => this.showMainMenu()
+    });
     this.createDebugMenu();
   }
 
@@ -2557,14 +2485,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyShipSelectScreen(): void {
-    for (const zone of this.shipSelectActionZones) {
-      zone.disableInteractive();
-      zone.destroy();
-    }
-
-    this.resetUiCursor();
-    this.shipSelectActionZones = [];
-    this.shipSelectScreen?.destroy(true);
+    this.shipSelectScreenHandle = destroyScreenHandle(this.shipSelectScreenHandle, {
+      disableZones: true,
+      resetCursor: () => this.resetUiCursor()
+    });
     this.shipSelectScreen = undefined;
   }
 
