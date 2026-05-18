@@ -18,7 +18,7 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 4, entity runtime systems: complete. Runtime loops, spawning helpers, projectile hit scanning, and world impact response/loops have been extracted; scene-owned damage/reward/FX side effects remain in `GameScene` intentionally.
 - Phase 5, screens and flow: complete.
 - Phase 6, debug tooling split: complete. Debug persistence helpers, black-hole tuning helpers, black-hole debug controls, and debug menu host lifecycle have been extracted.
-- Phase 7, final cleanup: next.
+- Phase 7, final cleanup: complete. Removed screen-refactor leftovers from `GameScene`, reconciled the tracker, and archived this plan after completion.
 
 ## Verification Log
 
@@ -51,3 +51,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 6 black hole debug controls cleanup: `npm.cmd run build` passed after removing obsolete `GameScene` slider methods.
 - Phase 6 debug menu host extraction: `npm.cmd run build` passed.
 - Phase 6 completion check: `npm.cmd run build` passed after tracker reconciliation.
+- Phase 7 final cleanup: `npm.cmd run build` passed after removing obsolete screen button glue and reconciling the tracker.

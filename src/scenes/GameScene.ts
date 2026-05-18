@@ -183,7 +183,7 @@ import { createMainMenuScreen } from '../ui/mainMenuScreen';
 import { createResultsScreen } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
-import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
+import { destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import type {
   AsteroidBreakupProfile,
   AsteroidTier,
@@ -1944,7 +1944,6 @@ export class GameScene extends Phaser.Scene {
       disableZones: true,
       resetCursor: () => this.resetUiCursor()
     });
-    this.shipSelectScreen = undefined;
   }
 
   private resetUiCursor(): void {
@@ -1958,38 +1957,6 @@ export class GameScene extends Phaser.Scene {
 
   private destroyResultsScreen(): void {
     this.resultsScreen = destroyScreenHandle(this.resultsScreen);
-  }
-
-  private addScreenButton(
-    container: Phaser.GameObjects.Container,
-    actionZones: Phaser.GameObjects.Zone[],
-    screenCenterX: number,
-    screenCenterY: number,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    label: string,
-    callback: () => void,
-    isEnabled = true
-  ): void {
-    const activeState = this.gameFlowState;
-    addScreenButton({
-      scene: this,
-      container,
-      actionZones,
-      screenCenterX,
-      screenCenterY,
-      x,
-      y,
-      width,
-      height,
-      label,
-      callback,
-      isEnabled,
-      isActionActive: () => this.gameFlowState === activeState,
-      resetCursor: () => this.resetUiCursor()
-    });
   }
 
   private getRandomBlackHoleZoneSpawnPosition(
