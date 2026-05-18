@@ -91,11 +91,8 @@ import {
 } from '../systems/runUpgrades';
 import { getWeaponDamageMultiplier, resolveWeaponStats, type ResolvedWeaponStats } from '../systems/weaponStats';
 import {
-  formatDisplayUnits,
   formatIntegerDisplayUnits,
-  isRawScaledStatKey,
-  toDisplayUnits,
-  toRawUnits
+  toDisplayUnits
 } from '../systems/statUnits';
 import {
   applyAccelerationWithMass,
@@ -125,11 +122,21 @@ import {
 import {
   DebugState,
   type DebugImpactSourceType,
-  type DebugShipOverrides,
   type DebugShipStatKey,
-  type DebugWeaponOverrides,
   type DebugWeaponStatKey
 } from '../systems/debug/debugState';
+import {
+  createDebugShipLoadoutMarkdown,
+  createDebugWeaponLoadoutMarkdown,
+  downloadTextFile,
+  getTimestampSlug,
+  loadMarkdownFile,
+  parseDebugShipLoadoutMarkdown,
+  parseDebugWeaponLoadoutMarkdown,
+  parseJsonBlock,
+  toRawDebugDelta,
+  toRawDebugValue
+} from '../systems/debug/debugPersistence';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
@@ -185,8 +192,6 @@ import type {
   SavedBlackHoleFieldTuningPreset,
   SavedBlackHolePngLayer,
   SavedBlackHolePngSetup,
-  SavedDebugShipLoadout,
-  SavedDebugWeaponLoadout,
   ScrapPickup,
   ScrapSourceType,
   SecondaryWeaponChoice,
@@ -683,13 +688,13 @@ export class GameScene extends Phaser.Scene {
         adjustAsteroidCollisionImpulseScale: (delta) =>
           this.runDebugMenuAction(() => this.debugState.adjustAsteroidCollisionImpulseScale(delta)),
         adjustGlobalMaxSpeed: (delta) =>
-          this.runDebugMenuAction(() => this.debugState.adjustGlobalMaxSpeed(this.toRawDebugDelta('globalMaxSpeed', delta))),
+          this.runDebugMenuAction(() => this.debugState.adjustGlobalMaxSpeed(toRawDebugDelta('globalMaxSpeed', delta))),
         adjustGlobalImpactDamageCap: (delta) => this.runDebugMenuAction(() => this.debugState.adjustGlobalImpactDamageCap(delta)),
         adjustImpactDamageCap: (source, delta) => this.runDebugMenuAction(() => this.debugState.adjustImpactDamageCap(source, delta)),
         adjustImpactDamageScale: (source, delta) => this.runDebugMenuAction(() => this.debugState.adjustImpactDamageScale(source, delta)),
         setPhysicsTuning: (key, value) =>
           this.runDebugMenuAction(() =>
-            this.debugState.setPhysicsTuning(key, key === 'globalMaxSpeed' ? this.toRawDebugValue('globalMaxSpeed', value) : value)
+            this.debugState.setPhysicsTuning(key, key === 'globalMaxSpeed' ? toRawDebugValue('globalMaxSpeed', value) : value)
           ),
         resetPhysicsTuning: () => this.runDebugMenuAction(() => this.debugState.resetPhysicsTuning()),
         toggleHealthBars: () => this.runDebugMenuAction(() => {
@@ -3586,7 +3591,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private adjustDebugShipLoadoutStat(shipId: ShipId, stat: DebugShipStatKey, delta: number): void {
-    this.debugState.adjustShipStat(getShipDefinition(shipId), stat, this.toRawDebugDelta(stat, delta));
+    this.debugState.adjustShipStat(getShipDefinition(shipId), stat, toRawDebugDelta(stat, delta));
 
     if (shipId === this.selectedShipId) {
       this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
@@ -3594,7 +3599,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setDebugShipLoadoutStat(shipId: ShipId, stat: DebugShipStatKey, value: number): void {
-    this.debugState.setShipStat(getShipDefinition(shipId), stat, this.toRawDebugValue(stat, value));
+    this.debugState.setShipStat(getShipDefinition(shipId), stat, toRawDebugValue(stat, value));
 
     if (shipId === this.selectedShipId) {
       this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
@@ -3602,31 +3607,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private adjustDebugWeaponLoadoutStat(weaponId: WeaponId, stat: DebugWeaponStatKey, delta: number): void {
-    this.debugState.adjustWeaponStat(getWeaponDefinition(weaponId), stat, this.toRawDebugDelta(stat, delta));
+    this.debugState.adjustWeaponStat(getWeaponDefinition(weaponId), stat, toRawDebugDelta(stat, delta));
     this.syncRammingShieldDebugRuntime();
   }
 
   private setDebugWeaponLoadoutStat(weaponId: WeaponId, stat: DebugWeaponStatKey, value: number): void {
-    this.debugState.setWeaponStat(getWeaponDefinition(weaponId), stat, this.toRawDebugValue(stat, value));
+    this.debugState.setWeaponStat(getWeaponDefinition(weaponId), stat, toRawDebugValue(stat, value));
     this.syncRammingShieldDebugRuntime();
-  }
-
-  private toRawDebugDelta(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', delta: number): number {
-    return isRawScaledStatKey(stat) ? toRawUnits(delta) : delta;
-  }
-
-  private toRawDebugValue(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', value: number): number {
-    return isRawScaledStatKey(stat) ? toRawUnits(value) : value;
   }
 
   private saveDebugShipLoadout(shipId: ShipId): void {
     const ship = getShipDefinition(shipId);
-    const markdown = this.createDebugShipLoadoutMarkdown(ship);
-    this.downloadTextFile(`ship-${ship.id}-debug-loadout-${this.getTimestampSlug()}.md`, markdown, 'text/markdown');
+    const markdown = createDebugShipLoadoutMarkdown(this.debugState, ship);
+    downloadTextFile(`ship-${ship.id}-debug-loadout-${getTimestampSlug()}.md`, markdown, 'text/markdown');
   }
 
   private loadDebugShipLoadout(shipId: ShipId): void {
-    this.loadMarkdownFile((contents) => {
+    loadMarkdownFile((contents) => {
       this.applyDebugShipLoadoutMarkdown(shipId, contents);
       this.refreshDebugMenu();
     });
@@ -3634,42 +3631,19 @@ export class GameScene extends Phaser.Scene {
 
   private saveDebugWeaponLoadout(weaponId: WeaponId): void {
     const weapon = getWeaponDefinition(weaponId);
-    const markdown = this.createDebugWeaponLoadoutMarkdown(weapon);
-    this.downloadTextFile(`weapon-${weapon.id}-debug-loadout-${this.getTimestampSlug()}.md`, markdown, 'text/markdown');
+    const markdown = createDebugWeaponLoadoutMarkdown(this.debugState, weapon);
+    downloadTextFile(`weapon-${weapon.id}-debug-loadout-${getTimestampSlug()}.md`, markdown, 'text/markdown');
   }
 
   private loadDebugWeaponLoadout(weaponId: WeaponId): void {
-    this.loadMarkdownFile((contents) => {
+    loadMarkdownFile((contents) => {
       this.applyDebugWeaponLoadoutMarkdown(weaponId, contents);
       this.refreshDebugMenu();
     });
   }
 
-  private loadMarkdownFile(onLoaded: (contents: string) => void): void {
-    const input = document.createElement('input');
-
-    input.type = 'file';
-    input.accept = '.md,text/markdown,text/plain';
-    input.onchange = () => {
-      const file = input.files?.[0];
-
-      if (!file) {
-        return;
-      }
-
-      void file.text().then(onLoaded);
-    };
-    input.click();
-  }
-
   private applyDebugShipLoadoutMarkdown(expectedShipId: ShipId, markdown: string): void {
-    const setup = this.parseJsonBlock<SavedDebugShipLoadout>(markdown);
-
-    if (!setup || setup.type !== 'starvivors-debug-ship-loadout' || setup.shipId !== expectedShipId) {
-      return;
-    }
-
-    const overrides = this.normalizeDebugShipOverrides(setup.overrides, this.getDebugLoadoutSchemaVersion(setup.schemaVersion));
+    const overrides = parseDebugShipLoadoutMarkdown(expectedShipId, markdown);
     if (!overrides) {
       return;
     }
@@ -3681,178 +3655,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyDebugWeaponLoadoutMarkdown(expectedWeaponId: WeaponId, markdown: string): void {
-    const setup = this.parseJsonBlock<SavedDebugWeaponLoadout>(markdown);
-
-    if (!setup || setup.type !== 'starvivors-debug-weapon-loadout' || setup.weaponId !== expectedWeaponId) {
-      return;
-    }
-
-    const overrides = this.normalizeDebugWeaponOverrides(setup.overrides, this.getDebugLoadoutSchemaVersion(setup.schemaVersion));
+    const overrides = parseDebugWeaponLoadoutMarkdown(expectedWeaponId, markdown);
     if (!overrides) {
       return;
     }
 
     this.debugState.setWeaponOverrides(expectedWeaponId, overrides);
     this.syncRammingShieldDebugRuntime();
-  }
-
-  private normalizeDebugShipOverrides(rawOverrides: unknown, schemaVersion = 1): DebugShipOverrides | undefined {
-    if (!rawOverrides || typeof rawOverrides !== 'object') {
-      return undefined;
-    }
-
-    const raw = rawOverrides as Record<string, unknown>;
-    const overrides: DebugShipOverrides = {};
-    const keys: DebugShipStatKey[] = ['maxHull', 'mass', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'];
-
-    for (const key of keys) {
-      if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) {
-        overrides[key] = schemaVersion >= 2 ? this.toRawDebugValue(key, raw[key]) : raw[key];
-      }
-    }
-
-    return overrides;
-  }
-
-  private getDebugLoadoutSchemaVersion(schemaVersion: unknown): number {
-    return typeof schemaVersion === 'number' && Number.isFinite(schemaVersion) ? schemaVersion : 1;
-  }
-
-  private normalizeDebugWeaponOverrides(rawOverrides: unknown, schemaVersion = 1): DebugWeaponOverrides | undefined {
-    if (!rawOverrides || typeof rawOverrides !== 'object') {
-      return undefined;
-    }
-
-    const raw = rawOverrides as Record<string, unknown>;
-    const overrides: DebugWeaponOverrides = {};
-    const keys: DebugWeaponStatKey[] = [
-      'damage',
-      'cooldownSeconds',
-      'projectileSpeed',
-      'projectileLifetimeSeconds',
-      'projectileRange',
-      'shieldMaxHp',
-      'shieldRegenDelaySeconds',
-      'shieldRegenRatePerSecond',
-      'dashMaxCharges',
-      'dashChargeRechargeSeconds',
-      'dashImpulse',
-      'dashEmpoweredWindowSeconds',
-      'dashRamDamageMultiplier',
-      'range',
-      'width',
-      'baseDamage',
-      'speedDamageMultiplier',
-      'strongRamSpeed',
-      'maxDamage',
-      'contactCooldownMs',
-      'brokenDamageMultiplier'
-    ];
-
-    for (const key of keys) {
-      if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) {
-        overrides[key] = schemaVersion >= 2 ? this.toRawDebugValue(key, raw[key]) : raw[key];
-      }
-    }
-
-    return overrides;
-  }
-
-  private createDebugShipLoadoutMarkdown(ship: ShipRegistryEntry): string {
-    const overrides = this.debugState.shipOverrides[ship.id] ?? {};
-    const displayOverrides = this.createDisplayDebugOverrides(overrides);
-    const effectiveStats = this.debugState.getEffectiveShipBaseStats(ship);
-    const setup = {
-      type: 'starvivors-debug-ship-loadout',
-      schemaVersion: 2,
-      shipId: ship.id,
-      displayName: ship.displayName,
-      savedAt: new Date().toISOString(),
-      overrides: displayOverrides
-    };
-
-    return [
-      `# ${ship.displayName} Debug Ship Loadout`,
-      '',
-      `Saved: ${new Date().toLocaleString()}`,
-      '',
-      '## Effective Stats',
-      '',
-      `- Max hull: ${effectiveStats.maxHull}`,
-      `- Mass: ${effectiveStats.mass}`,
-      `- Move speed: ${formatIntegerDisplayUnits(effectiveStats.moveSpeed)}`,
-      `- Thrust: ${formatIntegerDisplayUnits(effectiveStats.thrust)}`,
-      `- Brake: ${formatIntegerDisplayUnits(effectiveStats.brake)}`,
-      `- Strafe: ${formatIntegerDisplayUnits(effectiveStats.strafe)}`,
-      `- Hit radius: ${formatDisplayUnits(this.debugState.getEffectiveShipHitRadius(ship), 1)}`,
-      '',
-      '## Machine Readable Setup',
-      '',
-      '```json',
-      JSON.stringify(setup, null, 2),
-      '```',
-      ''
-    ].join('\n');
-  }
-
-  private createDebugWeaponLoadoutMarkdown(weapon: WeaponRegistryEntry): string {
-    const overrides = this.debugState.weaponOverrides[weapon.id] ?? {};
-    const displayOverrides = this.createDisplayDebugOverrides(overrides);
-    const effective = this.debugState.getEffectiveWeaponDefinition(weapon);
-    const setup = {
-      type: 'starvivors-debug-weapon-loadout',
-      schemaVersion: 2,
-      weaponId: weapon.id,
-      displayName: weapon.displayName,
-      savedAt: new Date().toISOString(),
-      overrides: displayOverrides
-    };
-    const statLines = effective.rammingShield
-      ? [
-          `- Shield HP: ${effective.rammingShield.shieldMaxHp}`,
-          `- Dash charges: ${effective.rammingShield.dashMaxCharges}`,
-          `- Dash recharge: ${effective.rammingShield.dashChargeRechargeSeconds}s`,
-          `- Dash impulse: ${formatIntegerDisplayUnits(effective.rammingShield.dashImpulse)}`,
-          `- Dash ram multiplier: ${effective.rammingShield.dashRamDamageMultiplier}`,
-          `- Base/max damage: ${effective.rammingShield.baseDamage}/${effective.rammingShield.maxDamage}`,
-          `- Range/width: ${formatIntegerDisplayUnits(effective.rammingShield.range)}/${formatIntegerDisplayUnits(effective.rammingShield.width)}`
-        ]
-      : [
-          `- Damage: ${effective.damage ?? 0}`,
-          `- Cooldown: ${effective.cooldownSeconds ?? 0}s`,
-          `- Projectile speed: ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}`,
-          `- Projectile lifetime: ${effective.projectileLifetimeSeconds ?? 0}s`,
-          `- Projectile range: ${formatIntegerDisplayUnits(effective.projectileRange ?? 0)}`
-        ];
-
-    return [
-      `# ${weapon.displayName} Debug Weapon Loadout`,
-      '',
-      `Saved: ${new Date().toLocaleString()}`,
-      '',
-      '## Effective Stats',
-      '',
-      ...statLines,
-      '',
-      '## Machine Readable Setup',
-      '',
-      '```json',
-      JSON.stringify(setup, null, 2),
-      '```',
-      ''
-    ].join('\n');
-  }
-
-  private createDisplayDebugOverrides<T extends Record<string, number | undefined>>(overrides: T): T {
-    const displayOverrides: Record<string, number> = {};
-
-    for (const [key, value] of Object.entries(overrides)) {
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        displayOverrides[key] = isRawScaledStatKey(key) ? toDisplayUnits(value) : value;
-      }
-    }
-
-    return displayOverrides as T;
   }
 
   private syncRammingShieldDebugRuntime(): void {
@@ -3867,60 +3676,34 @@ export class GameScene extends Phaser.Scene {
 
   private saveBlackHolePngSetup(): void {
     const markdown = this.createBlackHolePngSetupMarkdown();
-    const filename = `blackhole-setup-${this.getTimestampSlug()}.md`;
+    const filename = `blackhole-setup-${getTimestampSlug()}.md`;
 
-    this.downloadTextFile(filename, markdown, 'text/markdown');
+    downloadTextFile(filename, markdown, 'text/markdown');
   }
 
   private loadBlackHolePngSetup(): void {
-    const input = document.createElement('input');
-
-    input.type = 'file';
-    input.accept = '.md,text/markdown,text/plain';
-    input.onchange = () => {
-      const file = input.files?.[0];
-
-      if (!file) {
-        return;
-      }
-
-      void file.text().then((contents) => {
-        this.applyBlackHolePngSetupMarkdown(contents);
-        this.refreshDebugMenu();
-      });
-    };
-    input.click();
+    loadMarkdownFile((contents) => {
+      this.applyBlackHolePngSetupMarkdown(contents);
+      this.refreshDebugMenu();
+    });
   }
 
   private saveBlackHoleFieldTuning(): void {
     const markdown = this.createBlackHoleFieldTuningMarkdown();
-    const filename = `blackhole-field-tuning-${this.getTimestampSlug()}.md`;
+    const filename = `blackhole-field-tuning-${getTimestampSlug()}.md`;
 
-    this.downloadTextFile(filename, markdown, 'text/markdown');
+    downloadTextFile(filename, markdown, 'text/markdown');
   }
 
   private loadBlackHoleFieldTuning(): void {
-    const input = document.createElement('input');
-
-    input.type = 'file';
-    input.accept = '.md,text/markdown,text/plain';
-    input.onchange = () => {
-      const file = input.files?.[0];
-
-      if (!file) {
-        return;
-      }
-
-      void file.text().then((contents) => {
-        this.applyBlackHoleFieldTuningMarkdown(contents);
-        this.refreshDebugMenu();
-      });
-    };
-    input.click();
+    loadMarkdownFile((contents) => {
+      this.applyBlackHoleFieldTuningMarkdown(contents);
+      this.refreshDebugMenu();
+    });
   }
 
   private applyBlackHoleFieldTuningMarkdown(markdown: string): void {
-    const setup = this.parseJsonBlock<SavedBlackHoleFieldTuningPreset>(markdown);
+    const setup = parseJsonBlock<SavedBlackHoleFieldTuningPreset>(markdown);
 
     if (!setup) {
       return;
@@ -4025,23 +3808,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private parseBlackHolePngSetupMarkdown(markdown: string): SavedBlackHolePngSetup | undefined {
-    return this.parseJsonBlock<SavedBlackHolePngSetup>(markdown);
-  }
-
-  private parseJsonBlock<T extends object>(markdown: string): T | undefined {
-    const jsonBlockMatch = markdown.match(/```json\s*([\s\S]*?)```/i);
-
-    if (!jsonBlockMatch) {
-      return undefined;
-    }
-
-    try {
-      const parsed = JSON.parse(jsonBlockMatch[1]) as unknown;
-
-      return parsed && typeof parsed === 'object' ? (parsed as T) : undefined;
-    } catch {
-      return undefined;
-    }
+    return parseJsonBlock<SavedBlackHolePngSetup>(markdown);
   }
 
   private normalizeBlackHolePngSetupLayers(rawLayers: unknown): BlackHolePngLayerConfig[] | undefined {
@@ -4174,23 +3941,6 @@ export class GameScene extends Phaser.Scene {
       '```',
       ''
     ].join('\n');
-  }
-
-  private downloadTextFile(filename: string, contents: string, mimeType: string): void {
-    const blob = new Blob([contents], { type: `${mimeType};charset=utf-8` });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  private getTimestampSlug(): string {
-    return new Date().toISOString().replace(/[:.]/g, '-');
   }
 
   private resetBlackHoleLensTuning(): void {
