@@ -3,9 +3,12 @@ import { wrapCoordinate, type ArenaSize } from '../core/arena';
 import {
   BASIC_ENEMY_DISPLAY_SIZE,
   ENEMY_KNOCKBACK_DAMPING,
-  SHOOTER_ENEMY_DISPLAY_SIZE
+  SHOOTER_ENEMY_DISPLAY_SIZE,
+  TANK_ENEMY_DISPLAY_SIZE
 } from '../scenes/gameConstants';
-import type { BasicEnemy, ShooterEnemy } from '../scenes/gameTypes';
+import type { BasicEnemy, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
+
+type RuntimeEnemy = BasicEnemy | ShooterEnemy | TankEnemy;
 
 export interface UpdateBasicEnemiesInput {
   arena: ArenaSize;
@@ -63,6 +66,33 @@ export interface UpdateShooterEnemiesInput {
   ) => void;
 }
 
+export interface UpdateTankEnemiesInput {
+  arena: ArenaSize;
+  enemies: TankEnemy[];
+  playerX: number;
+  playerY: number;
+  time: number;
+  deltaSeconds: number;
+  getGlobalMaxSpeed: () => number;
+  getEnemyMoveSpeed: (enemy: TankEnemy) => number;
+  steerEnemyVelocity: (
+    enemy: TankEnemy,
+    targetVelocity: Phaser.Math.Vector2,
+    deltaSeconds: number
+  ) => void;
+  applyBlackHoleToEnemy: (
+    enemy: TankEnemy,
+    index: number,
+    deltaSeconds: number,
+    time: number
+  ) => boolean;
+  updateToroidalRenderMirror: (
+    body: Phaser.GameObjects.Container,
+    wrapMirrorBody: Phaser.GameObjects.Container,
+    viewRadius: number
+  ) => void;
+}
+
 export function updateBasicEnemies(input: UpdateBasicEnemiesInput): void {
   for (let i = input.enemies.length - 1; i >= 0; i -= 1) {
     const enemy = input.enemies[i];
@@ -82,16 +112,14 @@ export function updateBasicEnemies(input: UpdateBasicEnemiesInput): void {
       continue;
     }
 
-    const totalVelocity = enemy.velocity
-      .clone()
-      .add(enemy.knockbackVelocity)
-      .add(enemy.blackHoleVelocity)
-      .limit(input.getGlobalMaxSpeed());
-
-    enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
-    enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
-    enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, input.deltaSeconds * 60));
-    input.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, BASIC_ENEMY_DISPLAY_SIZE * 0.5);
+    moveEnemy({
+      arena: input.arena,
+      enemy,
+      deltaSeconds: input.deltaSeconds,
+      viewRadius: BASIC_ENEMY_DISPLAY_SIZE * 0.5,
+      getGlobalMaxSpeed: input.getGlobalMaxSpeed,
+      updateToroidalRenderMirror: input.updateToroidalRenderMirror
+    });
   }
 }
 
@@ -126,17 +154,69 @@ export function updateShooterEnemies(input: UpdateShooterEnemiesInput): void {
       continue;
     }
 
-    const totalVelocity = enemy.velocity
-      .clone()
-      .add(enemy.knockbackVelocity)
-      .add(enemy.blackHoleVelocity)
-      .limit(input.getGlobalMaxSpeed());
-
-    enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
-    enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
-    enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, input.deltaSeconds * 60));
-    input.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5);
+    moveEnemy({
+      arena: input.arena,
+      enemy,
+      deltaSeconds: input.deltaSeconds,
+      viewRadius: SHOOTER_ENEMY_DISPLAY_SIZE * 0.5,
+      getGlobalMaxSpeed: input.getGlobalMaxSpeed,
+      updateToroidalRenderMirror: input.updateToroidalRenderMirror
+    });
   }
+}
+
+export function updateTankEnemies(input: UpdateTankEnemiesInput): void {
+  for (let i = input.enemies.length - 1; i >= 0; i -= 1) {
+    const enemy = input.enemies[i];
+    const direction = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+    const targetVelocity = new Phaser.Math.Vector2(0, 0);
+
+    if (direction.lengthSq() > 0) {
+      direction.normalize();
+      const enemyMoveSpeed = input.getEnemyMoveSpeed(enemy);
+      targetVelocity.set(direction.x * enemyMoveSpeed, direction.y * enemyMoveSpeed);
+      enemy.body.rotation = Math.atan2(direction.x, -direction.y);
+    }
+
+    input.steerEnemyVelocity(enemy, targetVelocity, input.deltaSeconds);
+
+    if (input.applyBlackHoleToEnemy(enemy, i, input.deltaSeconds, input.time)) {
+      continue;
+    }
+
+    moveEnemy({
+      arena: input.arena,
+      enemy,
+      deltaSeconds: input.deltaSeconds,
+      viewRadius: TANK_ENEMY_DISPLAY_SIZE * 0.5,
+      getGlobalMaxSpeed: input.getGlobalMaxSpeed,
+      updateToroidalRenderMirror: input.updateToroidalRenderMirror
+    });
+  }
+}
+
+function moveEnemy(input: {
+  arena: ArenaSize;
+  enemy: RuntimeEnemy;
+  deltaSeconds: number;
+  viewRadius: number;
+  getGlobalMaxSpeed: () => number;
+  updateToroidalRenderMirror: (
+    body: Phaser.GameObjects.Container,
+    wrapMirrorBody: Phaser.GameObjects.Container,
+    viewRadius: number
+  ) => void;
+}): void {
+  const totalVelocity = input.enemy.velocity
+    .clone()
+    .add(input.enemy.knockbackVelocity)
+    .add(input.enemy.blackHoleVelocity)
+    .limit(input.getGlobalMaxSpeed());
+
+  input.enemy.body.x = wrapCoordinate(input.enemy.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
+  input.enemy.body.y = wrapCoordinate(input.enemy.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
+  input.enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, input.deltaSeconds * 60));
+  input.updateToroidalRenderMirror(input.enemy.body, input.enemy.wrapMirrorBody, input.viewRadius);
 }
 
 function getWrappedDirection(
