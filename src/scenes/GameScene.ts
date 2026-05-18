@@ -115,7 +115,6 @@ import {
   BLACK_HOLE_PNG_TEXTURE_LABELS,
   BlackHoleSystem,
   type BlackHoleFieldTuningConfig,
-  type BlackHolePngLayerConfig,
   type BlackHolePngTextureKey,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
@@ -133,10 +132,20 @@ import {
   loadMarkdownFile,
   parseDebugShipLoadoutMarkdown,
   parseDebugWeaponLoadoutMarkdown,
-  parseJsonBlock,
   toRawDebugDelta,
   toRawDebugValue
 } from '../systems/debug/debugPersistence';
+import {
+  clampBlackHoleForceMultiplier as clampBlackHoleForceMultiplierDebug,
+  clampBlackHoleRadiusScale as clampBlackHoleRadiusScaleDebug,
+  createBlackHoleFieldTuningMarkdown as createBlackHoleFieldTuningMarkdownDebug,
+  createBlackHolePngSetupMarkdown as createBlackHolePngSetupMarkdownDebug,
+  isBlackHolePngTextureKey as isBlackHolePngTextureKeyDebug,
+  normalizeBlackHoleFieldTuning as normalizeBlackHoleFieldTuningDebug,
+  normalizeBlackHolePngSetupLayers as normalizeBlackHolePngSetupLayersDebug,
+  parseBlackHoleFieldTuningMarkdown,
+  parseBlackHolePngSetupMarkdown
+} from '../systems/debug/blackHoleDebugTuning';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
@@ -189,9 +198,6 @@ import type {
   PlayerEnemyContact,
   PlayerProjectile,
   RammingShieldCollision,
-  SavedBlackHoleFieldTuningPreset,
-  SavedBlackHolePngLayer,
-  SavedBlackHolePngSetup,
   ScrapPickup,
   ScrapSourceType,
   SecondaryWeaponChoice,
@@ -3452,7 +3458,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clampBlackHoleRadiusScale(value: number): number {
-    return Number(Math.max(0, value).toFixed(1));
+    return clampBlackHoleRadiusScaleDebug(value);
   }
 
   private adjustBlackHoleRadialStrength(delta: number): void {
@@ -3516,7 +3522,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clampBlackHoleForceMultiplier(value: number): number {
-    return Number(value.toFixed(1));
+    return clampBlackHoleForceMultiplierDebug(value);
   }
 
   private clampSelectedBlackHolePngLayer(): void {
@@ -3703,7 +3709,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyBlackHoleFieldTuningMarkdown(markdown: string): void {
-    const setup = parseJsonBlock<SavedBlackHoleFieldTuningPreset>(markdown);
+    const setup = parseBlackHoleFieldTuningMarkdown(markdown);
 
     if (!setup) {
       return;
@@ -3721,55 +3727,17 @@ export class GameScene extends Phaser.Scene {
       this.debugBlackHoleCoreScale = this.clampBlackHoleRadiusScale(setup.coreScale);
     }
 
-    this.debugBlackHoleFieldTuning = this.normalizeBlackHoleFieldTuning(setup, this.debugBlackHoleFieldTuning);
-  }
-
-  private normalizeBlackHoleFieldTuning(
-    rawTuning: SavedBlackHoleFieldTuningPreset,
-    fallback: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
-  ): BlackHoleFieldTuningConfig {
-    return {
-      radialStrengthMultiplier: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.radialStrengthMultiplier, fallback.radialStrengthMultiplier)
-      ),
-      radialCurve: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.radialCurve, fallback.radialCurve)
-      ),
-      swirlStrengthMultiplier: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.swirlStrengthMultiplier, fallback.swirlStrengthMultiplier)
-      ),
-      swirlCurve: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.swirlCurve, fallback.swirlCurve)
-      ),
-      massResistanceMultiplier: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.massResistanceMultiplier, fallback.massResistanceMultiplier)
-      ),
-      maxVelocityMultiplier: Number(
-        this.getFiniteNumber(rawTuning.maxVelocityMultiplier, fallback.maxVelocityMultiplier).toFixed(1)
-      ),
-      viscosityStrength: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.viscosityStrength, fallback.viscosityStrength)
-      ),
-      viscosityCurve: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.viscosityCurve, fallback.viscosityCurve)
-      ),
-      innerDrag: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.innerDrag, fallback.innerDrag)
-      ),
-      playerResistance: this.clampBlackHoleForceMultiplier(
-        this.getFiniteNumber(rawTuning.playerResistance, fallback.playerResistance)
-      )
-    };
+    this.debugBlackHoleFieldTuning = normalizeBlackHoleFieldTuningDebug(setup, this.debugBlackHoleFieldTuning);
   }
 
   private applyBlackHolePngSetupMarkdown(markdown: string): void {
-    const setup = this.parseBlackHolePngSetupMarkdown(markdown);
+    const setup = parseBlackHolePngSetupMarkdown(markdown);
 
     if (!setup) {
       return;
     }
 
-    const layers = this.normalizeBlackHolePngSetupLayers(setup.layers);
+    const layers = normalizeBlackHolePngSetupLayersDebug(setup.layers);
 
     if (!layers) {
       return;
@@ -3791,7 +3759,7 @@ export class GameScene extends Phaser.Scene {
       this.areDebugBlackHoleProjectionLensLayersEnabled = setup.allLayersEnabled;
     }
 
-    if (this.isBlackHolePngTextureKey(setup.addImage)) {
+    if (isBlackHolePngTextureKeyDebug(setup.addImage)) {
       this.debugAddBlackHolePngTextureKey = setup.addImage;
     }
 
@@ -3807,142 +3775,27 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private parseBlackHolePngSetupMarkdown(markdown: string): SavedBlackHolePngSetup | undefined {
-    return parseJsonBlock<SavedBlackHolePngSetup>(markdown);
-  }
-
-  private normalizeBlackHolePngSetupLayers(rawLayers: unknown): BlackHolePngLayerConfig[] | undefined {
-    if (!Array.isArray(rawLayers)) {
-      return undefined;
-    }
-
-    const layers: BlackHolePngLayerConfig[] = [];
-
-    for (const rawLayer of rawLayers) {
-      if (!rawLayer || typeof rawLayer !== 'object') {
-        return undefined;
-      }
-
-      const layer = rawLayer as SavedBlackHolePngLayer;
-
-      if (!this.isBlackHolePngTextureKey(layer.image)) {
-        return undefined;
-      }
-
-      layers.push({
-        textureKey: layer.image,
-        speedRps: this.getFiniteNumber(layer.speedRps, 0.25),
-        sizeMultiplier: this.getFiniteNumber(layer.size, 1),
-        alpha: this.getFiniteNumber(layer.alpha, 1),
-        enabled: typeof layer.enabled === 'boolean' ? layer.enabled : true,
-        initialRotation: this.getFiniteNumber(layer.initialRotation, Phaser.Math.FloatBetween(0, Math.PI * 2))
-      });
-    }
-
-    return layers;
-  }
-
-  private isBlackHolePngTextureKey(value: unknown): value is BlackHolePngTextureKey {
-    return typeof value === 'string' && BLACK_HOLE_PNG_TEXTURE_KEYS.includes(value as BlackHolePngTextureKey);
-  }
-
-  private getFiniteNumber(value: unknown, fallback: number): number {
-    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
-  }
-
   private createBlackHolePngSetupMarkdown(): string {
-    const layers = this.blackHole?.getPngLayerSummaries() ?? [];
-    const setup = {
-      visualScale: this.debugBlackHoleVisualScale,
-      coreScale: this.debugBlackHoleCoreScale,
-      allLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
-      addImage: this.debugAddBlackHolePngTextureKey,
-      selectedLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
-      layers: layers.map((layer) => ({
-        image: layer.textureKey,
-        label: layer.textureLabel,
-        speedRps: layer.speedRps,
-        size: layer.sizeMultiplier,
-        alpha: layer.alpha,
-        enabled: layer.enabled,
-        initialRotation: Number(layer.initialRotation.toFixed(4))
-      }))
-    };
-    const layerRows = layers.length > 0
-      ? layers
-          .map(
-            (layer) =>
-              `| ${layer.index + 1} | ${layer.textureLabel} | ${layer.textureKey} | ${layer.speedRps.toFixed(2)} | ${layer.sizeMultiplier.toFixed(2)} | ${layer.alpha.toFixed(2)} | ${layer.enabled ? 'yes' : 'no'} |`
-          )
-          .join('\n')
-      : '| none | | | | | | |';
-
-    return [
-      '# Black Hole PNG Setup',
-      '',
-      `Saved: ${new Date().toLocaleString()}`,
-      '',
-      '## Global Settings',
-      '',
-      `- Visual scale: ${this.debugBlackHoleVisualScale.toFixed(1)}`,
-      `- All PNG layers enabled: ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'yes' : 'no'}`,
-      `- Add image selector: ${BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey]} (${this.debugAddBlackHolePngTextureKey})`,
-      `- Selected layer index: ${this.debugSelectedBlackHolePngLayerIndex}`,
-      '',
-      '## Layers',
-      '',
-      '| # | Label | Texture key | Speed rps | Size | Alpha | Enabled |',
-      '| - | - | - | -: | -: | -: | - |',
-      layerRows,
-      '',
-      '## Machine Readable Setup',
-      '',
-      '```json',
-      JSON.stringify(setup, null, 2),
-      '```',
-      ''
-    ].join('\n');
+    return createBlackHolePngSetupMarkdownDebug(
+      {
+        visualScale: this.debugBlackHoleVisualScale,
+        coreScale: this.debugBlackHoleCoreScale,
+        allLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
+        addTextureKey: this.debugAddBlackHolePngTextureKey,
+        selectedLayerIndex: this.debugSelectedBlackHolePngLayerIndex
+      },
+      this.blackHole?.getPngLayerSummaries() ?? []
+    );
   }
 
   private createBlackHoleFieldTuningMarkdown(): string {
-    const tuning = this.debugBlackHoleFieldTuning;
-    const setup = {
+    return createBlackHoleFieldTuningMarkdownDebug({
       influenceRadiusScale: this.debugBlackHoleInfluenceRadiusScale,
       damageRadiusScale: this.debugBlackHoleDamageRadiusScale,
       coreScale: this.debugBlackHoleCoreScale,
-      ...tuning
-    };
-
-    return [
-      '# Black Hole Field Tuning',
-      '',
-      `Saved: ${new Date().toLocaleString()}`,
-      '',
-      '## Settings',
-      '',
-      `- Influence radius: ${this.debugBlackHoleInfluenceRadiusScale.toFixed(1)}`,
-      `- Damage radius: ${this.debugBlackHoleDamageRadiusScale.toFixed(1)}`,
-      `- Core/event horizon: ${this.debugBlackHoleCoreScale.toFixed(1)}`,
-      `- Radial strength: ${tuning.radialStrengthMultiplier.toFixed(1)}`,
-      `- Radial curve: ${tuning.radialCurve.toFixed(1)}`,
-      `- Swirl strength: ${tuning.swirlStrengthMultiplier.toFixed(1)}`,
-      `- Swirl curve: ${tuning.swirlCurve.toFixed(1)}`,
-      `- Mass resistance: ${tuning.massResistanceMultiplier.toFixed(1)}`,
-      `- Max velocity: ${tuning.maxVelocityMultiplier.toFixed(1)}`,
-      `- Viscosity strength: ${tuning.viscosityStrength.toFixed(1)}`,
-      `- Viscosity curve: ${tuning.viscosityCurve.toFixed(1)}`,
-      `- Inner drag: ${tuning.innerDrag.toFixed(1)}`,
-      `- Player resistance: ${tuning.playerResistance.toFixed(1)}`,
-      '',
-      '## Machine Readable Setup',
-      '',
-      '```json',
-      JSON.stringify(setup, null, 2),
-      '```',
-      ''
-    ].join('\n');
+      tuning: this.debugBlackHoleFieldTuning
+    });
   }
-
   private resetBlackHoleLensTuning(): void {
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
