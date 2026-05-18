@@ -147,6 +147,11 @@ import {
   destroyEnemyWreckageDebris as destroyEnemyWreckageDebrisSystem,
   updateEnemyWreckageDebris as updateEnemyWreckageDebrisSystem
 } from '../systems/debris';
+import {
+  clearScrapPickups as clearScrapPickupsSystem,
+  destroyScrapPickup as destroyScrapPickupSystem,
+  updateScrapPickups as updateScrapPickupsSystem
+} from '../systems/pickups';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -3543,39 +3548,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateScrapPickups(time: number, deltaSeconds: number): void {
-    if (this.isPlayerDead) {
-      return;
-    }
-
-    for (let i = this.scrapPickups.length - 1; i >= 0; i -= 1) {
-      const scrap = this.scrapPickups[i];
-
-      if (this.applyBlackHoleToScrap(scrap, i, deltaSeconds)) {
-        continue;
-      }
-
-      if (time >= scrap.expiresAt) {
-        this.destroyScrapPickup(scrap);
-        this.scrapPickups.splice(i, 1);
-        continue;
-      }
-
-      scrap.body.x = wrapCoordinate(scrap.body.x + scrap.velocity.x * deltaSeconds, this.arena.width);
-      scrap.body.y = wrapCoordinate(scrap.body.y + scrap.velocity.y * deltaSeconds, this.arena.height);
-      scrap.body.rotation += scrap.rotationSpeed * deltaSeconds;
-      scrap.body.setScale(1 + Math.sin(time * 0.005 + scrap.bobPhase) * 0.08);
-      this.updateToroidalRenderMirror(scrap.body, scrap.wrapMirrorBody, SCRAP_PICKUP_RADIUS);
-
-      const offsetToPlayer = this.getWrappedDirection(scrap.body.x, scrap.body.y, this.player.x, this.player.y);
-
-      if (offsetToPlayer.lengthSq() <= scrap.pickupRadius * scrap.pickupRadius) {
-        this.collectScrapPickup(scrap);
-        this.scrapPickups.splice(i, 1);
-      }
-    }
+    this.scrapPickups = updateScrapPickupsSystem({
+      arena: this.arena,
+      pickups: this.scrapPickups,
+      playerX: this.player.x,
+      playerY: this.player.y,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      applyBlackHoleToPickup: (pickup, blackHoleDeltaSeconds) =>
+        this.applyBlackHoleToScrap(pickup, blackHoleDeltaSeconds),
+      collectPickup: (pickup) => this.collectScrapPickup(pickup),
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius)
+    });
   }
 
-  private applyBlackHoleToScrap(scrap: ScrapPickup, index: number, deltaSeconds: number): boolean {
+  private applyBlackHoleToScrap(scrap: ScrapPickup, deltaSeconds: number): boolean {
     if (!this.blackHole) {
       return false;
     }
@@ -3595,7 +3584,6 @@ export class GameScene extends Phaser.Scene {
 
     if (result.isInsideEventHorizon) {
       this.destroyScrapPickup(scrap);
-      this.scrapPickups.splice(index, 1);
       return true;
     }
 
@@ -3660,16 +3648,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    scrap.body.destroy(true);
-    scrap.wrapMirrorBody.destroy(true);
+    destroyScrapPickupSystem(scrap);
   }
 
   private clearScrapPickups(): void {
-    for (const scrap of this.scrapPickups) {
-      this.destroyScrapPickup(scrap);
-    }
-
-    this.scrapPickups = [];
+    this.scrapPickups = clearScrapPickupsSystem(this.scrapPickups);
   }
 
   private spawnDebugScrapPickup(): void {
