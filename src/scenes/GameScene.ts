@@ -153,7 +153,10 @@ import {
   spawnScrapPickup as spawnScrapPickupSystem,
   updateScrapPickups as updateScrapPickupsSystem
 } from '../systems/pickups';
-import { resolveBodyImpactCollision as resolveBodyImpactCollisionSystem } from '../systems/worldImpacts';
+import {
+  resolveBodyImpactCollision as resolveBodyImpactCollisionSystem,
+  resolveWorldImpactCollisions as resolveWorldImpactCollisionsSystem
+} from '../systems/worldImpacts';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -7223,9 +7226,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolveWorldImpactCollisions(time: number): void {
-    this.resolveEnemyAsteroidImpactCollisions(time);
-    this.resolveEnemyDebrisImpactCollisions(time);
-    this.resolveAsteroidDebrisImpactCollisions(time);
+    resolveWorldImpactCollisionsSystem({
+      arena: this.arena,
+      enemies: this.getAllEnemies(),
+      asteroids: this.basicAsteroids,
+      debris: this.enemyWreckageDebris,
+      time,
+      getEnemyHitRadius: (enemy) => this.getEnemyHitRadius(enemy),
+      getEnemyTotalVelocity: (enemy) => this.getEnemyTotalVelocity(enemy),
+      getAsteroidMass: (tier) => this.getAsteroidMass(tier),
+      getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
+      resolveBodyImpactCollision: (impactInput) => this.resolveBodyImpactCollision(impactInput),
+      damageEnemyFromAsteroid: (enemy, damage) => {
+        this.damageEnemy(enemy, damage, 'asteroid', false);
+        this.resolveEnemyDestroyedByPhysicalImpact(enemy);
+      },
+      damageEnemyFromDebris: (enemy, damage) => {
+        this.damageEnemy(enemy, damage, 'debris', false);
+        this.resolveEnemyDestroyedByPhysicalImpact(enemy);
+      },
+      damageAsteroidFromEnemy: (asteroid, damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'enemy'),
+      damageAsteroidFromDebris: (asteroid, damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'debris'),
+      damageDebrisFromEnemy: (debris, damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'enemy'),
+      damageDebrisFromAsteroid: (debris, damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'asteroid')
+    });
   }
 
   private getAllEnemies(): Array<BasicEnemy | ShooterEnemy | TankEnemy> {
@@ -7242,106 +7266,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     return Math.max(basicEnemy.stats.hitHalfWidth, basicEnemy.stats.hitHalfLength);
-  }
-
-  private resolveEnemyAsteroidImpactCollisions(time: number): void {
-    for (const enemy of this.getAllEnemies()) {
-      for (const asteroid of [...this.basicAsteroids]) {
-        if (!this.basicAsteroids.includes(asteroid) || !this.isCircleCollision(enemy.body.x, enemy.body.y, this.getEnemyHitRadius(enemy), asteroid.body.x, asteroid.body.y, asteroid.hitRadius)) {
-          continue;
-        }
-
-        this.resolveBodyImpactCollision({
-          firstBody: enemy.body,
-          secondBody: asteroid.body,
-          firstVelocity: enemy.knockbackVelocity,
-          secondVelocity: asteroid.velocity,
-          firstTotalVelocity: this.getEnemyTotalVelocity(enemy),
-          secondTotalVelocity: asteroid.velocity,
-          firstMass: enemy.stats.mass,
-          secondMass: this.getAsteroidMass(asteroid.tier),
-          firstRadius: this.getEnemyHitRadius(enemy),
-          secondRadius: asteroid.hitRadius,
-          firstSource: 'enemy',
-          secondSource: 'asteroid',
-          firstMaxSpeed: this.getGlobalMaxSpeed(),
-          secondMaxSpeed: this.getGlobalMaxSpeed(),
-          time,
-          damageFirst: (damage) => {
-            this.damageEnemy(enemy, damage, 'asteroid', false);
-            this.resolveEnemyDestroyedByPhysicalImpact(enemy);
-          },
-          damageSecond: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'enemy')
-        });
-      }
-    }
-  }
-
-  private resolveEnemyDebrisImpactCollisions(time: number): void {
-    for (const enemy of this.getAllEnemies()) {
-      for (const debris of [...this.enemyWreckageDebris]) {
-        if (!this.enemyWreckageDebris.includes(debris) || !this.isCircleCollision(enemy.body.x, enemy.body.y, this.getEnemyHitRadius(enemy), debris.body.x, debris.body.y, debris.hitRadius)) {
-          continue;
-        }
-
-        this.resolveBodyImpactCollision({
-          firstBody: enemy.body,
-          secondBody: debris.body,
-          firstVelocity: enemy.knockbackVelocity,
-          secondVelocity: debris.velocity,
-          firstTotalVelocity: this.getEnemyTotalVelocity(enemy),
-          secondTotalVelocity: debris.velocity,
-          firstMass: enemy.stats.mass,
-          secondMass: debris.mass,
-          firstRadius: this.getEnemyHitRadius(enemy),
-          secondRadius: debris.hitRadius,
-          firstSource: 'enemy',
-          secondSource: 'debris',
-          firstMaxSpeed: this.getGlobalMaxSpeed(),
-          secondMaxSpeed: this.getGlobalMaxSpeed(),
-          time,
-          damageFirst: (damage) => {
-            this.damageEnemy(enemy, damage, 'debris', false);
-            this.resolveEnemyDestroyedByPhysicalImpact(enemy);
-          },
-          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'enemy')
-        });
-      }
-    }
-  }
-
-  private resolveAsteroidDebrisImpactCollisions(time: number): void {
-    for (const asteroid of [...this.basicAsteroids]) {
-      for (const debris of [...this.enemyWreckageDebris]) {
-        if (
-          !this.basicAsteroids.includes(asteroid) ||
-          !this.enemyWreckageDebris.includes(debris) ||
-          !this.isCircleCollision(asteroid.body.x, asteroid.body.y, asteroid.hitRadius, debris.body.x, debris.body.y, debris.hitRadius)
-        ) {
-          continue;
-        }
-
-        this.resolveBodyImpactCollision({
-          firstBody: asteroid.body,
-          secondBody: debris.body,
-          firstVelocity: asteroid.velocity,
-          secondVelocity: debris.velocity,
-          firstTotalVelocity: asteroid.velocity,
-          secondTotalVelocity: debris.velocity,
-          firstMass: this.getAsteroidMass(asteroid.tier),
-          secondMass: debris.mass,
-          firstRadius: asteroid.hitRadius,
-          secondRadius: debris.hitRadius,
-          firstSource: 'asteroid',
-          secondSource: 'debris',
-          firstMaxSpeed: this.getGlobalMaxSpeed(),
-          secondMaxSpeed: this.getGlobalMaxSpeed(),
-          time,
-          damageFirst: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'debris'),
-          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'asteroid')
-        });
-      }
-    }
   }
 
   private resolveBodyImpactCollision(input: {
@@ -7374,11 +7298,6 @@ export class GameScene extends Phaser.Scene {
       calculatePhysicalImpactDamage: (impactInput) => this.calculatePhysicalImpactDamage(impactInput),
       emitImpactExplosion: (x, y) => this.emitShipCollisionImpactExplosion(x, y)
     });
-  }
-
-  private isCircleCollision(firstX: number, firstY: number, firstRadius: number, secondX: number, secondY: number, secondRadius: number): boolean {
-    const hitRadius = firstRadius + secondRadius;
-    return this.getWrappedDirection(secondX, secondY, firstX, firstY).lengthSq() <= hitRadius * hitRadius;
   }
 
   private canApplyWorldCollisionDamage(first: object, second: object, time: number): boolean {
