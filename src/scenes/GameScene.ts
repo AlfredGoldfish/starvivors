@@ -150,6 +150,7 @@ import type {
   UpgradeOverlayChoice
 } from './gameTypes';
 import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
+import { CollisionDebugOverlaySystem, type CollisionDebugOverlaySnapshot } from '../systems/collisionDebugOverlay';
 import { GameplayHudSystem, type GameplayHudSnapshot } from '../systems/gameplayHud';
 import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import { StarfieldSystem } from '../systems/starfield';
@@ -224,9 +225,6 @@ import {
   DEBUG_BLACK_HOLE_RADIUS_SCALE_MAX,
   DEBUG_BLACK_HOLE_RADIUS_SCALE_MIN,
   DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT,
-  DEBUG_ELLIPSE_SEGMENTS,
-  DEBUG_GRID_MAJOR_SPACING,
-  DEBUG_GRID_MINOR_SPACING,
   DEBUG_UPDATE_INTERVAL_MS,
   DEFAULT_STARFIELD_FAR_PARALLAX,
   DEFAULT_STARFIELD_MID_PARALLAX,
@@ -373,7 +371,7 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleContainer!: Phaser.GameObjects.Container;
   private blackHoleProjectionLensToggleGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
-  private collisionDebugGraphics!: Phaser.GameObjects.Graphics;
+  private collisionDebugOverlay!: CollisionDebugOverlaySystem;
   private mainMenuScreen?: Phaser.GameObjects.Container;
   private mainMenuActionZones: Phaser.GameObjects.Zone[] = [];
   private shipSelectScreen?: Phaser.GameObjects.Container;
@@ -506,6 +504,14 @@ export class GameScene extends Phaser.Scene {
     });
     this.minimap = new MinimapSystem(this);
     this.gameplayHud = new GameplayHudSystem(this);
+    this.collisionDebugOverlay = new CollisionDebugOverlaySystem({
+      scene: this,
+      getNearestWrappedRenderCoordinate: (value, cameraCenter, arenaSize) =>
+        this.getNearestWrappedRenderCoordinate(value, cameraCenter, arenaSize),
+      getNearestWrappedRenderPosition: (x, y) => this.getNearestWrappedRenderPosition(x, y),
+      isCircleInCameraView: (x, y, radius) => this.isCircleInCameraView(x, y, radius),
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation)
+    });
     this.createInput();
     this.createBackgroundTextures();
     this.showMainMenu();
@@ -1577,7 +1583,7 @@ export class GameScene extends Phaser.Scene {
 
     this.gameplayHud.create();
     this.minimap.create();
-    this.collisionDebugGraphics = this.add.graphics().setDepth(999);
+    this.collisionDebugOverlay.create();
 
     this.createUpgradeButton();
     this.createUpgradeOverlay();
@@ -8697,33 +8703,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCollisionDebugOverlay(): void {
-    if (!this.collisionDebugGraphics) {
-      return;
-    }
-
-    this.collisionDebugGraphics.clear();
-    const shouldShowBlackHoleRadii = this.debugState.showBlackHoleRadii && Boolean(this.blackHole);
-    this.collisionDebugGraphics.setVisible(this.debugState.collisionDebugEnabled || shouldShowBlackHoleRadii);
     this.updateBlackHoleDebugControls();
+    this.collisionDebugOverlay.update(this.getCollisionDebugOverlaySnapshot());
+  }
 
-    if (!this.debugState.collisionDebugEnabled && !shouldShowBlackHoleRadii) {
-      return;
-    }
-
-    if (this.debugState.collisionDebugEnabled) {
-      this.drawDebugArenaGrid();
-      this.drawPlayerCollisionDebug();
-      this.drawEnemyCollisionDebug();
-      this.drawAsteroidCollisionDebug();
-      this.drawDebrisCollisionDebug();
-      this.drawScrapCollisionDebug();
-    }
-
-    this.drawBlackHoleCollisionDebug();
-
-    if (this.debugState.collisionDebugEnabled) {
-      this.drawProjectileCollisionDebug();
-    }
+  private getCollisionDebugOverlaySnapshot(): CollisionDebugOverlaySnapshot {
+    return {
+      arena: this.arena,
+      collisionDebugEnabled: this.debugState.collisionDebugEnabled,
+      showBlackHoleRadii: this.debugState.showBlackHoleRadii,
+      player: this.player,
+      playerHitRadius: this.getPlayerHitRadius(),
+      shieldCollider: this.getRammingShieldCollider(),
+      basicEnemies: this.basicEnemies,
+      shooterEnemies: this.shooterEnemies,
+      tankEnemies: this.tankEnemies,
+      basicAsteroids: this.basicAsteroids,
+      enemyWreckageDebris: this.enemyWreckageDebris,
+      scrapPickups: this.scrapPickups,
+      blackHole: this.blackHole,
+      playerProjectiles: this.playerProjectiles,
+      enemyProjectiles: this.enemyProjectiles
+    };
   }
 
   private updateBlackHoleDebugControls(): void {
@@ -8732,292 +8733,6 @@ export class GameScene extends Phaser.Scene {
     this.updateBlackHoleLensLengthSlider();
     this.updateBlackHoleFieldScaleSlider();
     this.updateBlackHoleProjectionLensToggle();
-  }
-
-  private drawDebugArenaGrid(): void {
-    const camera = this.cameras.main;
-    const left = camera.scrollX;
-    const right = camera.scrollX + camera.width;
-    const top = camera.scrollY;
-    const bottom = camera.scrollY + camera.height;
-    const cameraCenterX = left + camera.width / 2;
-    const cameraCenterY = top + camera.height / 2;
-
-    this.drawDebugGridLines(left, right, top, bottom);
-
-    const seamX = this.getNearestWrappedRenderCoordinate(0, cameraCenterX, this.arena.width);
-    const seamY = this.getNearestWrappedRenderCoordinate(0, cameraCenterY, this.arena.height);
-
-    this.collisionDebugGraphics.lineStyle(2, 0x42f5d7, 0.62);
-
-    if (seamX >= left && seamX <= right) {
-      this.collisionDebugGraphics.lineBetween(seamX, top, seamX, bottom);
-    }
-
-    if (seamY >= top && seamY <= bottom) {
-      this.collisionDebugGraphics.lineBetween(left, seamY, right, seamY);
-    }
-  }
-
-  private drawDebugGridLines(left: number, right: number, top: number, bottom: number): void {
-    const firstMinorX = Math.floor(left / DEBUG_GRID_MINOR_SPACING) * DEBUG_GRID_MINOR_SPACING;
-    const firstMinorY = Math.floor(top / DEBUG_GRID_MINOR_SPACING) * DEBUG_GRID_MINOR_SPACING;
-
-    for (let x = firstMinorX; x <= right; x += DEBUG_GRID_MINOR_SPACING) {
-      const isMajor = Math.abs(x % DEBUG_GRID_MAJOR_SPACING) < 0.001;
-      this.collisionDebugGraphics.lineStyle(isMajor ? 1 : 1, isMajor ? 0x52627f : 0x24384f, isMajor ? 0.42 : 0.22);
-      this.collisionDebugGraphics.lineBetween(x, top, x, bottom);
-    }
-
-    for (let y = firstMinorY; y <= bottom; y += DEBUG_GRID_MINOR_SPACING) {
-      const isMajor = Math.abs(y % DEBUG_GRID_MAJOR_SPACING) < 0.001;
-      this.collisionDebugGraphics.lineStyle(isMajor ? 1 : 1, isMajor ? 0x52627f : 0x24384f, isMajor ? 0.42 : 0.22);
-      this.collisionDebugGraphics.lineBetween(left, y, right, y);
-    }
-  }
-
-  private drawPlayerCollisionDebug(): void {
-    const playerPosition = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
-
-    this.collisionDebugGraphics.lineStyle(2, 0x73f2ff, 0.82);
-    this.collisionDebugGraphics.strokeCircle(playerPosition.x, playerPosition.y, this.getPlayerHitRadius());
-
-    const shieldCollider = this.getRammingShieldCollider();
-    if (shieldCollider) {
-      const shieldPosition = this.getNearestWrappedRenderPosition(shieldCollider.centerX, shieldCollider.centerY);
-      this.strokeOrientedEllipse(
-        shieldPosition,
-        new Phaser.Math.Vector2(shieldCollider.rightX, shieldCollider.rightY),
-        new Phaser.Math.Vector2(shieldCollider.forwardX, shieldCollider.forwardY),
-        shieldCollider.halfWidth,
-        shieldCollider.halfDepth,
-        0x42f5d7,
-        0.78
-      );
-    }
-  }
-
-  private drawEnemyCollisionDebug(): void {
-    const playerHitRadius = this.getPlayerHitRadius();
-
-    for (const enemy of this.basicEnemies) {
-      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
-
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, BASIC_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
-        continue;
-      }
-
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-
-      this.strokeOrientedEllipse(
-        enemyPosition,
-        enemyRight,
-        enemyForward,
-        basicEnemy.stats.hitHalfWidth,
-        basicEnemy.stats.hitHalfLength,
-        0xffc857,
-        0.8
-      );
-      this.strokeOrientedEllipse(
-        enemyPosition,
-        enemyRight,
-        enemyForward,
-        basicEnemy.stats.hitHalfWidth + playerHitRadius,
-        basicEnemy.stats.hitHalfLength + playerHitRadius,
-        0xff5964,
-        0.42
-      );
-    }
-
-    for (const enemy of this.shooterEnemies) {
-      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
-
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, SHOOTER_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
-        continue;
-      }
-
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-
-      this.strokeOrientedEllipse(
-        enemyPosition,
-        enemyRight,
-        enemyForward,
-        shooterEnemy.stats.hitHalfWidth,
-        shooterEnemy.stats.hitHalfLength,
-        0xff5964,
-        0.8
-      );
-    }
-
-    for (const enemy of this.tankEnemies) {
-      const enemyPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
-
-      if (!this.isCircleInCameraView(enemyPosition.x, enemyPosition.y, TANK_ENEMY_DISPLAY_SIZE * 0.5 + playerHitRadius)) {
-        continue;
-      }
-
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-
-      this.strokeOrientedEllipse(
-        enemyPosition,
-        enemyRight,
-        enemyForward,
-        tankEnemy.stats.hitHalfWidth,
-        tankEnemy.stats.hitHalfLength,
-        0xb48cff,
-        0.84
-      );
-      this.strokeOrientedEllipse(
-        enemyPosition,
-        enemyRight,
-        enemyForward,
-        tankEnemy.stats.hitHalfWidth + playerHitRadius,
-        tankEnemy.stats.hitHalfLength + playerHitRadius,
-        0xff5964,
-        0.38
-      );
-    }
-  }
-
-  private drawAsteroidCollisionDebug(): void {
-    const playerHitRadius = this.getPlayerHitRadius();
-
-    for (const asteroid of this.basicAsteroids) {
-      const asteroidPosition = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
-
-      if (!this.isCircleInCameraView(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + playerHitRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(2, 0x9fd8ff, 0.78);
-      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius);
-      this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.38);
-      this.collisionDebugGraphics.strokeCircle(asteroidPosition.x, asteroidPosition.y, asteroid.hitRadius + playerHitRadius);
-    }
-  }
-
-  private drawDebrisCollisionDebug(): void {
-    const playerHitRadius = this.getPlayerHitRadius();
-
-    for (const debris of this.enemyWreckageDebris) {
-      const debrisPosition = this.getNearestWrappedRenderPosition(debris.body.x, debris.body.y);
-
-      if (!this.isCircleInCameraView(debrisPosition.x, debrisPosition.y, debris.hitRadius + playerHitRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(1, 0xc7d4dc, 0.74);
-      this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius);
-      this.collisionDebugGraphics.lineStyle(1, 0xff5964, 0.32);
-      this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius + playerHitRadius);
-    }
-  }
-
-  private drawScrapCollisionDebug(): void {
-    for (const scrap of this.scrapPickups) {
-      const scrapPosition = this.getNearestWrappedRenderPosition(scrap.body.x, scrap.body.y);
-
-      if (!this.isCircleInCameraView(scrapPosition.x, scrapPosition.y, scrap.pickupRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(1, 0x73f2ff, 0.74);
-      this.collisionDebugGraphics.strokeCircle(scrapPosition.x, scrapPosition.y, SCRAP_PICKUP_RADIUS);
-      this.collisionDebugGraphics.lineStyle(1, 0xdaf8ff, 0.28);
-      this.collisionDebugGraphics.strokeCircle(scrapPosition.x, scrapPosition.y, scrap.pickupRadius);
-    }
-  }
-
-  private drawBlackHoleCollisionDebug(): void {
-    if (!this.blackHole) {
-      return;
-    }
-
-    const blackHolePosition = this.getNearestWrappedRenderPosition(this.blackHole.body.x, this.blackHole.body.y);
-
-    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, this.blackHole.influenceRadius)) {
-      return;
-    }
-
-    this.collisionDebugGraphics.lineStyle(2, 0xff5964, 0.9);
-    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.eventHorizonRadius);
-    this.collisionDebugGraphics.lineStyle(1, 0xffc857, 0.44);
-    this.collisionDebugGraphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, this.blackHole.damageRadius);
-    this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, 0.42);
-    this.collisionDebugGraphics.strokeCircle(
-      blackHolePosition.x,
-      blackHolePosition.y,
-      this.blackHole.captureRadius
-    );
-    this.collisionDebugGraphics.lineStyle(1, 0x9fd8ff, 0.22);
-    this.collisionDebugGraphics.strokeCircle(
-      blackHolePosition.x,
-      blackHolePosition.y,
-      this.blackHole.influenceRadius
-    );
-  }
-
-  private drawProjectileCollisionDebug(): void {
-    for (const projectile of this.playerProjectiles) {
-      const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
-
-      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, projectile.hitRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(1, 0x42f5d7, projectile.capturedByBlackHole ? 0.22 : 0.55);
-      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, projectile.hitRadius);
-    }
-
-    for (const projectile of this.enemyProjectiles) {
-      const projectilePosition = this.getNearestWrappedRenderPosition(projectile.body.x, projectile.body.y);
-
-      if (!this.isCircleInCameraView(projectilePosition.x, projectilePosition.y, projectile.hitRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(1, 0xff5964, projectile.capturedByBlackHole ? 0.22 : 0.62);
-      this.collisionDebugGraphics.strokeCircle(projectilePosition.x, projectilePosition.y, projectile.hitRadius);
-    }
-
-    for (const debris of this.enemyWreckageDebris) {
-      const debrisPosition = this.getNearestWrappedRenderPosition(debris.body.x, debris.body.y);
-
-      if (!this.isCircleInCameraView(debrisPosition.x, debrisPosition.y, debris.hitRadius)) {
-        continue;
-      }
-
-      this.collisionDebugGraphics.lineStyle(1, 0xc7d4dc, 0.52);
-      this.collisionDebugGraphics.strokeCircle(debrisPosition.x, debrisPosition.y, debris.hitRadius);
-    }
-  }
-
-  private strokeOrientedEllipse(
-    center: Phaser.Math.Vector2,
-    right: Phaser.Math.Vector2,
-    forward: Phaser.Math.Vector2,
-    halfWidth: number,
-    halfLength: number,
-    color: number,
-    alpha: number
-  ): void {
-    this.collisionDebugGraphics.lineStyle(1, color, alpha);
-
-    let previousX = center.x + right.x * halfWidth;
-    let previousY = center.y + right.y * halfWidth;
-
-    for (let i = 1; i <= DEBUG_ELLIPSE_SEGMENTS; i += 1) {
-      const angle = (Math.PI * 2 * i) / DEBUG_ELLIPSE_SEGMENTS;
-      const x = center.x + right.x * Math.cos(angle) * halfWidth + forward.x * Math.sin(angle) * halfLength;
-      const y = center.y + right.y * Math.cos(angle) * halfWidth + forward.y * Math.sin(angle) * halfLength;
-
-      this.collisionDebugGraphics.lineBetween(previousX, previousY, x, y);
-      previousX = x;
-      previousY = y;
-    }
   }
 
   private updateMinimap(): void {
