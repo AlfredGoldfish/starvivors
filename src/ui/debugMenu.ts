@@ -295,6 +295,36 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'png-save-setup': 'Save current PNG lens layer setup to markdown.',
   'png-load-setup': 'Load PNG lens layer setup from markdown.',
   background: 'Current background star visibility and parallax values.',
+  'health-bars': 'Small world-space health bars. Player bar can always show; other bars reveal after player damage.',
+  'health-bars-toggle': 'Toggle all world-space health bars.',
+  'player-health-bar': 'Toggle the player ship health bar.',
+  'health-reveal': 'When on, enemy and asteroid bars first appear only after player-caused damage.',
+  'health-width-down': 'Make health bars narrower.',
+  'health-width-up': 'Make health bars wider.',
+  'health-height-down': 'Make health bars thinner.',
+  'health-height-up': 'Make health bars thicker.',
+  'health-offset-down': 'Move health bars closer to their object.',
+  'health-offset-up': 'Move health bars farther above their object.',
+  'health-alpha-down': 'Make health bars more transparent.',
+  'health-alpha-up': 'Make health bars more opaque.',
+  'damage-numbers': 'Floating damage number defaults for all damage sources.',
+  'damage-numbers-toggle': 'Toggle floating damage numbers.',
+  'damage-number-colors': 'Toggle source-colored damage text.',
+  'damage-font-down': 'Decrease damage number text size.',
+  'damage-font-up': 'Increase damage number text size.',
+  'damage-life-down': 'Shorten damage number lifetime.',
+  'damage-life-up': 'Lengthen damage number lifetime.',
+  'damage-rise-down': 'Reduce upward float distance.',
+  'damage-rise-up': 'Increase upward float distance.',
+  'damage-drift-down': 'Reduce random sideways drift.',
+  'damage-drift-up': 'Increase random sideways drift.',
+  'damage-pop-down': 'Reduce initial pop scale.',
+  'damage-pop-up': 'Increase initial pop scale.',
+  'damage-fade-down': 'Start fading sooner.',
+  'damage-fade-up': 'Start fading later.',
+  'damage-alpha-down': 'Make damage numbers more transparent.',
+  'damage-alpha-up': 'Make damage numbers more opaque.',
+  'feedback-reset': 'Reset health bar and damage number settings.',
   'background-stars': 'Toggle background star rendering.',
   'parallax-reset': 'Reset background parallax tuning.',
   'far-parallax-down': 'Decrease far starfield parallax.',
@@ -847,6 +877,46 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildVisualsTab(): void {
     let y = CONTENT_TOP;
+    y = addSection('visuals', y, 'Health Bars');
+    addValue('health-bars', 'visuals', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButton('visuals', 'health-bars-toggle', panelX + PANEL_PADDING, y, 154, 'Health bars', config.callbacks.toggleHealthBars);
+    addButton('visuals', 'player-health-bar', panelX + PANEL_PADDING + 162, y, 154, 'Player bar', config.callbacks.togglePlayerHealthBar);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('visuals', 'health-reveal', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reveal on player damage', config.callbacks.toggleHealthBarRevealOnPlayerDamage);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'health-width', y, 'Width', () => config.callbacks.adjustHealthBarWidthScale(-0.1), () => config.callbacks.adjustHealthBarWidthScale(0.1));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'health-height', y, 'Height', () => config.callbacks.adjustHealthBarHeight(-1), () => config.callbacks.adjustHealthBarHeight(1));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'health-offset', y, 'Offset', () => config.callbacks.adjustHealthBarVerticalOffset(-4), () => config.callbacks.adjustHealthBarVerticalOffset(4));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'health-alpha', y, 'Alpha', () => config.callbacks.adjustHealthBarAlpha(-0.05), () => config.callbacks.adjustHealthBarAlpha(0.05));
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('visuals', y, 'Damage Numbers');
+    addValue('damage-numbers', 'visuals', y, VALUE_LINE_HEIGHT * 5);
+    y += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
+    addButton('visuals', 'damage-numbers-toggle', panelX + PANEL_PADDING, y, 154, 'Damage text', config.callbacks.toggleDamageNumbers);
+    addButton('visuals', 'damage-number-colors', panelX + PANEL_PADDING + 162, y, 154, 'Source colors', config.callbacks.toggleDamageNumberSourceColors);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-font', y, 'Font', () => config.callbacks.adjustDamageNumberFontSize(-1), () => config.callbacks.adjustDamageNumberFontSize(1));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-life', y, 'Life', () => config.callbacks.adjustDamageNumberLifetimeMs(-100), () => config.callbacks.adjustDamageNumberLifetimeMs(100));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-rise', y, 'Rise', () => config.callbacks.adjustDamageNumberRiseDistance(-4), () => config.callbacks.adjustDamageNumberRiseDistance(4));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-drift', y, 'Drift', () => config.callbacks.adjustDamageNumberDrift(-4), () => config.callbacks.adjustDamageNumberDrift(4));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-pop', y, 'Pop', () => config.callbacks.adjustDamageNumberScalePop(-0.05), () => config.callbacks.adjustDamageNumberScalePop(0.05));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-fade', y, 'Fade', () => config.callbacks.adjustDamageNumberFadeStart(-0.05), () => config.callbacks.adjustDamageNumberFadeStart(0.05));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('visuals', 'damage-alpha', y, 'Alpha', () => config.callbacks.adjustDamageNumberAlpha(-0.05), () => config.callbacks.adjustDamageNumberAlpha(0.05));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('visuals', 'feedback-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset combat feedback', config.callbacks.resetCombatFeedbackTuning);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
     y = addSection('visuals', y, 'Background');
     addValue('background', 'visuals', y, VALUE_LINE_HEIGHT * 4);
     y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
@@ -1391,6 +1461,18 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         'physics-asteroids',
         `Collision damage x${values.asteroidCollisionDamageScale.toFixed(2)}\nCollision impulse x${values.asteroidCollisionImpulseScale.toFixed(2)}`
       );
+      setValue(
+        'health-bars',
+        `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
+          values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'
+        }\nSize x${values.healthBarWidthScale.toFixed(2)} / ${values.healthBarHeight}px\nOffset ${values.healthBarVerticalOffset}px / alpha ${values.healthBarAlpha.toFixed(2)}`
+      );
+      setValue(
+        'damage-numbers',
+        `Text: ${values.damageNumbersEnabled ? 'on' : 'off'} / colors ${
+          values.damageNumberSourceColorsEnabled ? 'source' : 'single'
+        }\nFont ${values.damageNumberFontSize}px / life ${values.damageNumberLifetimeMs}ms\nRise ${values.damageNumberRiseDistance}px / drift ${values.damageNumberDrift}px\nPop x${values.damageNumberScalePop.toFixed(2)} / fade ${(values.damageNumberFadeStart * 100).toFixed(0)}%\nAlpha ${values.damageNumberAlpha.toFixed(2)}`
+      );
       setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
       setValue(
         'asteroid-state',
@@ -1429,6 +1511,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
       setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
       setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
+      setButtonLabel('health-bars-toggle', `Health bars: ${values.healthBarsEnabled ? 'on' : 'off'}`);
+      setButtonLabel('player-health-bar', `Player bar: ${values.playerHealthBarEnabled ? 'on' : 'off'}`);
+      setButtonLabel('health-reveal', `Reveal: ${values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'}`);
+      setButtonLabel('damage-numbers-toggle', `Damage text: ${values.damageNumbersEnabled ? 'on' : 'off'}`);
+      setButtonLabel('damage-number-colors', `Colors: ${values.damageNumberSourceColorsEnabled ? 'source' : 'single'}`);
       setButtonLabel('projection-lenses', `All: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
       setButtonLabel('png-toggle-layer', `Layer: ${pngLayer?.enabled ? 'on' : 'off'}`);
     },

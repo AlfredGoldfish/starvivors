@@ -29,6 +29,17 @@ const DEBUG_IMPACT_CAP_MIN = 0;
 const DEBUG_IMPACT_CAP_MAX = 10000;
 const DEBUG_IMPACT_SCALE_MIN = 0;
 const DEBUG_IMPACT_SCALE_MAX = 10;
+const DEFAULT_HEALTH_BAR_WIDTH_SCALE = 1;
+const DEFAULT_HEALTH_BAR_HEIGHT = 5;
+const DEFAULT_HEALTH_BAR_VERTICAL_OFFSET = 34;
+const DEFAULT_HEALTH_BAR_ALPHA = 0.95;
+const DEFAULT_DAMAGE_NUMBER_FONT_SIZE = 15;
+const DEFAULT_DAMAGE_NUMBER_LIFETIME_MS = 760;
+const DEFAULT_DAMAGE_NUMBER_RISE_DISTANCE = 34;
+const DEFAULT_DAMAGE_NUMBER_DRIFT = 18;
+const DEFAULT_DAMAGE_NUMBER_SCALE_POP = 1.22;
+const DEFAULT_DAMAGE_NUMBER_FADE_START = 0.45;
+const DEFAULT_DAMAGE_NUMBER_ALPHA = 1;
 
 export type DebugImpactSourceType = 'player' | 'enemy' | 'asteroid' | 'debris';
 export type DebugPhysicsTuningKey =
@@ -150,6 +161,22 @@ export class DebugState {
     asteroid: 0.45,
     debris: 0.22
   };
+  healthBarsEnabled = true;
+  playerHealthBarEnabled = true;
+  healthBarRevealOnPlayerDamage = true;
+  healthBarWidthScale = DEFAULT_HEALTH_BAR_WIDTH_SCALE;
+  healthBarHeight = DEFAULT_HEALTH_BAR_HEIGHT;
+  healthBarVerticalOffset = DEFAULT_HEALTH_BAR_VERTICAL_OFFSET;
+  healthBarAlpha = DEFAULT_HEALTH_BAR_ALPHA;
+  damageNumbersEnabled = true;
+  damageNumberSourceColorsEnabled = true;
+  damageNumberFontSize = DEFAULT_DAMAGE_NUMBER_FONT_SIZE;
+  damageNumberLifetimeMs = DEFAULT_DAMAGE_NUMBER_LIFETIME_MS;
+  damageNumberRiseDistance = DEFAULT_DAMAGE_NUMBER_RISE_DISTANCE;
+  damageNumberDrift = DEFAULT_DAMAGE_NUMBER_DRIFT;
+  damageNumberScalePop = DEFAULT_DAMAGE_NUMBER_SCALE_POP;
+  damageNumberFadeStart = DEFAULT_DAMAGE_NUMBER_FADE_START;
+  damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
   readonly shipOverrides: Partial<Record<ShipId, DebugShipOverrides>> = {};
   readonly weaponOverrides: Partial<Record<WeaponId, DebugWeaponOverrides>> = {};
 
@@ -337,6 +364,69 @@ export class DebugState {
       asteroid: 0.45,
       debris: 0.22
     };
+  }
+
+  adjustHealthBarWidthScale(delta: number): void {
+    this.healthBarWidthScale = Number(this.clampNumber(this.healthBarWidthScale + delta, 0.5, 2).toFixed(2));
+  }
+
+  adjustHealthBarHeight(delta: number): void {
+    this.healthBarHeight = Math.round(this.clampNumber(this.healthBarHeight + delta, 2, 12));
+  }
+
+  adjustHealthBarVerticalOffset(delta: number): void {
+    this.healthBarVerticalOffset = Math.round(this.clampNumber(this.healthBarVerticalOffset + delta, 12, 80));
+  }
+
+  adjustHealthBarAlpha(delta: number): void {
+    this.healthBarAlpha = Number(this.clampNumber(this.healthBarAlpha + delta, 0.25, 1).toFixed(2));
+  }
+
+  adjustDamageNumberFontSize(delta: number): void {
+    this.damageNumberFontSize = Math.round(this.clampNumber(this.damageNumberFontSize + delta, 8, 34));
+  }
+
+  adjustDamageNumberLifetimeMs(delta: number): void {
+    this.damageNumberLifetimeMs = Math.round(this.clampNumber(this.damageNumberLifetimeMs + delta, 250, 2200));
+  }
+
+  adjustDamageNumberRiseDistance(delta: number): void {
+    this.damageNumberRiseDistance = Math.round(this.clampNumber(this.damageNumberRiseDistance + delta, 8, 120));
+  }
+
+  adjustDamageNumberDrift(delta: number): void {
+    this.damageNumberDrift = Math.round(this.clampNumber(this.damageNumberDrift + delta, 0, 80));
+  }
+
+  adjustDamageNumberScalePop(delta: number): void {
+    this.damageNumberScalePop = Number(this.clampNumber(this.damageNumberScalePop + delta, 1, 2).toFixed(2));
+  }
+
+  adjustDamageNumberFadeStart(delta: number): void {
+    this.damageNumberFadeStart = Number(this.clampNumber(this.damageNumberFadeStart + delta, 0, 0.9).toFixed(2));
+  }
+
+  adjustDamageNumberAlpha(delta: number): void {
+    this.damageNumberAlpha = Number(this.clampNumber(this.damageNumberAlpha + delta, 0.25, 1).toFixed(2));
+  }
+
+  resetCombatFeedbackTuning(): void {
+    this.healthBarsEnabled = true;
+    this.playerHealthBarEnabled = true;
+    this.healthBarRevealOnPlayerDamage = true;
+    this.healthBarWidthScale = DEFAULT_HEALTH_BAR_WIDTH_SCALE;
+    this.healthBarHeight = DEFAULT_HEALTH_BAR_HEIGHT;
+    this.healthBarVerticalOffset = DEFAULT_HEALTH_BAR_VERTICAL_OFFSET;
+    this.healthBarAlpha = DEFAULT_HEALTH_BAR_ALPHA;
+    this.damageNumbersEnabled = true;
+    this.damageNumberSourceColorsEnabled = true;
+    this.damageNumberFontSize = DEFAULT_DAMAGE_NUMBER_FONT_SIZE;
+    this.damageNumberLifetimeMs = DEFAULT_DAMAGE_NUMBER_LIFETIME_MS;
+    this.damageNumberRiseDistance = DEFAULT_DAMAGE_NUMBER_RISE_DISTANCE;
+    this.damageNumberDrift = DEFAULT_DAMAGE_NUMBER_DRIFT;
+    this.damageNumberScalePop = DEFAULT_DAMAGE_NUMBER_SCALE_POP;
+    this.damageNumberFadeStart = DEFAULT_DAMAGE_NUMBER_FADE_START;
+    this.damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
   }
 
   adjustShipStat(ship: ShipRegistryEntry, key: DebugShipStatKey, delta: number): void {
@@ -576,6 +666,22 @@ export class DebugState {
       enemyImpactDamageScale: this.impactDamageScales.enemy,
       asteroidImpactDamageScale: this.impactDamageScales.asteroid,
       debrisImpactDamageScale: this.impactDamageScales.debris,
+      healthBarsEnabled: this.healthBarsEnabled,
+      playerHealthBarEnabled: this.playerHealthBarEnabled,
+      healthBarRevealOnPlayerDamage: this.healthBarRevealOnPlayerDamage,
+      healthBarWidthScale: this.healthBarWidthScale,
+      healthBarHeight: this.healthBarHeight,
+      healthBarVerticalOffset: this.healthBarVerticalOffset,
+      healthBarAlpha: this.healthBarAlpha,
+      damageNumbersEnabled: this.damageNumbersEnabled,
+      damageNumberSourceColorsEnabled: this.damageNumberSourceColorsEnabled,
+      damageNumberFontSize: this.damageNumberFontSize,
+      damageNumberLifetimeMs: this.damageNumberLifetimeMs,
+      damageNumberRiseDistance: this.damageNumberRiseDistance,
+      damageNumberDrift: this.damageNumberDrift,
+      damageNumberScalePop: this.damageNumberScalePop,
+      damageNumberFadeStart: this.damageNumberFadeStart,
+      damageNumberAlpha: this.damageNumberAlpha,
       rammingShieldHp: snapshot.rammingShieldHp,
       rammingShieldMaxHp: snapshot.rammingShieldMaxHp,
       rammingShieldDashCharges: snapshot.rammingShieldDashCharges,
@@ -654,5 +760,9 @@ export class DebugState {
 
   private clampImpactScale(value: number): number {
     return Number(Math.min(DEBUG_IMPACT_SCALE_MAX, Math.max(DEBUG_IMPACT_SCALE_MIN, value)).toFixed(3));
+  }
+
+  private clampNumber(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
   }
 }

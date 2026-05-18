@@ -729,6 +729,27 @@ interface EnemyWreckageDebris {
   expiresAt: number;
 }
 
+type DamageFeedbackSource = 'player' | 'enemy' | 'asteroid' | 'debris' | 'blackHole' | 'shield' | 'environment';
+
+interface HealthBarFeedback {
+  body: Phaser.GameObjects.Container;
+  graphics: Phaser.GameObjects.Graphics;
+  maxHp: number;
+  radius: number;
+  revealed: boolean;
+}
+
+interface FloatingDamageText {
+  text: Phaser.GameObjects.Text;
+  originX: number;
+  originY: number;
+  ageMs: number;
+  lifetimeMs: number;
+  riseDistance: number;
+  driftX: number;
+  startScale: number;
+}
+
 interface ScrapPickup {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
@@ -880,6 +901,8 @@ export class GameScene extends Phaser.Scene {
   private nextPlayerContactImpulseAt = 0;
   private playerBodyImpactCooldowns = new WeakMap<object, number>();
   private asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
+  private healthBarFeedback = new Map<object, HealthBarFeedback>();
+  private floatingDamageTexts: FloatingDamageText[] = [];
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
@@ -1006,6 +1029,7 @@ export class GameScene extends Phaser.Scene {
       this.updatePlayerDamageVisuals(time);
     }
 
+    this.updateCombatFeedback(delta);
     this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles(time);
     this.updateGameplayHud(time);
@@ -1098,6 +1122,33 @@ export class GameScene extends Phaser.Scene {
             this.debugState.setPhysicsTuning(key, key === 'globalMaxSpeed' ? this.toRawDebugValue('globalMaxSpeed', value) : value)
           ),
         resetPhysicsTuning: () => this.runDebugMenuAction(() => this.debugState.resetPhysicsTuning()),
+        toggleHealthBars: () => this.runDebugMenuAction(() => {
+          this.debugState.healthBarsEnabled = !this.debugState.healthBarsEnabled;
+        }),
+        togglePlayerHealthBar: () => this.runDebugMenuAction(() => {
+          this.debugState.playerHealthBarEnabled = !this.debugState.playerHealthBarEnabled;
+        }),
+        toggleHealthBarRevealOnPlayerDamage: () => this.runDebugMenuAction(() => {
+          this.debugState.healthBarRevealOnPlayerDamage = !this.debugState.healthBarRevealOnPlayerDamage;
+        }),
+        adjustHealthBarWidthScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustHealthBarWidthScale(delta)),
+        adjustHealthBarHeight: (delta) => this.runDebugMenuAction(() => this.debugState.adjustHealthBarHeight(delta)),
+        adjustHealthBarVerticalOffset: (delta) => this.runDebugMenuAction(() => this.debugState.adjustHealthBarVerticalOffset(delta)),
+        adjustHealthBarAlpha: (delta) => this.runDebugMenuAction(() => this.debugState.adjustHealthBarAlpha(delta)),
+        toggleDamageNumbers: () => this.runDebugMenuAction(() => {
+          this.debugState.damageNumbersEnabled = !this.debugState.damageNumbersEnabled;
+        }),
+        toggleDamageNumberSourceColors: () => this.runDebugMenuAction(() => {
+          this.debugState.damageNumberSourceColorsEnabled = !this.debugState.damageNumberSourceColorsEnabled;
+        }),
+        adjustDamageNumberFontSize: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberFontSize(delta)),
+        adjustDamageNumberLifetimeMs: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberLifetimeMs(delta)),
+        adjustDamageNumberRiseDistance: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberRiseDistance(delta)),
+        adjustDamageNumberDrift: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberDrift(delta)),
+        adjustDamageNumberScalePop: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberScalePop(delta)),
+        adjustDamageNumberFadeStart: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberFadeStart(delta)),
+        adjustDamageNumberAlpha: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberAlpha(delta)),
+        resetCombatFeedbackTuning: () => this.runDebugMenuAction(() => this.debugState.resetCombatFeedbackTuning()),
         adjustWeaponDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponDamageMultiplier(delta)),
         adjustWeaponFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponFireRateMultiplier(delta)),
         adjustWeaponCooldownSeconds: (deltaSeconds) =>
@@ -1893,6 +1944,8 @@ export class GameScene extends Phaser.Scene {
 
     this.debugMenu?.destroy();
     this.children.removeAll(true);
+    this.healthBarFeedback.clear();
+    this.floatingDamageTexts = [];
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
     this.mainMenuActionZones = [];
@@ -3653,7 +3706,7 @@ export class GameScene extends Phaser.Scene {
         BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS
       );
 
-      this.damagePlayer(damage, time);
+      this.damagePlayer(damage, time, this.player.x, this.player.y, { source: 'blackHole' });
       this.nextBlackHolePlayerDamageAt = time + BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS;
     }
   }
@@ -3688,12 +3741,12 @@ export class GameScene extends Phaser.Scene {
       result.isInsideDamage &&
       time >= asteroid.nextBlackHoleDamageAt
     ) {
-      asteroid.hp -= this.getBlackHoleTidalDamage(
+      this.damageAsteroid(asteroid, this.getBlackHoleTidalDamage(
         result.proximity,
         BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE,
         BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA,
         BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
-      );
+      ), 'blackHole', false);
       asteroid.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
 
       if (asteroid.hp <= 0) {
@@ -3785,7 +3838,9 @@ export class GameScene extends Phaser.Scene {
           BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
           BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
           BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
-        )
+        ),
+        'blackHole',
+        false
       );
       enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
 
@@ -6612,7 +6667,7 @@ export class GameScene extends Phaser.Scene {
     if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'enemy' });
     }
   }
 
@@ -6630,7 +6685,7 @@ export class GameScene extends Phaser.Scene {
     if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'asteroid' });
     }
   }
 
@@ -6648,7 +6703,7 @@ export class GameScene extends Phaser.Scene {
     if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y);
+      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'debris' });
     }
   }
 
@@ -6767,7 +6822,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.damageEnemy(enemy, damage);
+    this.damageEnemy(enemy, damage, 'player', true);
     this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
     this.resolveEnemyDestroyedByPhysicalImpact(enemy);
   }
@@ -6783,7 +6838,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    asteroid.hp -= damage;
+    this.damageAsteroid(asteroid, damage, 'player', true);
     this.emitAsteroidImpactExplosion(asteroid.body.x, asteroid.body.y, asteroid.tier);
     const index = this.basicAsteroids.indexOf(asteroid);
     if (asteroid.hp <= 0 && index >= 0) {
@@ -6804,7 +6859,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    debris.hp -= damage;
+    this.damageDebris(debris, damage, 'player', true);
     this.emitShipCollisionImpactExplosion(debris.body.x, debris.body.y);
     if (debris.hp <= 0) {
       const index = this.enemyWreckageDebris.indexOf(debris);
@@ -6818,8 +6873,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private damageAsteroidFromPhysicalImpact(asteroid: BasicAsteroid, damage: number): void {
-    asteroid.hp -= damage;
+  private damageAsteroidFromPhysicalImpact(
+    asteroid: BasicAsteroid,
+    damage: number,
+    source: DamageFeedbackSource = 'environment'
+  ): void {
+    this.damageAsteroid(asteroid, damage, source, false);
     const index = this.basicAsteroids.indexOf(asteroid);
     if (asteroid.hp <= 0 && index >= 0) {
       this.destroyBasicAsteroid(index);
@@ -6828,8 +6887,12 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private damageDebrisFromPhysicalImpact(debris: EnemyWreckageDebris, damage: number): void {
-    debris.hp -= damage;
+  private damageDebrisFromPhysicalImpact(
+    debris: EnemyWreckageDebris,
+    damage: number,
+    source: DamageFeedbackSource = 'environment'
+  ): void {
+    this.damageDebris(debris, damage, source, false);
     const index = this.enemyWreckageDebris.indexOf(debris);
     if (debris.hp <= 0 && index >= 0) {
       this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
@@ -6860,8 +6923,275 @@ export class GameScene extends Phaser.Scene {
     return impactDamage * activeMultiplier * dashMultiplier * playerStats.damage;
   }
 
-  private damageEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, damage: number): void {
-    enemy.hp -= Math.max(1, damage - enemy.stats.defense);
+  private damageEnemy(
+    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
+    damage: number,
+    source: DamageFeedbackSource = 'environment',
+    revealHealthBar = false
+  ): void {
+    const appliedDamage = Math.max(1, damage - enemy.stats.defense);
+    enemy.hp -= appliedDamage;
+    this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), appliedDamage, source, revealHealthBar);
+  }
+
+  private damageAsteroid(
+    asteroid: BasicAsteroid,
+    damage: number,
+    source: DamageFeedbackSource = 'environment',
+    revealHealthBar = false
+  ): void {
+    asteroid.hp -= damage;
+    this.emitDamageFeedback(
+      asteroid,
+      asteroid.body,
+      asteroid.hp,
+      ASTEROID_TIER_CONFIG[asteroid.tier].hp,
+      asteroid.hitRadius,
+      damage,
+      source,
+      revealHealthBar
+    );
+  }
+
+  private damageDebris(
+    debris: EnemyWreckageDebris,
+    damage: number,
+    source: DamageFeedbackSource = 'environment',
+    revealHealthBar = false
+  ): void {
+    debris.hp -= damage;
+    this.emitDamageFeedback(debris, debris.body, debris.hp, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, damage, source, revealHealthBar);
+  }
+
+  private emitDamageFeedback(
+    owner: object,
+    body: Phaser.GameObjects.Container,
+    hp: number,
+    maxHp: number,
+    radius: number,
+    damage: number,
+    source: DamageFeedbackSource,
+    revealHealthBar: boolean
+  ): void {
+    this.emitFloatingDamageNumber(body.x, body.y, damage, source);
+    this.ensureHealthBar(owner, body, maxHp, radius, revealHealthBar);
+    this.updateHealthBar(owner, hp, maxHp);
+  }
+
+  private ensureHealthBar(
+    owner: object,
+    body: Phaser.GameObjects.Container,
+    maxHp: number,
+    radius: number,
+    revealHealthBar: boolean
+  ): void {
+    const existing = this.healthBarFeedback.get(owner);
+    if (existing) {
+      existing.revealed ||= revealHealthBar;
+      existing.maxHp = maxHp;
+      existing.radius = radius;
+      return;
+    }
+
+    if (this.debugState.healthBarRevealOnPlayerDamage && !revealHealthBar) {
+      return;
+    }
+
+    const graphics = this.add.graphics().setDepth(21);
+    this.healthBarFeedback.set(owner, {
+      body,
+      graphics,
+      maxHp,
+      radius,
+      revealed: true
+    });
+  }
+
+  private updateHealthBar(owner: object, hp: number, maxHp: number): void {
+    const bar = this.healthBarFeedback.get(owner);
+    if (!bar) {
+      return;
+    }
+
+    const progress = Phaser.Math.Clamp(hp / Math.max(1, maxHp), 0, 1);
+    const position = this.getNearestWrappedRenderPosition(bar.body.x, bar.body.y);
+    const width = Phaser.Math.Clamp(bar.radius * 1.45, 28, 76) * this.debugState.healthBarWidthScale;
+    const height = this.debugState.healthBarHeight;
+    const x = position.x - width / 2;
+    const y = position.y - this.debugState.healthBarVerticalOffset;
+    const fillColor = Phaser.Display.Color.Interpolate.ColorWithColor(
+      new Phaser.Display.Color(255, 71, 86),
+      new Phaser.Display.Color(77, 255, 145),
+      100,
+      Math.round(progress * 100)
+    );
+    const fill = Phaser.Display.Color.GetColor(fillColor.r, fillColor.g, fillColor.b);
+
+    bar.graphics.clear();
+    bar.graphics.setVisible(this.debugState.healthBarsEnabled && bar.revealed);
+    if (!this.debugState.healthBarsEnabled || !bar.revealed) {
+      return;
+    }
+
+    bar.graphics.fillStyle(0x5d1018, this.debugState.healthBarAlpha * 0.86);
+    bar.graphics.fillRoundedRect(x, y, width, height, Math.min(3, height / 2));
+    bar.graphics.fillStyle(fill, this.debugState.healthBarAlpha);
+    bar.graphics.fillRoundedRect(x, y, width * progress, height, Math.min(3, height / 2));
+    bar.graphics.lineStyle(1, 0x02040a, this.debugState.healthBarAlpha);
+    bar.graphics.strokeRoundedRect(x, y, width, height, Math.min(3, height / 2));
+  }
+
+  private removeHealthBar(owner: object): void {
+    const bar = this.healthBarFeedback.get(owner);
+    if (!bar) {
+      return;
+    }
+
+    bar.graphics.destroy();
+    this.healthBarFeedback.delete(owner);
+  }
+
+  private emitFloatingDamageNumber(x: number, y: number, damage: number, source: DamageFeedbackSource): void {
+    if (!this.debugState.damageNumbersEnabled || damage <= 0) {
+      return;
+    }
+
+    const position = this.getNearestWrappedRenderPosition(x, y);
+    const displayDamage = Math.max(1, Math.round(damage));
+    const text = this.add
+      .text(position.x, position.y, `${displayDamage}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: `${this.debugState.damageNumberFontSize}px`,
+        color: this.getDamageNumberColor(source),
+        stroke: '#02040a',
+        strokeThickness: 4
+      })
+      .setOrigin(0.5, 0.5)
+      .setDepth(22)
+      .setAlpha(this.debugState.damageNumberAlpha)
+      .setScale(this.debugState.damageNumberScalePop);
+
+    this.floatingDamageTexts.push({
+      text,
+      originX: position.x,
+      originY: position.y,
+      ageMs: 0,
+      lifetimeMs: this.debugState.damageNumberLifetimeMs,
+      riseDistance: this.debugState.damageNumberRiseDistance,
+      driftX: Phaser.Math.FloatBetween(-this.debugState.damageNumberDrift, this.debugState.damageNumberDrift),
+      startScale: this.debugState.damageNumberScalePop
+    });
+  }
+
+  private getDamageNumberColor(source: DamageFeedbackSource): string {
+    if (!this.debugState.damageNumberSourceColorsEnabled) {
+      return '#f2fbff';
+    }
+
+    switch (source) {
+      case 'player':
+        return '#f2fbff';
+      case 'shield':
+        return '#42f5d7';
+      case 'enemy':
+        return '#ff5964';
+      case 'asteroid':
+      case 'debris':
+        return '#ffc857';
+      case 'blackHole':
+        return '#b88cff';
+      default:
+        return '#f2fbff';
+    }
+  }
+
+  private updateCombatFeedback(deltaMs: number): void {
+    this.updatePlayerHealthBarFeedback();
+    if (!this.debugState.healthBarRevealOnPlayerDamage) {
+      this.ensureAllCombatHealthBars();
+    }
+    for (const [owner, bar] of this.healthBarFeedback) {
+      if (owner === this.player) {
+        continue;
+      }
+      this.updateHealthBarFromOwner(owner, bar);
+    }
+    this.updateFloatingDamageTexts(deltaMs);
+  }
+
+  private ensureAllCombatHealthBars(): void {
+    for (const enemy of this.getAllEnemies()) {
+      this.ensureHealthBar(enemy, enemy.body, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), true);
+    }
+
+    for (const asteroid of this.basicAsteroids) {
+      this.ensureHealthBar(asteroid, asteroid.body, ASTEROID_TIER_CONFIG[asteroid.tier].hp, asteroid.hitRadius, true);
+    }
+
+    for (const debris of this.enemyWreckageDebris) {
+      this.ensureHealthBar(debris, debris.body, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, true);
+    }
+  }
+
+  private updatePlayerHealthBarFeedback(): void {
+    if (!this.player || this.isPlayerDead || !this.debugState.playerHealthBarEnabled) {
+      this.removeHealthBar(this.player);
+      return;
+    }
+
+    this.ensureHealthBar(this.player, this.player, this.getPlayerMaxHull(), this.getPlayerHitRadius(), true);
+    this.updateHealthBar(this.player, this.playerHull, this.getPlayerMaxHull());
+  }
+
+  private updateHealthBarFromOwner(owner: object, bar: HealthBarFeedback): void {
+    if (this.isEnemyHealthOwner(owner)) {
+      this.updateHealthBar(owner, owner.hp, owner.stats.maxHull);
+      return;
+    }
+
+    if (this.isAsteroidHealthOwner(owner)) {
+      this.updateHealthBar(owner, owner.hp, ASTEROID_TIER_CONFIG[owner.tier].hp);
+      return;
+    }
+
+    if (this.isDebrisHealthOwner(owner)) {
+      this.updateHealthBar(owner, owner.hp, ENEMY_WRECKAGE_DEBRIS_HP);
+      return;
+    }
+
+    this.removeHealthBar(owner);
+  }
+
+  private isEnemyHealthOwner(owner: object): owner is BasicEnemy | ShooterEnemy | TankEnemy {
+    return this.basicEnemies.includes(owner as BasicEnemy) || this.shooterEnemies.includes(owner as ShooterEnemy) || this.tankEnemies.includes(owner as TankEnemy);
+  }
+
+  private isAsteroidHealthOwner(owner: object): owner is BasicAsteroid {
+    return this.basicAsteroids.includes(owner as BasicAsteroid);
+  }
+
+  private isDebrisHealthOwner(owner: object): owner is EnemyWreckageDebris {
+    return this.enemyWreckageDebris.includes(owner as EnemyWreckageDebris);
+  }
+
+  private updateFloatingDamageTexts(deltaMs: number): void {
+    for (let i = this.floatingDamageTexts.length - 1; i >= 0; i -= 1) {
+      const item = this.floatingDamageTexts[i];
+      item.ageMs += deltaMs;
+      const progress = Phaser.Math.Clamp(item.ageMs / Math.max(1, item.lifetimeMs), 0, 1);
+      const eased = Phaser.Math.Easing.Quadratic.Out(progress);
+      const fadeStart = this.debugState.damageNumberFadeStart;
+      const fadeProgress = progress <= fadeStart ? 0 : (progress - fadeStart) / Math.max(0.01, 1 - fadeStart);
+
+      item.text.setPosition(item.originX + item.driftX * eased, item.originY - item.riseDistance * eased);
+      item.text.setScale(Phaser.Math.Linear(item.startScale, 1, eased));
+      item.text.setAlpha(this.debugState.damageNumberAlpha * (1 - Phaser.Math.Clamp(fadeProgress, 0, 1)));
+
+      if (progress >= 1) {
+        item.text.destroy();
+        this.floatingDamageTexts.splice(i, 1);
+      }
+    }
   }
 
   private resolveEnemyDestroyedByPhysicalImpact(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
@@ -6948,6 +7278,7 @@ export class GameScene extends Phaser.Scene {
     damageRammingShield(this.rammingShieldState, this.getRammingShieldStats(), damage, time);
     this.rammingShieldState.nextBlockDamageAt = time + this.getPlayerDamageInvulnerabilityMs();
     this.updateRammingShieldVisual(time);
+    this.emitFloatingDamageNumber(impactX, impactY, damage, 'shield');
     this.emitRammingShieldDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
 
@@ -7004,7 +7335,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.damageEnemy(enemy, damage);
+    this.damageEnemy(enemy, damage, 'shield', true);
     this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
 
     const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
@@ -7098,7 +7429,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    debris.hp -= damage;
+    this.damageDebris(debris, damage, 'shield', true);
     this.emitShipCollisionImpactExplosion(debris.body.x, debris.body.y);
 
     if (debris.hp <= 0) {
@@ -7119,7 +7450,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    asteroid.hp -= damage;
+    this.damageAsteroid(asteroid, damage, 'shield', true);
     this.emitAsteroidImpactExplosion(asteroid.body.x, asteroid.body.y, asteroid.tier);
 
     const index = this.basicAsteroids.indexOf(asteroid);
@@ -7280,7 +7611,7 @@ export class GameScene extends Phaser.Scene {
     time: number,
     impactX = this.player.x,
     impactY = this.player.y,
-    options: { bypassShield?: boolean; bypassDefense?: boolean } = {}
+    options: { bypassShield?: boolean; bypassDefense?: boolean; source?: DamageFeedbackSource } = {}
   ): void {
     if (this.debugState.playerInvulnerable) {
       this.playerInvulnerableUntil = Number.MAX_SAFE_INTEGER;
@@ -7295,6 +7626,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerHull = Math.max(0, this.playerHull - hullDamage);
+    this.emitFloatingDamageNumber(impactX, impactY, hullDamage, options.source ?? 'enemy');
     this.emitPlayerDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
 
@@ -7726,7 +8058,7 @@ export class GameScene extends Phaser.Scene {
 
     if (time >= this.playerInvulnerableUntil) {
       this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
-      this.damagePlayer(projectile.damage, time, projectile.body.x, projectile.body.y);
+      this.damagePlayer(projectile.damage, time, projectile.body.x, projectile.body.y, { source: 'enemy' });
     }
 
     return true;
@@ -7832,8 +8164,8 @@ export class GameScene extends Phaser.Scene {
           continue;
         }
 
-        first.hp -= impactDamage;
-        second.hp -= impactDamage;
+        this.damageAsteroid(first, impactDamage, 'asteroid', false);
+        this.damageAsteroid(second, impactDamage, 'asteroid', false);
         this.emitAsteroidImpactExplosion(
           wrapCoordinate((first.body.x + second.body.x) * 0.5, this.arena.width),
           wrapCoordinate((first.body.y + second.body.y) * 0.5, this.arena.height),
@@ -7935,10 +8267,10 @@ export class GameScene extends Phaser.Scene {
           secondMaxSpeed: this.getGlobalMaxSpeed(),
           time,
           damageFirst: (damage) => {
-            this.damageEnemy(enemy, damage);
+            this.damageEnemy(enemy, damage, 'asteroid', false);
             this.resolveEnemyDestroyedByPhysicalImpact(enemy);
           },
-          damageSecond: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage)
+          damageSecond: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'enemy')
         });
       }
     }
@@ -7968,10 +8300,10 @@ export class GameScene extends Phaser.Scene {
           secondMaxSpeed: this.getGlobalMaxSpeed(),
           time,
           damageFirst: (damage) => {
-            this.damageEnemy(enemy, damage);
+            this.damageEnemy(enemy, damage, 'debris', false);
             this.resolveEnemyDestroyedByPhysicalImpact(enemy);
           },
-          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage)
+          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'enemy')
         });
       }
     }
@@ -8004,8 +8336,8 @@ export class GameScene extends Phaser.Scene {
           firstMaxSpeed: this.getGlobalMaxSpeed(),
           secondMaxSpeed: this.getGlobalMaxSpeed(),
           time,
-          damageFirst: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage),
-          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage)
+          damageFirst: (damage) => this.damageAsteroidFromPhysicalImpact(asteroid, damage, 'debris'),
+          damageSecond: (damage) => this.damageDebrisFromPhysicalImpact(debris, damage, 'asteroid')
         });
       }
     }
@@ -8638,7 +8970,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        this.damageEnemy(enemy, projectile.damage);
+        this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -8690,7 +9022,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        this.damageEnemy(enemy, projectile.damage);
+        this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -8742,7 +9074,7 @@ export class GameScene extends Phaser.Scene {
 
       if (normalizedHit <= 1) {
         projectile.piercedTargets.add(enemy.body);
-        this.damageEnemy(enemy, projectile.damage);
+        this.damageEnemy(enemy, projectile.damage, 'player', true);
 
         if (enemy.hp <= 0) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -8788,7 +9120,7 @@ export class GameScene extends Phaser.Scene {
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
         projectile.piercedTargets.add(debris.body);
-        debris.hp -= projectile.damage;
+        this.damageDebris(debris, projectile.damage, 'player', true);
 
         if (debris.hp <= 0) {
           this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
@@ -8818,7 +9150,7 @@ export class GameScene extends Phaser.Scene {
 
       if (offset.lengthSq() <= hitRadius * hitRadius) {
         projectile.piercedTargets.add(asteroid.body);
-        asteroid.hp -= projectile.damage;
+        this.damageAsteroid(asteroid, projectile.damage, 'player', true);
 
         if (asteroid.hp <= 0) {
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
