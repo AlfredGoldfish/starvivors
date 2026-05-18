@@ -162,6 +162,8 @@ import {
   resolveWorldImpactCollisions as resolveWorldImpactCollisionsSystem
 } from '../systems/worldImpacts';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
+import { createMainMenuScreen } from '../ui/mainMenuScreen';
+import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import type {
   AsteroidBreakupProfile,
   AsteroidTier,
@@ -397,8 +399,7 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleGraphics!: Phaser.GameObjects.Graphics;
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
-  private mainMenuScreen?: Phaser.GameObjects.Container;
-  private mainMenuActionZones: Phaser.GameObjects.Zone[] = [];
+  private mainMenuScreen?: ScreenHandle;
   private shipSelectScreen?: Phaser.GameObjects.Container;
   private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
   private shopScreen?: Phaser.GameObjects.Container;
@@ -1514,7 +1515,6 @@ export class GameScene extends Phaser.Scene {
     this.combatFeedback.clear();
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
-    this.mainMenuActionZones = [];
     this.shipSelectScreen = undefined;
     this.shipSelectActionZones = [];
     this.shopScreen = undefined;
@@ -1642,7 +1642,6 @@ export class GameScene extends Phaser.Scene {
     this.children.removeAll(true);
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
-    this.mainMenuActionZones = [];
     this.shopScreen = undefined;
     this.shopActionZones = [];
     this.shipSelectScreen = undefined;
@@ -1650,61 +1649,16 @@ export class GameScene extends Phaser.Scene {
     this.resultsScreen = undefined;
     this.resultsActionZones = [];
 
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const panelWidth = Math.min(width - 48, 520);
-    const panelHeight = 374;
-    const panelX = -panelWidth / 2;
-    const panelY = -panelHeight / 2;
-    const background = this.add.graphics();
-    background.fillStyle(0x02040a, 1);
-    background.fillRect(-width / 2, -height / 2, width, height);
-    background.fillStyle(0x071018, 0.96);
-    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    background.lineStyle(2, 0x42f5d7, 0.82);
-    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-
-    const title = this.add
-      .text(0, panelY + 38, 'STARVIVORS', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '38px',
-        color: '#f2fbff',
-        align: 'center'
-      })
-      .setOrigin(0.5, 0);
-    const credits = this.add
-      .text(0, panelY + 104, `Credits ${this.totalCredits}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '20px',
-        color: '#c8f7ff',
-        align: 'center'
-      })
-      .setOrigin(0.5, 0);
-    const selectedShip = this.add
-      .text(0, panelY + 132, `Ship ${this.getSelectedShipDefinition().displayName}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#9fb5d1',
-        align: 'center'
-      })
-      .setOrigin(0.5, 0);
-
-    this.mainMenuScreen = this.add
-      .container(centerX, centerY, [background, title, credits, selectedShip])
-      .setScrollFactor(0)
-      .setDepth(1300);
-
-    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 184, 240, 42, 'Start Run', () =>
-      this.startRun()
-    );
-    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 238, 240, 42, 'Ship Select', () =>
-      this.showShipSelect()
-    );
-    this.addScreenButton(this.mainMenuScreen, this.mainMenuActionZones, centerX, centerY, 0, panelY + 292, 240, 42, 'Shop', () =>
-      this.showShop('mainMenu')
-    );
+    this.mainMenuScreen = createMainMenuScreen({
+      scene: this,
+      totalCredits: this.totalCredits,
+      selectedShipDisplayName: this.getSelectedShipDefinition().displayName,
+      isActionActive: () => this.gameFlowState === 'mainMenu',
+      resetCursor: () => this.resetUiCursor(),
+      onStartRun: () => this.startRun(),
+      onShipSelect: () => this.showShipSelect(),
+      onShop: () => this.showShop('mainMenu')
+    });
     this.createDebugMenu();
   }
 
@@ -2599,13 +2553,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyMainMenuScreen(): void {
-    for (const zone of this.mainMenuActionZones) {
-      zone.destroy();
-    }
-
-    this.mainMenuActionZones = [];
-    this.mainMenuScreen?.destroy(true);
-    this.mainMenuScreen = undefined;
+    this.mainMenuScreen = destroyScreenHandle(this.mainMenuScreen);
   }
 
   private destroyShipSelectScreen(): void {
@@ -2659,42 +2607,22 @@ export class GameScene extends Phaser.Scene {
     isEnabled = true
   ): void {
     const activeState = this.gameFlowState;
-    const buttonBackground = this.add.graphics();
-    buttonBackground.fillStyle(isEnabled ? 0x111a24 : 0x151922, 0.98);
-    buttonBackground.fillRoundedRect(x - width / 2, y, width, height, 6);
-    buttonBackground.lineStyle(2, isEnabled ? 0x42f5d7 : 0x52627f, isEnabled ? 0.88 : 0.6);
-    buttonBackground.strokeRoundedRect(x - width / 2, y, width, height, 6);
-
-    const buttonText = this.add
-      .text(x, y + height / 2, label, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: isEnabled ? '#f2fbff' : '#8090a6',
-        align: 'center',
-        fixedWidth: width - 10
-      })
-      .setOrigin(0.5);
-
-    const zone = this.add
-      .zone(screenCenterX + x - width / 2, screenCenterY + y, width, height)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(1301)
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-      .on('pointerup', (pointer: Phaser.Input.Pointer) => {
-        pointer.event?.stopPropagation();
-        if (isEnabled && this.gameFlowState === activeState) {
-          callback();
-        }
-      })
-      .on('pointerout', () => this.resetUiCursor());
-
-    if (isEnabled) {
-      zone.setInteractive({ useHandCursor: true });
-    }
-
-    container.add([buttonBackground, buttonText]);
-    actionZones.push(zone);
+    addScreenButton({
+      scene: this,
+      container,
+      actionZones,
+      screenCenterX,
+      screenCenterY,
+      x,
+      y,
+      width,
+      height,
+      label,
+      callback,
+      isEnabled,
+      isActionActive: () => this.gameFlowState === activeState,
+      resetCursor: () => this.resetUiCursor()
+    });
   }
 
   private getRandomBlackHoleZoneSpawnPosition(

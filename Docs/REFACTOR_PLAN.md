@@ -40,3 +40,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 4 world impact loop extraction: `npm.cmd run build` passed.
 - Phase 4 projectile hit scanning extraction: `npm.cmd run build` passed.
 - Phase 4 completion check: `npm.cmd run build` passed after tracker reconciliation.
+- Phase 5 main menu screen extraction: `npm.cmd run build` passed.
