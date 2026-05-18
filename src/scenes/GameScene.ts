@@ -177,7 +177,6 @@ import type {
   EnemySpawnType,
   EnemyWreckageDebris,
   GameFlowState,
-  HangarStatRow,
   PlayerAsteroidContact,
   PlayerDebrisContact,
   PlayerEnemyContact,
@@ -403,9 +402,7 @@ export class GameScene extends Phaser.Scene {
   private blackHoleProjectionLensToggleText!: Phaser.GameObjects.Text;
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
   private mainMenuScreen?: ScreenHandle;
-  private shipSelectScreenHandle?: ScreenHandle;
-  private shipSelectScreen?: Phaser.GameObjects.Container;
-  private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
+  private shipSelectScreen?: ScreenHandle;
   private shopScreen?: ScreenHandle;
   private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: ScreenHandle;
@@ -1517,7 +1514,6 @@ export class GameScene extends Phaser.Scene {
     this.combatFeedback.clear();
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
-    this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
@@ -1643,7 +1639,6 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
-    this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
     this.resultsScreen = undefined;
 
@@ -1665,7 +1660,7 @@ export class GameScene extends Phaser.Scene {
     this.destroyMainMenuScreen();
     this.destroyShipSelectScreen();
 
-    this.shipSelectScreenHandle = createShipSelectScreen({
+    this.shipSelectScreen = createShipSelectScreen({
       scene: this,
       totalCredits: this.totalCredits,
       selectedShipId: this.selectedShipId,
@@ -1681,431 +1676,6 @@ export class GameScene extends Phaser.Scene {
       onBack: () => this.showMainMenu()
     });
     this.createDebugMenu();
-  }
-
-  private drawHangarPanel(
-    graphics: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    width: number,
-    height: number,
-    title: string
-  ): void {
-    graphics.fillStyle(0x0a121d, 0.94);
-    graphics.fillRoundedRect(x, y, width, height, 6);
-    graphics.lineStyle(1, 0x52627f, 0.78);
-    graphics.strokeRoundedRect(x, y, width, height, 6);
-    graphics.fillStyle(0x102633, 0.75);
-    graphics.fillRect(x + 1, y + 1, width - 2, 34);
-    graphics.lineStyle(1, 0x42f5d7, 0.34);
-    graphics.lineBetween(x + 12, y + 35, x + width - 12, y + 35);
-
-    const label = this.add
-      .text(x + 14, y + 10, title, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#73f2ff'
-      })
-      .setOrigin(0, 0);
-    this.shipSelectScreen?.add(label);
-  }
-
-  private renderShipListPanel(
-    graphics: Phaser.GameObjects.Graphics,
-    x: number,
-    y: number,
-    width: number,
-    _height: number
-  ): void {
-    const rowHeight = 86;
-    const rowGap = 10;
-    const rowX = x + 12;
-    const rowWidth = width - 24;
-    const rowTop = y + 52;
-
-    for (let i = 0; i < shipRegistry.length; i += 1) {
-      const ship = shipRegistry[i];
-      const rowY = rowTop + i * (rowHeight + rowGap);
-      const isPreviewed = ship.id === this.hangarPreviewShipId;
-      const isSelected = ship.id === this.selectedShipId;
-      const isUnlocked = this.isShipUnlocked(ship.id);
-      const isAvailable = this.canStartRunWithShip(ship);
-      const statusLabel = isAvailable ? (isSelected ? 'SELECTED' : 'READY') : this.getShipLockedLabel(ship).toUpperCase();
-      const borderColor = isPreviewed ? 0x42f5d7 : isAvailable ? 0x52627f : 0xff5964;
-      const textColor = isUnlocked ? '#f2fbff' : '#8090a6';
-
-      graphics.fillStyle(isPreviewed ? 0x102633 : 0x111a24, 0.9);
-      graphics.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
-      graphics.lineStyle(1, borderColor, isPreviewed ? 0.9 : 0.6);
-      graphics.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
-
-      const preview = this.add
-        .image(rowX + 31, rowY + rowHeight / 2, ship.textureKey)
-        .setDisplaySize(48, 48)
-        .setRotation(ship.visualRotation)
-        .setAlpha(isUnlocked ? 1 : 0.56);
-      const text = this.add
-        .text(
-          rowX + 66,
-          rowY + 12,
-          `${ship.displayName}\n${ship.display.roleTitle}\nLv. 1  ${statusLabel}`,
-          {
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: '12px',
-            color: textColor,
-            fixedWidth: rowWidth - 76,
-            lineSpacing: 2,
-            wordWrap: { width: rowWidth - 76, useAdvancedWrap: true }
-          }
-        )
-        .setOrigin(0, 0);
-      this.shipSelectScreen?.add([preview, text]);
-
-      const zone = this.add
-        .zone(this.scale.width / 2 + rowX, this.scale.height / 2 + rowY, rowWidth, rowHeight)
-        .setOrigin(0, 0)
-        .setScrollFactor(0)
-        .setDepth(1301)
-        .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
-          pointer.event?.stopPropagation();
-          if (ship.selectable) {
-            this.hangarPreviewShipId = ship.id;
-            this.showShipSelect();
-          }
-        })
-        .on('pointerout', () => this.resetUiCursor());
-      if (ship.selectable) {
-        zone.setInteractive({ useHandCursor: true });
-      }
-      this.shipSelectActionZones.push(zone);
-    }
-  }
-
-  private renderSelectedShipCard(
-    graphics: Phaser.GameObjects.Graphics,
-    ship: ShipRegistryEntry,
-    x: number,
-    y: number,
-    width: number,
-    height: number
-  ): void {
-    const contentX = x + 24;
-    const contentWidth = width - 48;
-    const imageY = y + 96;
-    const identityY = y + 172;
-    const descriptionY = identityY + 58;
-    const tagY = descriptionY + 38;
-    const masteryY = tagY + 32;
-    const statsTitleY = masteryY + 38;
-    const statStartY = statsTitleY + 26;
-    const statRowHeight = 42;
-    const maxStatRows = Math.max(3, Math.min(8, Math.floor((height - (statStartY - y) - 24) / statRowHeight)));
-    const isUnlocked = this.isShipUnlocked(ship.id);
-
-    const shipImage = this.add
-      .image(x + width / 2, imageY, ship.textureKey)
-      .setDisplaySize(ship.displaySize * 0.98, ship.displaySize * 0.98)
-      .setRotation(ship.visualRotation)
-      .setAlpha(isUnlocked ? 1 : 0.54);
-    this.shipSelectScreen?.add(shipImage);
-
-    const nameText = this.add
-      .text(contentX, identityY, `${ship.displayName.toUpperCase()}\n${ship.display.roleTitle}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '19px',
-        color: '#f2fbff',
-        fixedWidth: contentWidth,
-        lineSpacing: 4
-      })
-      .setOrigin(0, 0);
-    const description = this.add
-      .text(contentX, descriptionY, ship.display.shortDescription, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
-        color: '#c8f7ff',
-        fixedWidth: contentWidth,
-        wordWrap: { width: contentWidth, useAdvancedWrap: true }
-      })
-      .setOrigin(0, 0);
-    const mastery = this.add
-      .text(contentX, masteryY, 'Level 1   Mastery Coming Soon', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#ffc857',
-        fixedWidth: contentWidth
-      })
-      .setOrigin(0, 0);
-    const statsTitle = this.add
-      .text(contentX, statsTitleY, 'CURRENT STATS', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#73f2ff'
-      })
-      .setOrigin(0, 0);
-    this.shipSelectScreen?.add([nameText, description, mastery, statsTitle]);
-    this.renderShipTags(ship.display.tags, contentX, tagY, contentWidth);
-
-    const statRows = this.getVisibleShipStatRows(ship).slice(0, maxStatRows);
-    for (let i = 0; i < statRows.length; i += 1) {
-      const stat = statRows[i];
-      this.renderStatPips(graphics, stat, contentX, statStartY + i * statRowHeight, contentWidth);
-    }
-  }
-
-  private renderPrimarySystemPanel(
-    _graphics: Phaser.GameObjects.Graphics,
-    ship: ShipRegistryEntry,
-    x: number,
-    y: number,
-    width: number,
-    height: number
-  ): void {
-    const contentX = x + 18;
-    const contentWidth = width - 36;
-    const weaponY = y + 58;
-    const upgradeY = y + Math.max(180, Math.floor(height * 0.32));
-    const masteryY = y + Math.max(330, Math.floor(height * 0.62));
-    const primaryWeapon = this.getPrimaryWeaponDisplay(ship);
-    const weaponType = primaryWeapon.behaviorType === 'projectile' ? 'Ranged Weapon' : 'Impact Shield';
-    const upgradeList = ship.display.exampleUpgradeIds ?? [];
-    const masteryList = ship.display.masteryPreview ?? [];
-
-    const weaponText = this.add
-      .text(
-        contentX,
-        weaponY,
-        `${primaryWeapon.displayName}\n${weaponType}\n\n${primaryWeapon.description}`,
-        {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '14px',
-          color: '#f2fbff',
-          fixedWidth: contentWidth,
-          lineSpacing: 4,
-          wordWrap: { width: contentWidth, useAdvancedWrap: true }
-        }
-      )
-      .setOrigin(0, 0);
-    const upgradeTitle = this.add
-      .text(contentX, upgradeY, 'UPGRADE PATH', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#73f2ff'
-      })
-      .setOrigin(0, 0);
-    const upgrades = this.add
-      .text(contentX, upgradeY + 26, upgradeList.map((label) => `- ${label}`).join('\n'), {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#c8f7ff',
-        fixedWidth: contentWidth,
-        lineSpacing: 4,
-        wordWrap: { width: contentWidth, useAdvancedWrap: true }
-      })
-      .setOrigin(0, 0);
-    const masteryTitle = this.add
-      .text(contentX, masteryY, 'MASTERY PREVIEW', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#ffc857'
-      })
-      .setOrigin(0, 0);
-    const mastery = this.add
-      .text(contentX, masteryY + 26, masteryList.map((item) => `Lv. ${item.level}: ${item.label}`).join('\n'), {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
-        color: '#f2fbff',
-        fixedWidth: contentWidth,
-        lineSpacing: 4,
-        wordWrap: { width: contentWidth, useAdvancedWrap: true }
-      })
-      .setOrigin(0, 0);
-
-    this.shipSelectScreen?.add([weaponText, upgradeTitle, upgrades, masteryTitle, mastery]);
-  }
-
-  private renderShipTags(tags: string[], x: number, y: number, maxWidth: number): void {
-    let cursorX = x;
-    let cursorY = y;
-
-    for (const tag of tags) {
-      const tagWidth = Math.min(150, Math.max(58, tag.length * 7 + 18));
-
-      if (cursorX + tagWidth > x + maxWidth) {
-        cursorX = x;
-        cursorY += 22;
-      }
-
-      const tagGraphics = this.add.graphics();
-      tagGraphics.fillStyle(0x102633, 0.94);
-      tagGraphics.fillRoundedRect(cursorX, cursorY, tagWidth, 18, 5);
-      tagGraphics.lineStyle(1, 0x42f5d7, 0.64);
-      tagGraphics.strokeRoundedRect(cursorX, cursorY, tagWidth, 18, 5);
-      const tagText = this.add
-        .text(cursorX + tagWidth / 2, cursorY + 9, tag, {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '10px',
-          color: '#c8f7ff',
-          align: 'center',
-          fixedWidth: tagWidth - 6
-        })
-        .setOrigin(0.5);
-
-      this.shipSelectScreen?.add([tagGraphics, tagText]);
-      cursorX += tagWidth + 6;
-    }
-  }
-
-  private renderStatPips(
-    graphics: Phaser.GameObjects.Graphics,
-    stat: HangarStatRow,
-    x: number,
-    y: number,
-    width: number
-  ): void {
-    const labelWidth = 92;
-    const valueWidth = 74;
-    const pipColumns = 25;
-    const pipRows = 4;
-    const pipGap = 2;
-    const gridValueGap = 12;
-    const pipSize = Math.min(
-      8,
-      Math.max(5, Math.floor((width - labelWidth - valueWidth - gridValueGap - pipGap * (pipColumns - 1)) / pipColumns))
-    );
-    const gridWidth = pipColumns * pipSize + (pipColumns - 1) * pipGap;
-    const gridHeight = pipRows * pipSize + (pipRows - 1) * pipGap;
-    const pipsX = x + labelWidth;
-    const pipsY = y + Math.floor((40 - gridHeight) / 2);
-    const textY = y + 13;
-    const filledPips = stat.unitsPerPip > 0 ? Phaser.Math.Clamp(stat.pipValue / stat.unitsPerPip, 0, 100) : 0;
-
-    const labelText = this.add
-      .text(x, textY, stat.label, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
-        color: '#f2fbff',
-        fixedWidth: labelWidth - 8
-      })
-      .setOrigin(0, 0);
-    const valueText = this.add
-      .text(pipsX + gridWidth + gridValueGap + valueWidth, textY, stat.valueLabel, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
-        color: '#c8f7ff',
-        align: 'right',
-        fixedWidth: valueWidth
-      })
-      .setOrigin(1, 0);
-
-    for (let i = 0; i < 100; i += 1) {
-      const column = i % pipColumns;
-      const row = Math.floor(i / pipColumns);
-      const pipX = pipsX + column * (pipSize + pipGap);
-      const pipY = pipsY + row * (pipSize + pipGap);
-      const fillAmount = Phaser.Math.Clamp(filledPips - i, 0, 1);
-      const isFilled = fillAmount > 0;
-      graphics.fillStyle(0x0b1620, 0.96);
-      graphics.fillRect(pipX, pipY, pipSize, pipSize);
-      if (isFilled) {
-        graphics.fillStyle(0x4ff5df, 0.94);
-        graphics.fillRect(pipX, pipY, Math.max(1, pipSize * fillAmount), pipSize);
-      }
-      graphics.lineStyle(1, isFilled ? 0xa3fff4 : 0x33465f, isFilled ? 0.76 : 0.52);
-      graphics.strokeRect(pipX, pipY, pipSize, pipSize);
-    }
-
-    this.shipSelectScreen?.add([labelText, valueText]);
-  }
-
-  private getVisibleShipStatRows(ship: ShipRegistryEntry): HangarStatRow[] {
-    const primaryWeapon = this.getPrimaryWeaponDisplay(ship);
-    const shield = primaryWeapon.rammingShield;
-    const rows: HangarStatRow[] = [
-      this.createHealthHangarStatRow('Hull', ship.baseStats.maxHull),
-      this.createScaledHangarStatRow('Speed', ship.movement.maxSpeed, 'spd'),
-      this.createScaledHangarStatRow('Thrust', ship.movement.thrustAcceleration, 'thr'),
-      this.createHangarStatRow('Turn', ship.movement.rotationSpeed, 1, '/s', 1),
-      this.createHangarStatRow('Mass', ship.baseStats.mass, 1, 'mass', 1)
-    ];
-
-    if (shield) {
-      rows.splice(1, 0, this.createHealthHangarStatRow('Shield', shield.shieldMaxHp));
-      rows.push(
-        this.createHangarStatRow('Ram Damage', shield.maxDamage * shield.dashRamDamageMultiplier, 1, 'dmg', 1),
-        this.createHangarStatRow('Shield Regen', shield.shieldRegenRatePerSecond, 1, '/s', 1),
-        this.createHangarStatRow('Dash Charges', shield.dashMaxCharges, 1, 'chg')
-      );
-    } else {
-      rows.push(
-        this.createHangarStatRow('Damage', primaryWeapon.damage ?? 0, 1, 'dmg'),
-        this.createHangarStatRow(
-          'Fire Rate',
-          primaryWeapon.cooldownSeconds && primaryWeapon.cooldownSeconds > 0 ? 1 / primaryWeapon.cooldownSeconds : 0,
-          1,
-          '/s',
-          2
-        ),
-        this.createScaledHangarStatRow('Proj Speed', primaryWeapon.projectileSpeed ?? 0, 'spd')
-      );
-    }
-
-    return rows.filter((row) => row.pipValue > 0).slice(0, 8);
-  }
-
-  private createHangarStatRow(label: string, rawValue: number | undefined, unitsPerPip: number, unitLabel: string, decimals = 0): HangarStatRow {
-    const safeValue = rawValue ?? 0;
-    const valueLabel = `${this.formatHangarStatValue(safeValue, decimals)} ${unitLabel}`;
-    return {
-      label,
-      pipValue: safeValue,
-      valueLabel,
-      unitsPerPip
-    };
-  }
-
-  private createHealthHangarStatRow(label: string, hpValue: number | undefined): HangarStatRow {
-    const safeValue = hpValue ?? 0;
-    return {
-      label,
-      pipValue: toDisplayUnits(safeValue),
-      valueLabel: `${Math.round(safeValue)} HP`,
-      unitsPerPip: 1
-    };
-  }
-
-  private createScaledHangarStatRow(label: string, rawValue: number | undefined, unitLabel: string): HangarStatRow {
-    const safeValue = rawValue ?? 0;
-    return {
-      label,
-      pipValue: toDisplayUnits(safeValue),
-      valueLabel: `${formatIntegerDisplayUnits(safeValue)} ${unitLabel}`,
-      unitsPerPip: 1
-    };
-  }
-
-  private formatHangarStatValue(value: number, decimals: number): string {
-    if (decimals <= 0) {
-      return `${Math.round(value)}`;
-    }
-
-    return value.toFixed(decimals).replace(/\.?0+$/, '');
-  }
-
-  private getPrimaryWeaponDisplay(ship: ShipRegistryEntry): WeaponRegistryEntry {
-    return getWeaponDefinition(ship.startingMainWeaponId);
-  }
-
-  private getShipActionLabel(ship: ShipRegistryEntry): string {
-    if (!ship.selectable) {
-      return 'Locked';
-    }
-
-    if (!this.isShipUnlocked(ship.id)) {
-      return this.canUnlockShip(ship) ? `Buy ${ship.unlockCostCredits} Credits` : `Need ${ship.unlockCostCredits} Credits`;
-    }
-
-    return 'Start Run';
   }
 
   private handleShipAction(ship: ShipRegistryEntry): void {
@@ -2347,7 +1917,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyShipSelectScreen(): void {
-    this.shipSelectScreenHandle = destroyScreenHandle(this.shipSelectScreenHandle, {
+    this.shipSelectScreen = destroyScreenHandle(this.shipSelectScreen, {
       disableZones: true,
       resetCursor: () => this.resetUiCursor()
     });
