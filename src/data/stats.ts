@@ -1,6 +1,12 @@
 import {
+  ARMOR_PLATING_DEFENSE_BONUS,
+  COMBAT_TRAINING_XP_MULTIPLIER,
   ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER,
+  EXTRA_PAYLOAD_AMOUNT_BONUS,
   HULL_REINFORCEMENT_MAX_HULL_BONUS,
+  LUCKY_CHARM_DROP_CHANCE_BONUS,
+  MAGNET_ARRAY_RADIUS_MULTIPLIER,
+  PIERCING_ROUNDS_PIERCE_BONUS,
   SALVAGE_TRAINING_CREDIT_MULTIPLIER,
   type PermanentUpgradeId
 } from './permanentUpgrades';
@@ -91,6 +97,12 @@ export function resolvePlayerStats(input: ResolvePlayerStatsInput): PlayerStats 
     strafe: input.baseStats.strafe * engineAccelerationMultiplier,
     damage: input.baseStats.damage * (1 + input.permanentLevels['pulse-capacitor'] * PERMANENT_PLAYER_DAMAGE_MULTIPLIER),
     recovery: input.baseStats.recovery + input.passiveLevels.damageControl * DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS,
-    greed: input.baseStats.greed * (1 + input.permanentLevels['salvage-training'] * SALVAGE_TRAINING_CREDIT_MULTIPLIER)
+    defense: input.baseStats.defense + input.permanentLevels['armor-plating'] * ARMOR_PLATING_DEFENSE_BONUS,
+    amount: input.baseStats.amount + input.permanentLevels['extra-payload'] * EXTRA_PAYLOAD_AMOUNT_BONUS,
+    pierce: input.baseStats.pierce + input.permanentLevels['piercing-rounds'] * PIERCING_ROUNDS_PIERCE_BONUS,
+    magnet: input.baseStats.magnet * (1 + input.permanentLevels['magnet-array'] * MAGNET_ARRAY_RADIUS_MULTIPLIER),
+    growth: input.baseStats.growth * (1 + input.permanentLevels['combat-training'] * COMBAT_TRAINING_XP_MULTIPLIER),
+    greed: input.baseStats.greed * (1 + input.permanentLevels['salvage-training'] * SALVAGE_TRAINING_CREDIT_MULTIPLIER),
+    luck: input.baseStats.luck + input.permanentLevels['lucky-charm'] * LUCKY_CHARM_DROP_CHANCE_BONUS
   };
 }

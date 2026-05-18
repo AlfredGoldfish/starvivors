@@ -5,6 +5,7 @@ export const interceptorMovement = {
   rotationSpeed: 3.6,
   brakeDamping: 0.9,
   lowFrictionDamping: 0.995,
+  overspeedDamping: 3.2,
   maxSpeed: 500
 };
 

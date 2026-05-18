@@ -1,4 +1,5 @@
 import { getWeaponDefinition, type WeaponRegistryEntry } from '../data/weapons';
+import type { RunUpgradeLevels } from './runUpgrades';
 
 export interface PlayerWeaponRuntimeState {
   activeMainWeaponId: WeaponRegistryEntry['id'];
@@ -7,11 +8,7 @@ export interface PlayerWeaponRuntimeState {
   nextSecondaryWeaponFireAt: number;
 }
 
-export interface PlayerWeaponUpgradeState {
-  projectileDamageLevel: number;
-  projectileFireRateLevel: number;
-  projectileVelocityLevel: number;
-}
+export type PlayerWeaponUpgradeState = RunUpgradeLevels;
 
 export interface PlayerWeaponDebugTuning {
   damageMultiplier: number;

@@ -2,6 +2,7 @@ import type { ShipRegistryEntry } from '../data/ships';
 import type { PlayerStats } from '../data/stats';
 import type { RammingShieldStats, WeaponRegistryEntry, WeaponSlotType } from '../data/weapons';
 import type { PlayerWeaponDebugTuning, PlayerWeaponUpgradeState } from './playerWeapons';
+import { getAdditiveWeaponUpgradeModifier, getMultiplicativeWeaponUpgradeModifier } from './runUpgrades';
 
 export interface ResolvedProjectileWeaponStats {
   damage: number;
@@ -31,9 +32,6 @@ export interface ResolveWeaponStatsInput {
   debugTuning: PlayerWeaponDebugTuning;
 }
 
-const PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER = 0.25;
-const PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER = 0.88;
-const PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER = 0.2;
 const PLAYER_PROJECTILE_COUNT_CAP = 6;
 
 export function resolveWeaponStats(input: ResolveWeaponStatsInput): ResolvedWeaponStats {
@@ -53,17 +51,20 @@ export function resolveProjectileStats(input: ResolveWeaponStatsInput): Resolved
 
   const baseCooldownMs = getProjectileBaseCooldownMs(weapon, input.upgrades);
   const projectileSpeed = getProjectileSpeed(weapon, input.upgrades, input.playerStats);
+  const areaMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'projectileAreaMultiplier');
+  const projectileCountBonus = getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'projectileCount');
+  const projectilePierceBonus = getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'projectilePierce');
 
   return {
-    damage: (weapon.damage ?? 0) * getWeaponDamageMultiplier(input.upgrades) * input.playerStats.damage * input.debugTuning.damageMultiplier,
+    damage: (weapon.damage ?? 0) * getWeaponDamageMultiplier(input.upgrades, weapon) * input.playerStats.damage * input.debugTuning.damageMultiplier,
     cooldownMs: baseCooldownMs / (input.playerStats.attackSpeed * input.debugTuning.fireRateMultiplier),
     baseCooldownMs,
     projectileSpeed,
     projectileLifetimeMs: (weapon.projectileLifetimeSeconds ?? 0) * 1000 * input.playerStats.duration,
     projectileRange: (weapon.projectileRange ?? 0) * input.playerStats.duration,
-    projectileAreaScale: input.playerStats.area,
-    projectileCount: Math.min(PLAYER_PROJECTILE_COUNT_CAP, Math.max(1, 1 + Math.floor(input.playerStats.amount))),
-    pierce: Math.max(0, Math.floor(input.playerStats.pierce))
+    projectileAreaScale: input.playerStats.area * areaMultiplier,
+    projectileCount: Math.min(PLAYER_PROJECTILE_COUNT_CAP, Math.max(1, 1 + Math.floor(input.playerStats.amount + projectileCountBonus))),
+    pierce: Math.max(0, Math.floor(input.playerStats.pierce + projectilePierceBonus))
   };
 }
 
@@ -78,28 +79,45 @@ export function resolveRammingShieldStats(input: ResolveWeaponStatsInput): Rammi
       ? input.ship.defaultPrimaryWeaponBonuses?.[input.weapon.id]?.rammingShield
       : undefined;
 
-  if (!bonus) {
-    return stats;
+  if (bonus) {
+    const dashImpulseMultiplier = bonus.dashImpulseMultiplier ?? 1;
+    const { dashImpulseMultiplier: _unusedDashImpulseMultiplier, ...overrides } = bonus;
+
+    Object.assign(stats, {
+      ...overrides,
+      dashImpulse: (overrides.dashImpulse ?? stats.dashImpulse) * dashImpulseMultiplier
+    });
   }
 
-  const dashImpulseMultiplier = bonus.dashImpulseMultiplier ?? 1;
-  const { dashImpulseMultiplier: _unusedDashImpulseMultiplier, ...overrides } = bonus;
+  const ramDamageMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'ramDamageMultiplier');
+  const shieldMaxHpMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldMaxHpMultiplier');
+  const shieldRegenRateMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldRegenRateMultiplier');
+  const shieldRegenDelayMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldRegenDelayMultiplier');
+  const impactRadiusMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'impactRadiusMultiplier');
+  const dashRechargeMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashRechargeMultiplier');
 
   return {
     ...stats,
-    ...overrides,
-    dashImpulse: (overrides.dashImpulse ?? stats.dashImpulse) * dashImpulseMultiplier
+    shieldMaxHp: stats.shieldMaxHp * shieldMaxHpMultiplier,
+    shieldRegenDelaySeconds: stats.shieldRegenDelaySeconds * shieldRegenDelayMultiplier,
+    shieldRegenRatePerSecond: stats.shieldRegenRatePerSecond * shieldRegenRateMultiplier,
+    dashChargeRechargeSeconds: stats.dashChargeRechargeSeconds * dashRechargeMultiplier,
+    range: stats.range * impactRadiusMultiplier,
+    width: stats.width * impactRadiusMultiplier,
+    baseDamage: stats.baseDamage * ramDamageMultiplier,
+    maxDamage: stats.maxDamage * ramDamageMultiplier
   };
 }
 
-export function getWeaponDamageMultiplier(upgrades: PlayerWeaponUpgradeState): number {
-  return 1 + upgrades.projectileDamageLevel * PROJECTILE_DAMAGE_UPGRADE_MULTIPLIER;
+export function getWeaponDamageMultiplier(upgrades: PlayerWeaponUpgradeState, weapon: WeaponRegistryEntry): number {
+  return 1 + getAdditiveWeaponUpgradeModifier(upgrades, weapon, 'projectileDamageMultiplier');
 }
 
 function getProjectileBaseCooldownMs(weapon: WeaponRegistryEntry, upgrades: PlayerWeaponUpgradeState): number {
-  return (weapon.cooldownSeconds ?? 0) * 1000 * Math.pow(PROJECTILE_FIRE_RATE_COOLDOWN_MULTIPLIER, upgrades.projectileFireRateLevel);
+  return (weapon.cooldownSeconds ?? 0) * 1000 * getMultiplicativeWeaponUpgradeModifier(upgrades, weapon, 'projectileCooldownMultiplier');
 }
 
 function getProjectileSpeed(weapon: WeaponRegistryEntry, upgrades: PlayerWeaponUpgradeState, playerStats: PlayerStats): number {
-  return (weapon.projectileSpeed ?? 0) * (1 + upgrades.projectileVelocityLevel * PROJECTILE_VELOCITY_UPGRADE_MULTIPLIER) * playerStats.projectileSpeed;
+  const upgradeMultiplier = 1 + getAdditiveWeaponUpgradeModifier(upgrades, weapon, 'projectileSpeedMultiplier');
+  return (weapon.projectileSpeed ?? 0) * upgradeMultiplier * playerStats.projectileSpeed;
 }

@@ -9,12 +9,57 @@ export interface ShipWeaponBonusDefinition {
   };
 }
 
+export interface ShipDisplayStatRatings {
+  hull?: number;
+  shield?: number;
+  speed?: number;
+  handling?: number;
+  mass?: number;
+  primaryDamage?: number;
+  fireRate?: number;
+  ramDamage?: number;
+  shieldRegen?: number;
+  pickupRange?: number;
+}
+
+export interface ShipMasteryPreviewDefinition {
+  level: number;
+  label: string;
+}
+
+export interface ShipDisplayDefinition {
+  roleTitle: string;
+  shortDescription: string;
+  tags: string[];
+  statRatings: ShipDisplayStatRatings;
+  exampleUpgradeIds?: string[];
+  masteryPreview?: ShipMasteryPreviewDefinition[];
+}
+
+export interface ShipLevelGrowthWeights {
+  hull?: number;
+  shieldCapacity?: number;
+  shieldRegen?: number;
+  moveSpeed?: number;
+  handling?: number;
+  mass?: number;
+  primaryDamage?: number;
+  primaryFireRate?: number;
+  projectileSpeed?: number;
+  projectileSize?: number;
+  ramDamage?: number;
+  pickupRange?: number;
+  luck?: number;
+}
+
 export interface ShipRegistryEntry extends ContentRegistryEntry {
   id: ShipId;
   displayName: string;
   selectable: boolean;
   description: string;
   role: string;
+  display: ShipDisplayDefinition;
+  levelGrowthWeights?: ShipLevelGrowthWeights;
   baseStats: PlayerBaseStats;
   hitRadius: number;
   movementNotes: string;
@@ -35,6 +80,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
     rotationSpeed: number;
     brakeDamping: number;
     lowFrictionDamping: number;
+    overspeedDamping: number;
     maxSpeed: number;
   };
 }
@@ -51,6 +97,36 @@ export const shipRegistry: ShipRegistryEntry[] = [
     selectable: true,
     description: 'Current default ship. Fast, responsive, and tuned for evasive Pulse Cannon runs.',
     role: 'Agile striker',
+    display: {
+      roleTitle: 'Agile Ranged Striker',
+      shortDescription: 'Fast, responsive, and tuned for evasive Pulse Cannon runs.',
+      tags: ['Ranged', 'Agile', 'Projectile', 'Beginner Friendly'],
+      statRatings: {
+        hull: 4,
+        speed: 9,
+        handling: 8,
+        mass: 3,
+        primaryDamage: 6,
+        fireRate: 7,
+        pickupRange: 5
+      },
+      exampleUpgradeIds: ['Multishot', 'Pierce', 'Rapid Fire', 'Explosive Pulse'],
+      masteryPreview: [
+        { level: 5, label: 'Pulse Cannon starts stronger' },
+        { level: 10, label: 'Improved projectile upgrade choices' },
+        { level: 15, label: 'Faster primary weapon scaling' },
+        { level: 20, label: 'Interceptor mastery bonus coming soon' }
+      ]
+    },
+    levelGrowthWeights: {
+      moveSpeed: 1,
+      handling: 1,
+      primaryDamage: 0.9,
+      primaryFireRate: 0.85,
+      projectileSpeed: 0.75,
+      projectileSize: 0.45,
+      pickupRange: 0.35
+    },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
       maxHull: 100,
@@ -79,6 +155,37 @@ export const shipRegistry: ShipRegistryEntry[] = [
     selectable: true,
     description: 'Heavy ramming ship. Tough hull, slower handling, and a forward Ramming Shield.',
     role: 'Heavy rammer',
+    display: {
+      roleTitle: 'Heavy Impact Defender',
+      shortDescription: 'Tough shielded hull built for committed rams and close-range impact control.',
+      tags: ['Melee', 'Heavy', 'Shield', 'High Risk'],
+      statRatings: {
+        hull: 9,
+        shield: 8,
+        speed: 5,
+        handling: 3,
+        mass: 9,
+        ramDamage: 8,
+        shieldRegen: 7,
+        pickupRange: 4
+      },
+      exampleUpgradeIds: ['Shield Capacity', 'Ram Damage', 'Impact Radius', 'Shockwave Ram'],
+      masteryPreview: [
+        { level: 5, label: 'Shield capacity improves' },
+        { level: 10, label: 'Shield regen improves' },
+        { level: 15, label: 'Ram impact scaling improves' },
+        { level: 20, label: 'Bulwark mastery bonus coming soon' }
+      ]
+    },
+    levelGrowthWeights: {
+      hull: 1,
+      shieldCapacity: 1,
+      shieldRegen: 0.85,
+      mass: 0.9,
+      ramDamage: 1,
+      handling: 0.35,
+      pickupRange: 0.25
+    },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
       maxHull: 150,
@@ -113,6 +220,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
       thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.35),
       reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.45),
       strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.3),
+      overspeedDamping: 2.2,
       maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.85)
     }
   }
@@ -120,4 +228,8 @@ export const shipRegistry: ShipRegistryEntry[] = [
 
 export function getShipDefinition(shipId: ShipId): ShipRegistryEntry {
   return shipRegistry.find((ship) => ship.id === shipId) ?? shipRegistry[0];
+}
+
+export function getShipDisplayStats(ship: ShipRegistryEntry): ShipDisplayStatRatings {
+  return ship.display.statRatings;
 }

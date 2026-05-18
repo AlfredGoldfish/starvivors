@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { DebugAsteroidTier, DebugMenuCallbacks, DebugMenuValues } from '../systems/debug/debugTypes';
+import { formatIntegerDisplayUnits, toDisplayUnits } from '../systems/statUnits';
 
 export interface DebugMenuConfig {
   callbacks: DebugMenuCallbacks;
@@ -10,6 +11,7 @@ export interface DebugMenuController {
   close: () => void;
   toggle: () => void;
   isOpen: () => boolean;
+  containsPointer: (pointer: Phaser.Input.Pointer) => boolean;
   update: (values: DebugMenuValues) => void;
   destroy: () => void;
 }
@@ -330,6 +332,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     .setVisible(false)
     .setInteractive()
     .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+    .on('pointermove', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
     .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
     .disableInteractive();
 
@@ -498,34 +501,34 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-speed`, y, 'Speed', () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', 10), {
+    addButtonPair('ship', `${shipId}-speed`, y, 'Speed', () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', 1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Speed ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'moveSpeed', value),
-      step: 10
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-thrust`, y, 'Thrust', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 10), {
+    addButtonPair('ship', `${shipId}-thrust`, y, 'Thrust', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Thrust ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'thrust', value),
-      step: 10
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-brake`, y, 'Brake', () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', 10), {
+    addButtonPair('ship', `${shipId}-brake`, y, 'Brake', () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'brake', 1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Brake ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'brake', value),
-      step: 10
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-strafe`, y, 'Strafe', () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', -10), () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', 10), {
+    addButtonPair('ship', `${shipId}-strafe`, y, 'Strafe', () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'strafe', 1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Strafe ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'strafe', value),
-      step: 10
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-hit`, y, 'Hit', () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', 1), {
+    addButtonPair('ship', `${shipId}-hit`, y, 'Hit', () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', -0.1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', 0.1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Hit ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'hitRadius', value),
-      step: 1
+      step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('ship', `${shipId}-save`, panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveShipLoadout(shipId));
@@ -550,10 +553,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.05
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'pulse-speed', y, 'Speed', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', -25), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', 25), {
+    addButtonPair('weapons', 'pulse-speed', y, 'Speed', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', -1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Speed ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileSpeed', value),
-      step: 25
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButtonPair('weapons', 'pulse-life', y, 'Life', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', 0.1), {
@@ -562,10 +565,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'pulse-range', y, 'Range', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', -50), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', 50), {
+    addButtonPair('weapons', 'pulse-range', y, 'Range', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', -1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileRange', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Range ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileRange', value),
-      step: 50
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('weapons', 'pulse-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('pulse-cannon'));
@@ -602,10 +605,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-impulse', y, 'Impulse', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', -25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', 25), {
+    addButtonPair('weapons', 'shield-impulse', y, 'Impulse', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Imp ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashImpulse', value),
-      step: 25
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButtonPair('weapons', 'shield-ram', y, 'Ram x', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', 0.25), {
@@ -626,10 +629,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-size', y, 'Width', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', -5), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', 5), {
+    addButtonPair('weapons', 'shield-size', y, 'Width', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Width ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'width', value),
-      step: 5
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('weapons', 'shield-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('ramming-shield'));
@@ -643,10 +646,10 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('physics', y, 'Global Physics');
     addValue('physics-global', 'physics', y, VALUE_LINE_HEIGHT * 7);
     y += VALUE_LINE_HEIGHT * 7 + BUTTON_GAP;
-    addButtonPair('physics', 'global-speed', y, 'MaxSpd', () => config.callbacks.adjustGlobalMaxSpeed(-100), () => config.callbacks.adjustGlobalMaxSpeed(100), {
-      getValue: (values) => values.globalMaxSpeed,
+    addButtonPair('physics', 'global-speed', y, 'MaxSpd', () => config.callbacks.adjustGlobalMaxSpeed(-1), () => config.callbacks.adjustGlobalMaxSpeed(1), {
+      getValue: (values) => toDisplayUnits(values.globalMaxSpeed),
       setValue: (value) => config.callbacks.setPhysicsTuning('globalMaxSpeed', value),
-      step: 100
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButtonPair('physics', 'global-impact-cap', y, 'GCap', () => config.callbacks.adjustGlobalImpactDamageCap(-50), () => config.callbacks.adjustGlobalImpactDamageCap(50), {
@@ -983,7 +986,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       }
     };
 
-    element.addEventListener('pointerdown', (event) => event.stopPropagation());
+    const stopDomEvent = (event: Event) => event.stopPropagation();
+
+    element.addEventListener('pointerdown', stopDomEvent);
+    element.addEventListener('pointerup', stopDomEvent);
+    element.addEventListener('click', stopDomEvent);
+    element.addEventListener('wheel', stopDomEvent);
     element.addEventListener('keydown', (event) => {
       event.stopPropagation();
       if (event.key === 'Enter') {
@@ -1246,6 +1254,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     }
   }
 
+  function hideNumberInputs(): void {
+    for (const input of numberInputs) {
+      input.element.blur();
+      input.element.style.display = 'none';
+      input.element.disabled = true;
+    }
+  }
+
   function applyButtonStyle(button: DebugButton): void {
     const tabButton = tabButtons.includes(button);
     const isActiveTabButton = tabButton && button === buttonsByKey.get(`tab-${activeTab}`);
@@ -1303,14 +1319,24 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     close: () => {
       open = false;
       container.setVisible(false);
+      hideNumberInputs();
       refreshButtonInputs();
     },
     toggle: () => {
       open = !open;
       container.setVisible(open);
+      if (!open) {
+        hideNumberInputs();
+      }
       refreshButtonInputs();
     },
     isOpen: () => open,
+    containsPointer: (pointer: Phaser.Input.Pointer) =>
+      open &&
+      pointer.x >= panelX &&
+      pointer.x <= panelX + PANEL_WIDTH &&
+      pointer.y >= panelY &&
+      pointer.y <= panelY + panelHeight,
     update: (values: DebugMenuValues) => {
       for (const input of numberInputs) {
         if (typeof document !== 'undefined' && document.activeElement !== input.element) {
@@ -1330,7 +1356,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
       setValue(
         'ship-stats',
-        `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${values.playerSpeed.toFixed(1)} / ${values.playerMaxSpeed.toFixed(1)}\nThrust ${values.playerThrust.toFixed(1)}\nBrake ${values.playerBrake.toFixed(1)}\nStrafe ${values.playerStrafe.toFixed(1)}`
+        `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nThrust ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe ${formatIntegerDisplayUnits(values.playerStrafe)}`
       );
       setValue('ship-loadout-interceptor', values.shipTuningSummaries.interceptor);
       setValue('ship-loadout-bulwark', values.shipTuningSummaries.bulwark);
@@ -1349,13 +1375,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       setValue('weapon-loadout-ramming-shield', values.weaponTuningSummaries['ramming-shield']);
       setValue(
         'physics-global',
-        `Global max ${values.globalMaxSpeed.toFixed(1)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
+        `Global max ${formatIntegerDisplayUnits(values.globalMaxSpeed)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
           `Caps P/E/A/D ${values.playerImpactDamageCap.toFixed(0)}/${values.enemyImpactDamageCap.toFixed(0)}/${values.asteroidImpactDamageCap.toFixed(0)}/${values.debrisImpactDamageCap.toFixed(0)}\n` +
           `Scale P/E/A/D ${values.playerImpactDamageScale.toFixed(3)}/${values.enemyImpactDamageScale.toFixed(3)}/${values.asteroidImpactDamageScale.toFixed(3)}/${values.debrisImpactDamageScale.toFixed(3)}`
       );
       setValue(
         'physics-player',
-        `Speed ${values.playerSpeed.toFixed(1)} / ${values.playerMaxSpeed.toFixed(1)}\nMass ${values.playerMass.toFixed(2)}\nThrust x${values.playerThrustScale.toFixed(2)} = ${values.playerThrust.toFixed(1)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${values.playerBrake.toFixed(1)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${values.playerStrafe.toFixed(1)}\nInertia x${values.playerInertiaScale.toFixed(2)}\nMass exponent ${values.playerControlMassExponent.toFixed(2)}`
+        `Speed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nMass ${values.playerMass.toFixed(2)}\nThrust x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}\nMass exponent ${values.playerControlMassExponent.toFixed(2)}`
       );
       setValue(
         'physics-enemy',

@@ -2,6 +2,7 @@ import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../b
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
 import type { RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import type { DebugMenuValues } from './debugTypes';
+import { formatDisplayUnits, formatIntegerDisplayUnits } from '../statUnits';
 
 const DEBUG_WEAPON_DAMAGE_MULTIPLIER_MIN = 1;
 const DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN = 0.1;
@@ -20,7 +21,7 @@ const DEFAULT_ENEMY_RESPONSE_SCALE = 1.18;
 const DEFAULT_ENEMY_MASS_EXPONENT = 0.38;
 const DEFAULT_ASTEROID_COLLISION_DAMAGE_SCALE = 1;
 const DEFAULT_ASTEROID_COLLISION_IMPULSE_SCALE = 1;
-const DEFAULT_GLOBAL_MAX_SPEED = 1000;
+const DEFAULT_GLOBAL_MAX_SPEED = 500;
 const DEFAULT_GLOBAL_IMPACT_DAMAGE_CAP = 600;
 const DEBUG_GLOBAL_MAX_SPEED_MIN = 1;
 const DEBUG_GLOBAL_MAX_SPEED_MAX = 10000;
@@ -381,7 +382,7 @@ export class DebugState {
     const stats = this.getEffectiveShipBaseStats(ship);
     const marker = this.shipOverrides[ship.id] ? ' *' : '';
 
-    return `${ship.displayName}${marker}\nHull ${stats.maxHull}  Mass ${stats.mass.toFixed(2)}  Hit ${this.getEffectiveShipHitRadius(ship).toFixed(1)}\nSpeed ${stats.moveSpeed}  Thrust ${stats.thrust.toFixed(1)}\nBrake ${stats.brake.toFixed(1)}  Strafe ${stats.strafe.toFixed(1)}`;
+    return `${ship.displayName}${marker}\nHull ${stats.maxHull}  Mass ${stats.mass.toFixed(2)}  Hit ${formatDisplayUnits(this.getEffectiveShipHitRadius(ship), 1)}\nSpeed ${formatIntegerDisplayUnits(stats.moveSpeed)}  Thrust ${formatIntegerDisplayUnits(stats.thrust)}\nBrake ${formatIntegerDisplayUnits(stats.brake)}  Strafe ${formatIntegerDisplayUnits(stats.strafe)}`;
   }
 
   adjustWeaponStat(weapon: WeaponRegistryEntry, key: DebugWeaponStatKey, delta: number): void {
@@ -438,10 +439,10 @@ export class DebugState {
 
     if (effective.rammingShield) {
       const stats = effective.rammingShield;
-      return `${weapon.displayName}${marker}\nShield ${stats.shieldMaxHp}  Regen ${stats.shieldRegenRatePerSecond}/s\nDash ${stats.dashMaxCharges} @ ${stats.dashChargeRechargeSeconds.toFixed(2)}s  Imp ${stats.dashImpulse.toFixed(1)}\nRam x${stats.dashRamDamageMultiplier.toFixed(2)}  Dmg ${stats.baseDamage.toFixed(2)}-${stats.maxDamage.toFixed(2)}\nRange ${stats.range.toFixed(1)}  Width ${stats.width.toFixed(1)}`;
+      return `${weapon.displayName}${marker}\nShield ${stats.shieldMaxHp}  Regen ${stats.shieldRegenRatePerSecond}/s\nDash ${stats.dashMaxCharges} @ ${stats.dashChargeRechargeSeconds.toFixed(2)}s  Imp ${formatIntegerDisplayUnits(stats.dashImpulse)}\nRam x${stats.dashRamDamageMultiplier.toFixed(2)}  Dmg ${stats.baseDamage.toFixed(2)}-${stats.maxDamage.toFixed(2)}\nRange ${formatIntegerDisplayUnits(stats.range)}  Width ${formatIntegerDisplayUnits(stats.width)}`;
     }
 
-    return `${weapon.displayName}${marker}\nDamage ${(effective.damage ?? 0).toFixed(2)}  Cooldown ${(effective.cooldownSeconds ?? 0).toFixed(2)}s\nSpeed ${(effective.projectileSpeed ?? 0).toFixed(1)}\nLifetime ${(effective.projectileLifetimeSeconds ?? 0).toFixed(2)}s  Range ${(effective.projectileRange ?? 0).toFixed(1)}`;
+    return `${weapon.displayName}${marker}\nDamage ${(effective.damage ?? 0).toFixed(2)}  Cooldown ${(effective.cooldownSeconds ?? 0).toFixed(2)}s\nSpeed ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}\nLifetime ${(effective.projectileLifetimeSeconds ?? 0).toFixed(2)}s  Range ${formatIntegerDisplayUnits(effective.projectileRange ?? 0)}`;
   }
 
   createMenuValues(snapshot: {

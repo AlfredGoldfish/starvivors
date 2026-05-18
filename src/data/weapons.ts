@@ -6,6 +6,7 @@ export type WeaponId = 'pulse-cannon' | 'ramming-shield';
 export type WeaponSlotType = 'main' | 'secondary';
 export type WeaponBehaviorType = 'projectile' | 'ramming-shield';
 export type WeaponInputBehavior = 'hold' | 'tap';
+export type WeaponTag = 'projectile' | 'pulse' | 'ramming' | 'shield';
 export type WeaponUpgradeBranch = 'damage' | 'fire-rate' | 'projectile-speed' | 'dash-charges' | 'dash-recharge' | 'ram-damage' | 'shield-hp';
 
 export interface WeaponSlotBehaviorDefinition {
@@ -34,6 +35,7 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   description: string;
   sourceShipId: string;
   behaviorType: WeaponBehaviorType;
+  tags: WeaponTag[];
   inputBehavior: WeaponInputBehavior;
   slotCompatibility: WeaponSlotType[];
   slotBehavior: WeaponSlotBehaviorDefinition;
@@ -59,6 +61,7 @@ export const pulseCannon: WeaponRegistryEntry = {
   description: 'Fast main cannon tuned for the Interceptor.',
   sourceShipId: 'interceptor',
   behaviorType: 'projectile',
+  tags: ['projectile', 'pulse'],
   inputBehavior: 'hold',
   slotCompatibility: ['main', 'secondary'],
   slotBehavior: {
@@ -95,6 +98,7 @@ export const rammingShield: WeaponRegistryEntry = {
   description: 'Rechargeable forward impact shield tuned for Bulwark ramming.',
   sourceShipId: 'bulwark',
   behaviorType: 'ramming-shield',
+  tags: ['ramming', 'shield'],
   inputBehavior: 'tap',
   slotCompatibility: ['main', 'secondary'],
   slotBehavior: {

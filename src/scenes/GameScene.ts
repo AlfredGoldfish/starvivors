@@ -27,6 +27,8 @@ import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type Shi
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
   PERMANENT_UPGRADE_DEFINITIONS,
+  VELOCITY_LIMITER_BASE_SPEED,
+  VELOCITY_LIMITER_SPEED_BONUS,
   type PermanentUpgradeDefinition,
   type PermanentUpgradeId
 } from '../data/permanentUpgrades';
@@ -39,11 +41,8 @@ import {
   type PlayerStats
 } from '../data/stats';
 import {
-  INITIAL_PASSIVE_UPGRADE_LEVELS,
-  INITIAL_PULSE_UPGRADE_LEVELS,
-  UPGRADE_CHOICES,
   type PassiveUpgradeId,
-  type PulseUpgradeId,
+  type UpgradeId,
   type UpgradeDefinition
 } from '../data/upgrades';
 import { getWeaponDefinition, isProjectileWeapon, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
@@ -67,7 +66,22 @@ import {
   type RammingShieldCollider,
   type RammingShieldRuntimeState
 } from '../systems/rammingShield';
+import {
+  createInitialRunUpgradeLevels,
+  getAvailableRunUpgrades,
+  getRunUpgradeLevel,
+  incrementRunUpgradeLevel,
+  isRunUpgradeAtMaxLevel,
+  type RunUpgradeLevels
+} from '../systems/runUpgrades';
 import { getWeaponDamageMultiplier, resolveWeaponStats, type ResolvedWeaponStats } from '../systems/weaponStats';
+import {
+  formatDisplayUnits,
+  formatIntegerDisplayUnits,
+  isRawScaledStatKey,
+  toDisplayUnits,
+  toRawUnits
+} from '../systems/statUnits';
 import {
   applyAccelerationWithMass,
   applyCollisionImpulse,
@@ -284,6 +298,8 @@ const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
 const ENEMY_KNOCKBACK_DAMPING = 0.88;
 const RAMMING_SHIELD_TEXTURE_CROP = { x: 208, y: 250, width: 295, height: 73 };
 const RAMMING_SHIELD_COLLIDER_DEPTH = 84;
+const RAMMING_SHIELD_DASH_BURST_DISTANCE = 96;
+const RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS = 0.12;
 const DEBUG_ELLIPSE_SEGMENTS = 28;
 const DEBUG_GRID_MINOR_SPACING = 240;
 const DEBUG_GRID_MAJOR_SPACING = 480;
@@ -458,6 +474,7 @@ interface SecondaryWeaponChoice {
 }
 
 type UpgradeOverlayChoice = UpgradeDefinition | SecondaryWeaponChoice;
+const UPGRADE_OVERLAY_CHOICE_COUNT = 6;
 
 const ENEMY_SPAWN_WEIGHTS_BY_STEP: Array<Record<EnemySpawnType, number>> = [
   { chaser: 100, shooter: 0, tank: 0 },
@@ -510,6 +527,10 @@ interface StarvivorsTestHarnessState {
   hullPlatingLevel: number;
   engineTuningLevel: number;
   damageControlLevel: number;
+  velocityLimiterLevel: number;
+  velocityLimiterActiveLevel: number;
+  playerVelocityLimit: number;
+  playerSpeed: number;
   weaponDamageMultiplier: number;
   pulseCooldownMs: number;
   pulseProjectileSpeed: number;
@@ -529,6 +550,8 @@ interface StarvivorsTestHarnessState {
 interface StarvivorsTestHarness {
   getState: () => StarvivorsTestHarnessState;
   addCredits: (amount: number) => StarvivorsTestHarnessState;
+  purchasePermanentUpgrade: (upgradeId: PermanentUpgradeId) => StarvivorsTestHarnessState;
+  adjustActivePermanentUpgrade: (upgradeId: PermanentUpgradeId, delta: number) => StarvivorsTestHarnessState;
   unlockShip: (shipId: ShipId) => StarvivorsTestHarnessState;
   selectShip: (shipId: ShipId) => StarvivorsTestHarnessState;
   grantXp: (amount: number) => StarvivorsTestHarnessState;
@@ -756,6 +779,13 @@ interface RammingShieldCollision {
   penetration: number;
 }
 
+interface HangarStatRow {
+  label: string;
+  pipValue: number;
+  valueLabel: string;
+  unitsPerPip: number;
+}
+
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private player!: Phaser.GameObjects.Container;
@@ -816,6 +846,7 @@ export class GameScene extends Phaser.Scene {
   private blackHole?: BlackHoleSystem;
   private gameFlowState: GameFlowState = 'mainMenu';
   private selectedShipId: ShipId = DEFAULT_SHIP_ID;
+  private hangarPreviewShipId: ShipId = DEFAULT_SHIP_ID;
   private unlockedShipIds = new Set<ShipId>([DEFAULT_SHIP_ID]);
   private playerHull = PLAYER_MAX_HULL;
   private rammingShieldState: RammingShieldRuntimeState = createRammingShieldRuntimeState(false);
@@ -826,6 +857,10 @@ export class GameScene extends Phaser.Scene {
   private hasPaidRunCredits = false;
   private lastRunSurvivalMs = 0;
   private playerInvulnerableUntil = 0;
+  private rammingShieldDashBurstRemaining = 0;
+  private rammingShieldDashBurstSpeed = 0;
+  private rammingShieldDashPendingImpulse = 0;
+  private rammingShieldDashBurstDirection = new Phaser.Math.Vector2(0, 0);
   private isPlayerDead = false;
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
@@ -849,8 +884,7 @@ export class GameScene extends Phaser.Scene {
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
   private readonly debugState = new DebugState();
-  private pulseUpgradeLevels: Record<PulseUpgradeId, number> = { ...INITIAL_PULSE_UPGRADE_LEVELS };
-  private passiveUpgradeLevels: Record<PassiveUpgradeId, number> = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
+  private runUpgradeLevels: RunUpgradeLevels = createInitialRunUpgradeLevels();
   private isUpgradeOverlayOpen = false;
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
@@ -858,6 +892,7 @@ export class GameScene extends Phaser.Scene {
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
+  private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
@@ -1053,11 +1088,15 @@ export class GameScene extends Phaser.Scene {
           this.runDebugMenuAction(() => this.debugState.adjustAsteroidCollisionDamageScale(delta)),
         adjustAsteroidCollisionImpulseScale: (delta) =>
           this.runDebugMenuAction(() => this.debugState.adjustAsteroidCollisionImpulseScale(delta)),
-        adjustGlobalMaxSpeed: (delta) => this.runDebugMenuAction(() => this.debugState.adjustGlobalMaxSpeed(delta)),
+        adjustGlobalMaxSpeed: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustGlobalMaxSpeed(this.toRawDebugDelta('globalMaxSpeed', delta))),
         adjustGlobalImpactDamageCap: (delta) => this.runDebugMenuAction(() => this.debugState.adjustGlobalImpactDamageCap(delta)),
         adjustImpactDamageCap: (source, delta) => this.runDebugMenuAction(() => this.debugState.adjustImpactDamageCap(source, delta)),
         adjustImpactDamageScale: (source, delta) => this.runDebugMenuAction(() => this.debugState.adjustImpactDamageScale(source, delta)),
-        setPhysicsTuning: (key, value) => this.runDebugMenuAction(() => this.debugState.setPhysicsTuning(key, value)),
+        setPhysicsTuning: (key, value) =>
+          this.runDebugMenuAction(() =>
+            this.debugState.setPhysicsTuning(key, key === 'globalMaxSpeed' ? this.toRawDebugValue('globalMaxSpeed', value) : value)
+          ),
         resetPhysicsTuning: () => this.runDebugMenuAction(() => this.debugState.resetPhysicsTuning()),
         adjustWeaponDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponDamageMultiplier(delta)),
         adjustWeaponFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponFireRateMultiplier(delta)),
@@ -1270,6 +1309,18 @@ export class GameScene extends Phaser.Scene {
         this.totalCredits = Math.max(0, this.totalCredits + amount);
         return this.getTestHarnessState();
       },
+      purchasePermanentUpgrade: (upgradeId: PermanentUpgradeId) => {
+        const upgrade = PERMANENT_UPGRADE_DEFINITIONS.find((candidate) => candidate.id === upgradeId);
+        if (upgrade) {
+          this.purchasePermanentUpgrade(upgrade);
+        }
+
+        return this.getTestHarnessState();
+      },
+      adjustActivePermanentUpgrade: (upgradeId: PermanentUpgradeId, delta: number) => {
+        this.adjustActivePermanentUpgradeLevel(upgradeId, delta);
+        return this.getTestHarnessState();
+      },
       unlockShip: (shipId: ShipId) => {
         const ship = getShipDefinition(shipId);
 
@@ -1412,6 +1463,10 @@ export class GameScene extends Phaser.Scene {
     if (query.get('testHarness') === 'secondaryWeapons') {
       this.runTestHarnessSecondaryWeapons();
     }
+
+    if (query.get('testHarness') === 'velocityLimiter') {
+      this.runTestHarnessVelocityLimiter();
+    }
   }
 
   private getTestHarnessState(): StarvivorsTestHarnessState {
@@ -1437,12 +1492,16 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-      pulseDamageLevel: this.pulseUpgradeLevels['pulse-damage-1'],
-      pulseFireRateLevel: this.pulseUpgradeLevels['pulse-fire-rate-1'],
-      pulseVelocityLevel: this.pulseUpgradeLevels['pulse-velocity-1'],
-      hullPlatingLevel: this.passiveUpgradeLevels['hull-plating'],
-      engineTuningLevel: this.passiveUpgradeLevels['engine-tuning'],
-      damageControlLevel: this.passiveUpgradeLevels['damage-control'],
+      pulseDamageLevel: this.getRunUpgradeLevelById('pulse_damage'),
+      pulseFireRateLevel: this.getRunUpgradeLevelById('pulse_fire_rate'),
+      pulseVelocityLevel: this.getRunUpgradeLevelById('pulse_velocity'),
+      hullPlatingLevel: this.getRunUpgradeLevelById('hull-plating'),
+      engineTuningLevel: this.getRunUpgradeLevelById('engine-tuning'),
+      damageControlLevel: this.getRunUpgradeLevelById('damage-control'),
+      velocityLimiterLevel: this.getPermanentUpgradeLevel('velocity-limiter'),
+      velocityLimiterActiveLevel: this.getActivePermanentUpgradeLevel('velocity-limiter'),
+      playerVelocityLimit: this.getPlayerVelocityLimit(),
+      playerSpeed: this.playerVelocity.length(),
       weaponDamageMultiplier: this.getActiveMainWeaponDamageMultiplier(),
       pulseCooldownMs: this.getActiveMainWeaponCooldownMs(),
       pulseProjectileSpeed: this.getActiveMainWeaponProjectileSpeed(),
@@ -1630,6 +1689,67 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessVelocityLimiter(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-velocity-harness', 'fail');
+      document.body.setAttribute('data-starvivors-velocity-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    const initial = harness.getState();
+    harness.addCredits(2000);
+    const purchased = [
+      harness.purchasePermanentUpgrade('velocity-limiter'),
+      harness.purchasePermanentUpgrade('velocity-limiter'),
+      harness.purchasePermanentUpgrade('velocity-limiter'),
+      harness.purchasePermanentUpgrade('velocity-limiter'),
+      harness.purchasePermanentUpgrade('velocity-limiter')
+    ][4];
+    harness.adjustActivePermanentUpgrade('velocity-limiter', -1);
+    harness.adjustActivePermanentUpgrade('velocity-limiter', -1);
+    harness.adjustActivePermanentUpgrade('velocity-limiter', -1);
+    const reduced = harness.adjustActivePermanentUpgrade('velocity-limiter', -1);
+
+    this.startRun();
+    this.playerVelocity.set(1200, 0);
+    this.applyPlayerOverspeedDamping(1);
+    const interceptorDampedSpeed = this.playerVelocity.length();
+
+    harness.addCredits(100);
+    harness.unlockShip('bulwark');
+    harness.selectShip('bulwark');
+    this.startRun();
+    this.playerVelocity.set(1200, 0);
+    this.applyPlayerOverspeedDamping(1);
+    const bulwarkDampedSpeed = this.playerVelocity.length();
+
+    const pass =
+      initial.playerVelocityLimit === VELOCITY_LIMITER_BASE_SPEED &&
+      purchased.velocityLimiterLevel === 5 &&
+      purchased.velocityLimiterActiveLevel === 5 &&
+      purchased.playerVelocityLimit === VELOCITY_LIMITER_BASE_SPEED + VELOCITY_LIMITER_SPEED_BONUS * 5 &&
+      reduced.velocityLimiterLevel === 5 &&
+      reduced.velocityLimiterActiveLevel === 1 &&
+      reduced.playerVelocityLimit === VELOCITY_LIMITER_BASE_SPEED + VELOCITY_LIMITER_SPEED_BONUS &&
+      interceptorDampedSpeed < 1200 &&
+      interceptorDampedSpeed > reduced.playerVelocityLimit &&
+      bulwarkDampedSpeed > interceptorDampedSpeed;
+
+    document.body.setAttribute('data-starvivors-velocity-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-velocity-harness-details',
+      JSON.stringify({
+        initial,
+        purchased,
+        reduced,
+        interceptorDampedSpeed,
+        bulwarkDampedSpeed
+      })
+    );
+  }
+
   private runTestHarnessRammingShield(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -1645,6 +1765,7 @@ export class GameScene extends Phaser.Scene {
     const started = harness.getState();
     const dashVelocityBefore = this.playerVelocity.length();
     this.useRammingShieldWeapon(this.getRammingShieldStats(), this.time.now);
+    this.updateRammingShieldDashBurstMovement(RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS);
     const afterDash = harness.getState();
     const dashVelocityAfter = this.playerVelocity.length();
     const enemy = this.basicEnemies[0];
@@ -1770,6 +1891,7 @@ export class GameScene extends Phaser.Scene {
     this.arena = createArenaSize(viewport);
     const center = getArenaCenter(this.arena);
 
+    this.debugMenu?.destroy();
     this.children.removeAll(true);
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
@@ -1786,6 +1908,7 @@ export class GameScene extends Phaser.Scene {
       this.hasRammingShield() ? this.getRammingShieldStats() : undefined
     );
     this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
     this.hasPaidRunCredits = false;
@@ -1820,8 +1943,7 @@ export class GameScene extends Phaser.Scene {
     this.nextBlackHolePlayerDamageAt = 0;
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
-    this.pulseUpgradeLevels = { ...INITIAL_PULSE_UPGRADE_LEVELS };
-    this.passiveUpgradeLevels = { ...INITIAL_PASSIVE_UPGRADE_LEVELS };
+    this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
@@ -1992,116 +2114,505 @@ export class GameScene extends Phaser.Scene {
     const height = this.scale.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const panelWidth = Math.min(width - 48, 760);
-    const panelHeight = Math.min(height - 48, 500);
-    const panelX = -panelWidth / 2;
-    const panelY = -panelHeight / 2;
-    const rowX = panelX + 32;
-    const rowWidth = panelWidth - 64;
-    const rowHeight = 128;
-    const rowTop = panelY + 98;
-    const rowGap = 14;
-    const buttonWidth = 142;
-    const buttonHeight = 36;
-    const previewSize = 78;
-    const selectedShip = this.getSelectedShipDefinition();
+    const frameMargin = 3;
+    const panelWidth = width - frameMargin * 2;
+    const panelHeight = height - frameMargin * 2;
+    const panelX = -width / 2 + frameMargin;
+    const panelY = -height / 2 + frameMargin;
+    const innerPadding = 24;
+    const headerHeight = 66;
+    const footerHeight = 54;
+    const columnTop = panelY + headerHeight + 12;
+    const columnHeight = panelHeight - headerHeight - footerHeight - 24;
+    const columnGap = 16;
+    const listWidth = Math.max(220, Math.min(280, panelWidth * 0.22));
+    const rightWidth = Math.max(260, Math.min(330, panelWidth * 0.26));
+    const middleWidth = panelWidth - innerPadding * 2 - listWidth - rightWidth - columnGap * 2;
+    const listX = panelX + innerPadding;
+    const middleX = listX + listWidth + columnGap;
+    const rightX = middleX + middleWidth + columnGap;
+    const selectedShip = getShipDefinition(this.hangarPreviewShipId);
 
     const background = this.add.graphics();
     background.fillStyle(0x02040a, 1);
     background.fillRect(-width / 2, -height / 2, width, height);
-    background.fillStyle(0x071018, 0.96);
-    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    background.lineStyle(2, 0x42f5d7, 0.82);
-    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    background.lineStyle(4, 0x42f5d7, 0.9);
+    background.strokeRect(panelX, panelY, panelWidth, panelHeight);
+    background.lineStyle(2, 0x102633, 0.94);
+    background.strokeRect(panelX + 7, panelY + 7, panelWidth - 14, panelHeight - 14);
+    background.lineStyle(1, 0x52627f, 0.6);
+    background.lineBetween(panelX + innerPadding, panelY + headerHeight, panelX + panelWidth - innerPadding, panelY + headerHeight);
 
     const title = this.add
-      .text(panelX + 32, panelY + 28, 'SHIP SELECT', {
+      .text(0, panelY + 22, 'SHIP HANGAR', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
-        color: '#f2fbff'
+        fontSize: '22px',
+        color: '#f2fbff',
+        align: 'center',
+        fixedWidth: panelWidth
       })
-      .setOrigin(0, 0);
-    const selectedLabel = this.add
-      .text(panelX + 32, panelY + 54, `Selected ${selectedShip.displayName}`, {
+      .setOrigin(0.5, 0);
+    const credits = this.add
+      .text(panelX + panelWidth - innerPadding, panelY + 25, `Credits ${this.totalCredits}`, {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
+        fontSize: '14px',
         color: '#c8f7ff'
       })
-      .setOrigin(0, 0);
+      .setOrigin(1, 0);
 
     this.shipSelectScreen = this.add
-      .container(centerX, centerY, [background, title, selectedLabel])
+      .container(centerX, centerY, [background, title, credits])
       .setScrollFactor(0)
       .setDepth(1300);
 
-    for (let i = 0; i < shipRegistry.length; i += 1) {
-      const ship = shipRegistry[i];
-      const rowY = rowTop + i * (rowHeight + rowGap);
-      const isSelected = ship.id === this.selectedShipId;
-      const isUnlocked = this.isShipUnlocked(ship.id);
-      const canUnlock = this.canUnlockShip(ship);
-      const isAvailable = this.canStartRunWithShip(ship);
-      const statusLabel = isAvailable ? (isSelected ? 'Selected' : 'Available') : this.getShipLockedLabel(ship);
-      const borderColor = isSelected ? 0x42f5d7 : isAvailable ? 0x52627f : 0x39445a;
-      const textColor = isUnlocked ? '#f2fbff' : '#8090a6';
-      const rowTextWidth = rowWidth - previewSize - buttonWidth - 68;
-      const rowTextX = rowX + previewSize + 24;
+    this.drawHangarPanel(background, listX, columnTop, listWidth, columnHeight, 'SHIP LIST');
+    this.drawHangarPanel(background, middleX, columnTop, middleWidth, columnHeight, 'SELECTED SHIP');
+    this.drawHangarPanel(background, rightX, columnTop, rightWidth, columnHeight, 'PRIMARY SYSTEM');
+    this.renderShipListPanel(background, listX, columnTop, listWidth, columnHeight);
+    this.renderSelectedShipCard(background, selectedShip, middleX, columnTop, middleWidth, columnHeight);
+    this.renderPrimarySystemPanel(background, selectedShip, rightX, columnTop, rightWidth, columnHeight);
 
-      background.fillStyle(isSelected ? 0x102633 : 0x111a24, 0.94);
-      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
-      background.lineStyle(2, borderColor, isSelected ? 0.9 : 0.72);
-      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
-
-      const preview = this.add
-        .image(rowX + 48, rowY + rowHeight / 2, ship.textureKey)
-        .setDisplaySize(previewSize, previewSize)
-        .setRotation(ship.visualRotation)
-        .setAlpha(isUnlocked ? 1 : 0.56);
-      const text = this.add
-        .text(
-          rowTextX,
-          rowY + 14,
-          `${ship.displayName}  ${statusLabel}\n${ship.description}\nRole: ${ship.role}  Hull: ${ship.baseStats.maxHull}  Speed: ${ship.speedRating}  Handling: ${ship.handlingRating}\nMove: ${ship.movementNotes}\nWeapon: ${ship.startingWeaponNotes}`,
-          {
-            fontFamily: 'Consolas, "Courier New", monospace',
-            fontSize: '14px',
-            color: textColor,
-            fixedWidth: rowTextWidth,
-            lineSpacing: 2,
-            wordWrap: { width: rowTextWidth, useAdvancedWrap: true }
-          }
-        )
-        .setOrigin(0, 0);
-      this.shipSelectScreen.add([preview, text]);
-
-      this.addScreenButton(
-        this.shipSelectScreen,
-        this.shipSelectActionZones,
-        centerX,
-        centerY,
-        rowX + rowWidth - buttonWidth / 2 - 18,
-        rowY + (rowHeight - buttonHeight) / 2,
-        buttonWidth,
-        buttonHeight,
-        this.getShipActionLabel(ship),
-        () => this.handleShipAction(ship),
-        isAvailable || canUnlock
-      );
-    }
+    const actionEnabled = this.isShipUnlocked(selectedShip.id) || this.canUnlockShip(selectedShip);
+    this.addScreenButton(
+      this.shipSelectScreen,
+      this.shipSelectActionZones,
+      centerX,
+      centerY,
+      middleX + middleWidth / 2,
+      panelY + panelHeight - footerHeight + 8,
+      190,
+      38,
+      this.getShipActionLabel(selectedShip),
+      () => this.handleShipAction(selectedShip),
+      actionEnabled
+    );
 
     this.addScreenButton(
       this.shipSelectScreen,
       this.shipSelectActionZones,
       centerX,
       centerY,
-      0,
-      panelY + panelHeight - 58,
-      180,
+      panelX + panelWidth - innerPadding - 75,
+      panelY + panelHeight - footerHeight + 8,
+      150,
       38,
       'Back',
       () => this.showMainMenu()
     );
     this.createDebugMenu();
+  }
+
+  private drawHangarPanel(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    title: string
+  ): void {
+    graphics.fillStyle(0x0a121d, 0.94);
+    graphics.fillRoundedRect(x, y, width, height, 6);
+    graphics.lineStyle(1, 0x52627f, 0.78);
+    graphics.strokeRoundedRect(x, y, width, height, 6);
+    graphics.fillStyle(0x102633, 0.75);
+    graphics.fillRect(x + 1, y + 1, width - 2, 34);
+    graphics.lineStyle(1, 0x42f5d7, 0.34);
+    graphics.lineBetween(x + 12, y + 35, x + width - 12, y + 35);
+
+    const label = this.add
+      .text(x + 14, y + 10, title, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#73f2ff'
+      })
+      .setOrigin(0, 0);
+    this.shipSelectScreen?.add(label);
+  }
+
+  private renderShipListPanel(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    width: number,
+    _height: number
+  ): void {
+    const rowHeight = 86;
+    const rowGap = 10;
+    const rowX = x + 12;
+    const rowWidth = width - 24;
+    const rowTop = y + 52;
+
+    for (let i = 0; i < shipRegistry.length; i += 1) {
+      const ship = shipRegistry[i];
+      const rowY = rowTop + i * (rowHeight + rowGap);
+      const isPreviewed = ship.id === this.hangarPreviewShipId;
+      const isSelected = ship.id === this.selectedShipId;
+      const isUnlocked = this.isShipUnlocked(ship.id);
+      const isAvailable = this.canStartRunWithShip(ship);
+      const statusLabel = isAvailable ? (isSelected ? 'SELECTED' : 'READY') : this.getShipLockedLabel(ship).toUpperCase();
+      const borderColor = isPreviewed ? 0x42f5d7 : isAvailable ? 0x52627f : 0xff5964;
+      const textColor = isUnlocked ? '#f2fbff' : '#8090a6';
+
+      graphics.fillStyle(isPreviewed ? 0x102633 : 0x111a24, 0.9);
+      graphics.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
+      graphics.lineStyle(1, borderColor, isPreviewed ? 0.9 : 0.6);
+      graphics.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
+
+      const preview = this.add
+        .image(rowX + 31, rowY + rowHeight / 2, ship.textureKey)
+        .setDisplaySize(48, 48)
+        .setRotation(ship.visualRotation)
+        .setAlpha(isUnlocked ? 1 : 0.56);
+      const text = this.add
+        .text(
+          rowX + 66,
+          rowY + 12,
+          `${ship.displayName}\n${ship.display.roleTitle}\nLv. 1  ${statusLabel}`,
+          {
+            fontFamily: 'Consolas, "Courier New", monospace',
+            fontSize: '12px',
+            color: textColor,
+            fixedWidth: rowWidth - 76,
+            lineSpacing: 2,
+            wordWrap: { width: rowWidth - 76, useAdvancedWrap: true }
+          }
+        )
+        .setOrigin(0, 0);
+      this.shipSelectScreen?.add([preview, text]);
+
+      const zone = this.add
+        .zone(this.scale.width / 2 + rowX, this.scale.height / 2 + rowY, rowWidth, rowHeight)
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setDepth(1301)
+        .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          pointer.event?.stopPropagation();
+          if (ship.selectable) {
+            this.hangarPreviewShipId = ship.id;
+            this.showShipSelect();
+          }
+        })
+        .on('pointerout', () => this.resetUiCursor());
+      if (ship.selectable) {
+        zone.setInteractive({ useHandCursor: true });
+      }
+      this.shipSelectActionZones.push(zone);
+    }
+  }
+
+  private renderSelectedShipCard(
+    graphics: Phaser.GameObjects.Graphics,
+    ship: ShipRegistryEntry,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): void {
+    const contentX = x + 24;
+    const contentWidth = width - 48;
+    const imageY = y + 96;
+    const identityY = y + 172;
+    const descriptionY = identityY + 58;
+    const tagY = descriptionY + 38;
+    const masteryY = tagY + 32;
+    const statsTitleY = masteryY + 38;
+    const statStartY = statsTitleY + 26;
+    const statRowHeight = 42;
+    const maxStatRows = Math.max(3, Math.min(8, Math.floor((height - (statStartY - y) - 24) / statRowHeight)));
+    const isUnlocked = this.isShipUnlocked(ship.id);
+
+    const shipImage = this.add
+      .image(x + width / 2, imageY, ship.textureKey)
+      .setDisplaySize(ship.displaySize * 0.98, ship.displaySize * 0.98)
+      .setRotation(ship.visualRotation)
+      .setAlpha(isUnlocked ? 1 : 0.54);
+    this.shipSelectScreen?.add(shipImage);
+
+    const nameText = this.add
+      .text(contentX, identityY, `${ship.displayName.toUpperCase()}\n${ship.display.roleTitle}`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '19px',
+        color: '#f2fbff',
+        fixedWidth: contentWidth,
+        lineSpacing: 4
+      })
+      .setOrigin(0, 0);
+    const description = this.add
+      .text(contentX, descriptionY, ship.display.shortDescription, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#c8f7ff',
+        fixedWidth: contentWidth,
+        wordWrap: { width: contentWidth, useAdvancedWrap: true }
+      })
+      .setOrigin(0, 0);
+    const mastery = this.add
+      .text(contentX, masteryY, 'Level 1   Mastery Coming Soon', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#ffc857',
+        fixedWidth: contentWidth
+      })
+      .setOrigin(0, 0);
+    const statsTitle = this.add
+      .text(contentX, statsTitleY, 'CURRENT STATS', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#73f2ff'
+      })
+      .setOrigin(0, 0);
+    this.shipSelectScreen?.add([nameText, description, mastery, statsTitle]);
+    this.renderShipTags(ship.display.tags, contentX, tagY, contentWidth);
+
+    const statRows = this.getVisibleShipStatRows(ship).slice(0, maxStatRows);
+    for (let i = 0; i < statRows.length; i += 1) {
+      const stat = statRows[i];
+      this.renderStatPips(graphics, stat, contentX, statStartY + i * statRowHeight, contentWidth);
+    }
+  }
+
+  private renderPrimarySystemPanel(
+    _graphics: Phaser.GameObjects.Graphics,
+    ship: ShipRegistryEntry,
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): void {
+    const contentX = x + 18;
+    const contentWidth = width - 36;
+    const weaponY = y + 58;
+    const upgradeY = y + Math.max(180, Math.floor(height * 0.32));
+    const masteryY = y + Math.max(330, Math.floor(height * 0.62));
+    const primaryWeapon = this.getPrimaryWeaponDisplay(ship);
+    const weaponType = primaryWeapon.behaviorType === 'projectile' ? 'Ranged Weapon' : 'Impact Shield';
+    const upgradeList = ship.display.exampleUpgradeIds ?? [];
+    const masteryList = ship.display.masteryPreview ?? [];
+
+    const weaponText = this.add
+      .text(
+        contentX,
+        weaponY,
+        `${primaryWeapon.displayName}\n${weaponType}\n\n${primaryWeapon.description}`,
+        {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '14px',
+          color: '#f2fbff',
+          fixedWidth: contentWidth,
+          lineSpacing: 4,
+          wordWrap: { width: contentWidth, useAdvancedWrap: true }
+        }
+      )
+      .setOrigin(0, 0);
+    const upgradeTitle = this.add
+      .text(contentX, upgradeY, 'UPGRADE PATH', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#73f2ff'
+      })
+      .setOrigin(0, 0);
+    const upgrades = this.add
+      .text(contentX, upgradeY + 26, upgradeList.map((label) => `- ${label}`).join('\n'), {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff',
+        fixedWidth: contentWidth,
+        lineSpacing: 4,
+        wordWrap: { width: contentWidth, useAdvancedWrap: true }
+      })
+      .setOrigin(0, 0);
+    const masteryTitle = this.add
+      .text(contentX, masteryY, 'MASTERY PREVIEW', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#ffc857'
+      })
+      .setOrigin(0, 0);
+    const mastery = this.add
+      .text(contentX, masteryY + 26, masteryList.map((item) => `Lv. ${item.level}: ${item.label}`).join('\n'), {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#f2fbff',
+        fixedWidth: contentWidth,
+        lineSpacing: 4,
+        wordWrap: { width: contentWidth, useAdvancedWrap: true }
+      })
+      .setOrigin(0, 0);
+
+    this.shipSelectScreen?.add([weaponText, upgradeTitle, upgrades, masteryTitle, mastery]);
+  }
+
+  private renderShipTags(tags: string[], x: number, y: number, maxWidth: number): void {
+    let cursorX = x;
+    let cursorY = y;
+
+    for (const tag of tags) {
+      const tagWidth = Math.min(150, Math.max(58, tag.length * 7 + 18));
+
+      if (cursorX + tagWidth > x + maxWidth) {
+        cursorX = x;
+        cursorY += 22;
+      }
+
+      const tagGraphics = this.add.graphics();
+      tagGraphics.fillStyle(0x102633, 0.94);
+      tagGraphics.fillRoundedRect(cursorX, cursorY, tagWidth, 18, 5);
+      tagGraphics.lineStyle(1, 0x42f5d7, 0.64);
+      tagGraphics.strokeRoundedRect(cursorX, cursorY, tagWidth, 18, 5);
+      const tagText = this.add
+        .text(cursorX + tagWidth / 2, cursorY + 9, tag, {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '10px',
+          color: '#c8f7ff',
+          align: 'center',
+          fixedWidth: tagWidth - 6
+        })
+        .setOrigin(0.5);
+
+      this.shipSelectScreen?.add([tagGraphics, tagText]);
+      cursorX += tagWidth + 6;
+    }
+  }
+
+  private renderStatPips(
+    graphics: Phaser.GameObjects.Graphics,
+    stat: HangarStatRow,
+    x: number,
+    y: number,
+    width: number
+  ): void {
+    const labelWidth = 92;
+    const valueWidth = 74;
+    const pipColumns = 25;
+    const pipRows = 4;
+    const pipGap = 2;
+    const gridValueGap = 12;
+    const pipSize = Math.min(
+      8,
+      Math.max(5, Math.floor((width - labelWidth - valueWidth - gridValueGap - pipGap * (pipColumns - 1)) / pipColumns))
+    );
+    const gridWidth = pipColumns * pipSize + (pipColumns - 1) * pipGap;
+    const gridHeight = pipRows * pipSize + (pipRows - 1) * pipGap;
+    const pipsX = x + labelWidth;
+    const pipsY = y + Math.floor((40 - gridHeight) / 2);
+    const textY = y + 13;
+    const filledPips = stat.unitsPerPip > 0 ? Phaser.Math.Clamp(stat.pipValue / stat.unitsPerPip, 0, 100) : 0;
+
+    const labelText = this.add
+      .text(x, textY, stat.label, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#f2fbff',
+        fixedWidth: labelWidth - 8
+      })
+      .setOrigin(0, 0);
+    const valueText = this.add
+      .text(pipsX + gridWidth + gridValueGap + valueWidth, textY, stat.valueLabel, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#c8f7ff',
+        align: 'right',
+        fixedWidth: valueWidth
+      })
+      .setOrigin(1, 0);
+
+    for (let i = 0; i < 100; i += 1) {
+      const column = i % pipColumns;
+      const row = Math.floor(i / pipColumns);
+      const pipX = pipsX + column * (pipSize + pipGap);
+      const pipY = pipsY + row * (pipSize + pipGap);
+      const fillAmount = Phaser.Math.Clamp(filledPips - i, 0, 1);
+      const isFilled = fillAmount > 0;
+      graphics.fillStyle(0x0b1620, 0.96);
+      graphics.fillRect(pipX, pipY, pipSize, pipSize);
+      if (isFilled) {
+        graphics.fillStyle(0x4ff5df, 0.94);
+        graphics.fillRect(pipX, pipY, Math.max(1, pipSize * fillAmount), pipSize);
+      }
+      graphics.lineStyle(1, isFilled ? 0xa3fff4 : 0x33465f, isFilled ? 0.76 : 0.52);
+      graphics.strokeRect(pipX, pipY, pipSize, pipSize);
+    }
+
+    this.shipSelectScreen?.add([labelText, valueText]);
+  }
+
+  private getVisibleShipStatRows(ship: ShipRegistryEntry): HangarStatRow[] {
+    const primaryWeapon = this.getPrimaryWeaponDisplay(ship);
+    const shield = primaryWeapon.rammingShield;
+    const rows: HangarStatRow[] = [
+      this.createHealthHangarStatRow('Hull', ship.baseStats.maxHull),
+      this.createScaledHangarStatRow('Speed', ship.movement.maxSpeed, 'spd'),
+      this.createScaledHangarStatRow('Thrust', ship.movement.thrustAcceleration, 'thr'),
+      this.createHangarStatRow('Turn', ship.movement.rotationSpeed, 1, '/s', 1),
+      this.createHangarStatRow('Mass', ship.baseStats.mass, 1, 'mass', 1)
+    ];
+
+    if (shield) {
+      rows.splice(1, 0, this.createHealthHangarStatRow('Shield', shield.shieldMaxHp));
+      rows.push(
+        this.createHangarStatRow('Ram Damage', shield.maxDamage * shield.dashRamDamageMultiplier, 1, 'dmg', 1),
+        this.createHangarStatRow('Shield Regen', shield.shieldRegenRatePerSecond, 1, '/s', 1),
+        this.createHangarStatRow('Dash Charges', shield.dashMaxCharges, 1, 'chg')
+      );
+    } else {
+      rows.push(
+        this.createHangarStatRow('Damage', primaryWeapon.damage ?? 0, 1, 'dmg'),
+        this.createHangarStatRow(
+          'Fire Rate',
+          primaryWeapon.cooldownSeconds && primaryWeapon.cooldownSeconds > 0 ? 1 / primaryWeapon.cooldownSeconds : 0,
+          1,
+          '/s',
+          2
+        ),
+        this.createScaledHangarStatRow('Proj Speed', primaryWeapon.projectileSpeed ?? 0, 'spd')
+      );
+    }
+
+    return rows.filter((row) => row.pipValue > 0).slice(0, 8);
+  }
+
+  private createHangarStatRow(label: string, rawValue: number | undefined, unitsPerPip: number, unitLabel: string, decimals = 0): HangarStatRow {
+    const safeValue = rawValue ?? 0;
+    const valueLabel = `${this.formatHangarStatValue(safeValue, decimals)} ${unitLabel}`;
+    return {
+      label,
+      pipValue: safeValue,
+      valueLabel,
+      unitsPerPip
+    };
+  }
+
+  private createHealthHangarStatRow(label: string, hpValue: number | undefined): HangarStatRow {
+    const safeValue = hpValue ?? 0;
+    return {
+      label,
+      pipValue: toDisplayUnits(safeValue),
+      valueLabel: `${Math.round(safeValue)} HP`,
+      unitsPerPip: 1
+    };
+  }
+
+  private createScaledHangarStatRow(label: string, rawValue: number | undefined, unitLabel: string): HangarStatRow {
+    const safeValue = rawValue ?? 0;
+    return {
+      label,
+      pipValue: toDisplayUnits(safeValue),
+      valueLabel: `${formatIntegerDisplayUnits(safeValue)} ${unitLabel}`,
+      unitsPerPip: 1
+    };
+  }
+
+  private formatHangarStatValue(value: number, decimals: number): string {
+    if (decimals <= 0) {
+      return `${Math.round(value)}`;
+    }
+
+    return value.toFixed(decimals).replace(/\.?0+$/, '');
+  }
+
+  private getPrimaryWeaponDisplay(ship: ShipRegistryEntry): WeaponRegistryEntry {
+    return getWeaponDefinition(ship.startingMainWeaponId);
   }
 
   private getShipActionLabel(ship: ShipRegistryEntry): string {
@@ -2110,10 +2621,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!this.isShipUnlocked(ship.id)) {
-      return this.canUnlockShip(ship) ? `Unlock ${ship.unlockCostCredits}` : `Need ${ship.unlockCostCredits}`;
+      return this.canUnlockShip(ship) ? `Buy ${ship.unlockCostCredits} Credits` : `Need ${ship.unlockCostCredits} Credits`;
     }
 
-    return ship.id === this.selectedShipId ? 'Start Run' : 'Select';
+    return 'Start Run';
   }
 
   private handleShipAction(ship: ShipRegistryEntry): void {
@@ -2126,13 +2637,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (ship.id === this.selectedShipId) {
-      this.startRun();
-      return;
-    }
-
     this.selectedShipId = ship.id;
-    this.showShipSelect();
+    this.hangarPreviewShipId = ship.id;
+    this.startRun();
   }
 
   private isShipUnlocked(shipId: ShipId): boolean {
@@ -2155,6 +2662,7 @@ export class GameScene extends Phaser.Scene {
     this.totalCredits -= ship.unlockCostCredits;
     this.unlockedShipIds.add(ship.id);
     this.selectedShipId = ship.id;
+    this.hangarPreviewShipId = ship.id;
     this.showShipSelect();
   }
 
@@ -2182,20 +2690,25 @@ export class GameScene extends Phaser.Scene {
     const height = this.scale.height;
     const centerX = width / 2;
     const centerY = height / 2;
-    const panelWidth = Math.min(width - 48, 680);
-    const panelHeight = Math.min(height - 48, 430);
+    const panelWidth = Math.min(width - 48, 920);
+    const panelHeight = Math.min(height - 48, 640);
     const panelX = -panelWidth / 2;
     const panelY = -panelHeight / 2;
-    const rowX = panelX + 32;
-    const rowWidth = panelWidth - 64;
-    const rowHeight = 54;
-    const rowTop = panelY + 106;
-    const rowGap = 10;
-    const buttonWidth = 124;
-    const buttonHeight = 32;
-    const buttonX = panelX + panelWidth - 92;
-    const textX = rowX + 14;
-    const textWidth = rowWidth - buttonWidth - 42;
+    const gridX = panelX + 32;
+    const gridWidth = panelWidth - 64;
+    const columnGap = 14;
+    const columnCount = panelWidth >= 720 ? 2 : 1;
+    const cardWidth = (gridWidth - columnGap * (columnCount - 1)) / columnCount;
+    const cardHeight = columnCount === 2 ? 64 : 48;
+    const gridTop = panelY + 92;
+    const rowGap = 8;
+    const buttonWidth = columnCount === 2 ? 70 : 88;
+    const buttonHeight = 26;
+    const stepButtonSize = 26;
+    const badgeSize = columnCount === 2 ? 32 : 28;
+    const textInset = badgeSize + 20;
+    const controlsWidth = buttonWidth + stepButtonSize * 2 + 18;
+    const textWidth = cardWidth - textInset - controlsWidth - 26;
 
     const background = this.add.graphics();
     background.fillStyle(0x02040a, backTarget === 'results' ? 0.82 : 1);
@@ -2226,43 +2739,96 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1300);
 
     for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
-      const rowY = rowTop + i * (rowHeight + rowGap);
+      const column = i % columnCount;
+      const row = Math.floor(i / columnCount);
+      const rowX = gridX + column * (cardWidth + columnGap);
+      const rowY = gridTop + row * (cardHeight + rowGap);
       const upgrade = PERMANENT_UPGRADE_DEFINITIONS[i];
       const level = this.getPermanentUpgradeLevel(upgrade.id);
+      const activeLevel = this.getActivePermanentUpgradeLevel(upgrade.id);
       const isMaxed = this.isPermanentUpgradeMaxed(upgrade);
       const canPurchase = this.canPurchasePermanentUpgrade(upgrade);
-      const label = isMaxed ? 'Maxed' : canPurchase ? 'Buy' : 'Need Credits';
+      const label = isMaxed ? 'Maxed' : canPurchase ? 'Buy' : 'Need';
       const costLabel = isMaxed ? 'Maxed' : `Cost ${this.getPermanentUpgradeCost(upgrade)}`;
+      const canDecreaseActive = activeLevel > 0;
+      const canIncreaseActive = activeLevel < level;
 
       background.fillStyle(0x111a24, 0.94);
-      background.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+      background.fillRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
       background.lineStyle(1, 0x52627f, 0.82);
-      background.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 6);
+      background.strokeRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
+      background.fillStyle(upgrade.accentColor, 0.18);
+      background.fillRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
+      background.lineStyle(1, upgrade.accentColor, 0.8);
+      background.strokeRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
+
+      const badgeText = this.add
+        .text(rowX + 9 + badgeSize / 2, rowY + cardHeight / 2, upgrade.statLabel, {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: columnCount === 2 ? '11px' : '10px',
+          color: '#f2fbff'
+        })
+        .setOrigin(0.5, 0.5);
+      this.shopScreen.add(badgeText);
 
       const rowText = this.add
-        .text(textX, rowY + 9, `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}\n${upgrade.description}  ${costLabel}`, {
+        .text(
+          rowX + textInset,
+          rowY + (columnCount === 2 ? 7 : 5),
+          `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}  Active ${activeLevel}/${level}\n${upgrade.description}  ${costLabel}`,
+          {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '14px',
+          fontSize: columnCount === 2 ? '12px' : '11px',
           color: '#f2fbff',
           fixedWidth: textWidth,
-          lineSpacing: 2,
+          lineSpacing: 1,
           wordWrap: { width: textWidth, useAdvancedWrap: true }
-        })
+          }
+        )
         .setOrigin(0, 0);
       this.shopScreen.add(rowText);
+
+      const controlsX = rowX + cardWidth - controlsWidth - 12;
+      const controlsY = rowY + (cardHeight - buttonHeight) / 2;
 
       this.addScreenButton(
         this.shopScreen,
         this.shopActionZones,
         centerX,
         centerY,
-        buttonX,
-        rowY + (rowHeight - buttonHeight) / 2,
+        controlsX + buttonWidth / 2,
+        controlsY,
         buttonWidth,
         buttonHeight,
         label,
         () => this.purchasePermanentUpgrade(upgrade),
         canPurchase
+      );
+      this.addScreenButton(
+        this.shopScreen,
+        this.shopActionZones,
+        centerX,
+        centerY,
+        controlsX + buttonWidth + 8 + stepButtonSize / 2,
+        controlsY,
+        stepButtonSize,
+        buttonHeight,
+        '-',
+        () => this.adjustActivePermanentUpgradeLevel(upgrade.id, -1),
+        canDecreaseActive
+      );
+      this.addScreenButton(
+        this.shopScreen,
+        this.shopActionZones,
+        centerX,
+        centerY,
+        controlsX + buttonWidth + 12 + stepButtonSize + stepButtonSize / 2,
+        controlsY,
+        stepButtonSize,
+        buttonHeight,
+        '+',
+        () => this.adjustActivePermanentUpgradeLevel(upgrade.id, 1),
+        canIncreaseActive
       );
     }
 
@@ -2274,6 +2840,20 @@ export class GameScene extends Phaser.Scene {
 
   private getPermanentUpgradeLevel(id: PermanentUpgradeId): number {
     return this.permanentUpgradeLevels[id];
+  }
+
+  private getActivePermanentUpgradeLevel(id: PermanentUpgradeId): number {
+    return Phaser.Math.Clamp(this.activePermanentUpgradeLevels[id], 0, this.getPermanentUpgradeLevel(id));
+  }
+
+  private getResolvedPermanentUpgradeLevels(): Record<PermanentUpgradeId, number> {
+    const levels = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
+
+    for (const upgrade of PERMANENT_UPGRADE_DEFINITIONS) {
+      levels[upgrade.id] = this.getActivePermanentUpgradeLevel(upgrade.id);
+    }
+
+    return levels;
   }
 
   private getPermanentUpgradeCost(upgrade: PermanentUpgradeDefinition): number {
@@ -2290,11 +2870,11 @@ export class GameScene extends Phaser.Scene {
     return resolvePlayerStats({
       baseStats: this.debugState.getEffectiveShipBaseStats(selectedShip),
       passiveLevels: {
-        hullPlating: this.passiveUpgradeLevels['hull-plating'],
-        engineTuning: this.passiveUpgradeLevels['engine-tuning'],
-        damageControl: this.passiveUpgradeLevels['damage-control']
+        hullPlating: this.getRunUpgradeLevelById('hull-plating'),
+        engineTuning: this.getRunUpgradeLevelById('engine-tuning'),
+        damageControl: this.getRunUpgradeLevelById('damage-control')
       },
-      permanentLevels: this.permanentUpgradeLevels
+      permanentLevels: this.getResolvedPermanentUpgradeLevels()
     });
   }
 
@@ -2387,7 +2967,19 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits -= this.getPermanentUpgradeCost(upgrade);
     this.permanentUpgradeLevels[upgrade.id] += 1;
-    this.showShop(this.shopBackTarget);
+    this.activePermanentUpgradeLevels[upgrade.id] = this.permanentUpgradeLevels[upgrade.id];
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    }
+  }
+
+  private adjustActivePermanentUpgradeLevel(id: PermanentUpgradeId, delta: number): void {
+    const purchasedLevel = this.getPermanentUpgradeLevel(id);
+    const activeLevel = this.getActivePermanentUpgradeLevel(id);
+    this.activePermanentUpgradeLevels[id] = Phaser.Math.Clamp(activeLevel + delta, 0, purchasedLevel);
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    }
   }
 
   private handleShopBack(): void {
@@ -2415,12 +3007,19 @@ export class GameScene extends Phaser.Scene {
 
   private destroyShipSelectScreen(): void {
     for (const zone of this.shipSelectActionZones) {
+      zone.disableInteractive();
       zone.destroy();
     }
 
+    this.resetUiCursor();
     this.shipSelectActionZones = [];
     this.shipSelectScreen?.destroy(true);
     this.shipSelectScreen = undefined;
+  }
+
+  private resetUiCursor(): void {
+    this.input.setDefaultCursor('default');
+    this.input.manager.canvas.style.cursor = 'default';
   }
 
   private destroyShopScreen(): void {
@@ -2484,7 +3083,8 @@ export class GameScene extends Phaser.Scene {
         if (isEnabled && this.gameFlowState === activeState) {
           callback();
         }
-      });
+      })
+      .on('pointerout', () => this.resetUiCursor());
 
     if (isEnabled) {
       zone.setInteractive({ useHandCursor: true });
@@ -3031,7 +3631,7 @@ export class GameScene extends Phaser.Scene {
       deltaSeconds,
       {
         ...playerWhirlpoolTuning,
-        maxSpeed: this.getGlobalMaxSpeed()
+        maxSpeed: this.getPlayerOverspeedSafetyLimit()
       },
       this.arena,
       this.getActiveDebugBlackHoleFieldTuning(true)
@@ -3358,6 +3958,22 @@ export class GameScene extends Phaser.Scene {
     const x = wrapCoordinate(this.player.x + forward.x * 120, this.arena.width);
     const y = wrapCoordinate(this.player.y + forward.y * 120, this.arena.height);
     this.spawnEnemyWreckageDebris('shooter', x, y, this.playerVelocity);
+  }
+
+  private trySpawnScrapPickup(
+    source: ScrapSourceType,
+    value: number,
+    x: number,
+    y: number,
+    inheritedVelocity: Phaser.Math.Vector2,
+    baseDropChance = 1
+  ): void {
+    const dropChance = Phaser.Math.Clamp(baseDropChance * (1 + this.getResolvedPlayerStats().luck), 0, 1);
+    if (Phaser.Math.FloatBetween(0, 1) > dropChance) {
+      return;
+    }
+
+    this.spawnScrapPickup(source, value, x, y, inheritedVelocity);
   }
 
   private spawnScrapPickup(
@@ -3695,10 +4311,24 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.playerVelocity.limit(this.getGlobalMaxSpeed());
+    this.applyPlayerOverspeedDamping(deltaSeconds);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
+    this.updateRammingShieldDashBurstMovement(deltaSeconds);
+  }
+
+  private applyPlayerOverspeedDamping(deltaSeconds: number): void {
+    const speed = this.playerVelocity.length();
+    const velocityLimit = this.getPlayerVelocityLimit();
+
+    if (speed <= velocityLimit || speed <= 0.0001 || deltaSeconds <= 0) {
+      return;
+    }
+
+    const excessSpeed = speed - velocityLimit;
+    const dampedExcessSpeed = excessSpeed * Math.exp(-this.getPlayerOverspeedDamping() * deltaSeconds);
+    this.playerVelocity.setLength(velocityLimit + dampedExcessSpeed);
   }
 
   private updateDebugMenuInput(time: number): void {
@@ -3900,7 +4530,20 @@ export class GameScene extends Phaser.Scene {
 
   private getUpgradeOverlayChoices(): UpgradeOverlayChoice[] {
     const secondaryChoices = this.getSecondaryWeaponChoices();
-    return secondaryChoices.length > 0 ? secondaryChoices : UPGRADE_CHOICES;
+    return secondaryChoices.length > 0
+      ? secondaryChoices
+      : getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions()).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+  }
+
+  private getEquippedWeaponDefinitions(): WeaponRegistryEntry[] {
+    const weapons = [this.getActiveMainWeaponDefinition()];
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+
+    if (secondaryWeapon) {
+      weapons.push(secondaryWeapon);
+    }
+
+    return weapons;
   }
 
   private getSecondaryWeaponChoices(): SecondaryWeaponChoice[] {
@@ -3973,10 +4616,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (upgrade.category === 'pulse') {
-      this.pulseUpgradeLevels[upgrade.id as PulseUpgradeId] += 1;
-    } else {
-      this.applyPassiveUpgrade(upgrade.id as PassiveUpgradeId);
+    incrementRunUpgradeLevel(this.runUpgradeLevels, upgrade);
+
+    if (this.isPassiveStatUpgradeId(upgrade.id)) {
+      this.applyPassiveUpgrade(upgrade.id);
     }
 
     this.bankedUpgrades -= 1;
@@ -3984,8 +4627,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyPassiveUpgrade(upgradeId: PassiveUpgradeId): void {
-    this.passiveUpgradeLevels[upgradeId] += 1;
-
     if (upgradeId === 'hull-plating') {
       this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + HULL_PLATING_REPAIR);
     } else if (upgradeId === 'damage-control') {
@@ -3993,18 +4634,20 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private isUpgradeAtMaxLevel(upgrade: UpgradeDefinition): boolean {
-    if (!upgrade.maxLevel || upgrade.category !== 'passive') {
-      return false;
-    }
+  private isPassiveStatUpgradeId(upgradeId: UpgradeId): upgradeId is PassiveUpgradeId {
+    return upgradeId === 'hull-plating' || upgradeId === 'engine-tuning' || upgradeId === 'damage-control';
+  }
 
-    return this.passiveUpgradeLevels[upgrade.id as PassiveUpgradeId] >= upgrade.maxLevel;
+  private isUpgradeAtMaxLevel(upgrade: UpgradeDefinition): boolean {
+    return isRunUpgradeAtMaxLevel(this.runUpgradeLevels, upgrade);
   }
 
   private getUpgradeLevel(upgrade: UpgradeDefinition): number {
-    return upgrade.category === 'pulse'
-      ? this.pulseUpgradeLevels[upgrade.id as PulseUpgradeId]
-      : this.passiveUpgradeLevels[upgrade.id as PassiveUpgradeId];
+    return getRunUpgradeLevel(this.runUpgradeLevels, upgrade);
+  }
+
+  private getRunUpgradeLevelById(upgradeId: UpgradeId): number {
+    return this.runUpgradeLevels[upgradeId] ?? 0;
   }
 
   private getPlayerMaxHull(): number {
@@ -4031,6 +4674,20 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerMaxSpeed(): number {
     return this.getResolvedPlayerStats().moveSpeed;
+  }
+
+  private getPlayerVelocityLimit(): number {
+    return VELOCITY_LIMITER_BASE_SPEED + this.getActivePermanentUpgradeLevel('velocity-limiter') * VELOCITY_LIMITER_SPEED_BONUS;
+  }
+
+  private getPlayerOverspeedSafetyLimit(): number {
+    return Math.max(this.getGlobalMaxSpeed(), this.getPlayerVelocityLimit() * 3);
+  }
+
+  private getPlayerOverspeedDamping(): number {
+    const selectedShip = this.getSelectedShipDefinition();
+    const massScale = Math.sqrt(PLAYER_MASS / Math.max(0.001, this.getPlayerMass()));
+    return Math.max(0, selectedShip.movement.overspeedDamping * massScale);
   }
 
   private getGlobalMaxSpeed(): number {
@@ -4227,7 +4884,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private adjustDebugShipLoadoutStat(shipId: ShipId, stat: DebugShipStatKey, delta: number): void {
-    this.debugState.adjustShipStat(getShipDefinition(shipId), stat, delta);
+    this.debugState.adjustShipStat(getShipDefinition(shipId), stat, this.toRawDebugDelta(stat, delta));
 
     if (shipId === this.selectedShipId) {
       this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
@@ -4235,7 +4892,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private setDebugShipLoadoutStat(shipId: ShipId, stat: DebugShipStatKey, value: number): void {
-    this.debugState.setShipStat(getShipDefinition(shipId), stat, value);
+    this.debugState.setShipStat(getShipDefinition(shipId), stat, this.toRawDebugValue(stat, value));
 
     if (shipId === this.selectedShipId) {
       this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
@@ -4243,13 +4900,21 @@ export class GameScene extends Phaser.Scene {
   }
 
   private adjustDebugWeaponLoadoutStat(weaponId: WeaponId, stat: DebugWeaponStatKey, delta: number): void {
-    this.debugState.adjustWeaponStat(getWeaponDefinition(weaponId), stat, delta);
+    this.debugState.adjustWeaponStat(getWeaponDefinition(weaponId), stat, this.toRawDebugDelta(stat, delta));
     this.syncRammingShieldDebugRuntime();
   }
 
   private setDebugWeaponLoadoutStat(weaponId: WeaponId, stat: DebugWeaponStatKey, value: number): void {
-    this.debugState.setWeaponStat(getWeaponDefinition(weaponId), stat, value);
+    this.debugState.setWeaponStat(getWeaponDefinition(weaponId), stat, this.toRawDebugValue(stat, value));
     this.syncRammingShieldDebugRuntime();
+  }
+
+  private toRawDebugDelta(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', delta: number): number {
+    return isRawScaledStatKey(stat) ? toRawUnits(delta) : delta;
+  }
+
+  private toRawDebugValue(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', value: number): number {
+    return isRawScaledStatKey(stat) ? toRawUnits(value) : value;
   }
 
   private saveDebugShipLoadout(shipId: ShipId): void {
@@ -4302,7 +4967,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const overrides = this.normalizeDebugShipOverrides(setup.overrides);
+    const overrides = this.normalizeDebugShipOverrides(setup.overrides, this.getDebugLoadoutSchemaVersion(setup.schemaVersion));
     if (!overrides) {
       return;
     }
@@ -4320,7 +4985,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const overrides = this.normalizeDebugWeaponOverrides(setup.overrides);
+    const overrides = this.normalizeDebugWeaponOverrides(setup.overrides, this.getDebugLoadoutSchemaVersion(setup.schemaVersion));
     if (!overrides) {
       return;
     }
@@ -4329,7 +4994,7 @@ export class GameScene extends Phaser.Scene {
     this.syncRammingShieldDebugRuntime();
   }
 
-  private normalizeDebugShipOverrides(rawOverrides: unknown): DebugShipOverrides | undefined {
+  private normalizeDebugShipOverrides(rawOverrides: unknown, schemaVersion = 1): DebugShipOverrides | undefined {
     if (!rawOverrides || typeof rawOverrides !== 'object') {
       return undefined;
     }
@@ -4340,14 +5005,18 @@ export class GameScene extends Phaser.Scene {
 
     for (const key of keys) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) {
-        overrides[key] = raw[key];
+        overrides[key] = schemaVersion >= 2 ? this.toRawDebugValue(key, raw[key]) : raw[key];
       }
     }
 
     return overrides;
   }
 
-  private normalizeDebugWeaponOverrides(rawOverrides: unknown): DebugWeaponOverrides | undefined {
+  private getDebugLoadoutSchemaVersion(schemaVersion: unknown): number {
+    return typeof schemaVersion === 'number' && Number.isFinite(schemaVersion) ? schemaVersion : 1;
+  }
+
+  private normalizeDebugWeaponOverrides(rawOverrides: unknown, schemaVersion = 1): DebugWeaponOverrides | undefined {
     if (!rawOverrides || typeof rawOverrides !== 'object') {
       return undefined;
     }
@@ -4380,7 +5049,7 @@ export class GameScene extends Phaser.Scene {
 
     for (const key of keys) {
       if (typeof raw[key] === 'number' && Number.isFinite(raw[key])) {
-        overrides[key] = raw[key];
+        overrides[key] = schemaVersion >= 2 ? this.toRawDebugValue(key, raw[key]) : raw[key];
       }
     }
 
@@ -4389,14 +5058,15 @@ export class GameScene extends Phaser.Scene {
 
   private createDebugShipLoadoutMarkdown(ship: ShipRegistryEntry): string {
     const overrides = this.debugState.shipOverrides[ship.id] ?? {};
+    const displayOverrides = this.createDisplayDebugOverrides(overrides);
     const effectiveStats = this.debugState.getEffectiveShipBaseStats(ship);
     const setup = {
       type: 'starvivors-debug-ship-loadout',
-      schemaVersion: 1,
+      schemaVersion: 2,
       shipId: ship.id,
       displayName: ship.displayName,
       savedAt: new Date().toISOString(),
-      overrides
+      overrides: displayOverrides
     };
 
     return [
@@ -4408,11 +5078,11 @@ export class GameScene extends Phaser.Scene {
       '',
       `- Max hull: ${effectiveStats.maxHull}`,
       `- Mass: ${effectiveStats.mass}`,
-      `- Move speed: ${effectiveStats.moveSpeed}`,
-      `- Thrust: ${effectiveStats.thrust}`,
-      `- Brake: ${effectiveStats.brake}`,
-      `- Strafe: ${effectiveStats.strafe}`,
-      `- Hit radius: ${this.debugState.getEffectiveShipHitRadius(ship)}`,
+      `- Move speed: ${formatIntegerDisplayUnits(effectiveStats.moveSpeed)}`,
+      `- Thrust: ${formatIntegerDisplayUnits(effectiveStats.thrust)}`,
+      `- Brake: ${formatIntegerDisplayUnits(effectiveStats.brake)}`,
+      `- Strafe: ${formatIntegerDisplayUnits(effectiveStats.strafe)}`,
+      `- Hit radius: ${formatDisplayUnits(this.debugState.getEffectiveShipHitRadius(ship), 1)}`,
       '',
       '## Machine Readable Setup',
       '',
@@ -4425,31 +5095,32 @@ export class GameScene extends Phaser.Scene {
 
   private createDebugWeaponLoadoutMarkdown(weapon: WeaponRegistryEntry): string {
     const overrides = this.debugState.weaponOverrides[weapon.id] ?? {};
+    const displayOverrides = this.createDisplayDebugOverrides(overrides);
     const effective = this.debugState.getEffectiveWeaponDefinition(weapon);
     const setup = {
       type: 'starvivors-debug-weapon-loadout',
-      schemaVersion: 1,
+      schemaVersion: 2,
       weaponId: weapon.id,
       displayName: weapon.displayName,
       savedAt: new Date().toISOString(),
-      overrides
+      overrides: displayOverrides
     };
     const statLines = effective.rammingShield
       ? [
           `- Shield HP: ${effective.rammingShield.shieldMaxHp}`,
           `- Dash charges: ${effective.rammingShield.dashMaxCharges}`,
           `- Dash recharge: ${effective.rammingShield.dashChargeRechargeSeconds}s`,
-          `- Dash impulse: ${effective.rammingShield.dashImpulse}`,
+          `- Dash impulse: ${formatIntegerDisplayUnits(effective.rammingShield.dashImpulse)}`,
           `- Dash ram multiplier: ${effective.rammingShield.dashRamDamageMultiplier}`,
           `- Base/max damage: ${effective.rammingShield.baseDamage}/${effective.rammingShield.maxDamage}`,
-          `- Range/width: ${effective.rammingShield.range}/${effective.rammingShield.width}`
+          `- Range/width: ${formatIntegerDisplayUnits(effective.rammingShield.range)}/${formatIntegerDisplayUnits(effective.rammingShield.width)}`
         ]
       : [
           `- Damage: ${effective.damage ?? 0}`,
           `- Cooldown: ${effective.cooldownSeconds ?? 0}s`,
-          `- Projectile speed: ${effective.projectileSpeed ?? 0}`,
+          `- Projectile speed: ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}`,
           `- Projectile lifetime: ${effective.projectileLifetimeSeconds ?? 0}s`,
-          `- Projectile range: ${effective.projectileRange ?? 0}`
+          `- Projectile range: ${formatIntegerDisplayUnits(effective.projectileRange ?? 0)}`
         ];
 
     return [
@@ -4468,6 +5139,18 @@ export class GameScene extends Phaser.Scene {
       '```',
       ''
     ].join('\n');
+  }
+
+  private createDisplayDebugOverrides<T extends Record<string, number | undefined>>(overrides: T): T {
+    const displayOverrides: Record<string, number> = {};
+
+    for (const [key, value] of Object.entries(overrides)) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        displayOverrides[key] = isRawScaledStatKey(key) ? toDisplayUnits(value) : value;
+      }
+    }
+
+    return displayOverrides as T;
   }
 
   private syncRammingShieldDebugRuntime(): void {
@@ -5401,7 +6084,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
     this.upgradeOverlayGraphics.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
 
-    for (let i = 0; i < UPGRADE_CHOICES.length; i += 1) {
+    for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
       const cardY = panelY + 96 + i * (cardHeight + 8);
       this.upgradeOverlayGraphics.fillStyle(0x111a24, 0.94);
       this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
@@ -5595,6 +6278,37 @@ export class GameScene extends Phaser.Scene {
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
     }
+  }
+
+  private startRammingShieldDashBurst(direction: Phaser.Math.Vector2, impulse: number): void {
+    this.rammingShieldDashBurstDirection.copy(direction);
+    this.rammingShieldDashBurstRemaining = RAMMING_SHIELD_DASH_BURST_DISTANCE;
+    this.rammingShieldDashBurstSpeed = RAMMING_SHIELD_DASH_BURST_DISTANCE / RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS;
+    this.rammingShieldDashPendingImpulse = impulse;
+  }
+
+  private updateRammingShieldDashBurstMovement(deltaSeconds: number): void {
+    if (this.rammingShieldDashBurstRemaining <= 0 || deltaSeconds <= 0) {
+      return;
+    }
+
+    const travel = Math.min(this.rammingShieldDashBurstRemaining, this.rammingShieldDashBurstSpeed * deltaSeconds);
+    this.player.x += this.rammingShieldDashBurstDirection.x * travel;
+    this.player.y += this.rammingShieldDashBurstDirection.y * travel;
+    this.rammingShieldDashBurstRemaining = Math.max(0, this.rammingShieldDashBurstRemaining - travel);
+
+    if (this.rammingShieldDashBurstRemaining <= 0) {
+      this.playerVelocity.x += this.rammingShieldDashBurstDirection.x * this.rammingShieldDashPendingImpulse;
+      this.playerVelocity.y += this.rammingShieldDashBurstDirection.y * this.rammingShieldDashPendingImpulse;
+      this.clearRammingShieldDashBurst();
+    }
+  }
+
+  private clearRammingShieldDashBurst(): void {
+    this.rammingShieldDashBurstRemaining = 0;
+    this.rammingShieldDashBurstSpeed = 0;
+    this.rammingShieldDashPendingImpulse = 0;
+    this.rammingShieldDashBurstDirection.set(0, 0);
   }
 
   private updatePlayerContactDamage(time: number): void {
@@ -6164,7 +6878,14 @@ export class GameScene extends Phaser.Scene {
         enemy.body.y,
         (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
       );
-      this.spawnScrapPickup('enemy', enemy.stats.scrapValue, enemy.body.x, enemy.body.y, this.getEnemyTotalVelocity(enemy));
+      this.trySpawnScrapPickup(
+        'enemy',
+        enemy.stats.scrapValue,
+        enemy.body.x,
+        enemy.body.y,
+        this.getEnemyTotalVelocity(enemy),
+        enemy.stats.scrapDropChance
+      );
       enemy.body.destroy(true);
       enemy.wrapMirrorBody.destroy(true);
       this.basicEnemies.splice(basicIndex, 1);
@@ -6176,7 +6897,14 @@ export class GameScene extends Phaser.Scene {
     if (tankIndex >= 0) {
       const tank = enemy as TankEnemy;
       this.spawnEnemyWreckageDebris('tank', tank.body.x, tank.body.y, this.getEnemyTotalVelocity(tank));
-      this.spawnScrapPickup('enemy', tank.stats.scrapValue, tank.body.x, tank.body.y, this.getEnemyTotalVelocity(tank));
+      this.trySpawnScrapPickup(
+        'enemy',
+        tank.stats.scrapValue,
+        tank.body.x,
+        tank.body.y,
+        this.getEnemyTotalVelocity(tank),
+        tank.stats.scrapDropChance
+      );
       tank.body.destroy(true);
       tank.wrapMirrorBody.destroy(true);
       this.tankEnemies.splice(tankIndex, 1);
@@ -6188,7 +6916,14 @@ export class GameScene extends Phaser.Scene {
     if (shooterIndex >= 0) {
       const shooter = enemy as ShooterEnemy;
       this.spawnEnemyWreckageDebris('shooter', shooter.body.x, shooter.body.y, this.getEnemyTotalVelocity(shooter));
-      this.spawnScrapPickup('enemy', shooter.stats.scrapValue, shooter.body.x, shooter.body.y, this.getEnemyTotalVelocity(shooter));
+      this.trySpawnScrapPickup(
+        'enemy',
+        shooter.stats.scrapValue,
+        shooter.body.x,
+        shooter.body.y,
+        this.getEnemyTotalVelocity(shooter),
+        shooter.stats.scrapDropChance
+      );
       shooter.body.destroy(true);
       shooter.wrapMirrorBody.destroy(true);
       this.shooterEnemies.splice(shooterIndex, 1);
@@ -6281,12 +7016,13 @@ export class GameScene extends Phaser.Scene {
           enemy.body.y,
           (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
         );
-        this.spawnScrapPickup(
+        this.trySpawnScrapPickup(
           'enemy',
           enemy.stats.scrapValue,
           enemy.body.x,
           enemy.body.y,
-          (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
+          (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity),
+          enemy.stats.scrapDropChance
         );
         enemy.body.destroy(true);
         enemy.wrapMirrorBody.destroy(true);
@@ -6309,12 +7045,13 @@ export class GameScene extends Phaser.Scene {
           tank.body.y,
           tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity)
         );
-        this.spawnScrapPickup(
+        this.trySpawnScrapPickup(
           'enemy',
           tank.stats.scrapValue,
           tank.body.x,
           tank.body.y,
-          tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity)
+          tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity),
+          tank.stats.scrapDropChance
         );
         tank.body.destroy(true);
         tank.wrapMirrorBody.destroy(true);
@@ -6337,12 +7074,13 @@ export class GameScene extends Phaser.Scene {
           shooter.body.y,
           shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity)
         );
-        this.spawnScrapPickup(
+        this.trySpawnScrapPickup(
           'enemy',
           shooter.stats.scrapValue,
           shooter.body.x,
           shooter.body.y,
-          shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity)
+          shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity),
+          shooter.stats.scrapDropChance
         );
         shooter.body.destroy(true);
         shooter.wrapMirrorBody.destroy(true);
@@ -6437,7 +7175,6 @@ export class GameScene extends Phaser.Scene {
       minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
       maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
       relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
-      firstMaxSpeed: this.getGlobalMaxSpeed(),
       secondMaxSpeed: this.getGlobalMaxSpeed(),
       restitution: ENEMY_CONTACT_RESTITUTION_SHARE,
       relativeVelocity: getRelativeVelocity(this.playerVelocity, this.getEnemyContactVelocity(contact.enemy))
@@ -6469,7 +7206,6 @@ export class GameScene extends Phaser.Scene {
       minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
       maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
       relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
-      firstMaxSpeed: this.getGlobalMaxSpeed(),
       secondMaxSpeed: this.getGlobalMaxSpeed()
     });
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
@@ -6498,7 +7234,6 @@ export class GameScene extends Phaser.Scene {
       minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
       maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
       relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
-      firstMaxSpeed: this.getGlobalMaxSpeed(),
       secondMaxSpeed: this.getGlobalMaxSpeed()
     });
     this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
@@ -6573,7 +7308,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.playerXp += amount;
+    this.playerXp += Math.max(1, Math.ceil(amount * this.getResolvedPlayerStats().growth));
 
     while (this.playerXp >= this.nextXpThreshold) {
       this.playerXp -= this.nextXpThreshold;
@@ -6657,6 +7392,7 @@ export class GameScene extends Phaser.Scene {
     this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
     this.payRunCredits();
     this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
     this.player.setVisible(true);
     this.playerSprite.setTint(0xff5964);
     this.playerSprite.setAlpha(0.62);
@@ -7392,15 +8128,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
-    return {
-      projectileDamageLevel: this.pulseUpgradeLevels['pulse-damage-1'],
-      projectileFireRateLevel: this.pulseUpgradeLevels['pulse-fire-rate-1'],
-      projectileVelocityLevel: this.pulseUpgradeLevels['pulse-velocity-1']
-    };
+    return this.runUpgradeLevels;
   }
 
   private getActiveMainWeaponDamageMultiplier(): number {
-    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState()) * this.getResolvedPlayerStats().damage;
+    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState(), this.getActiveMainWeaponDefinition()) * this.getResolvedPlayerStats().damage;
   }
 
   private getActiveMainWeaponCooldownMs(): number {
@@ -7417,9 +8149,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveMainWeaponUpgradeHudSummary(): string {
-    const damageLevel = this.pulseUpgradeLevels['pulse-damage-1'];
-    const fireRateLevel = this.pulseUpgradeLevels['pulse-fire-rate-1'];
-    const velocityLevel = this.pulseUpgradeLevels['pulse-velocity-1'];
+    const damageLevel = this.getRunUpgradeLevelById('pulse_damage');
+    const fireRateLevel = this.getRunUpgradeLevelById('pulse_fire_rate');
+    const velocityLevel = this.getRunUpgradeLevelById('pulse_velocity');
 
     if (damageLevel + fireRateLevel + velocityLevel === 0) {
       return 'Weapon upgrades none';
@@ -7433,14 +8165,21 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isPrimaryFiring = this.fireKey.isDown || this.input.activePointer.leftButtonDown();
+    const pointer = this.input.activePointer;
+    const isPointerBlockedByDebugMenu = this.debugMenu?.containsPointer(pointer) ?? false;
+    const isPrimaryFiring = this.fireKey.isDown || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
     if (isPrimaryFiring && time >= this.playerWeapons.nextMainWeaponFireAt) {
       const result = this.usePlayerWeapon(this.getActiveMainWeaponDefinition(), 'main', time);
       this.playerWeapons.nextMainWeaponFireAt = time + result.cooldownMs;
     }
 
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
-    if (secondaryWeapon && this.input.activePointer.rightButtonDown() && time >= this.playerWeapons.nextSecondaryWeaponFireAt) {
+    if (
+      secondaryWeapon &&
+      !isPointerBlockedByDebugMenu &&
+      pointer.rightButtonDown() &&
+      time >= this.playerWeapons.nextSecondaryWeaponFireAt
+    ) {
       const result = this.usePlayerWeapon(secondaryWeapon, 'secondary', time);
       this.playerWeapons.nextSecondaryWeaponFireAt = time + result.cooldownMs;
     }
@@ -7465,8 +8204,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const direction = this.getForwardDirection(this.player.rotation);
-    this.playerVelocity.x += direction.x * stats.dashImpulse;
-    this.playerVelocity.y += direction.y * stats.dashImpulse;
+    this.startRammingShieldDashBurst(direction, stats.dashImpulse);
     this.emitRammingShieldDashBurst(direction, time);
     this.updateRammingShieldVisual(time);
     return true;
@@ -7910,12 +8648,13 @@ export class GameScene extends Phaser.Scene {
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
           );
-          this.spawnScrapPickup(
+          this.trySpawnScrapPickup(
             'enemy',
             enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
+            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity),
+            enemy.stats.scrapDropChance
           );
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
@@ -7961,12 +8700,13 @@ export class GameScene extends Phaser.Scene {
             enemy.body.y,
             enemy.velocity.clone().add(enemy.blackHoleVelocity)
           );
-          this.spawnScrapPickup(
+          this.trySpawnScrapPickup(
             'enemy',
             enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
-            enemy.velocity.clone().add(enemy.blackHoleVelocity)
+            enemy.velocity.clone().add(enemy.blackHoleVelocity),
+            enemy.stats.scrapDropChance
           );
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
@@ -8012,12 +8752,13 @@ export class GameScene extends Phaser.Scene {
             enemy.body.y,
             enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
           );
-          this.spawnScrapPickup(
+          this.trySpawnScrapPickup(
             'enemy',
             enemy.stats.scrapValue,
             enemy.body.x,
             enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
+            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity),
+            enemy.stats.scrapDropChance
           );
           enemy.body.destroy(true);
           enemy.wrapMirrorBody.destroy(true);
@@ -9001,8 +9742,8 @@ export class GameScene extends Phaser.Scene {
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
-        `Upgrades: D${this.pulseUpgradeLevels['pulse-damage-1']} R${this.pulseUpgradeLevels['pulse-fire-rate-1']} V${this.pulseUpgradeLevels['pulse-velocity-1']} H${this.passiveUpgradeLevels['hull-plating']} E${this.passiveUpgradeLevels['engine-tuning']} C${this.passiveUpgradeLevels['damage-control']}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
-        `Velocity: ${Math.round(this.playerVelocity.x)}, ${Math.round(this.playerVelocity.y)}\n` +
+        `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} R${this.getRunUpgradeLevelById('pulse_fire_rate')} V${this.getRunUpgradeLevelById('pulse_velocity')} H${this.getRunUpgradeLevelById('hull-plating')} E${this.getRunUpgradeLevelById('engine-tuning')} C${this.getRunUpgradeLevelById('damage-control')}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
+        `Velocity: ${formatIntegerDisplayUnits(this.playerVelocity.x)}, ${formatIntegerDisplayUnits(this.playerVelocity.y)}\n` +
         `Player shots: ${this.playerProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
         `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
