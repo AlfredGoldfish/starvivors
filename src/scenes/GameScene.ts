@@ -128,7 +128,10 @@ import {
 } from '../systems/debug/debugState';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
-import { updateBasicAsteroidRuntime } from '../systems/asteroids';
+import {
+  resolveAsteroidCollisions as resolveAsteroidCollisionsSystem,
+  updateBasicAsteroidRuntime
+} from '../systems/asteroids';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -7274,99 +7277,33 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolveAsteroidCollisions(time: number): void {
-    const destroyedAsteroids = new Set<BasicAsteroid>();
-
-    for (let i = 0; i < this.basicAsteroids.length; i += 1) {
-      const first = this.basicAsteroids[i];
-      if (destroyedAsteroids.has(first)) {
-        continue;
-      }
-
-      for (let j = i + 1; j < this.basicAsteroids.length; j += 1) {
-        const second = this.basicAsteroids[j];
-        if (destroyedAsteroids.has(second)) {
-          continue;
-        }
-
-        const offset = this.getWrappedDirection(second.body.x, second.body.y, first.body.x, first.body.y);
-        const hitRadius = first.hitRadius + second.hitRadius;
-        const distance = offset.length();
-
-        if (distance > hitRadius) {
-          continue;
-        }
-
-        const normal = this.getCollisionNormal(offset);
-        const penetration = hitRadius - distance;
-        const firstMass = this.getAsteroidMass(first.tier);
-        const secondMass = this.getAsteroidMass(second.tier);
-        const firstShare = getMassResponseShare(secondMass, firstMass);
-        const secondShare = getMassResponseShare(firstMass, secondMass);
-        const separation = Math.min(
-          penetration * ASTEROID_COLLISION_SEPARATION_PERCENT,
-          ASTEROID_COLLISION_MAX_SEPARATION
-        );
-
-        this.nudgeWrappedObject(first.body, normal, separation * firstShare);
-        this.nudgeWrappedObject(second.body, normal, -separation * secondShare);
-        this.updateAsteroidWrapMirror(first);
-        this.updateAsteroidWrapMirror(second);
-
-        if (!this.canApplyAsteroidCollisionDamage(first, second, time)) {
-          continue;
-        }
-
-        const relativeVelocity = getRelativeVelocity(first.velocity, second.velocity);
-        const closingSpeed = getClosingSpeed(relativeVelocity, normal);
-        const impactDamage = this.calculatePhysicalImpactDamage({
+    resolveAsteroidCollisionsSystem({
+      arena: this.arena,
+      asteroids: this.basicAsteroids,
+      time,
+      asteroidCollisionImpulseScale: this.debugState.asteroidCollisionImpulseScale,
+      getCollisionNormal: (offset) => this.getCollisionNormal(offset),
+      getAsteroidMass: (tier) => this.getAsteroidMass(tier),
+      getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
+      nudgeWrappedObject: (object, normal, distance) => this.nudgeWrappedObject(object, normal, distance),
+      updateAsteroidWrapMirror: (asteroid) => this.updateAsteroidWrapMirror(asteroid),
+      canApplyAsteroidCollisionDamage: (first, second, collisionTime) =>
+        this.canApplyAsteroidCollisionDamage(first, second, collisionTime),
+      markAsteroidCollisionDamageApplied: (first, second, collisionTime) =>
+        this.markAsteroidCollisionDamageApplied(first, second, collisionTime),
+      calculateAsteroidImpactDamage: (firstMass, secondMass, closingSpeed) =>
+        this.calculatePhysicalImpactDamage({
           source: 'asteroid',
           baseDamage: 0,
           attackerMass: firstMass,
           targetMass: secondMass,
           impactSpeed: closingSpeed
-        });
-
-        applyCollisionImpulse({
-          normal,
-          firstVelocity: first.velocity,
-          secondVelocity: second.velocity,
-          firstMass,
-          secondMass,
-          minImpulse: ASTEROID_COLLISION_MIN_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
-          maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE * this.debugState.asteroidCollisionImpulseScale,
-          relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE * this.debugState.asteroidCollisionImpulseScale,
-          firstMaxSpeed: this.getGlobalMaxSpeed(),
-          secondMaxSpeed: this.getGlobalMaxSpeed(),
-          restitution: ASTEROID_COLLISION_RESTITUTION,
-          relativeVelocity
-        });
-
-        if (impactDamage <= 0) {
-          this.markAsteroidCollisionDamageApplied(first, second, time);
-          continue;
-        }
-
-        this.damageAsteroid(first, impactDamage, 'asteroid', false);
-        this.damageAsteroid(second, impactDamage, 'asteroid', false);
-        this.emitAsteroidImpactExplosion(
-          wrapCoordinate((first.body.x + second.body.x) * 0.5, this.arena.width),
-          wrapCoordinate((first.body.y + second.body.y) * 0.5, this.arena.height),
-          Math.max(first.tier, second.tier) as AsteroidTier
-        );
-        this.flashDamageSprites(first.body, first.wrapMirrorBody, second.body, second.wrapMirrorBody);
-        this.markAsteroidCollisionDamageApplied(first, second, time);
-
-        if (first.hp <= 0) {
-          destroyedAsteroids.add(first);
-        }
-
-        if (second.hp <= 0) {
-          destroyedAsteroids.add(second);
-        }
-      }
-    }
-
-    this.destroyAsteroidsFromCollision(destroyedAsteroids);
+        }),
+      damageAsteroid: (asteroid, damage) => this.damageAsteroid(asteroid, damage, 'asteroid', false),
+      emitAsteroidImpactExplosion: (x, y, tier) => this.emitAsteroidImpactExplosion(x, y, tier),
+      flashDamageSprites: (...containers) => this.flashDamageSprites(...containers),
+      destroyAsteroidsFromCollision: (destroyedAsteroids) => this.destroyAsteroidsFromCollision(destroyedAsteroids)
+    });
   }
 
   private canApplyAsteroidCollisionDamage(first: BasicAsteroid, second: BasicAsteroid, time: number): boolean {
