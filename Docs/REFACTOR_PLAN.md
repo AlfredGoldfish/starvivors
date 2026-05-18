@@ -47,3 +47,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 5 screen helper cleanup: `npm.cmd run build` passed after removing obsolete `GameScene` hangar render helpers.
 - Phase 6 debug persistence helper extraction: `npm.cmd run build` passed.
 - Phase 6 black hole debug tuning extraction: `npm.cmd run build` passed.
+- Phase 6 black hole debug controls extraction: `npm.cmd run build` passed.

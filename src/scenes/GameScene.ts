@@ -147,6 +147,7 @@ import {
   parseBlackHolePngSetupMarkdown
 } from '../systems/debug/blackHoleDebugTuning';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
+import { BlackHoleDebugControls } from '../systems/debug/blackHoleDebugControls';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
   clearBasicAsteroids as clearBasicAsteroidsSystem,
@@ -482,6 +483,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
   private debugMenu?: DebugMenuController;
+  private blackHoleDebugControls!: BlackHoleDebugControls;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
@@ -547,6 +549,38 @@ export class GameScene extends Phaser.Scene {
       getNearestWrappedRenderPosition: (x, y) => this.getNearestWrappedRenderPosition(x, y),
       isCircleInCameraView: (x, y, radius) => this.isCircleInCameraView(x, y, radius),
       getForwardDirection: (rotation) => this.getForwardDirection(rotation)
+    });
+    this.blackHoleDebugControls = new BlackHoleDebugControls({
+      scene: this,
+      getState: () => ({
+        collisionDebugEnabled: this.debugState.collisionDebugEnabled,
+        isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
+        isDebugMenuOpen: this.debugMenu?.isOpen() ?? false,
+        isPlayerDead: this.isPlayerDead,
+        lensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
+        lensDensity: this.debugBlackHoleLensDensity,
+        lensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
+        visualScale: this.debugBlackHoleVisualScale,
+        projectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled
+      }),
+      setLensOrbitSpeedMultiplier: (value) => {
+        this.debugBlackHoleLensOrbitSpeedMultiplier = value;
+      },
+      setLensDensity: (value) => {
+        this.debugBlackHoleLensDensity = value;
+      },
+      setLensLengthMultiplier: (value) => {
+        this.debugBlackHoleLensLengthMultiplier = value;
+      },
+      setVisualScale: (value) => {
+        this.debugBlackHoleVisualScale = value;
+      },
+      toggleProjectionLensLayers: () => {
+        this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
+      },
+      onChanged: () => {
+        this.nextDebugUpdateAt = 0;
+      }
     });
     this.createInput();
     this.createBackgroundTextures();
@@ -1619,11 +1653,7 @@ export class GameScene extends Phaser.Scene {
 
     this.createUpgradeButton();
     this.createUpgradeOverlay();
-    this.createBlackHoleLensOrbitSlider();
-    this.createBlackHoleLensDensitySlider();
-    this.createBlackHoleLensLengthSlider();
-    this.createBlackHoleFieldScaleSlider();
-    this.createBlackHoleProjectionLensToggle();
+    this.blackHoleDebugControls.create();
     this.createDebugMenu();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
@@ -6922,11 +6952,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBlackHoleDebugControls(): void {
-    this.updateBlackHoleLensOrbitSlider();
-    this.updateBlackHoleLensDensitySlider();
-    this.updateBlackHoleLensLengthSlider();
-    this.updateBlackHoleFieldScaleSlider();
-    this.updateBlackHoleProjectionLensToggle();
+    this.blackHoleDebugControls.update();
   }
 
   private updateMinimap(): void {
