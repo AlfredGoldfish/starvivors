@@ -150,6 +150,7 @@ import type {
   UpgradeOverlayChoice
 } from './gameTypes';
 import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
+import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import { StarfieldSystem } from '../systems/starfield';
 import {
   ASTEROID_BREAKUP_FEEDBACK_MS,
@@ -268,10 +269,6 @@ import {
   IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
   INITIAL_ASTEROID_TIERS,
   INITIAL_XP_THRESHOLD,
-  MINIMAP_HEIGHT,
-  MINIMAP_MARGIN,
-  MINIMAP_PADDING,
-  MINIMAP_WIDTH,
   PLAYER_CONTACT_IMPULSE_COOLDOWN_MS,
   PLAYER_CONTACT_MAX_IMPULSE,
   PLAYER_CONTACT_MAX_SEPARATION,
@@ -461,8 +458,7 @@ export class GameScene extends Phaser.Scene {
   private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
-  private minimapGraphics!: Phaser.GameObjects.Graphics;
-  private isMinimapVisible = true;
+  private minimap!: MinimapSystem;
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
@@ -512,6 +508,7 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
     });
+    this.minimap = new MinimapSystem(this);
     this.createInput();
     this.createBackgroundTextures();
     this.showMainMenu();
@@ -1030,7 +1027,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       toggleMinimap: () => {
-        this.isMinimapVisible = !this.isMinimapVisible;
+        this.minimap.toggle();
         this.updateMinimap();
         return this.getTestHarnessState();
       }
@@ -1101,7 +1098,7 @@ export class GameScene extends Phaser.Scene {
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
       playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
-      isMinimapVisible: this.isMinimapVisible,
+      isMinimapVisible: this.minimap.isVisible(),
       enemies: this.basicEnemies.length,
       shooterEnemies: this.shooterEnemies.length,
       tankEnemies: this.tankEnemies.length,
@@ -1544,7 +1541,7 @@ export class GameScene extends Phaser.Scene {
     this.totalUpgradePauseMs = 0;
     this.debugMenuOpenedAt = 0;
     this.totalDebugPauseMs = 0;
-    this.isMinimapVisible = true;
+    this.minimap.reset();
     this.debugState.resetForRun();
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
     this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
@@ -1582,7 +1579,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1000);
 
     this.hudGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
-    this.minimapGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.minimap.create();
     this.collisionDebugGraphics = this.add.graphics().setDepth(999);
 
     this.hullText = this.add
@@ -3903,7 +3900,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateUpgradeOverlayInput(time: number): void {
     if (Phaser.Input.Keyboard.JustDown(this.minimapKey)) {
-      this.isMinimapVisible = !this.isMinimapVisible;
+      this.minimap.toggle();
     }
 
     if (this.isPlayerDead) {
@@ -9039,107 +9036,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateMinimap(): void {
-    if (!this.minimapGraphics || !this.player) {
-      return;
-    }
-
-    this.minimapGraphics.clear();
-    this.minimapGraphics.setVisible(this.isMinimapVisible && !this.isUpgradeOverlayOpen);
-
-    if (!this.isMinimapVisible || this.isUpgradeOverlayOpen) {
-      return;
-    }
-
-    const mapX = MINIMAP_MARGIN;
-    const mapY = this.scale.height - MINIMAP_MARGIN - MINIMAP_HEIGHT;
-    const innerX = mapX + MINIMAP_PADDING;
-    const innerY = mapY + MINIMAP_PADDING;
-    const innerWidth = MINIMAP_WIDTH - MINIMAP_PADDING * 2;
-    const innerHeight = MINIMAP_HEIGHT - MINIMAP_PADDING * 2;
-
-    this.minimapGraphics.fillStyle(0x02040a, 0.72);
-    this.minimapGraphics.fillRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
-    this.minimapGraphics.lineStyle(1, 0x52627f, 0.86);
-    this.minimapGraphics.strokeRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
-    this.minimapGraphics.lineStyle(1, 0x42f5d7, 0.42);
-    this.minimapGraphics.strokeRect(innerX, innerY, innerWidth, innerHeight);
-
-    for (const asteroid of this.basicAsteroids) {
-      const position = this.getMinimapPosition(asteroid.body.x, asteroid.body.y, innerX, innerY, innerWidth, innerHeight);
-      const markerRadius = 1.3 + asteroid.tier * 0.55;
-
-      this.minimapGraphics.fillStyle(0x9fd8ff, 0.68);
-      this.minimapGraphics.fillCircle(position.x, position.y, markerRadius);
-    }
-
-    for (const enemy of this.basicEnemies) {
-      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
-
-      this.minimapGraphics.fillStyle(0xffc857, 0.88);
-      this.minimapGraphics.fillTriangle(
-        position.x,
-        position.y - 3.4,
-        position.x - 3,
-        position.y + 2.8,
-        position.x + 3,
-        position.y + 2.8
-      );
-    }
-
-    for (const enemy of this.shooterEnemies) {
-      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
-
-      this.minimapGraphics.fillStyle(0xff5964, 0.92);
-      this.minimapGraphics.fillRect(position.x - 2.8, position.y - 2.8, 5.6, 5.6);
-    }
-
-    for (const enemy of this.tankEnemies) {
-      const position = this.getMinimapPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight);
-
-      this.minimapGraphics.fillStyle(0xb48cff, 0.94);
-      this.minimapGraphics.fillCircle(position.x, position.y, 4.2);
-      this.minimapGraphics.lineStyle(1, 0xf2fbff, 0.78);
-      this.minimapGraphics.strokeCircle(position.x, position.y, 5.4);
-    }
-
-    for (const scrap of this.scrapPickups) {
-      const position = this.getMinimapPosition(scrap.body.x, scrap.body.y, innerX, innerY, innerWidth, innerHeight);
-
-      this.minimapGraphics.fillStyle(0x73f2ff, 0.86);
-      this.minimapGraphics.fillCircle(position.x, position.y, 1.8);
-    }
-
-    if (this.blackHole) {
-      const position = this.getMinimapPosition(this.blackHole.body.x, this.blackHole.body.y, innerX, innerY, innerWidth, innerHeight);
-
-      this.minimapGraphics.fillStyle(0x05030a, 0.96);
-      this.minimapGraphics.fillCircle(position.x, position.y, 5.6);
-      this.minimapGraphics.lineStyle(2, 0xf2fbff, 0.82);
-      this.minimapGraphics.strokeCircle(position.x, position.y, 7.2);
-    }
-
-    const playerPosition = this.getMinimapPosition(this.player.x, this.player.y, innerX, innerY, innerWidth, innerHeight);
-
-    this.minimapGraphics.fillStyle(0x42f5d7, 1);
-    this.minimapGraphics.fillCircle(playerPosition.x, playerPosition.y, 4.2);
-    this.minimapGraphics.lineStyle(1, 0xf2fbff, 0.95);
-    this.minimapGraphics.strokeCircle(playerPosition.x, playerPosition.y, 5.6);
+    this.minimap.update(this.getMinimapSnapshot());
   }
 
-  private getMinimapPosition(
-    worldX: number,
-    worldY: number,
-    mapX: number,
-    mapY: number,
-    mapWidth: number,
-    mapHeight: number
-  ): { x: number; y: number } {
-    const wrappedX = wrapCoordinate(worldX, this.arena.width);
-    const wrappedY = wrapCoordinate(worldY, this.arena.height);
-
+  private getMinimapSnapshot(): MinimapSnapshot {
     return {
-      x: mapX + (wrappedX / this.arena.width) * mapWidth,
-      y: mapY + (wrappedY / this.arena.height) * mapHeight
+      arena: this.arena,
+      player: this.player,
+      isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
+      basicAsteroids: this.basicAsteroids,
+      basicEnemies: this.basicEnemies,
+      shooterEnemies: this.shooterEnemies,
+      tankEnemies: this.tankEnemies,
+      scrapPickups: this.scrapPickups,
+      blackHole: this.blackHole
     };
   }
 
