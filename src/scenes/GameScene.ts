@@ -150,6 +150,7 @@ import type {
   UpgradeOverlayChoice
 } from './gameTypes';
 import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
+import { GameplayHudSystem, type GameplayHudSnapshot } from '../systems/gameplayHud';
 import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import { StarfieldSystem } from '../systems/starfield';
 import {
@@ -261,10 +262,6 @@ import {
   ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY,
   FORWARD_THRUSTER_INTERVAL_MS,
   GAMEPLAY_MAX_VELOCITY,
-  HUD_BAR_HEIGHT,
-  HUD_BAR_WIDTH,
-  HUD_MARGIN,
-  HUD_RIGHT_BAR_Y,
   IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE,
   IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
   INITIAL_ASTEROID_TIERS,
@@ -357,8 +354,7 @@ export class GameScene extends Phaser.Scene {
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private debugText!: Phaser.GameObjects.Text;
-  private hudGraphics!: Phaser.GameObjects.Graphics;
-  private hullText!: Phaser.GameObjects.Text;
+  private gameplayHud!: GameplayHudSystem;
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
   private upgradeButtonGraphics!: Phaser.GameObjects.Graphics;
   private upgradeButtonText!: Phaser.GameObjects.Text;
@@ -509,6 +505,7 @@ export class GameScene extends Phaser.Scene {
       getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
     });
     this.minimap = new MinimapSystem(this);
+    this.gameplayHud = new GameplayHudSystem(this);
     this.createInput();
     this.createBackgroundTextures();
     this.showMainMenu();
@@ -1578,21 +1575,9 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
-    this.hudGraphics = this.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.gameplayHud.create();
     this.minimap.create();
     this.collisionDebugGraphics = this.add.graphics().setDepth(999);
-
-    this.hullText = this.add
-      .text(this.scale.width - HUD_MARGIN, HUD_MARGIN, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#f2fbff',
-        backgroundColor: 'rgba(2, 4, 10, 0.72)',
-        padding: { x: 10, y: 7 }
-      })
-      .setOrigin(1, 0)
-      .setScrollFactor(0)
-      .setDepth(1000);
 
     this.createUpgradeButton();
     this.createUpgradeOverlay();
@@ -9054,10 +9039,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateGameplayHud(time: number): void {
-    if (!this.hullText || !this.hudGraphics) {
-      return;
-    }
+    this.gameplayHud.update(this.getGameplayHudSnapshot(time));
+    this.updateUpgradeButton();
+  }
 
+  private getGameplayHudSnapshot(time: number): GameplayHudSnapshot {
     const status = this.isPlayerDead
       ? 'CRITICAL'
       : this.debugState.playerInvulnerable
@@ -9066,7 +9052,6 @@ export class GameScene extends Phaser.Scene {
           ? 'HIT'
           : 'STABLE';
     const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
-    const survivalTime = this.formatSurvivalTime(elapsedSeconds);
     const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / maxHull;
@@ -9076,60 +9061,30 @@ export class GameScene extends Phaser.Scene {
     const weaponRemainingMs = Math.max(0, this.playerWeapons.nextMainWeaponFireAt - time);
     const weaponProgress = weaponCooldownMs > 0 ? 1 - weaponRemainingMs / weaponCooldownMs : 1;
     const weaponStatus = weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(weaponRemainingMs / 1000)}s`;
-    const secondaryStatus = secondaryWeapon ? secondaryWeapon.displayName : 'Empty';
-    const upgradeStatus =
-      this.bankedUpgrades > 0 ? `Upgrade available x${this.bankedUpgrades}  Press U` : 'No upgrade banked';
-    const shieldStatus = this.hasRammingShield()
-      ? `Shield ${Math.ceil(this.rammingShieldState.hp)} / ${this.getRammingShieldMaxHp()}${this.rammingShieldState.hp <= 0 ? '  BROKEN' : ''}\n` +
-        `Shield dash ${this.rammingShieldState.dashCharges} / ${this.getRammingShieldStats().dashMaxCharges}${time < this.rammingShieldState.empoweredUntil ? '  EMPOWERED' : ''}\n`
-      : '';
 
-    this.hullText.setText(
-      `Time ${survivalTime}\n` +
-        `Hull ${this.playerHull} / ${maxHull}  ${status}\n` +
-        shieldStatus +
-        `XP ${this.playerXp} / ${this.nextXpThreshold}\n` +
-        `Scrap ${this.runScrapTotal}\n` +
-        `Banked upgrades ${this.bankedUpgrades}\n` +
-        `${upgradeStatus}\n` +
-        `Primary ${activeWeapon.displayName} ${weaponStatus}\n` +
-        `Secondary ${secondaryStatus}\n` +
-        `${this.getActiveMainWeaponUpgradeHudSummary()}`
-    );
-
-    this.drawGameplayHudBars(hullProgress, xpProgress, weaponProgress);
-    this.updateUpgradeButton();
-  }
-
-  private drawGameplayHudBars(hullProgress: number, xpProgress: number, pulseProgress: number): void {
-    const centerX = this.scale.width / 2;
-    const xpX = centerX - HUD_BAR_WIDTH / 2;
-    const xpY = HUD_MARGIN;
-    const hullX = this.scale.width - HUD_MARGIN - HUD_BAR_WIDTH;
-    const hullY = HUD_RIGHT_BAR_Y;
-    const pulseY = hullY + 26;
-    const shieldY = pulseY + 26;
-
-    this.hudGraphics.clear();
-    this.drawHudBar(xpX, xpY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(xpProgress, 0, 1), 0x42f5d7);
-    this.drawHudBar(hullX, hullY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(hullProgress, 0, 1), 0xff5964);
-    this.drawHudBar(hullX, pulseY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(pulseProgress, 0, 1), 0xffc857);
-
-    if (this.hasRammingShield()) {
-      const shieldProgress = this.getRammingShieldMaxHp() > 0 ? this.rammingShieldState.hp / this.getRammingShieldMaxHp() : 0;
-      this.drawHudBar(hullX, shieldY, HUD_BAR_WIDTH, HUD_BAR_HEIGHT, Phaser.Math.Clamp(shieldProgress, 0, 1), 0x42f5d7);
-    }
-  }
-
-  private drawHudBar(x: number, y: number, width: number, height: number, progress: number, color: number): void {
-    this.hudGraphics.fillStyle(0x02040a, 0.76);
-    this.hudGraphics.fillRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
-    this.hudGraphics.lineStyle(1, 0x52627f, 0.78);
-    this.hudGraphics.strokeRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
-    this.hudGraphics.fillStyle(0x111a24, 0.92);
-    this.hudGraphics.fillRect(x, y, width, height);
-    this.hudGraphics.fillStyle(color, 0.88);
-    this.hudGraphics.fillRect(x, y, width * progress, height);
+    return {
+      timeSeconds: elapsedSeconds,
+      playerHull: this.playerHull,
+      maxHull,
+      status,
+      playerXp: this.playerXp,
+      nextXpThreshold: this.nextXpThreshold,
+      runScrapTotal: this.runScrapTotal,
+      bankedUpgrades: this.bankedUpgrades,
+      activeWeaponName: activeWeapon.displayName,
+      weaponStatus,
+      secondaryWeaponName: secondaryWeapon ? secondaryWeapon.displayName : 'Empty',
+      mainWeaponUpgradeSummary: this.getActiveMainWeaponUpgradeHudSummary(),
+      hullProgress,
+      xpProgress,
+      weaponProgress,
+      hasRammingShield: this.hasRammingShield(),
+      rammingShieldHp: this.rammingShieldState.hp,
+      rammingShieldMaxHp: this.getRammingShieldMaxHp(),
+      rammingShieldDashCharges: this.rammingShieldState.dashCharges,
+      rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
+      isRammingShieldEmpowered: time < this.rammingShieldState.empoweredUntil
+    };
   }
 
   private formatSurvivalTime(totalSeconds: number): string {
