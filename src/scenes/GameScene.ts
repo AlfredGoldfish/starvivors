@@ -128,6 +128,7 @@ import {
 } from '../systems/debug/debugState';
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
+import { updateBasicAsteroidRuntime } from '../systems/asteroids';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import type {
   AsteroidBreakupProfile,
@@ -7258,19 +7259,16 @@ export class GameScene extends Phaser.Scene {
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
 
-    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
-      const asteroid = this.basicAsteroids[i];
-      this.validateAsteroidRenderState(asteroid);
-
-      if (this.applyBlackHoleToAsteroid(asteroid, i, deltaSeconds, this.time.now)) {
-        continue;
-      }
-
-      asteroid.body.x = wrapCoordinate(asteroid.body.x + asteroid.velocity.x * deltaSeconds, this.arena.width);
-      asteroid.body.y = wrapCoordinate(asteroid.body.y + asteroid.velocity.y * deltaSeconds, this.arena.height);
-      asteroid.body.rotation += asteroid.rotationSpeed * deltaSeconds;
-      this.updateAsteroidWrapMirror(asteroid);
-    }
+    updateBasicAsteroidRuntime({
+      arena: this.arena,
+      asteroids: this.basicAsteroids,
+      deltaSeconds,
+      time: this.time.now,
+      validateAsteroidRenderState: (asteroid) => this.validateAsteroidRenderState(asteroid),
+      applyBlackHoleToAsteroid: (asteroid, index, blackHoleDeltaSeconds, time) =>
+        this.applyBlackHoleToAsteroid(asteroid, index, blackHoleDeltaSeconds, time),
+      updateAsteroidWrapMirror: (asteroid) => this.updateAsteroidWrapMirror(asteroid)
+    });
 
     this.resolveAsteroidCollisions(this.time.now);
   }
