@@ -2,3 +2,4 @@
 node_modules/
 dist/
 .vite-dev-server.pid
+vite-dev*.log

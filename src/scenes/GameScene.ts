@@ -102,7 +102,6 @@ import {
   BLACK_HOLE_PNG_TEXTURE_KEYS,
   BLACK_HOLE_PNG_TEXTURE_LABELS,
   BlackHoleSystem,
-  type BlackHoleCapturedProjectileState,
   type BlackHoleFieldTuningConfig,
   type BlackHolePngLayerConfig,
   type BlackHolePngTextureKey,
@@ -119,15 +118,220 @@ import {
 import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
+import type {
+  AsteroidBreakupProfile,
+  AsteroidBreakupProfileMode,
+  AsteroidTier,
+  BasicAsteroid,
+  BasicEnemy,
+  DamageFeedbackSource,
+  EnemyProjectile,
+  EnemySpawnType,
+  EnemyWreckageDebris,
+  GameFlowState,
+  HangarStatRow,
+  PlayerAsteroidContact,
+  PlayerDebrisContact,
+  PlayerEnemyContact,
+  PlayerProjectile,
+  RammingShieldCollision,
+  SavedBlackHoleFieldTuningPreset,
+  SavedBlackHolePngLayer,
+  SavedBlackHolePngSetup,
+  SavedDebugShipLoadout,
+  SavedDebugWeaponLoadout,
+  ScrapPickup,
+  ScrapSourceType,
+  SecondaryWeaponChoice,
+  ShooterEnemy,
+  ShopBackTarget,
+  StarvivorsTestHarnessState,
+  TankEnemy,
+  UpgradeOverlayChoice
+} from './gameTypes';
+import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
+import { StarfieldSystem } from '../systems/starfield';
+import {
+  ASTEROID_BREAKUP_FEEDBACK_MS,
+  ASTEROID_COLLISION_COOLDOWN_MS,
+  ASTEROID_COLLISION_IMPULSE_SPEED_SCALE,
+  ASTEROID_COLLISION_MASS_DAMAGE_SCALE,
+  ASTEROID_COLLISION_MAX_DAMAGE,
+  ASTEROID_COLLISION_MAX_IMPULSE,
+  ASTEROID_COLLISION_MAX_SEPARATION,
+  ASTEROID_COLLISION_MIN_DAMAGE_SPEED,
+  ASTEROID_COLLISION_MIN_IMPULSE,
+  ASTEROID_COLLISION_RESTITUTION,
+  ASTEROID_COLLISION_SEPARATION_PERCENT,
+  ASTEROID_COLLISION_SPEED_DAMAGE_SCALE,
+  ASTEROID_CONTACT_DAMAGE_BY_TIER,
+  ASTEROID_FRAGMENT_BURST_MAX_SPEED,
+  ASTEROID_FRAGMENT_BURST_MIN_SPEED,
+  ASTEROID_IMPACT_EXPLOSION_MS,
+  ASTEROID_MAX_ROTATION_SPEED,
+  ASTEROID_MIN_ROTATION_SPEED,
+  ASTEROID_PARENT_VELOCITY_INHERITANCE,
+  ASTEROID_SAFE_SPAWN_RADIUS,
+  ASTEROID_TIER_CONFIG,
+  ASTEROID_TIERS,
+  ASTEROID_XP_REWARD_BY_TIER,
+  BACKGROUND_TILE_SIZE,
+  BASIC_ASTEROID_COUNT,
+  BASIC_ENEMY_COUNT,
+  BASIC_ENEMY_DISPLAY_SIZE,
+  BASIC_ENEMY_TEXTURE_KEY,
+  BASIC_ENEMY_VISUAL_ROTATION,
+  BASIC_ENEMY_XP_REWARD,
+  BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER,
+  BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE,
+  BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA,
+  BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING,
+  BLACK_HOLE_CHASER_WHIRLPOOL_TUNING,
+  BLACK_HOLE_DEBRIS_WHIRLPOOL_TUNING,
+  BLACK_HOLE_ENEMY_FIELD_DAMPING,
+  BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
+  BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
+  BLACK_HOLE_PLAYER_FIELD_MASS,
+  BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE,
+  BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA,
+  BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS,
+  BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING,
+  BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING,
+  BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING,
+  BLACK_HOLE_TANK_WHIRLPOOL_TUNING,
+  BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS,
+  BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO,
+  CONTACT_IMPACT_MASS_DAMAGE_SCALE,
+  CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER,
+  CONTACT_IMPACT_MIN_DAMAGE_SPEED,
+  CONTACT_IMPACT_SPEED_DAMAGE_SCALE,
+  DAMAGE_FLASH_MS,
+  DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT,
+  DEBUG_BLACK_HOLE_LENS_DENSITY_MIN,
+  DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT,
+  DEBUG_BLACK_HOLE_LENS_LENGTH_MAX,
+  DEBUG_BLACK_HOLE_LENS_LENGTH_MIN,
+  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT,
+  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX,
+  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN,
+  DEBUG_BLACK_HOLE_LENS_SLIDER_GAP,
+  DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT,
+  DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH,
+  DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
+  DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT,
+  DEBUG_BLACK_HOLE_RADIUS_SCALE_MAX,
+  DEBUG_BLACK_HOLE_RADIUS_SCALE_MIN,
+  DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT,
+  DEBUG_ELLIPSE_SEGMENTS,
+  DEBUG_GRID_MAJOR_SPACING,
+  DEBUG_GRID_MINOR_SPACING,
+  DEBUG_UPDATE_INTERVAL_MS,
+  DEFAULT_STARFIELD_FAR_PARALLAX,
+  DEFAULT_STARFIELD_MID_PARALLAX,
+  DEFAULT_STARFIELD_NEAR_PARALLAX,
+  ENEMY_CONTACT_DAMAGE,
+  ENEMY_CONTACT_RESTITUTION_SHARE,
+  ENEMY_IMPACT_EXPLOSION_MS,
+  ENEMY_KNOCKBACK_DAMPING,
+  ENEMY_SPAWN_DOUBLE_SPAWN_STEP,
+  ENEMY_SPAWN_ESCALATION_INTERVAL_MS,
+  ENEMY_SPAWN_INITIAL_DELAY_MS,
+  ENEMY_SPAWN_INTERVAL_MS,
+  ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP,
+  ENEMY_SPAWN_MAX_ACTIVE_INITIAL,
+  ENEMY_SPAWN_MAX_ACTIVE_PER_STEP,
+  ENEMY_SPAWN_MIN_INTERVAL_MS,
+  ENEMY_SPAWN_SAFE_DISTANCE,
+  ENEMY_SPAWN_WEIGHTS_BY_STEP,
+  ENEMY_VELOCITY_RESPONSE,
+  ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE,
+  ENEMY_WRECKAGE_DEBRIS_COUNT_BY_ENEMY,
+  ENEMY_WRECKAGE_DEBRIS_DISPLAY_SIZE,
+  ENEMY_WRECKAGE_DEBRIS_HIT_RADIUS,
+  ENEMY_WRECKAGE_DEBRIS_HP,
+  ENEMY_WRECKAGE_DEBRIS_INHERITED_VELOCITY,
+  ENEMY_WRECKAGE_DEBRIS_LIFETIME_MS,
+  ENEMY_WRECKAGE_DEBRIS_MASS_BY_ENEMY,
+  ENEMY_WRECKAGE_DEBRIS_MAX_ACTIVE,
+  ENEMY_WRECKAGE_DEBRIS_MAX_ROTATION_SPEED,
+  ENEMY_WRECKAGE_DEBRIS_MAX_SPEED,
+  ENEMY_WRECKAGE_DEBRIS_MIN_ROTATION_SPEED,
+  ENEMY_WRECKAGE_DEBRIS_MIN_SPEED,
+  ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY,
+  FORWARD_THRUSTER_INTERVAL_MS,
+  GAMEPLAY_MAX_VELOCITY,
+  HUD_BAR_HEIGHT,
+  HUD_BAR_WIDTH,
+  HUD_MARGIN,
+  HUD_RIGHT_BAR_Y,
+  IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE,
+  IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
+  INITIAL_ASTEROID_TIERS,
+  INITIAL_XP_THRESHOLD,
+  MINIMAP_HEIGHT,
+  MINIMAP_MARGIN,
+  MINIMAP_PADDING,
+  MINIMAP_WIDTH,
+  PLAYER_CONTACT_IMPULSE_COOLDOWN_MS,
+  PLAYER_CONTACT_MAX_IMPULSE,
+  PLAYER_CONTACT_MAX_SEPARATION,
+  PLAYER_CONTACT_MIN_IMPULSE,
+  PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+  PLAYER_CONTACT_SEPARATION_PERCENT,
+  PLAYER_DAMAGE_FLASH_MS,
+  PLAYER_DAMAGE_INVULNERABILITY_MS,
+  PLAYER_HIT_RADIUS,
+  PLAYER_MASS,
+  PLAYER_MAX_HULL,
+  PLAYER_PROJECTILE_HIT_RADIUS,
+  PLAYER_PROJECTILE_MUZZLE_OFFSET,
+  PLAYER_PROJECTILE_TRAIL_FADE_MS,
+  PLAYER_PROJECTILE_TRAIL_INTERVAL_MS,
+  PLAYER_PROJECTILE_TRAIL_OFFSET,
+  PLAYER_SHIP_DISPLAY_SIZE,
+  PLAYER_SHIP_TEXTURE_KEY,
+  PLAYER_SHIP_VISUAL_ROTATION,
+  RAMMING_SHIELD_COLLIDER_DEPTH,
+  RAMMING_SHIELD_DASH_BURST_DISTANCE,
+  RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS,
+  RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE,
+  RAMMING_SHIELD_TEXTURE_CROP,
+  RAMMING_SHIELD_TEXTURE_KEY,
+  SCRAP_PICKUP_COLLECT_RADIUS,
+  SCRAP_PICKUP_DEBUG_VALUE,
+  SCRAP_PICKUP_DISPLAY_SIZE,
+  SCRAP_PICKUP_INHERITED_VELOCITY,
+  SCRAP_PICKUP_LIFETIME_MS,
+  SCRAP_PICKUP_MASS,
+  SCRAP_PICKUP_MAX_ACTIVE,
+  SCRAP_PICKUP_MAX_SPEED,
+  SCRAP_PICKUP_MIN_SPEED,
+  SCRAP_PICKUP_RADIUS,
+  SCRAP_PICKUP_TEXTURE_KEY,
+  SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER,
+  SCRAP_PICKUP_VALUE_FROM_DEBRIS,
+  SCRAP_TO_CREDIT_RATE,
+  SECONDARY_THRUSTER_INTERVAL_MS,
+  SHOOTER_ENEMY_COUNT,
+  SHOOTER_ENEMY_DISPLAY_SIZE,
+  SHOOTER_ENEMY_TEXTURE_KEY,
+  SHOOTER_ENEMY_VISUAL_ROTATION,
+  SHOOTER_PROJECTILE_HIT_RADIUS,
+  STAR_COLORS,
+  STARFIELD_FAR_TEXTURE_KEY,
+  STARFIELD_MID_TEXTURE_KEY,
+  STARFIELD_NEAR_TEXTURE_KEY,
+  STARFIELD_PARALLAX_MAX,
+  STARFIELD_PARALLAX_MIN,
+  STARFIELD_PARALLAX_STEP,
+  TANK_ENEMY_COUNT,
+  TANK_ENEMY_DISPLAY_SIZE,
+  TANK_ENEMY_TEXTURE_KEY,
+  TANK_ENEMY_VISUAL_ROTATION,
+  THRUSTER_FADE_MS,
+  XP_THRESHOLD_GROWTH
+} from './gameConstants';
 
-const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];
-const BASIC_ENEMY_TEXTURE_KEY = 'basic-enemy-spaceship-1';
-const SHOOTER_ENEMY_TEXTURE_KEY = 'shooter-enemy-spaceship';
-const TANK_ENEMY_TEXTURE_KEY = 'tank-enemy-spaceship';
-const ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY = 'enemy-wreckage-debris';
-const SCRAP_PICKUP_TEXTURE_KEY = 'scrap-pickup';
-const PLAYER_SHIP_TEXTURE_KEY = 'player-ship-spaceship-1';
-const RAMMING_SHIELD_TEXTURE_KEY = 'ramming-shield';
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
   { key: 'asteroid-variant-2', url: asteroidVariant2Url },
@@ -147,665 +351,7 @@ const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
   { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, url: blackHoleEventHorizonLinesUrl }
 ] as const;
 
-interface SavedBlackHolePngLayer {
-  image: unknown;
-  speedRps: unknown;
-  size: unknown;
-  alpha: unknown;
-  enabled: unknown;
-  initialRotation?: unknown;
-}
-
-interface SavedBlackHolePngSetup {
-  fieldScale?: unknown;
-  visualScale?: unknown;
-  coreScale?: unknown;
-  allLayersEnabled?: unknown;
-  addImage?: unknown;
-  selectedLayerIndex?: unknown;
-  layers?: unknown;
-}
-
-interface SavedBlackHoleFieldTuningPreset {
-  influenceRadiusScale?: unknown;
-  damageRadiusScale?: unknown;
-  coreScale?: unknown;
-  radialStrengthMultiplier?: unknown;
-  radialCurve?: unknown;
-  swirlStrengthMultiplier?: unknown;
-  swirlCurve?: unknown;
-  massResistanceMultiplier?: unknown;
-  maxVelocityMultiplier?: unknown;
-  viscosityStrength?: unknown;
-  viscosityCurve?: unknown;
-  innerDrag?: unknown;
-  playerResistance?: unknown;
-}
-
-interface SavedDebugShipLoadout {
-  type?: unknown;
-  schemaVersion?: unknown;
-  shipId?: unknown;
-  displayName?: unknown;
-  overrides?: unknown;
-}
-
-interface SavedDebugWeaponLoadout {
-  type?: unknown;
-  schemaVersion?: unknown;
-  weaponId?: unknown;
-  displayName?: unknown;
-  overrides?: unknown;
-}
-
-const STARFIELD_FAR_TEXTURE_KEY = 'starvivors-starfield-far-tile';
-const STARFIELD_MID_TEXTURE_KEY = 'starvivors-starfield-mid-tile';
-const STARFIELD_NEAR_TEXTURE_KEY = 'starvivors-starfield-near-tile';
-const BACKGROUND_TILE_SIZE = 1024;
-const DEFAULT_STARFIELD_FAR_PARALLAX = 0.25;
-const DEFAULT_STARFIELD_MID_PARALLAX = 0.52;
-const DEFAULT_STARFIELD_NEAR_PARALLAX = 0.82;
-const STARFIELD_PARALLAX_STEP = 0.05;
-const STARFIELD_PARALLAX_MIN = 0;
-const STARFIELD_PARALLAX_MAX = 2;
-const DEBUG_UPDATE_INTERVAL_MS = 150;
-const PLAYER_PROJECTILE_MUZZLE_OFFSET = 36;
-const PLAYER_PROJECTILE_TRAIL_OFFSET = 11;
-const PLAYER_PROJECTILE_TRAIL_FADE_MS = 220;
-const PLAYER_PROJECTILE_TRAIL_INTERVAL_MS = 28;
-const PLAYER_SHIP_DISPLAY_SIZE = 118;
-const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
-const THRUSTER_FADE_MS = 170;
-const FORWARD_THRUSTER_INTERVAL_MS = 26;
-const SECONDARY_THRUSTER_INTERVAL_MS = 42;
-const BASIC_ENEMY_COUNT = 2;
-const BASIC_ENEMY_DISPLAY_SIZE = 86;
-const BASIC_ENEMY_VISUAL_ROTATION = Math.PI;
-const SHOOTER_ENEMY_COUNT = 0;
-const SHOOTER_ENEMY_DISPLAY_SIZE = 92;
-const SHOOTER_ENEMY_VISUAL_ROTATION = Math.PI;
-const SHOOTER_PROJECTILE_HIT_RADIUS = 9;
-const TANK_ENEMY_COUNT = 0;
-const TANK_ENEMY_DISPLAY_SIZE = 126;
-const TANK_ENEMY_VISUAL_ROTATION = Math.PI;
-const ENEMY_SPAWN_INITIAL_DELAY_MS = 2500;
-const ENEMY_SPAWN_INTERVAL_MS = 5200;
-const ENEMY_SPAWN_MIN_INTERVAL_MS = 1800;
-const ENEMY_SPAWN_ESCALATION_INTERVAL_MS = 30000;
-const ENEMY_SPAWN_SAFE_DISTANCE = 620;
-const ENEMY_SPAWN_MAX_ACTIVE_INITIAL = 4;
-const ENEMY_SPAWN_MAX_ACTIVE_PER_STEP = 2;
-const ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP = 18;
-const ENEMY_SPAWN_DOUBLE_SPAWN_STEP = 5;
-const BASIC_ASTEROID_COUNT = 9;
-const ASTEROID_MIN_ROTATION_SPEED = 0.08;
-const ASTEROID_MAX_ROTATION_SPEED = 0.26;
-const ASTEROID_SAFE_SPAWN_RADIUS = 520;
-const ASTEROID_COLLISION_COOLDOWN_MS = 260;
-const ASTEROID_COLLISION_MIN_DAMAGE_SPEED = 55;
-const ASTEROID_COLLISION_SPEED_DAMAGE_SCALE = 0.011;
-const ASTEROID_COLLISION_MASS_DAMAGE_SCALE = 0.035;
-const ASTEROID_COLLISION_MAX_DAMAGE = 3.5;
-const ASTEROID_COLLISION_MIN_IMPULSE = 18;
-const ASTEROID_COLLISION_MAX_IMPULSE = 210;
-const ASTEROID_COLLISION_IMPULSE_SPEED_SCALE = 0.26;
-const ASTEROID_COLLISION_RESTITUTION = 0.58;
-const ASTEROID_COLLISION_SEPARATION_PERCENT = 0.48;
-const ASTEROID_COLLISION_MAX_SEPARATION = 22;
-const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
-const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
-const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
-const DAMAGE_FLASH_MS = 90;
-const ENEMY_IMPACT_EXPLOSION_MS = 150;
-const ASTEROID_IMPACT_EXPLOSION_MS = 180;
-const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
-const PLAYER_PROJECTILE_HIT_RADIUS = 8;
-const PLAYER_MAX_HULL = 100;
-const PLAYER_HIT_RADIUS = 32;
-const PLAYER_DAMAGE_INVULNERABILITY_MS = 1000;
-const PLAYER_DAMAGE_FLASH_MS = 130;
-const ENEMY_CONTACT_DAMAGE = basicEnemy.stats.contactDamage;
-const BASIC_ENEMY_XP_REWARD = basicEnemy.stats.xpValue;
-const INITIAL_XP_THRESHOLD = 100;
-const XP_THRESHOLD_GROWTH = 1.2;
-const GAMEPLAY_MAX_VELOCITY = 1000;
-const PLAYER_MASS = 3;
-const PLAYER_CONTACT_IMPULSE_COOLDOWN_MS = 140;
-const PLAYER_CONTACT_MIN_IMPULSE = 120;
-const PLAYER_CONTACT_MAX_IMPULSE = 460;
-const PLAYER_CONTACT_RELATIVE_SPEED_SCALE = 0.42;
-const PLAYER_CONTACT_SEPARATION_PERCENT = 0.42;
-const PLAYER_CONTACT_MAX_SEPARATION = 18;
-const CONTACT_IMPACT_MIN_DAMAGE_SPEED = 90;
-const CONTACT_IMPACT_SPEED_DAMAGE_SCALE = 0.018;
-const CONTACT_IMPACT_MASS_DAMAGE_SCALE = 0.08;
-const CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER = 1.35;
-const RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE = 0.08;
-const IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE: Record<DebugImpactSourceType, number> = {
-  player: 0.08,
-  enemy: 0.08,
-  asteroid: 0.2,
-  debris: 0.1
-};
-const IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE: Record<DebugImpactSourceType, number> = {
-  player: 90,
-  enemy: 90,
-  asteroid: 75,
-  debris: 85
-};
-const ENEMY_VELOCITY_RESPONSE = 3.6;
-const ENEMY_CONTACT_RESTITUTION_SHARE = 0.65;
-const ENEMY_KNOCKBACK_DAMPING = 0.88;
-const RAMMING_SHIELD_TEXTURE_CROP = { x: 208, y: 250, width: 295, height: 73 };
-const RAMMING_SHIELD_COLLIDER_DEPTH = 84;
-const RAMMING_SHIELD_DASH_BURST_DISTANCE = 96;
-const RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS = 0.12;
-const DEBUG_ELLIPSE_SEGMENTS = 28;
-const DEBUG_GRID_MINOR_SPACING = 240;
-const DEBUG_GRID_MAJOR_SPACING = 480;
-const HUD_BAR_WIDTH = 360;
-const HUD_BAR_HEIGHT = 12;
-const HUD_MARGIN = 16;
-const HUD_RIGHT_BAR_Y = 174;
-const MINIMAP_WIDTH = 220;
-const MINIMAP_HEIGHT = 140;
-const MINIMAP_MARGIN = 16;
-const MINIMAP_PADDING = 8;
-const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 1;
-const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
-const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 4;
-const DEBUG_BLACK_HOLE_LENS_DENSITY_MIN = 0;
-const DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT = 1;
-const DEBUG_BLACK_HOLE_LENS_LENGTH_MIN = 0.5;
-const DEBUG_BLACK_HOLE_LENS_LENGTH_MAX = 2;
-const DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT = 1;
-const DEBUG_BLACK_HOLE_RADIUS_SCALE_MIN = 0;
-const DEBUG_BLACK_HOLE_RADIUS_SCALE_MAX = 20;
-const DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT = 32;
-const DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT = BLACK_HOLE_FULL_TEXTURE_KEY;
-const DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH = 220;
-const DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT = 54;
-const DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH = 176;
-const DEBUG_BLACK_HOLE_LENS_SLIDER_GAP = 62;
-const BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS = 650;
-const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS = 900;
-const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE = 0.8;
-const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA = 2.2;
-const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE = 0.75;
-const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA = 1.7;
-const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE = 0.5;
-const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA = 5;
-const BLACK_HOLE_ENEMY_FIELD_DAMPING = 0.988;
-const BLACK_HOLE_PLAYER_FIELD_MASS = 4.8;
-const BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO = 0.16;
-
-const BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER: Record<number, number> = {
-  1: 1,
-  2: 2.6,
-  3: 4.8,
-  4: 8.4,
-  5: 13
-};
-
-const BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 110,
-  radialExtraAcceleration: 1160,
-  swirlBaseAcceleration: 95,
-  swirlExtraAcceleration: 1020,
-  maxSpeed: 620,
-  mass: 1,
-  massResistance: 0.42
-};
-
-const BLACK_HOLE_CHASER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 125,
-  radialExtraAcceleration: 1220,
-  swirlBaseAcceleration: 105,
-  swirlExtraAcceleration: 1080,
-  maxSpeed: basicEnemy.stats.blackHoleMaxSpeed,
-  mass: basicEnemy.stats.mass,
-  massResistance: basicEnemy.stats.blackHoleResistance
-};
-
-const BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 115,
-  radialExtraAcceleration: 1040,
-  swirlBaseAcceleration: 95,
-  swirlExtraAcceleration: 920,
-  maxSpeed: shooterEnemy.stats.blackHoleMaxSpeed,
-  mass: shooterEnemy.stats.mass,
-  massResistance: shooterEnemy.stats.blackHoleResistance
-};
-
-const BLACK_HOLE_TANK_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 95,
-  radialExtraAcceleration: 880,
-  swirlBaseAcceleration: 76,
-  swirlExtraAcceleration: 720,
-  maxSpeed: tankEnemy.stats.blackHoleMaxSpeed,
-  mass: tankEnemy.stats.mass,
-  massResistance: tankEnemy.stats.blackHoleResistance
-};
-
-const BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 72,
-  radialExtraAcceleration: 720,
-  swirlBaseAcceleration: 64,
-  swirlExtraAcceleration: 650,
-  maxSpeed: 640,
-  mass: BLACK_HOLE_PLAYER_FIELD_MASS,
-  massResistance: 0.42
-};
-
-const BLACK_HOLE_DEBRIS_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 130,
-  radialExtraAcceleration: 1240,
-  swirlBaseAcceleration: 112,
-  swirlExtraAcceleration: 1120,
-  maxSpeed: 620,
-  mass: 1,
-  massResistance: 0.34
-};
-
-const BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
-  radialBaseAcceleration: 150,
-  radialExtraAcceleration: 1380,
-  swirlBaseAcceleration: 132,
-  swirlExtraAcceleration: 1280,
-  maxSpeed: 680,
-  mass: 0.55,
-  massResistance: 0.28
-};
-
-const ENEMY_WRECKAGE_DEBRIS_DISPLAY_SIZE = 34;
-const ENEMY_WRECKAGE_DEBRIS_HIT_RADIUS = 15;
-const ENEMY_WRECKAGE_DEBRIS_LIFETIME_MS = 45000;
-const ENEMY_WRECKAGE_DEBRIS_MAX_ACTIVE = 90;
-const ENEMY_WRECKAGE_DEBRIS_HP = 2;
-const ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE = 8;
-const ENEMY_WRECKAGE_DEBRIS_MIN_SPEED = 42;
-const ENEMY_WRECKAGE_DEBRIS_MAX_SPEED = 156;
-const ENEMY_WRECKAGE_DEBRIS_INHERITED_VELOCITY = 0.38;
-const ENEMY_WRECKAGE_DEBRIS_MIN_ROTATION_SPEED = 0.7;
-const ENEMY_WRECKAGE_DEBRIS_MAX_ROTATION_SPEED = 2.5;
-const ENEMY_WRECKAGE_DEBRIS_COUNT_BY_ENEMY: Record<EnemySpawnType, number> = {
-  chaser: 2,
-  shooter: 3,
-  tank: 6
-};
-const ENEMY_WRECKAGE_DEBRIS_MASS_BY_ENEMY: Record<EnemySpawnType, number> = {
-  chaser: 0.75,
-  shooter: 1.05,
-  tank: 1.75
-};
-
-const SCRAP_PICKUP_DISPLAY_SIZE = 24;
-const SCRAP_PICKUP_RADIUS = 18;
-const SCRAP_PICKUP_COLLECT_RADIUS = 46;
-const SCRAP_PICKUP_LIFETIME_MS = 60000;
-const SCRAP_PICKUP_MAX_ACTIVE = 160;
-const SCRAP_PICKUP_MASS = 0.55;
-const SCRAP_PICKUP_MIN_SPEED = 24;
-const SCRAP_PICKUP_MAX_SPEED = 100;
-const SCRAP_PICKUP_INHERITED_VELOCITY = 0.25;
-const SCRAP_PICKUP_DEBUG_VALUE = 10;
-const SCRAP_TO_CREDIT_RATE = 1;
-const SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER: Record<AsteroidTier, number> = {
-  1: 1,
-  2: 3,
-  3: 6,
-  4: 10,
-  5: 16
-};
-const SCRAP_PICKUP_VALUE_FROM_DEBRIS = 2;
-
-type AsteroidTier = 1 | 2 | 3 | 4 | 5;
-type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
-type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
-type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
-type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop' | 'shipSelect';
-type ShopBackTarget = 'mainMenu' | 'results';
-
-interface SecondaryWeaponChoice {
-  category: 'secondary-weapon';
-  weaponId: WeaponId;
-  name: string;
-  description: string;
-}
-
-type UpgradeOverlayChoice = UpgradeDefinition | SecondaryWeaponChoice;
 const UPGRADE_OVERLAY_CHOICE_COUNT = 6;
-
-const ENEMY_SPAWN_WEIGHTS_BY_STEP: Array<Record<EnemySpawnType, number>> = [
-  { chaser: 100, shooter: 0, tank: 0 },
-  { chaser: 92, shooter: 8, tank: 0 },
-  { chaser: 78, shooter: 22, tank: 0 },
-  { chaser: 66, shooter: 28, tank: 6 },
-  { chaser: 58, shooter: 34, tank: 8 },
-  { chaser: 52, shooter: 38, tank: 10 }
-];
-
-const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
-  1: 8,
-  2: 12,
-  3: 16,
-  4: 22,
-  5: 28
-};
-
-const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
-  1: 4,
-  2: 8,
-  3: 14,
-  4: 24,
-  5: 40
-};
-
-interface StarvivorsTestHarnessState {
-  selectedShipId: ShipId;
-  selectedShipName: string;
-  unlockedShipIds: ShipId[];
-  rammingShieldHp: number;
-  rammingShieldMaxHp: number;
-  rammingShieldDashCharges: number;
-  rammingShieldDashMaxCharges: number;
-  hull: number;
-  maxHull: number;
-  isPlayerDead: boolean;
-  playerXp: number;
-  runScrapTotal: number;
-  lastRunScrapTotal: number;
-  totalCredits: number;
-  lastRunCreditsEarned: number;
-  hasPaidRunCredits: boolean;
-  nextXpThreshold: number;
-  bankedUpgrades: number;
-  isUpgradeOverlayOpen: boolean;
-  pulseDamageLevel: number;
-  pulseFireRateLevel: number;
-  pulseVelocityLevel: number;
-  hullPlatingLevel: number;
-  engineTuningLevel: number;
-  damageControlLevel: number;
-  velocityLimiterLevel: number;
-  velocityLimiterActiveLevel: number;
-  playerVelocityLimit: number;
-  playerSpeed: number;
-  weaponDamageMultiplier: number;
-  pulseCooldownMs: number;
-  pulseProjectileSpeed: number;
-  playerAccelerationMultiplier: number;
-  playerMaxSpeed: number;
-  playerInvulnerabilityMs: number;
-  isMinimapVisible: boolean;
-  enemies: number;
-  shooterEnemies: number;
-  tankEnemies: number;
-  asteroids: number;
-  scrapPickups: number;
-  projectiles: number;
-  enemyProjectiles: number;
-}
-
-interface StarvivorsTestHarness {
-  getState: () => StarvivorsTestHarnessState;
-  addCredits: (amount: number) => StarvivorsTestHarnessState;
-  purchasePermanentUpgrade: (upgradeId: PermanentUpgradeId) => StarvivorsTestHarnessState;
-  adjustActivePermanentUpgrade: (upgradeId: PermanentUpgradeId, delta: number) => StarvivorsTestHarnessState;
-  unlockShip: (shipId: ShipId) => StarvivorsTestHarnessState;
-  selectShip: (shipId: ShipId) => StarvivorsTestHarnessState;
-  grantXp: (amount: number) => StarvivorsTestHarnessState;
-  damagePlayer: (damage?: number) => StarvivorsTestHarnessState;
-  expireInvulnerability: () => StarvivorsTestHarnessState;
-  placeEnemyOnPlayer: () => StarvivorsTestHarnessState;
-  placeAsteroidOnPlayer: (tier?: AsteroidTier) => StarvivorsTestHarnessState;
-  destroyFirstEnemy: () => StarvivorsTestHarnessState;
-  destroyFirstAsteroid: () => StarvivorsTestHarnessState;
-  killPlayer: () => StarvivorsTestHarnessState;
-  restartRun: () => StarvivorsTestHarnessState;
-  openUpgradeOverlay: () => StarvivorsTestHarnessState;
-  closeUpgradeOverlay: () => StarvivorsTestHarnessState;
-  selectPulseUpgrade: (choiceNumber: number) => StarvivorsTestHarnessState;
-  clickUpgradeButton: () => StarvivorsTestHarnessState;
-  toggleMinimap: () => StarvivorsTestHarnessState;
-}
-
-declare global {
-  interface Window {
-    starvivorsTestHarness?: StarvivorsTestHarness;
-  }
-}
-
-interface AsteroidTierConfig {
-  displaySize: number;
-  hitRadius: number;
-  hp: number;
-  massBudget: number;
-  minSpeed: number;
-  maxSpeed: number;
-  impactImpulse: number;
-  maxVelocity: number;
-}
-
-// Temporary asteroid HP for damage-feedback visibility; revisit during balance/polish.
-const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
-  1: {
-    displaySize: 52,
-    hitRadius: 20,
-    hp: 2,
-    massBudget: 1,
-    minSpeed: 92,
-    maxSpeed: 160,
-    impactImpulse: 94,
-    maxVelocity: GAMEPLAY_MAX_VELOCITY
-  },
-  2: {
-    displaySize: 76,
-    hitRadius: 30,
-    hp: 4,
-    massBudget: 4,
-    minSpeed: 76,
-    maxSpeed: 138,
-    impactImpulse: 78,
-    maxVelocity: GAMEPLAY_MAX_VELOCITY
-  },
-  3: {
-    displaySize: 108,
-    hitRadius: 42,
-    hp: 6,
-    massBudget: 8,
-    minSpeed: 54,
-    maxSpeed: 112,
-    impactImpulse: 58,
-    maxVelocity: GAMEPLAY_MAX_VELOCITY
-  },
-  4: {
-    displaySize: 154,
-    hitRadius: 58,
-    hp: 9,
-    massBudget: 16,
-    minSpeed: 34,
-    maxSpeed: 78,
-    impactImpulse: 36,
-    maxVelocity: GAMEPLAY_MAX_VELOCITY
-  },
-  5: {
-    displaySize: 196,
-    hitRadius: 74,
-    hp: 13,
-    massBudget: 32,
-    minSpeed: 22,
-    maxSpeed: 56,
-    impactImpulse: 24,
-    maxVelocity: GAMEPLAY_MAX_VELOCITY
-  }
-};
-
-const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5];
-const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
-
-interface PlayerProjectile extends BlackHoleCapturedProjectileState {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  speed: number;
-  damage: number;
-  hitRadius: number;
-  pierceRemaining: number;
-  piercedTargets: WeakSet<object>;
-  expiresAt: number;
-  distanceRemaining: number;
-  nextTrailAt: number;
-  trailColor: number;
-}
-
-interface EnemyProjectile extends BlackHoleCapturedProjectileState {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  speed: number;
-  damage: number;
-  hitRadius: number;
-  expiresAt: number;
-  distanceRemaining: number;
-}
-
-interface BasicEnemy {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  stats: EnemyStatProfile;
-  velocity: Phaser.Math.Vector2;
-  knockbackVelocity: Phaser.Math.Vector2;
-  blackHoleVelocity: Phaser.Math.Vector2;
-  hp: number;
-  nextBlackHoleDamageAt: number;
-}
-
-interface ShooterEnemy {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  stats: EnemyStatProfile;
-  velocity: Phaser.Math.Vector2;
-  knockbackVelocity: Phaser.Math.Vector2;
-  blackHoleVelocity: Phaser.Math.Vector2;
-  nextFireAt: number;
-  hp: number;
-  nextBlackHoleDamageAt: number;
-}
-
-interface TankEnemy {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  stats: EnemyStatProfile;
-  velocity: Phaser.Math.Vector2;
-  knockbackVelocity: Phaser.Math.Vector2;
-  blackHoleVelocity: Phaser.Math.Vector2;
-  hp: number;
-  nextBlackHoleDamageAt: number;
-}
-
-interface BasicAsteroid {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  variant: string;
-  tier: AsteroidTier;
-  hp: number;
-  breakupProfile: AsteroidBreakupProfile;
-  velocity: Phaser.Math.Vector2;
-  rotationSpeed: number;
-  hitRadius: number;
-  nextBlackHoleDamageAt: number;
-}
-
-interface EnemyWreckageDebris {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  mass: number;
-  hp: number;
-  damage: number;
-  hitRadius: number;
-  rotationSpeed: number;
-  expiresAt: number;
-}
-
-type DamageFeedbackSource = 'player' | 'enemy' | 'asteroid' | 'debris' | 'blackHole' | 'shield' | 'environment';
-
-interface HealthBarFeedback {
-  body: Phaser.GameObjects.Container;
-  graphics: Phaser.GameObjects.Graphics;
-  maxHp: number;
-  radius: number;
-  revealed: boolean;
-}
-
-interface FloatingDamageText {
-  text: Phaser.GameObjects.Text;
-  originX: number;
-  originY: number;
-  ageMs: number;
-  lifetimeMs: number;
-  riseDistance: number;
-  driftX: number;
-  startScale: number;
-}
-
-interface ScrapPickup {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  value: number;
-  mass: number;
-  source: ScrapSourceType;
-  pickupRadius: number;
-  expiresAt: number;
-  rotationSpeed: number;
-  bobPhase: number;
-}
-
-interface AsteroidBreakupProfile {
-  mode: AsteroidBreakupProfileMode;
-  preferredTier?: AsteroidTier;
-  burstMultiplier: number;
-  spreadMultiplier: number;
-}
-
-interface PlayerEnemyContact {
-  enemy: BasicEnemy | ShooterEnemy | TankEnemy;
-  normal: Phaser.Math.Vector2;
-  penetration: number;
-  damage: number;
-  mass: number;
-  hitRammingShield?: boolean;
-}
-
-interface PlayerAsteroidContact {
-  asteroid: BasicAsteroid;
-  normal: Phaser.Math.Vector2;
-  penetration: number;
-  damage: number;
-  hitRammingShield?: boolean;
-}
-
-interface PlayerDebrisContact {
-  debris: EnemyWreckageDebris;
-  normal: Phaser.Math.Vector2;
-  penetration: number;
-  damage: number;
-  hitRammingShield?: boolean;
-}
-
-interface RammingShieldCollision {
-  normal: Phaser.Math.Vector2;
-  penetration: number;
-}
-
-interface HangarStatRow {
-  label: string;
-  pipValue: number;
-  valueLabel: string;
-  unitsPerPip: number;
-}
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -844,9 +390,7 @@ export class GameScene extends Phaser.Scene {
   private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: Phaser.GameObjects.Container;
   private resultsActionZones: Phaser.GameObjects.Zone[] = [];
-  private farStarfield!: Phaser.GameObjects.TileSprite;
-  private midStarfield!: Phaser.GameObjects.TileSprite;
-  private nearStarfield!: Phaser.GameObjects.TileSprite;
+  private starfield!: StarfieldSystem;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
   private fireKey!: Phaser.Input.Keyboard.Key;
@@ -901,8 +445,7 @@ export class GameScene extends Phaser.Scene {
   private nextPlayerContactImpulseAt = 0;
   private playerBodyImpactCooldowns = new WeakMap<object, number>();
   private asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
-  private healthBarFeedback = new Map<object, HealthBarFeedback>();
-  private floatingDamageTexts: FloatingDamageText[] = [];
+  private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
   private runStartedAt = 0;
@@ -920,14 +463,6 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private minimapGraphics!: Phaser.GameObjects.Graphics;
   private isMinimapVisible = true;
-  private farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
-  private midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
-  private nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
-  private backgroundStarsVisible = true;
-  private backgroundScrollX = 0;
-  private backgroundScrollY = 0;
-  private previousBackgroundPlayerX?: number;
-  private previousBackgroundPlayerY?: number;
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
   private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
@@ -967,6 +502,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.combatFeedback = new CombatFeedbackSystem({
+      scene: this,
+      debugState: this.debugState,
+      getNearestWrappedRenderPosition: (x, y) => this.getNearestWrappedRenderPosition(x, y),
+      getEnemyHitRadius: (enemy) => this.getEnemyHitRadius(enemy)
+    });
+    this.starfield = new StarfieldSystem({
+      scene: this,
+      getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
+    });
     this.createInput();
     this.createBackgroundTextures();
     this.showMainMenu();
@@ -1029,7 +574,7 @@ export class GameScene extends Phaser.Scene {
       this.updatePlayerDamageVisuals(time);
     }
 
-    this.updateCombatFeedback(delta);
+    this.combatFeedback.update(delta, this.getCombatFeedbackSnapshot());
     this.updateCollisionDebugOverlay();
     this.updateBackgroundTiles(time);
     this.updateGameplayHud(time);
@@ -1289,10 +834,7 @@ export class GameScene extends Phaser.Scene {
     return this.debugState.createMenuValues({
       selectedShipName: this.getSelectedShipDefinition().displayName,
       weaponCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
-      backgroundStarsVisible: this.backgroundStarsVisible,
-      starfieldFarParallax: this.farStarfieldParallax,
-      starfieldMidParallax: this.midStarfieldParallax,
-      starfieldNearParallax: this.nearStarfieldParallax,
+      ...this.starfield.getDebugValues(),
       blackHoleLensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
       blackHoleLensDensity: this.debugBlackHoleLensDensity,
       blackHoleLensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
@@ -1944,8 +1486,7 @@ export class GameScene extends Phaser.Scene {
 
     this.debugMenu?.destroy();
     this.children.removeAll(true);
-    this.healthBarFeedback.clear();
-    this.floatingDamageTexts = [];
+    this.combatFeedback.clear();
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
     this.mainMenuActionZones = [];
@@ -2016,11 +1557,7 @@ export class GameScene extends Phaser.Scene {
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
     this.debugAddBlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
-    this.backgroundStarsVisible = true;
-    this.backgroundScrollX = 0;
-    this.backgroundScrollY = 0;
-    this.previousBackgroundPlayerX = undefined;
-    this.previousBackgroundPlayerY = undefined;
+    this.starfield.resetState();
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
@@ -3191,82 +2728,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createBackgroundTextures(): void {
-    this.createStarLayerTexture(STARFIELD_FAR_TEXTURE_KEY, 'starvivors-starfield-far-tile', 260, 0.45, 1.3, 0.18, 0.7);
-    this.createStarLayerTexture(STARFIELD_MID_TEXTURE_KEY, 'starvivors-starfield-mid-tile', 180, 0.65, 2.1, 0.24, 0.82);
-    this.createStarLayerTexture(STARFIELD_NEAR_TEXTURE_KEY, 'starvivors-starfield-near-tile', 118, 0.78, 2.6, 0.28, 0.82);
-  }
-
-  private createStarLayerTexture(
-    textureKey: string,
-    seed: string,
-    starCount: number,
-    minRadius: number,
-    maxRadius: number,
-    minAlpha: number,
-    maxAlpha: number
-  ): void {
-    if (this.textures.exists(textureKey)) {
-      return;
-    }
-
-    const starTexture = this.textures.createCanvas(textureKey, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
-
-    if (!starTexture) {
-      return;
-    }
-
-    const context = starTexture.getContext();
-    const random = new Phaser.Math.RandomDataGenerator([seed]);
-
-    context.clearRect(0, 0, BACKGROUND_TILE_SIZE, BACKGROUND_TILE_SIZE);
-
-    for (let i = 0; i < starCount; i += 1) {
-      const x = random.between(0, BACKGROUND_TILE_SIZE);
-      const y = random.between(0, BACKGROUND_TILE_SIZE);
-      const radius = random.realInRange(minRadius, maxRadius);
-      const alpha = random.realInRange(minAlpha, maxAlpha);
-      const color = Phaser.Display.Color.IntegerToColor(Phaser.Utils.Array.GetRandom(STAR_COLORS));
-      const glowRadius = radius * random.realInRange(1.8, 3.4);
-
-      context.globalAlpha = alpha * 0.22;
-      context.fillStyle = color.rgba;
-      context.beginPath();
-      context.arc(x, y, glowRadius, 0, Math.PI * 2);
-      context.fill();
-
-      context.globalAlpha = alpha;
-      context.beginPath();
-      context.arc(x, y, radius, 0, Math.PI * 2);
-      context.fill();
-    }
-
-    context.globalAlpha = 1;
-    starTexture.refresh();
+    this.starfield.createTextures();
   }
 
   private createStarfield(): void {
-    this.cameras.main.setBackgroundColor(0x02040a);
-
-    this.farStarfield = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_FAR_TEXTURE_KEY)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(-20);
-
-    this.midStarfield = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_MID_TEXTURE_KEY)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(-19);
-
-    this.nearStarfield = this.add
-      .tileSprite(0, 0, this.scale.width, this.scale.height, STARFIELD_NEAR_TEXTURE_KEY)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(-18);
-
-    this.applyBackgroundTilePositions();
-    this.applyBackgroundStarVisibility();
+    this.starfield.create();
   }
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
@@ -4516,43 +3982,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private adjustStarfieldParallax(layer: 'far' | 'mid' | 'near', direction: number): void {
-    const delta = direction * STARFIELD_PARALLAX_STEP;
-
-    if (layer === 'far') {
-      this.farStarfieldParallax = this.clampStarfieldParallax(this.farStarfieldParallax + delta);
-    } else if (layer === 'mid') {
-      this.midStarfieldParallax = this.clampStarfieldParallax(this.midStarfieldParallax + delta);
-    } else {
-      this.nearStarfieldParallax = this.clampStarfieldParallax(this.nearStarfieldParallax + delta);
-    }
-
-    this.applyBackgroundTilePositions();
+    this.starfield.adjustParallax(layer, direction);
   }
 
   private resetStarfieldParallax(): void {
-    this.farStarfieldParallax = DEFAULT_STARFIELD_FAR_PARALLAX;
-    this.midStarfieldParallax = DEFAULT_STARFIELD_MID_PARALLAX;
-    this.nearStarfieldParallax = DEFAULT_STARFIELD_NEAR_PARALLAX;
-    this.applyBackgroundTilePositions();
+    this.starfield.resetParallax();
   }
 
   private toggleBackgroundStars(): void {
-    this.backgroundStarsVisible = !this.backgroundStarsVisible;
-    this.applyBackgroundStarVisibility();
-  }
-
-  private applyBackgroundStarVisibility(): void {
-    if (!this.farStarfield || !this.midStarfield || !this.nearStarfield) {
-      return;
-    }
-
-    this.farStarfield.setVisible(this.backgroundStarsVisible);
-    this.midStarfield.setVisible(this.backgroundStarsVisible);
-    this.nearStarfield.setVisible(this.backgroundStarsVisible);
-  }
-
-  private clampStarfieldParallax(value: number): number {
-    return Number(Phaser.Math.Clamp(value, STARFIELD_PARALLAX_MIN, STARFIELD_PARALLAX_MAX).toFixed(2));
+    this.starfield.toggleStars();
   }
 
   private openUpgradeOverlay(time: number): void {
@@ -6963,6 +6401,19 @@ export class GameScene extends Phaser.Scene {
     this.emitDamageFeedback(debris, debris.body, debris.hp, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, damage, source, revealHealthBar);
   }
 
+  private getCombatFeedbackSnapshot(): CombatFeedbackSnapshot {
+    return {
+      player: this.player,
+      isPlayerDead: this.isPlayerDead,
+      playerHull: this.playerHull,
+      playerMaxHull: this.getPlayerMaxHull(),
+      playerHitRadius: this.getPlayerHitRadius(),
+      enemies: this.getAllEnemies(),
+      asteroids: this.basicAsteroids,
+      debris: this.enemyWreckageDebris
+    };
+  }
+
   private emitDamageFeedback(
     owner: object,
     body: Phaser.GameObjects.Container,
@@ -6973,225 +6424,11 @@ export class GameScene extends Phaser.Scene {
     source: DamageFeedbackSource,
     revealHealthBar: boolean
   ): void {
-    this.emitFloatingDamageNumber(body.x, body.y, damage, source);
-    this.ensureHealthBar(owner, body, maxHp, radius, revealHealthBar);
-    this.updateHealthBar(owner, hp, maxHp);
-  }
-
-  private ensureHealthBar(
-    owner: object,
-    body: Phaser.GameObjects.Container,
-    maxHp: number,
-    radius: number,
-    revealHealthBar: boolean
-  ): void {
-    const existing = this.healthBarFeedback.get(owner);
-    if (existing) {
-      existing.revealed ||= revealHealthBar;
-      existing.maxHp = maxHp;
-      existing.radius = radius;
-      return;
-    }
-
-    if (this.debugState.healthBarRevealOnPlayerDamage && !revealHealthBar) {
-      return;
-    }
-
-    const graphics = this.add.graphics().setDepth(21);
-    this.healthBarFeedback.set(owner, {
-      body,
-      graphics,
-      maxHp,
-      radius,
-      revealed: true
-    });
-  }
-
-  private updateHealthBar(owner: object, hp: number, maxHp: number): void {
-    const bar = this.healthBarFeedback.get(owner);
-    if (!bar) {
-      return;
-    }
-
-    const progress = Phaser.Math.Clamp(hp / Math.max(1, maxHp), 0, 1);
-    const position = this.getNearestWrappedRenderPosition(bar.body.x, bar.body.y);
-    const width = Phaser.Math.Clamp(bar.radius * 1.45, 28, 76) * this.debugState.healthBarWidthScale;
-    const height = this.debugState.healthBarHeight;
-    const x = position.x - width / 2;
-    const y = position.y - this.debugState.healthBarVerticalOffset;
-    const fillColor = Phaser.Display.Color.Interpolate.ColorWithColor(
-      new Phaser.Display.Color(255, 71, 86),
-      new Phaser.Display.Color(77, 255, 145),
-      100,
-      Math.round(progress * 100)
-    );
-    const fill = Phaser.Display.Color.GetColor(fillColor.r, fillColor.g, fillColor.b);
-
-    bar.graphics.clear();
-    bar.graphics.setVisible(this.debugState.healthBarsEnabled && bar.revealed);
-    if (!this.debugState.healthBarsEnabled || !bar.revealed) {
-      return;
-    }
-
-    bar.graphics.fillStyle(0x5d1018, this.debugState.healthBarAlpha * 0.86);
-    bar.graphics.fillRoundedRect(x, y, width, height, Math.min(3, height / 2));
-    bar.graphics.fillStyle(fill, this.debugState.healthBarAlpha);
-    bar.graphics.fillRoundedRect(x, y, width * progress, height, Math.min(3, height / 2));
-    bar.graphics.lineStyle(1, 0x02040a, this.debugState.healthBarAlpha);
-    bar.graphics.strokeRoundedRect(x, y, width, height, Math.min(3, height / 2));
-  }
-
-  private removeHealthBar(owner: object): void {
-    const bar = this.healthBarFeedback.get(owner);
-    if (!bar) {
-      return;
-    }
-
-    bar.graphics.destroy();
-    this.healthBarFeedback.delete(owner);
+    this.combatFeedback.emitDamageFeedback(owner, body, hp, maxHp, radius, damage, source, revealHealthBar);
   }
 
   private emitFloatingDamageNumber(x: number, y: number, damage: number, source: DamageFeedbackSource): void {
-    if (!this.debugState.damageNumbersEnabled || damage <= 0) {
-      return;
-    }
-
-    const position = this.getNearestWrappedRenderPosition(x, y);
-    const displayDamage = Math.max(1, Math.round(damage));
-    const text = this.add
-      .text(position.x, position.y, `${displayDamage}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: `${this.debugState.damageNumberFontSize}px`,
-        color: this.getDamageNumberColor(source),
-        stroke: '#02040a',
-        strokeThickness: 4
-      })
-      .setOrigin(0.5, 0.5)
-      .setDepth(22)
-      .setAlpha(this.debugState.damageNumberAlpha)
-      .setScale(this.debugState.damageNumberScalePop);
-
-    this.floatingDamageTexts.push({
-      text,
-      originX: position.x,
-      originY: position.y,
-      ageMs: 0,
-      lifetimeMs: this.debugState.damageNumberLifetimeMs,
-      riseDistance: this.debugState.damageNumberRiseDistance,
-      driftX: Phaser.Math.FloatBetween(-this.debugState.damageNumberDrift, this.debugState.damageNumberDrift),
-      startScale: this.debugState.damageNumberScalePop
-    });
-  }
-
-  private getDamageNumberColor(source: DamageFeedbackSource): string {
-    if (!this.debugState.damageNumberSourceColorsEnabled) {
-      return '#f2fbff';
-    }
-
-    switch (source) {
-      case 'player':
-        return '#f2fbff';
-      case 'shield':
-        return '#42f5d7';
-      case 'enemy':
-        return '#ff5964';
-      case 'asteroid':
-      case 'debris':
-        return '#ffc857';
-      case 'blackHole':
-        return '#b88cff';
-      default:
-        return '#f2fbff';
-    }
-  }
-
-  private updateCombatFeedback(deltaMs: number): void {
-    this.updatePlayerHealthBarFeedback();
-    if (!this.debugState.healthBarRevealOnPlayerDamage) {
-      this.ensureAllCombatHealthBars();
-    }
-    for (const [owner, bar] of this.healthBarFeedback) {
-      if (owner === this.player) {
-        continue;
-      }
-      this.updateHealthBarFromOwner(owner, bar);
-    }
-    this.updateFloatingDamageTexts(deltaMs);
-  }
-
-  private ensureAllCombatHealthBars(): void {
-    for (const enemy of this.getAllEnemies()) {
-      this.ensureHealthBar(enemy, enemy.body, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), true);
-    }
-
-    for (const asteroid of this.basicAsteroids) {
-      this.ensureHealthBar(asteroid, asteroid.body, ASTEROID_TIER_CONFIG[asteroid.tier].hp, asteroid.hitRadius, true);
-    }
-
-    for (const debris of this.enemyWreckageDebris) {
-      this.ensureHealthBar(debris, debris.body, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, true);
-    }
-  }
-
-  private updatePlayerHealthBarFeedback(): void {
-    if (!this.player || this.isPlayerDead || !this.debugState.playerHealthBarEnabled) {
-      this.removeHealthBar(this.player);
-      return;
-    }
-
-    this.ensureHealthBar(this.player, this.player, this.getPlayerMaxHull(), this.getPlayerHitRadius(), true);
-    this.updateHealthBar(this.player, this.playerHull, this.getPlayerMaxHull());
-  }
-
-  private updateHealthBarFromOwner(owner: object, bar: HealthBarFeedback): void {
-    if (this.isEnemyHealthOwner(owner)) {
-      this.updateHealthBar(owner, owner.hp, owner.stats.maxHull);
-      return;
-    }
-
-    if (this.isAsteroidHealthOwner(owner)) {
-      this.updateHealthBar(owner, owner.hp, ASTEROID_TIER_CONFIG[owner.tier].hp);
-      return;
-    }
-
-    if (this.isDebrisHealthOwner(owner)) {
-      this.updateHealthBar(owner, owner.hp, ENEMY_WRECKAGE_DEBRIS_HP);
-      return;
-    }
-
-    this.removeHealthBar(owner);
-  }
-
-  private isEnemyHealthOwner(owner: object): owner is BasicEnemy | ShooterEnemy | TankEnemy {
-    return this.basicEnemies.includes(owner as BasicEnemy) || this.shooterEnemies.includes(owner as ShooterEnemy) || this.tankEnemies.includes(owner as TankEnemy);
-  }
-
-  private isAsteroidHealthOwner(owner: object): owner is BasicAsteroid {
-    return this.basicAsteroids.includes(owner as BasicAsteroid);
-  }
-
-  private isDebrisHealthOwner(owner: object): owner is EnemyWreckageDebris {
-    return this.enemyWreckageDebris.includes(owner as EnemyWreckageDebris);
-  }
-
-  private updateFloatingDamageTexts(deltaMs: number): void {
-    for (let i = this.floatingDamageTexts.length - 1; i >= 0; i -= 1) {
-      const item = this.floatingDamageTexts[i];
-      item.ageMs += deltaMs;
-      const progress = Phaser.Math.Clamp(item.ageMs / Math.max(1, item.lifetimeMs), 0, 1);
-      const eased = Phaser.Math.Easing.Quadratic.Out(progress);
-      const fadeStart = this.debugState.damageNumberFadeStart;
-      const fadeProgress = progress <= fadeStart ? 0 : (progress - fadeStart) / Math.max(0.01, 1 - fadeStart);
-
-      item.text.setPosition(item.originX + item.driftX * eased, item.originY - item.riseDistance * eased);
-      item.text.setScale(Phaser.Math.Linear(item.startScale, 1, eased));
-      item.text.setAlpha(this.debugState.damageNumberAlpha * (1 - Phaser.Math.Clamp(fadeProgress, 0, 1)));
-
-      if (progress >= 1) {
-        item.text.destroy();
-        this.floatingDamageTexts.splice(i, 1);
-      }
-    }
+    this.combatFeedback.emitFloatingDamageNumber(x, y, damage, source);
   }
 
   private resolveEnemyDestroyedByPhysicalImpact(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
@@ -9470,53 +8707,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resetBackgroundPlayerTracking(): void {
-    this.previousBackgroundPlayerX = this.player.x;
-    this.previousBackgroundPlayerY = this.player.y;
-  }
-
-  private applyBackgroundTilePositions(): void {
-    this.farStarfield.tilePositionX = this.backgroundScrollX * this.farStarfieldParallax;
-    this.farStarfield.tilePositionY = this.backgroundScrollY * this.farStarfieldParallax;
-    this.midStarfield.tilePositionX = this.backgroundScrollX * this.midStarfieldParallax;
-    this.midStarfield.tilePositionY = this.backgroundScrollY * this.midStarfieldParallax;
-    this.nearStarfield.tilePositionX = this.backgroundScrollX * this.nearStarfieldParallax;
-    this.nearStarfield.tilePositionY = this.backgroundScrollY * this.nearStarfieldParallax;
+    this.starfield.resetPlayerTracking(this.player);
   }
 
   private updateBackgroundTiles(time: number): void {
-    if (!this.farStarfield || !this.midStarfield || !this.nearStarfield) {
-      return;
-    }
-
-    const twinkleTime = time * 0.001;
-
-    if (this.previousBackgroundPlayerX === undefined || this.previousBackgroundPlayerY === undefined) {
-      this.previousBackgroundPlayerX = this.player.x;
-      this.previousBackgroundPlayerY = this.player.y;
-    }
-
-    const playerDelta = this.getWrappedDirection(
-      this.previousBackgroundPlayerX,
-      this.previousBackgroundPlayerY,
-      this.player.x,
-      this.player.y
-    );
-
-    this.backgroundScrollX += playerDelta.x;
-    this.backgroundScrollY += playerDelta.y;
-    this.previousBackgroundPlayerX = this.player.x;
-    this.previousBackgroundPlayerY = this.player.y;
-
-    this.applyBackgroundTilePositions();
-
-    if (!this.backgroundStarsVisible) {
-      this.applyBackgroundStarVisibility();
-      return;
-    }
-
-    this.farStarfield.setAlpha(0.72);
-    this.midStarfield.setAlpha(0.82 + Math.sin(twinkleTime * 0.32 + 1.8) * 0.012);
-    this.nearStarfield.setAlpha(0.78 + Math.sin(twinkleTime * 0.42 + 3.4) * 0.016);
+    this.starfield.update(time, this.player);
   }
 
   private updateCollisionDebugOverlay(): void {

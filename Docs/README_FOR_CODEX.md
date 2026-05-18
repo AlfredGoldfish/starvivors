@@ -2,26 +2,13 @@
 
 This repository is the STARVIVORS project.
 
-Use these documents as the working MVP source of truth for future Codex tasks. The existing `Docs/` folder contains older and companion reference material. The lowercase `docs/` folder is the task-ready documentation set.
+Use these documents as the working MVP source of truth for future Codex tasks. Some older documents still describe the original scaffold phase; prefer the current source tree and `Docs/REFACTOR_PLAN.md` when they conflict.
 
 ## Current Task Boundary
 
-This repository is documentation-only right now.
+This repository now contains a browser-playable Phaser 3, TypeScript, and Vite prototype. Gameplay code exists under `src/`, with `GameScene.ts` currently serving as the main orchestration point during the refactor.
 
-Do not create source code until a future prompt explicitly asks for the Phaser/Vite/TypeScript scaffold.
-
-Do not add:
-
-- Phaser scaffold
-- Gameplay code
-- npm packages
-- Enemies
-- Weapons
-- Black holes
-- Upgrades
-- Shop
-- Audio implementation
-- Electron, Tauri, or Steam packaging
+For the current major refactor, keep changes incremental and behavior-preserving. Do not make gameplay tuning, balance, content, audio, packaging, or framework changes unless a prompt explicitly asks for them.
 
 ## Project Direction
 
@@ -76,7 +63,13 @@ Each future implementation task should include:
 - Acceptance criteria
 - Testing instructions
 
-Do not ask Codex to build the entire game at once.
+Do not ask Codex to build or refactor the entire game in a single unsafe diff.
 
 Do not wire WIP or future content into active gameplay unless the prompt explicitly says to implement it.
 
+During the refactor:
+
+- Read the current source before moving code.
+- Keep `npm.cmd run build` passing after each phase.
+- Preserve query-string smoke harnesses and debug menu behavior.
+- Leave unrelated local artifacts such as Vite logs out of commits.
