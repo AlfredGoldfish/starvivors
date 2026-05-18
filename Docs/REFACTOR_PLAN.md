@@ -16,9 +16,9 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 2, combat feedback extraction: complete.
 - Phase 3, presentation systems: complete.
 - Phase 4, entity runtime systems: complete. Runtime loops, spawning helpers, projectile hit scanning, and world impact response/loops have been extracted; scene-owned damage/reward/FX side effects remain in `GameScene` intentionally.
-- Phase 5, screens and flow: next.
-- Phase 6, debug tooling split: pending.
-- Phase 7, final cleanup: pending.
+- Phase 5, screens and flow: complete.
+- Phase 6, debug tooling split: complete. Debug persistence helpers, black-hole tuning helpers, black-hole debug controls, and debug menu host lifecycle have been extracted.
+- Phase 7, final cleanup: next.
 
 ## Verification Log
 
@@ -50,3 +50,4 @@ This document tracks the major organization refactor that started after checkpoi
 - Phase 6 black hole debug controls extraction: `npm.cmd run build` passed.
 - Phase 6 black hole debug controls cleanup: `npm.cmd run build` passed after removing obsolete `GameScene` slider methods.
 - Phase 6 debug menu host extraction: `npm.cmd run build` passed.
+- Phase 6 completion check: `npm.cmd run build` passed after tracker reconciliation.
