@@ -53,7 +53,12 @@ import {
   type PlayerWeaponRuntimeState,
   type PlayerWeaponUpgradeState
 } from '../systems/playerWeapons';
-import { fireProjectileWeapon as fireProjectileWeaponSystem } from '../systems/projectileWeapons';
+import {
+  clearPlayerProjectiles as clearPlayerProjectilesSystem,
+  destroyPlayerProjectile as destroyPlayerProjectileSystem,
+  fireProjectileWeapon as fireProjectileWeaponSystem,
+  updatePlayerProjectiles as updatePlayerProjectilesSystem
+} from '../systems/projectileWeapons';
 import {
   activateRammingShieldDash,
   canApplyRammingShieldDamage,
@@ -276,11 +281,6 @@ import {
   PLAYER_HIT_RADIUS,
   PLAYER_MASS,
   PLAYER_MAX_HULL,
-  PLAYER_PROJECTILE_HIT_RADIUS,
-  PLAYER_PROJECTILE_MUZZLE_OFFSET,
-  PLAYER_PROJECTILE_TRAIL_FADE_MS,
-  PLAYER_PROJECTILE_TRAIL_INTERVAL_MS,
-  PLAYER_PROJECTILE_TRAIL_OFFSET,
   PLAYER_SHIP_DISPLAY_SIZE,
   PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
@@ -7784,96 +7784,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePlayerProjectiles(time: number, deltaSeconds: number): void {
-    if (this.isPlayerDead) {
-      return;
-    }
-
-    for (let i = this.playerProjectiles.length - 1; i >= 0; i -= 1) {
-      const projectile = this.playerProjectiles[i];
-      this.applyProjectileGravity(projectile, deltaSeconds);
-      const travelDistance = projectile.speed * deltaSeconds;
-
-      projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * deltaSeconds, this.arena.width);
-      projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * deltaSeconds, this.arena.height);
-      projectile.distanceRemaining -= travelDistance;
-      this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PLAYER_PROJECTILE_MUZZLE_OFFSET);
-
-      if (projectile.capturedByBlackHole) {
-        if (this.updateCapturedProjectile(projectile, deltaSeconds, PLAYER_PROJECTILE_MUZZLE_OFFSET)) {
-          this.destroyPlayerProjectile(projectile);
-          this.playerProjectiles.splice(i, 1);
-        }
-
-        continue;
-      }
-
-      const didHitTarget =
-        !this.isPlayerDead &&
-        (
-          this.tryHitBasicEnemy(projectile) ||
-          this.tryHitShooterEnemy(projectile) ||
-          this.tryHitTankEnemy(projectile) ||
-          this.tryHitEnemyWreckageDebris(projectile) ||
-          this.tryHitBasicAsteroid(projectile)
-        );
-
-      if (didHitTarget && this.shouldDestroyProjectileAfterHit(projectile)) {
-        this.destroyPlayerProjectile(projectile);
-        this.playerProjectiles.splice(i, 1);
-      } else if (time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-        this.destroyPlayerProjectile(projectile);
-        this.playerProjectiles.splice(i, 1);
-      } else if (time >= projectile.nextTrailAt) {
-        this.emitPlayerProjectileTrail(projectile);
-        projectile.nextTrailAt = time + PLAYER_PROJECTILE_TRAIL_INTERVAL_MS;
-      }
-    }
-  }
-
-  private shouldDestroyProjectileAfterHit(projectile: PlayerProjectile): boolean {
-    if (projectile.pierceRemaining <= 0) {
-      return true;
-    }
-
-    projectile.pierceRemaining -= 1;
-    return false;
-  }
-
-  private emitPlayerProjectileTrail(projectile: PlayerProjectile): void {
-    const movementDirection = projectile.velocity.clone().normalize();
-    const trailDirection = movementDirection.clone().negate();
-    const sideDirection = new Phaser.Math.Vector2(-movementDirection.y, movementDirection.x);
-    const jitter = Phaser.Math.FloatBetween(-2.4, 2.4);
-    const x = projectile.body.x + trailDirection.x * PLAYER_PROJECTILE_TRAIL_OFFSET + sideDirection.x * jitter;
-    const y = projectile.body.y + trailDirection.y * PLAYER_PROJECTILE_TRAIL_OFFSET + sideDirection.y * jitter;
-    const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2.2, 4.2), projectile.trailColor, 0.7);
-
-    particle.setDepth(7);
-    particle.setBlendMode(Phaser.BlendModes.ADD);
-
-    this.tweens.add({
-      targets: particle,
-      x: x + trailDirection.x * 12,
-      y: y + trailDirection.y * 12,
-      alpha: 0,
-      scale: 0.18,
-      duration: PLAYER_PROJECTILE_TRAIL_FADE_MS,
-      ease: 'Quad.easeOut',
-      onComplete: () => particle.destroy()
+    this.playerProjectiles = updatePlayerProjectilesSystem({
+      scene: this,
+      arena: this.arena,
+      projectiles: this.playerProjectiles,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      applyProjectileGravity: (projectile, gravityDeltaSeconds) =>
+        this.applyProjectileGravity(projectile, gravityDeltaSeconds),
+      updateCapturedProjectile: (projectile, capturedDeltaSeconds, mirrorViewRadius) =>
+        this.updateCapturedProjectile(projectile, capturedDeltaSeconds, mirrorViewRadius),
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
+      tryHitTarget: (projectile) =>
+        this.tryHitBasicEnemy(projectile) ||
+        this.tryHitShooterEnemy(projectile) ||
+        this.tryHitTankEnemy(projectile) ||
+        this.tryHitEnemyWreckageDebris(projectile) ||
+        this.tryHitBasicAsteroid(projectile)
     });
   }
 
   private destroyPlayerProjectile(projectile: PlayerProjectile): void {
-    projectile.body.destroy(true);
-    projectile.wrapMirrorBody.destroy(true);
+    destroyPlayerProjectileSystem(projectile);
   }
 
   private clearPlayerProjectiles(): void {
-    for (const projectile of this.playerProjectiles) {
-      this.destroyPlayerProjectile(projectile);
-    }
-
-    this.playerProjectiles = [];
+    this.playerProjectiles = clearPlayerProjectilesSystem(this.playerProjectiles);
   }
 
   private clearEnemyProjectiles(): void {
