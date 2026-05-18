@@ -164,6 +164,7 @@ import {
 import { createDebugMenu, type DebugMenuController } from '../ui/debugMenu';
 import { createMainMenuScreen } from '../ui/mainMenuScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
+import { createShopScreen } from '../ui/shopScreen';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import type {
   AsteroidBreakupProfile,
@@ -404,8 +405,7 @@ export class GameScene extends Phaser.Scene {
   private shipSelectScreenHandle?: ScreenHandle;
   private shipSelectScreen?: Phaser.GameObjects.Container;
   private shipSelectActionZones: Phaser.GameObjects.Zone[] = [];
-  private shopScreen?: Phaser.GameObjects.Container;
-  private shopActionZones: Phaser.GameObjects.Zone[] = [];
+  private shopScreen?: ScreenHandle;
   private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: Phaser.GameObjects.Container;
   private resultsActionZones: Phaser.GameObjects.Zone[] = [];
@@ -1520,7 +1520,6 @@ export class GameScene extends Phaser.Scene {
     this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
-    this.shopActionZones = [];
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
     this.hasResolvedSecondaryWeaponChoice = false;
     this.rammingShieldImage = undefined;
@@ -1645,7 +1644,6 @@ export class GameScene extends Phaser.Scene {
     this.debugMenu = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
-    this.shopActionZones = [];
     this.shipSelectScreenHandle = undefined;
     this.shipSelectScreen = undefined;
     this.resultsScreen = undefined;
@@ -2171,155 +2169,21 @@ export class GameScene extends Phaser.Scene {
       this.destroyResultsScreen();
     }
 
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const centerY = height / 2;
-    const panelWidth = Math.min(width - 48, 920);
-    const panelHeight = Math.min(height - 48, 640);
-    const panelX = -panelWidth / 2;
-    const panelY = -panelHeight / 2;
-    const gridX = panelX + 32;
-    const gridWidth = panelWidth - 64;
-    const columnGap = 14;
-    const columnCount = panelWidth >= 720 ? 2 : 1;
-    const cardWidth = (gridWidth - columnGap * (columnCount - 1)) / columnCount;
-    const cardHeight = columnCount === 2 ? 64 : 48;
-    const gridTop = panelY + 92;
-    const rowGap = 8;
-    const buttonWidth = columnCount === 2 ? 70 : 88;
-    const buttonHeight = 26;
-    const stepButtonSize = 26;
-    const badgeSize = columnCount === 2 ? 32 : 28;
-    const textInset = badgeSize + 20;
-    const controlsWidth = buttonWidth + stepButtonSize * 2 + 18;
-    const textWidth = cardWidth - textInset - controlsWidth - 26;
-
-    const background = this.add.graphics();
-    background.fillStyle(0x02040a, backTarget === 'results' ? 0.82 : 1);
-    background.fillRect(-width / 2, -height / 2, width, height);
-    background.fillStyle(0x071018, 0.96);
-    background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    background.lineStyle(2, 0x42f5d7, 0.82);
-    background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-
-    const title = this.add
-      .text(panelX + 32, panelY + 28, 'SHOP', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
-        color: '#f2fbff'
-      })
-      .setOrigin(0, 0);
-    const credits = this.add
-      .text(panelX + 32, panelY + 52, `Credits ${this.totalCredits}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#c8f7ff'
-      })
-      .setOrigin(0, 0);
-
-    this.shopScreen = this.add
-      .container(centerX, centerY, [background, title, credits])
-      .setScrollFactor(0)
-      .setDepth(1300);
-
-    for (let i = 0; i < PERMANENT_UPGRADE_DEFINITIONS.length; i += 1) {
-      const column = i % columnCount;
-      const row = Math.floor(i / columnCount);
-      const rowX = gridX + column * (cardWidth + columnGap);
-      const rowY = gridTop + row * (cardHeight + rowGap);
-      const upgrade = PERMANENT_UPGRADE_DEFINITIONS[i];
-      const level = this.getPermanentUpgradeLevel(upgrade.id);
-      const activeLevel = this.getActivePermanentUpgradeLevel(upgrade.id);
-      const isMaxed = this.isPermanentUpgradeMaxed(upgrade);
-      const canPurchase = this.canPurchasePermanentUpgrade(upgrade);
-      const label = isMaxed ? 'Maxed' : canPurchase ? 'Buy' : 'Need';
-      const costLabel = isMaxed ? 'Maxed' : `Cost ${this.getPermanentUpgradeCost(upgrade)}`;
-      const canDecreaseActive = activeLevel > 0;
-      const canIncreaseActive = activeLevel < level;
-
-      background.fillStyle(0x111a24, 0.94);
-      background.fillRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
-      background.lineStyle(1, 0x52627f, 0.82);
-      background.strokeRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
-      background.fillStyle(upgrade.accentColor, 0.18);
-      background.fillRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
-      background.lineStyle(1, upgrade.accentColor, 0.8);
-      background.strokeRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
-
-      const badgeText = this.add
-        .text(rowX + 9 + badgeSize / 2, rowY + cardHeight / 2, upgrade.statLabel, {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: columnCount === 2 ? '11px' : '10px',
-          color: '#f2fbff'
-        })
-        .setOrigin(0.5, 0.5);
-      this.shopScreen.add(badgeText);
-
-      const rowText = this.add
-        .text(
-          rowX + textInset,
-          rowY + (columnCount === 2 ? 7 : 5),
-          `${upgrade.name}  Lv ${level}/${upgrade.maxLevel}  Active ${activeLevel}/${level}\n${upgrade.description}  ${costLabel}`,
-          {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: columnCount === 2 ? '12px' : '11px',
-          color: '#f2fbff',
-          fixedWidth: textWidth,
-          lineSpacing: 1,
-          wordWrap: { width: textWidth, useAdvancedWrap: true }
-          }
-        )
-        .setOrigin(0, 0);
-      this.shopScreen.add(rowText);
-
-      const controlsX = rowX + cardWidth - controlsWidth - 12;
-      const controlsY = rowY + (cardHeight - buttonHeight) / 2;
-
-      this.addScreenButton(
-        this.shopScreen,
-        this.shopActionZones,
-        centerX,
-        centerY,
-        controlsX + buttonWidth / 2,
-        controlsY,
-        buttonWidth,
-        buttonHeight,
-        label,
-        () => this.purchasePermanentUpgrade(upgrade),
-        canPurchase
-      );
-      this.addScreenButton(
-        this.shopScreen,
-        this.shopActionZones,
-        centerX,
-        centerY,
-        controlsX + buttonWidth + 8 + stepButtonSize / 2,
-        controlsY,
-        stepButtonSize,
-        buttonHeight,
-        '-',
-        () => this.adjustActivePermanentUpgradeLevel(upgrade.id, -1),
-        canDecreaseActive
-      );
-      this.addScreenButton(
-        this.shopScreen,
-        this.shopActionZones,
-        centerX,
-        centerY,
-        controlsX + buttonWidth + 12 + stepButtonSize + stepButtonSize / 2,
-        controlsY,
-        stepButtonSize,
-        buttonHeight,
-        '+',
-        () => this.adjustActivePermanentUpgradeLevel(upgrade.id, 1),
-        canIncreaseActive
-      );
-    }
-
-    this.addScreenButton(this.shopScreen, this.shopActionZones, centerX, centerY, 0, panelY + panelHeight - 58, 180, 38, 'Back', () =>
-      this.handleShopBack()
-    );
+    this.shopScreen = createShopScreen({
+      scene: this,
+      backTarget,
+      totalCredits: this.totalCredits,
+      getPermanentUpgradeLevel: (id) => this.getPermanentUpgradeLevel(id),
+      getActivePermanentUpgradeLevel: (id) => this.getActivePermanentUpgradeLevel(id),
+      isPermanentUpgradeMaxed: (upgrade) => this.isPermanentUpgradeMaxed(upgrade),
+      canPurchasePermanentUpgrade: (upgrade) => this.canPurchasePermanentUpgrade(upgrade),
+      getPermanentUpgradeCost: (upgrade) => this.getPermanentUpgradeCost(upgrade),
+      isActionActive: () => this.gameFlowState === 'shop',
+      resetCursor: () => this.resetUiCursor(),
+      onPurchasePermanentUpgrade: (upgrade) => this.purchasePermanentUpgrade(upgrade),
+      onAdjustActivePermanentUpgradeLevel: (id, delta) => this.adjustActivePermanentUpgradeLevel(id, delta),
+      onBack: () => this.handleShopBack()
+    });
     this.createDebugMenu();
   }
 
@@ -2498,13 +2362,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyShopScreen(): void {
-    for (const zone of this.shopActionZones) {
-      zone.destroy();
-    }
-
-    this.shopActionZones = [];
-    this.shopScreen?.destroy(true);
-    this.shopScreen = undefined;
+    this.shopScreen = destroyScreenHandle(this.shopScreen);
   }
 
   private destroyResultsScreen(): void {
