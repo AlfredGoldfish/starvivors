@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Vertical Scroll</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}
+.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}
+.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}
+.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}
+canvas{width:100%;height:100%;display:block}
+.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}
+.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}
+.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}
+.li span{width:6px;height:6px;display:inline-block}
+.body{padding:16px 18px}
+.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}
+.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}
+.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}
+.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}
+.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Vertical Scroll</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a"></span>Platforms</div>
+      <div class="li"><span style="background:#ef5350"></span>Hazards</div>
+      <div class="li"><span style="background:#ffca28;border-radius:50%"></span>Coins</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">The screen scrolls vertically — usually upward. The player moves left and right, landing on platforms that scroll past. Miss a platform and you fall. The higher you go, the harder it gets. Pure reflex and timing.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Continuous vertical scroll, player moves horizontally</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Endless jumpers, vertical shooters, climbing games</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Simple controls, addictive one-more-try loop, easy scoring</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Limited gameplay depth, can feel repetitive</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Runner</span><span class="ft">Arcade</span><span class="ft">Endless</span>
+    <span class="fe">e.g. Doodle Jump, Space Invaders, 1942, Downwell</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+let scrollY=0,scrollSpeed=1.2,score=0;
+let px=W/2,py=H*0.7,pvx=0;
+
+// Platforms
+let platforms=[];
+function addPlat(y){
+  const w=50+Math.random()*60;
+  const x=30+Math.random()*(W-60-w);
+  const type=Math.random()<0.15?'hazard':Math.random()<0.2?'moving':'normal';
+  const coin=Math.random()<0.3;
+  platforms.push({x,y,w,h:10,type,mx:type==='moving'?x:0,dir:1,coin,coinGot:false});
+}
+// Initial platforms
+for(let i=0;i<10;i++)addPlat(H-60-i*45);
+
+// Stars background
+const stars=[];for(let i=0;i<40;i++)stars.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()*1.5+0.5,speed:0.3+Math.random()*0.5});
+
+let aiTarget=W/2,aiTimer=0;
+let onPlatform=true,vy=0;
+const GRAV=0.2,JUMP=-6;
+
+function update(){
+  scrollY+=scrollSpeed;score=Math.floor(scrollY/10);
+  // Gradually speed up
+  scrollSpeed=1.2+score*0.002;
+
+  // Move platforms down (relative to scroll)
+  for(let i=platforms.length-1;i>=0;i--){
+    platforms[i].y+=scrollSpeed;
+    if(platforms[i].type==='moving'){
+      platforms[i].x+=platforms[i].dir*0.8;
+      if(platforms[i].x<20||platforms[i].x+platforms[i].w>W-20)platforms[i].dir*=-1;
+    }
+    if(platforms[i].y>H+20){platforms.splice(i,1);addPlat(-20-Math.random()*30)}
+  }
+
+  // Stars scroll
+  for(const s of stars){s.y+=s.speed;if(s.y>H){s.y=-5;s.x=Math.random()*W}}
+
+  // Player AI: move toward nearest above platform
+  aiTimer++;
+  if(aiTimer>30){
+    let bestPlat=null,bestDist=Infinity;
+    for(const p of platforms){
+      if(p.type==='hazard')continue;
+      if(p.y<py&&p.y>py-120){
+        const d=Math.abs(p.x+p.w/2-px);
+        if(d<bestDist){bestDist=d;bestPlat=p}
+      }
+    }
+    if(bestPlat){aiTarget=bestPlat.x+bestPlat.w/2}
+    aiTimer=0;
+  }
+
+  // Move toward target
+  const dx=aiTarget-px;
+  if(Math.abs(dx)>3)pvx+=(dx>0?0.3:-0.3);
+  pvx*=0.92;
+  px+=pvx;
+  if(px<10)px=10;if(px>W-10)px=W-10;
+
+  // Gravity
+  vy+=GRAV;
+  py+=vy;
+
+  // Platform collision (landing)
+  onPlatform=false;
+  for(const p of platforms){
+    if(vy>=0&&py+6>=p.y&&py+6<=p.y+p.h+4&&px>p.x-5&&px<p.x+p.w+5){
+      if(p.type==='hazard'){
+        // Bounce off hazard (take damage visual)
+        vy=JUMP*0.8;
+      }else{
+        py=p.y-6;vy=JUMP;onPlatform=true;
+        if(p.coin&&!p.coinGot){p.coinGot=true;score+=5}
+      }
+    }
+  }
+
+  // Fell below screen — reset
+  if(py>H+30){py=H*0.5;vy=JUMP;px=W/2;pvx=0}
+}
+
+function draw(){
+  ctx.fillStyle='#08091a';ctx.fillRect(0,0,W,H);
+
+  // Stars
+  for(const s of stars){ctx.fillStyle=`rgba(255,255,255,${0.2+s.s*0.2})`;ctx.fillRect(s.x,s.y,s.s,s.s)}
+
+  // Scroll lines (visual depth)
+  ctx.strokeStyle='rgba(255,255,255,.02)';
+  for(let ly=0;ly<H;ly+=30){const off=(scrollY*0.5+ly)%H;ctx.beginPath();ctx.moveTo(0,off);ctx.lineTo(W,off);ctx.stroke()}
+
+  // Platforms
+  for(const p of platforms){
+    if(p.type==='hazard'){
+      ctx.fillStyle='#ef5350';ctx.fillRect(p.x,p.y,p.w,p.h);
+      // Spikes on top
+      for(let sx=p.x+5;sx<p.x+p.w-5;sx+=8){ctx.beginPath();ctx.moveTo(sx,p.y);ctx.lineTo(sx+4,p.y-6);ctx.lineTo(sx+8,p.y);ctx.fillStyle='#ef5350';ctx.fill()}
+    }else if(p.type==='moving'){
+      ctx.fillStyle='#42a5f5';ctx.fillRect(p.x,p.y,p.w,p.h);
+      ctx.fillStyle='rgba(66,165,245,.15)';ctx.fillRect(p.x,p.y,p.w,2);
+    }else{
+      ctx.fillStyle='#66bb6a';ctx.fillRect(p.x,p.y,p.w,p.h);
+      ctx.fillStyle='rgba(102,187,106,.2)';ctx.fillRect(p.x,p.y,p.w,2);
+    }
+    // Coin
+    if(p.coin&&!p.coinGot){
+      ctx.fillStyle='#ffca28';ctx.beginPath();ctx.arc(p.x+p.w/2,p.y-14,4,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(255,202,40,.2)';ctx.beginPath();ctx.arc(p.x+p.w/2,p.y-14,8,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Player
+  ctx.fillStyle='#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,6,0,Math.PI*2);ctx.fill();
+  // Trail
+  ctx.fillStyle='rgba(79,195,247,.15)';
+  ctx.beginPath();ctx.arc(px,py+8,4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(79,195,247,.07)';
+  ctx.beginPath();ctx.arc(px,py+14,3,0,Math.PI*2);ctx.fill();
+
+  // Direction arrow
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(W/2-6,16);ctx.lineTo(W/2,8);ctx.lineTo(W/2+6,16);ctx.stroke();
+
+  // HUD
+  ctx.font='600 11px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.4)';ctx.textAlign='left';
+  ctx.fillText(`HEIGHT ${score}`,10,H-10);
+  ctx.textAlign='right';ctx.fillText(`↑ ${scrollSpeed.toFixed(1)}x`,W-10,H-10);
+
+  // Speed indicator bar
+  ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(W-8,20,4,H-50);
+  ctx.fillStyle='rgba(79,195,247,.4)';const sh=Math.min(1,(scrollSpeed-1.2)/3)*(H-50);ctx.fillRect(W-8,20+H-50-sh,4,sh);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

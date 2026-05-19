@@ -4,6 +4,7 @@ import { formatDisplayUnits, formatIntegerDisplayUnits, isRawScaledStatKey, toDi
 import type { DebugShipOverrides, DebugShipStatKey, DebugWeaponOverrides, DebugWeaponStatKey } from './debugState';
 import type { SavedDebugShipLoadout, SavedDebugWeaponLoadout } from '../../scenes/gameTypes';
 import type { DebugState } from './debugState';
+import { getDesktopBridge, type DesktopFileCategory } from '../desktopBridge';
 
 const DEBUG_SHIP_STAT_KEYS: DebugShipStatKey[] = ['maxHull', 'mass', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'];
 const DEBUG_WEAPON_STAT_KEYS: DebugWeaponStatKey[] = [
@@ -38,7 +39,22 @@ export function toRawDebugValue(stat: DebugShipStatKey | DebugWeaponStatKey | 'g
   return isRawScaledStatKey(stat) ? toRawUnits(value) : value;
 }
 
-export function downloadTextFile(filename: string, contents: string, mimeType: string): void {
+export function downloadTextFile(
+  filename: string,
+  contents: string,
+  mimeType: string,
+  category: DesktopFileCategory = 'debug-presets'
+): void {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    void desktop.saveTextFile(category, filename, contents).then((result) => {
+      if (!result.ok) {
+        console.warn(`Unable to save ${filename}: ${result.error ?? 'Unknown desktop file error'}`);
+      }
+    });
+    return;
+  }
+
   const blob = new Blob([contents], { type: `${mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
@@ -51,7 +67,22 @@ export function downloadTextFile(filename: string, contents: string, mimeType: s
   URL.revokeObjectURL(url);
 }
 
-export function loadMarkdownFile(onLoaded: (contents: string) => void): void {
+export function loadMarkdownFile(
+  onLoaded: (contents: string) => void,
+  category: DesktopFileCategory = 'debug-presets'
+): void {
+  const desktop = getDesktopBridge();
+  if (desktop) {
+    void desktop.readTextFile(category).then((result) => {
+      if (result.ok && typeof result.contents === 'string') {
+        onLoaded(result.contents);
+      } else if (result.error && result.error !== 'No file selected.') {
+        console.warn(`Unable to load markdown file: ${result.error}`);
+      }
+    });
+    return;
+  }
+
   const input = document.createElement('input');
 
   input.type = 'file';
@@ -66,6 +97,19 @@ export function loadMarkdownFile(onLoaded: (contents: string) => void): void {
     void file.text().then(onLoaded);
   };
   input.click();
+}
+
+export function openDesktopDataFolder(category?: DesktopFileCategory, relativePath?: string): void {
+  const desktop = getDesktopBridge();
+  if (!desktop) {
+    return;
+  }
+
+  void desktop.openDataFolder(category, relativePath).then((result) => {
+    if (!result.ok) {
+      console.warn(`Unable to open desktop data folder: ${result.error ?? 'Unknown desktop file error'}`);
+    }
+  });
 }
 
 export function getTimestampSlug(): string {
@@ -106,6 +150,42 @@ export function parseDebugWeaponLoadoutMarkdown(expectedWeaponId: WeaponId, mark
   }
 
   return normalizeDebugWeaponOverrides(setup.overrides, getDebugLoadoutSchemaVersion(setup.schemaVersion));
+}
+
+export function parseDebugPresetMarkdown(markdown: string): Record<string, unknown> | undefined {
+  const setup = parseJsonBlock<Record<string, unknown>>(markdown);
+
+  if (!setup || setup.type !== 'starvivors-debug-preset') {
+    return undefined;
+  }
+
+  return setup;
+}
+
+export function createDebugPresetMarkdown(setup: Record<string, unknown>): string {
+  return [
+    '# Starvivors Debug Preset',
+    '',
+    `Saved: ${new Date().toLocaleString()}`,
+    '',
+    'This file stores debug tuning values only. It does not store run progress, credits, active enemies, pickups, projectiles, or player hull.',
+    '',
+    '## Machine Readable Setup',
+    '',
+    '```json',
+    JSON.stringify(
+      {
+        type: 'starvivors-debug-preset',
+        schemaVersion: 1,
+        savedAt: new Date().toISOString(),
+        ...setup
+      },
+      null,
+      2
+    ),
+    '```',
+    ''
+  ].join('\n');
 }
 
 export function createDebugShipLoadoutMarkdown(debugState: DebugState, ship: ShipRegistryEntry): string {

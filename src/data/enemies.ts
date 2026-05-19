@@ -1,5 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { basicEnemyBalance, shooterEnemyBalance, tankEnemyBalance } from './balance';
+import { COMBAT_NUMBER_SCALE } from './combatScale';
 
 export type EnemyId = 'basic-enemy' | 'shooter-enemy' | 'tank-enemy';
 
@@ -54,7 +55,7 @@ export const basicEnemy: EnemyRegistryEntry = {
     mass: 2,
     blackHoleResistance: 0.34,
     blackHoleMaxSpeed: 440,
-    contactDamage: 15,
+    contactDamage: 15 * COMBAT_NUMBER_SCALE,
     collisionKnockback: 1,
     attackDamage: 0,
     attackCooldown: 0,
@@ -91,7 +92,7 @@ export const shooterEnemy: EnemyRegistryEntry = {
     mass: 3.2,
     blackHoleResistance: 0.38,
     blackHoleMaxSpeed: 380,
-    contactDamage: 15,
+    contactDamage: 15 * COMBAT_NUMBER_SCALE,
     collisionKnockback: 0.85,
     attackDamage: shooterEnemyBalance.projectileDamage,
     attackCooldown: shooterEnemyBalance.fireCooldownSeconds,

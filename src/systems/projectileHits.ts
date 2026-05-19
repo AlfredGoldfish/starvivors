@@ -20,6 +20,8 @@ export interface TryHitEllipseTargetsInput<T extends EllipseProjectileTarget> {
   projectile: PlayerProjectile;
   targets: T[];
   getForwardDirection: (rotation: number) => Phaser.Math.Vector2;
+  getTargetHitHalfWidth?: (target: T) => number;
+  getTargetHitHalfLength?: (target: T) => number;
   onHit: (target: T, index: number) => void;
 }
 
@@ -27,6 +29,7 @@ export interface TryHitCircleTargetsInput<T extends CircleProjectileTarget> {
   arena: ArenaSize;
   projectile: PlayerProjectile;
   targets: T[];
+  getTargetHitRadius?: (target: T) => number;
   onHit: (target: T, index: number) => void;
 }
 
@@ -39,8 +42,8 @@ export function tryHitEllipseTargets<T extends EllipseProjectileTarget>(
       continue;
     }
 
-    const hitHalfWidth = target.stats.hitHalfWidth + input.projectile.hitRadius;
-    const hitHalfLength = target.stats.hitHalfLength + input.projectile.hitRadius;
+    const hitHalfWidth = (input.getTargetHitHalfWidth?.(target) ?? target.stats.hitHalfWidth) + input.projectile.hitRadius;
+    const hitHalfLength = (input.getTargetHitHalfLength?.(target) ?? target.stats.hitHalfLength) + input.projectile.hitRadius;
     const offset = getWrappedDirection(
       input.arena,
       target.body.x,
@@ -80,7 +83,7 @@ export function tryHitCircleTargets<T extends CircleProjectileTarget>(
       input.projectile.body.x,
       input.projectile.body.y
     );
-    const hitRadius = target.hitRadius + input.projectile.hitRadius;
+    const hitRadius = (input.getTargetHitRadius?.(target) ?? target.hitRadius) + input.projectile.hitRadius;
 
     if (offset.lengthSq() <= hitRadius * hitRadius) {
       input.projectile.piercedTargets.add(target.body);

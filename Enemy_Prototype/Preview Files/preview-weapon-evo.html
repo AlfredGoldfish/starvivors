@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Weapon Evolution</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Weapon Evolution</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Weapons automatically evolve when conditions are met — usually kill counts. At each threshold, the weapon visually transforms: shoots faster, does more damage, adds new behaviors (piercing, spread, homing). Watch your basic pea-shooter become a screen-clearing death machine. Evolution milestones create satisfying power spikes.</div>
+    <div class="dr"><div class="dl">Trigger</div><div class="dv">Kill count, time held, or combo with another item</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Arena survivors, shooters, idle games</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Visible power growth, exciting transformation moments</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Anticipation → satisfaction → "let's see the next one"</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Shooter</span><span class="ft">Idle</span>
+    <span class="fe">e.g. Vampire Survivors, Archero, weapon prestige systems</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+const PAD=20;
+
+const STAGES=[
+  {name:"Pea Shooter",color:"#66bb6a",projSize:3,projSpeed:5,fireRate:18,projCount:1,pattern:"single",desc:"Basic single shot"},
+  {name:"Twin Shot",color:"#4fc3f7",projSize:3.5,projSpeed:6,fireRate:14,projCount:2,pattern:"twin",desc:"Double projectile"},
+  {name:"Rapid Fire",color:"#ffca28",projSize:3,projSpeed:7,fireRate:6,projCount:1,pattern:"rapid",desc:"Blazing fast shots"},
+  {name:"Inferno Spread",color:"#ff5722",projSize:4,projSpeed:5,fireRate:10,projCount:5,pattern:"spread",desc:"5-way fire burst"},
+];
+const THRESHOLDS=[0,15,35,60];
+
+let weaponStage=0,killCount=0,totalKills=0;
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0;
+let enemies=[],projs=[],particles=[];
+let shootTimer=0,evoFlash=0,evoText="";
+
+function spawnE(){const side=Math.floor(Math.random()*4);let x,y;if(side===0){x=PAD;y=PAD+Math.random()*(H-PAD*2)}else if(side===1){x=W-PAD;y=PAD+Math.random()*(H-PAD*2)}else if(side===2){x=PAD+Math.random()*(W-PAD*2);y=PAD}else{x=PAD+Math.random()*(W-PAD*2);y=H-PAD}enemies.push({x,y,s:6+Math.random()*3,hp:1+Math.floor(weaponStage/2),speed:.6+weaponStage*.2,flash:0})}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*3;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20,ml:20,color:col,size:2+Math.random()*2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+
+function fireWeapon(){
+  const stg=STAGES[weaponStage];
+  let ne=null,nd=Infinity;for(const e of enemies){const d=dist({x:px,y:py},e);if(d<nd){nd=d;ne=e}}
+  if(!ne)return;
+  const baseAngle=Math.atan2(ne.y-py,ne.x-px);
+
+  if(stg.pattern==="single"||stg.pattern==="rapid"){
+    projs.push({x:px,y:py,vx:Math.cos(baseAngle)*stg.projSpeed,vy:Math.sin(baseAngle)*stg.projSpeed,life:50,size:stg.projSize,color:stg.color});
+  }else if(stg.pattern==="twin"){
+    const off=0.15;
+    projs.push({x:px,y:py,vx:Math.cos(baseAngle-off)*stg.projSpeed,vy:Math.sin(baseAngle-off)*stg.projSpeed,life:50,size:stg.projSize,color:stg.color});
+    projs.push({x:px,y:py,vx:Math.cos(baseAngle+off)*stg.projSpeed,vy:Math.sin(baseAngle+off)*stg.projSpeed,life:50,size:stg.projSize,color:stg.color});
+  }else if(stg.pattern==="spread"){
+    for(let i=-2;i<=2;i++){
+      const a=baseAngle+i*0.25;
+      projs.push({x:px,y:py,vx:Math.cos(a)*stg.projSpeed,vy:Math.sin(a)*stg.projSpeed,life:40,size:stg.projSize,color:stg.color});
+    }
+  }
+}
+
+function checkEvolution(){
+  if(weaponStage<STAGES.length-1&&killCount>=THRESHOLDS[weaponStage+1]){
+    weaponStage++;evoFlash=60;evoText=STAGES[weaponStage].name;
+    burst(px,py,STAGES[weaponStage].color,20);
+    // Reset after max
+    if(weaponStage>=STAGES.length-1){setTimeout(()=>{weaponStage=0;killCount=0;totalKills=0},4000)}
+  }
+}
+
+for(let i=0;i<6;i++)spawnE();
+
+function update(){
+  if(evoFlash>0)evoFlash--;
+
+  // Spawn
+  if(Math.random()<.04+weaponStage*.01)spawnE();
+
+  // Player AI
+  pTimer++;if(pTimer>80||dist({x:px,y:py},pt)<15){pt={x:PAD+40+Math.random()*(W-PAD*2-80),y:PAD+40+Math.random()*(H-PAD*2-80)};pTimer=0}
+  const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2;py+=dy/d*2}
+
+  // Fire
+  shootTimer++;
+  if(shootTimer>=STAGES[weaponStage].fireRate){fireWeapon();shootTimer=0}
+
+  // Projs
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){projs.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+p.size){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,p.color,3);projs.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,'#ef5350',6);killCount++;totalKills++;enemies.splice(j,1);checkEvolution()}break}}}
+
+  // Enemies
+  for(const e of enemies){const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}if(e.flash>0)e.flash--}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+
+  // Cap enemies
+  if(enemies.length>25)enemies.splice(0,5);
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+  // Projs
+  for(const p of projs){ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=p.color+'44';ctx.beginPath();ctx.arc(p.x,p.y,p.size*2,0,Math.PI*2);ctx.fill()}
+  // Player
+  const stg=STAGES[weaponStage];
+  ctx.fillStyle=stg.color;ctx.beginPath();ctx.arc(px,py,7+weaponStage,0,Math.PI*2);ctx.fill();
+  // Player glow (bigger at higher stages)
+  const gr=ctx.createRadialGradient(px,py,0,px,py,15+weaponStage*8);gr.addColorStop(0,stg.color+'33');gr.addColorStop(1,'transparent');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,15+weaponStage*8,0,Math.PI*2);ctx.fill();
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // Evo flash
+  if(evoFlash>40){ctx.fillStyle=`rgba(255,255,255,${(evoFlash-40)/20*.3})`;ctx.fillRect(0,0,W,H)}
+
+  // WEAPON STATUS (the key visual for this pattern)
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(10,8,200,50);
+  ctx.strokeStyle=stg.color;ctx.lineWidth=1;ctx.strokeRect(10,8,200,50);
+
+  // Weapon name
+  ctx.font='700 11px "Chakra Petch"';ctx.fillStyle=stg.color;ctx.textAlign='left';ctx.fillText(stg.name,18,24);
+  ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText(`Stage ${weaponStage+1}/${STAGES.length} — ${stg.desc}`,18,35);
+
+  // Evolution progress bar
+  const nextThreshold=weaponStage<STAGES.length-1?THRESHOLDS[weaponStage+1]:THRESHOLDS[STAGES.length-1];
+  const currentThreshold=THRESHOLDS[weaponStage];
+  const progress=weaponStage>=STAGES.length-1?1:Math.min(1,(killCount-currentThreshold)/(nextThreshold-currentThreshold));
+  ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(18,42,180,6);
+  ctx.fillStyle=stg.color;ctx.fillRect(18,42,180*progress,6);
+
+  // Kill count on bar
+  ctx.font='500 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.4)';ctx.textAlign='right';
+  if(weaponStage<STAGES.length-1)ctx.fillText(`${killCount}/${nextThreshold} kills`,198,41);
+  else ctx.fillText('MAX LEVEL',198,41);
+
+  // Stage dots
+  for(let i=0;i<STAGES.length;i++){
+    ctx.fillStyle=i<=weaponStage?STAGES[i].color:'rgba(255,255,255,.1)';
+    ctx.beginPath();ctx.arc(220+i*12,25,4,0,Math.PI*2);ctx.fill();
+    if(i<STAGES.length-1){ctx.fillStyle=i<weaponStage?'rgba(255,255,255,.15)':'rgba(255,255,255,.05)';ctx.fillRect(224+i*12,24,8,2)}
+  }
+
+  // Evo text
+  if(evoFlash>0){
+    ctx.font='700 18px "Chakra Petch"';ctx.fillStyle=`rgba(255,255,255,${Math.min(1,evoFlash/30)})`;ctx.textAlign='center';
+    ctx.fillText('⬆ EVOLVED! ⬆',W/2,H/2-20);
+    ctx.font='600 12px "Outfit"';ctx.fillStyle=stg.color+Math.floor(Math.min(1,evoFlash/30)*255).toString(16).padStart(2,'0');
+    ctx.fillText(evoText,W/2,H/2+5);
+  }
+
+  // Kill counter
+  ctx.font='500 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';ctx.textAlign='right';
+  ctx.fillText(`TOTAL KILLS: ${totalKills}`,W-15,H-10);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

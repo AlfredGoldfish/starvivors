@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Swarm Burst</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Swarm Burst</h2><div class="tag">Spawn Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemy</div>
+      <div class="li"><span style="background:rgba(239,83,80,.3)"></span>Warning</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Nothing. Nothing. Nothing. Then suddenly 20 enemies appear at once from all directions. The quiet is a trap - it builds tension, then the burst overwhelms. The player must survive the sudden flood, then gets another long quiet. The rhythm is suspense followed by panic.</div>
+    <div class="dr"><div class="dl">Rhythm</div><div class="dv">Long quiet -> sudden massive spawn -> quiet</div></div>
+    <div class="dr"><div class="dl">Warning</div><div class="dv">Edge flashing and rumble before the burst</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Horror, tension/release, jump scares</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Survival</span><span class="ft">Horror</span><span class="ft">Horde</span>
+    <span class="fe">e.g. Left 4 Dead (horde events), CoD Zombies, They Are Billions</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=15;
+let frame=0,px=W/2,py=H/2,pvx=0,pvy=0,wander=0;
+let enemies=[],parts=[],bullets=[],shootT=0,hitFlash=0,shakeT=0;
+// States: 'quiet','warning','burst','fighting'
+let state='quiet',stateTimer=0,burstNum=0;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rng(.3,2);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rng(10,16),ml:16,col,sz:rng(1,2)})}}
+
+function spawnBurst(){
+  burstNum++;shakeT=15;
+  const count=18+Math.floor(Math.random()*8);
+  for(let i=0;i<count;i++){
+    const edge=Math.floor(Math.random()*4);
+    let x,y;
+    if(edge===0){x=PAD;y=rng(PAD+5,H-PAD-5)}
+    else if(edge===1){x=W-PAD;y=rng(PAD+5,H-PAD-5)}
+    else if(edge===2){x=rng(PAD+5,W-PAD-5);y=PAD}
+    else{x=rng(PAD+5,W-PAD-5);y=H-PAD}
+    enemies.push({x,y,sz:5,spd:rng(0.6,1.1),hp:1,fl:0});
+  }
+}
+
+function update(){
+  frame++;stateTimer++;
+  if(hitFlash>0)hitFlash--;if(shakeT>0)shakeT--;
+
+  if(state==='quiet'){
+    if(stateTimer>240){state='warning';stateTimer=0}
+  }else if(state==='warning'){
+    if(stateTimer>80){state='burst';stateTimer=0;spawnBurst()}
+  }else if(state==='burst'){
+    state='fighting';stateTimer=0;
+  }else if(state==='fighting'){
+    if(enemies.length===0){state='quiet';stateTimer=0}
+  }
+
+  // Player AI
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.013)*0.04+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.08;ay+=Math.sin(wander)*0.08;
+  for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<35&&d>1){ax+=(px-e.x)/d*0.15;ay+=(py-e.y)/d*0.15}}
+  ax+=(W/2-px)*0.0005;ay+=(H/2-py)*0.0005;
+  if(px<PAD+25)ax+=0.15;if(px>W-PAD-25)ax-=0.15;if(py<PAD+25)ay+=0.15;if(py>H-PAD-25)ay-=0.15;
+  pvx=(pvx+ax)*0.92;pvy=(pvy+ay)*0.92;
+  const vm=Math.hypot(pvx,pvy);if(vm>1.4){pvx=pvx/vm*1.4;pvy=pvy/vm*1.4}
+  px+=pvx;py+=pvy;px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  shootT++;
+  if(shootT>=8&&enemies.length>0){
+    let nd=Infinity,ne=null;for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<nd){nd=d;ne=e}}
+    if(ne){const a=Math.atan2(ne.y-py,ne.x-px);bullets.push({x:px,y:py,vx:Math.cos(a)*6,vy:Math.sin(a)*6,life:40});shootT=0}
+  }
+
+  for(const e of enemies){if(e.fl>0)e.fl--;const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    if(d>1){e.x+=dx/d*e.spd;e.y+=dy/d*e.spd}}
+
+  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){bullets.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(Math.hypot(b.x-enemies[j].x,b.y-enemies[j].y)<enemies[j].sz+3){
+      spark(b.x,b.y,'#ef5350',4);enemies.splice(j,1);bullets.splice(i,1);break}}}
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.9;p.vy*=.9;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  const sx=shakeT>0?rng(-4,4):0,sy=shakeT>0?rng(-4,4):0;
+  ctx.save();ctx.translate(sx,sy);
+  ctx.fillStyle='#0c0e18';ctx.fillRect(-5,-5,W+10,H+10);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Warning: all edges flash red
+  if(state==='warning'){
+    const pulse=Math.sin(stateTimer*0.15)*0.5+0.5;
+    const a=pulse*0.3;
+    ctx.fillStyle=`rgba(239,83,80,${a})`;
+    ctx.fillRect(PAD,PAD,6,H-PAD*2);ctx.fillRect(W-PAD-6,PAD,6,H-PAD*2);
+    ctx.fillRect(PAD,PAD,W-PAD*2,6);ctx.fillRect(PAD,H-PAD-6,W-PAD*2,6);
+  }
+
+  for(const e of enemies){ctx.fillStyle=e.fl>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.sz/2,e.y-e.sz/2,e.sz,e.sz)}
+  ctx.fillStyle='#66bb6a';for(const b of bullets){ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill()}
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // State display
+  ctx.font='700 12px "Chakra Petch"';ctx.textAlign='center';
+  if(state==='quiet'){ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillText('...',W/2,H/2)}
+  else if(state==='warning'){
+    const pulse=Math.sin(stateTimer*0.15)*0.3+0.7;
+    ctx.fillStyle=`rgba(239,83,80,${pulse})`;ctx.fillText('INCOMING!',W/2,PAD+16);
+    ctx.font='600 8px "IBM Plex Mono"';ctx.fillText('BRACE YOURSELF',W/2,PAD+30);
+  }
+  else if(state==='fighting'||state==='burst'){
+    ctx.fillStyle='rgba(239,83,80,.7)';
+    ctx.fillText(`BURST #${burstNum}`,W/2,PAD+16);
+    ctx.font='600 8px "IBM Plex Mono"';ctx.fillStyle='rgba(239,83,80,.5)';
+    ctx.fillText(`${enemies.length} ENEMIES`,W/2,PAD+28);
+  }
+
+  ctx.restore();
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(239,83,80,.65)';
+  ctx.fillText('SWARM BURST',W/2,H-PAD+2);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Long quiet -> warning flash -> sudden massive swarm -> survive',W/2,H+8);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

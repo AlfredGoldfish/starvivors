@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Buffer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Buffer</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectile</div>
+      <div class="li"><span style="background:#ffb300"></span>Buffer</div>
+      <div class="li"><span style="background:#ef5350"></span>Normal (unbuffed)</div>
+      <div class="li"><span style="background:#ff7043"></span>Normal (buffed)</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">A support enemy that projects a visible aura making all nearby allies faster and stronger. Some enemies camp inside the zone, others chase but lose the buff when they leave. Kill the buffer and every buffed enemy immediately weakens — slower, smaller, easier to clean up. The buffer is always the priority target.</div>
+    <div class="dr"><div class="dl">Aura</div><div class="dv">Speed + damage boost to all enemies inside</div></div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Nearly stationary, retreats slowly from player</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">No direct attack, fragile, aura drops on death</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Turns weak enemies into serious threats</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Strategy</span><span class="ft">RPG</span><span class="ft">Action</span>
+    <span class="fe">e.g. Diablo (aura enemies), Hades, XCOM, Warcraft</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0,px=W/2,py=H*0.75,pvx=0,pvy=0,wander=0,hitFlash=0;
+let bullets=[],parts=[],shootTimer=0;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n,s){s=s||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=rng(.3,2)*s;parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rng(10,18),ml:18,col,sz:rng(1,2)})}}
+
+const buffer={x:W/2,y:H*0.28,sz:11,hp:12,maxHp:12,auraR:85,hitFl:0,dead:false,respawnT:0};
+
+// 'camper' = stays in aura zone, 'chaser' = goes after player
+let normals=[];
+function spawnNormals(){
+  normals=[];
+  // 3 campers — orbit inside the aura
+  for(let i=0;i<3;i++){
+    const a=Math.PI*2*i/3+rng(-0.3,0.3);
+    normals.push({x:buffer.x+Math.cos(a)*40,y:buffer.y+Math.sin(a)*40,sz:7,baseSz:7,
+      spd:0.3,baseSpd:0.3,hp:3,maxHp:3,fl:0,dead:false,buffed:false,
+      role:'camper',orbitA:a,orbitSpd:0.008*(i%2===0?1:-1)});
+  }
+  // 2 chasers — will leave the aura to chase player
+  normals.push({x:buffer.x+50,y:buffer.y+30,sz:7,baseSz:7,spd:0.4,baseSpd:0.4,hp:3,maxHp:3,fl:0,dead:false,buffed:false,role:'chaser',orbitA:0,orbitSpd:0});
+  normals.push({x:buffer.x-50,y:buffer.y+35,sz:7,baseSz:7,spd:0.4,baseSpd:0.4,hp:3,maxHp:3,fl:0,dead:false,buffed:false,role:'chaser',orbitA:0,orbitSpd:0});
+}
+spawnNormals();
+
+function update(){
+  frame++;
+  if(hitFlash>0)hitFlash--;
+  if(buffer.hitFl>0)buffer.hitFl--;
+
+  if(buffer.dead){
+    buffer.respawnT++;
+    if(buffer.respawnT>160&&normals.every(n=>n.dead)){
+      buffer.dead=false;buffer.hp=buffer.maxHp;buffer.respawnT=0;
+      buffer.x=W/2;buffer.y=H*0.28;spawnNormals();
+    }
+  }
+
+  // Player AI
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.013)*0.04+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.06;ay+=Math.sin(wander)*0.06;
+  for(const n of normals){
+    if(n.dead)continue;
+    const d=Math.hypot(px-n.x,py-n.y);
+    if(d<35&&d>1){ax+=(px-n.x)/d*0.12;ay+=(py-n.y)/d*0.12}
+  }
+  ax+=(W/2-px)*0.0003;ay+=(H*0.7-py)*0.001;
+  if(px<PAD+30)ax+=0.12;if(px>W-PAD-30)ax-=0.12;
+  if(py<PAD+30)ay+=0.12;if(py>H-PAD-30)ay-=0.12;
+  pvx=(pvx+ax)*0.93;pvy=(pvy+ay)*0.93;
+  const vm=Math.hypot(pvx,pvy);if(vm>1.2){pvx=pvx/vm*1.2;pvy=pvy/vm*1.2}
+  px+=pvx;py+=pvy;
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Shoot — prioritize buffer
+  shootTimer++;
+  let target=null;
+  if(!buffer.dead){target=buffer}
+  else{let bd=Infinity;for(const n of normals){if(n.dead)continue;const d=Math.hypot(px-n.x,py-n.y);if(d<bd){bd=d;target=n}}}
+  if(shootTimer>=15&&target){
+    const a=Math.atan2(target.y-py,target.x-px);
+    bullets.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:50});
+    shootTimer=0;
+  }
+
+  // Buffer AI — barely moves, slight retreat from player
+  if(!buffer.dead){
+    const dx=px-buffer.x,dy=py-buffer.y,d=Math.hypot(dx,dy);
+    if(d<100){buffer.x-=dx/d*0.15;buffer.y-=dy/d*0.15}
+    buffer.x=Math.max(PAD+25,Math.min(W-PAD-25,buffer.x));
+    buffer.y=Math.max(PAD+25,Math.min(H*0.55,buffer.y)); // stays in upper half
+  }
+
+  // Normal enemies
+  for(const n of normals){
+    if(n.dead)continue;if(n.fl>0)n.fl--;
+    const nearBuffer=!buffer.dead&&Math.hypot(n.x-buffer.x,n.y-buffer.y)<buffer.auraR;
+    n.buffed=nearBuffer;
+    const buffSpd=nearBuffer?n.baseSpd*2.5:n.baseSpd;
+    const buffSz=nearBuffer?10:n.baseSz;
+    n.spd+=(buffSpd-n.spd)*0.1; // smooth transition
+    n.sz+=(buffSz-n.sz)*0.1;
+
+    if(n.role==='camper'){
+      // Orbit inside the aura zone — stay near the buffer
+      n.orbitA+=n.orbitSpd;
+      const tx=buffer.x+Math.cos(n.orbitA)*45;
+      const ty=buffer.y+Math.sin(n.orbitA)*45;
+      const dx=tx-n.x,dy=ty-n.y,d=Math.hypot(dx,dy);
+      if(d>2){n.x+=dx/d*n.spd;n.y+=dy/d*n.spd}
+    }else{
+      // Chaser — goes after player but slowly
+      const dx=px-n.x,dy=py-n.y,d=Math.hypot(dx,dy);
+      if(d>1){n.x+=dx/d*n.spd;n.y+=dy/d*n.spd}
+    }
+    n.x=Math.max(PAD+5,Math.min(W-PAD-5,n.x));n.y=Math.max(PAD+5,Math.min(H-PAD-5,n.y));
+  }
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){bullets.splice(i,1);continue}
+    let hit=false;
+    if(!buffer.dead&&Math.hypot(b.x-buffer.x,b.y-buffer.y)<buffer.sz+4){
+      buffer.hp--;buffer.hitFl=5;spark(b.x,b.y,'#66bb6a',3);
+      if(buffer.hp<=0){buffer.dead=true;spark(buffer.x,buffer.y,'#ffb300',15,1.5)}
+      hit=true;
+    }
+    if(!hit){for(const n of normals){if(n.dead)continue;
+      if(Math.hypot(b.x-n.x,b.y-n.y)<n.sz+3){n.hp--;n.fl=5;spark(b.x,b.y,'#66bb6a',3);
+        if(n.hp<=0){n.dead=true;spark(n.x,n.y,'#ef5350',8)}hit=true;break}}}
+    if(hit)bullets.splice(i,1);
+  }
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Buffer aura
+  if(!buffer.dead){
+    const pulse=Math.sin(frame*0.04)*0.03+0.07;
+    ctx.fillStyle=`rgba(255,179,0,${pulse})`;ctx.beginPath();ctx.arc(buffer.x,buffer.y,buffer.auraR,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,179,0,.2)';ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.arc(buffer.x,buffer.y,buffer.auraR,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.font='500 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,179,0,.45)';
+    ctx.fillText('BUFF ZONE — SPD + DMG ↑',buffer.x,buffer.y-buffer.auraR-6);
+  }
+
+  // Link lines from buffer to buffed normals
+  if(!buffer.dead){for(const n of normals){if(n.dead||!n.buffed)continue;
+    ctx.strokeStyle='rgba(255,179,0,.1)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(buffer.x,buffer.y);ctx.lineTo(n.x,n.y);ctx.stroke()}}
+
+  // Buffer body
+  if(!buffer.dead){
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(buffer.x,buffer.y+buffer.sz+2,buffer.sz*.6,buffer.sz*.2,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=buffer.hitFl>0?'#ffe082':'#ffb300';
+    ctx.beginPath();for(let i=0;i<10;i++){const a=Math.PI*2*i/10-Math.PI/2;const r=i%2===0?buffer.sz:buffer.sz*0.5;ctx[i===0?'moveTo':'lineTo'](buffer.x+Math.cos(a)*r,buffer.y+Math.sin(a)*r)}ctx.closePath();ctx.fill();
+    ctx.fillStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.arc(buffer.x,buffer.y,buffer.sz*0.3,0,Math.PI*2);ctx.fill();
+    const bw=35,bh=3;
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(buffer.x-bw/2,buffer.y-buffer.sz-14,bw,bh);
+    ctx.fillStyle='#ffb300';ctx.fillRect(buffer.x-bw/2,buffer.y-buffer.sz-14,bw*(buffer.hp/buffer.maxHp),bh);
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.45)';
+    ctx.fillText(`${buffer.hp}/${buffer.maxHp}`,buffer.x,buffer.y-buffer.sz-18);
+    ctx.font='700 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,179,0,.75)';ctx.fillText('BUFFER',buffer.x,buffer.y+buffer.sz+15);
+  }
+
+  // Normals
+  for(const n of normals){
+    if(n.dead)continue;
+    if(n.buffed){
+      ctx.fillStyle='rgba(255,179,0,.1)';ctx.beginPath();ctx.arc(n.x,n.y,n.sz+5,0,Math.PI*2);ctx.fill();
+    }
+    ctx.fillStyle=n.fl>0?'#fff':n.buffed?'#ff7043':'#ef5350';
+    ctx.fillRect(n.x-n.sz/2,n.y-n.sz/2,n.sz,n.sz);
+    ctx.font='500 5px "IBM Plex Mono"';ctx.textAlign='center';
+    if(n.buffed){ctx.fillStyle='rgba(255,179,0,.7)';ctx.fillText('↑BUFFED',n.x,n.y+n.sz+9)}
+    else if(buffer.dead){ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('WEAKENED',n.x,n.y+n.sz+9)}
+    // Role label
+    ctx.fillStyle='rgba(255,255,255,.2)';
+    ctx.fillText(n.role==='camper'?'CAMP':'CHASE',n.x,n.y-n.sz-3);
+  }
+
+  // Bullets
+  ctx.fillStyle='#66bb6a';for(const b of bullets){ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2.5,b.y-b.vy*2.5);ctx.stroke()}
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,179,0,.6)':'#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,179,0,.65)';
+  ctx.fillText('BUFFER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Aura buffs speed + damage → campers stay in zone → kill buffer to weaken all',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

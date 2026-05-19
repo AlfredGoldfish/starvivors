@@ -146,6 +146,27 @@ export class StarfieldSystem {
     this.applyTilePositions();
   }
 
+  setDebugValues(values: Partial<StarfieldDebugValues>): void {
+    if (typeof values.backgroundStarsVisible === 'boolean') {
+      this.backgroundStarsVisible = values.backgroundStarsVisible;
+    }
+
+    if (typeof values.starfieldFarParallax === 'number' && Number.isFinite(values.starfieldFarParallax)) {
+      this.farStarfieldParallax = this.clampParallax(values.starfieldFarParallax);
+    }
+
+    if (typeof values.starfieldMidParallax === 'number' && Number.isFinite(values.starfieldMidParallax)) {
+      this.midStarfieldParallax = this.clampParallax(values.starfieldMidParallax);
+    }
+
+    if (typeof values.starfieldNearParallax === 'number' && Number.isFinite(values.starfieldNearParallax)) {
+      this.nearStarfieldParallax = this.clampParallax(values.starfieldNearParallax);
+    }
+
+    this.applyTilePositions();
+    this.applyStarVisibility();
+  }
+
   toggleStars(): void {
     this.backgroundStarsVisible = !this.backgroundStarsVisible;
     this.applyStarVisibility();

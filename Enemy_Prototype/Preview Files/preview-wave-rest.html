@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Wave → Rest → Wave</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Wave → Rest → Wave</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">The core rhythm of wave-based games. Fight a wave of enemies → wave ends → rest period where you shop, upgrade, or heal → next wave begins with harder enemies. This creates natural pacing with tension and release. The rest period is where the player makes meaningful decisions.</div>
+    <div class="dr"><div class="dl">Rhythm</div><div class="dv">FIGHT → CLEAR → REST (shop/upgrade/heal) → FIGHT</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Arena survival, tower defense, wave shooters</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Natural pacing, clear goals, decision moments between waves</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Tension during waves, relief during rest, anticipation before next</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Strategy</span><span class="ft">Survival</span>
+    <span class="fe">e.g. Call of Duty Zombies, Kingdom Rush, 20 Minutes Till Dawn</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=20,AW=W-PAD*2,AH=H-PAD*2;
+// States: fighting, wave_complete, rest, countdown
+let state='fighting',stateTimer=0,wave=1,gold=0,kills=0;
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0;
+let enemies=[],projs=[],particles=[];
+let shopItems=[{name:'DMG +15%',cost:30},{name:'SPEED +10%',cost:20},{name:'HEAL',cost:15},{name:'ABILITY',cost:50}];
+let shopSelected=-1;
+
+function spawnWave(){enemies=[];const n=3+wave*2;for(let i=0;i<n;i++){const side=Math.floor(Math.random()*4);let x,y;if(side===0){x=PAD;y=PAD+Math.random()*AH}else if(side===1){x=PAD+AW;y=PAD+Math.random()*AH}else if(side===2){x=PAD+Math.random()*AW;y=PAD}else{x=PAD+Math.random()*AW;y=PAD+AH}enemies.push({x,y,s:5+Math.random()*3,hp:1+Math.floor(wave/3),speed:.6+wave*.1,flash:0})}}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*2.5;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20+Math.random()*15,ml:35,color:col,size:1.5+Math.random()*2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+
+spawnWave();
+let shootTimer=0;
+
+function update(){
+  stateTimer++;
+
+  if(state==='fighting'){
+    // Player AI
+    pTimer++;if(pTimer>80||dist({x:px,y:py},pt)<15){pt={x:PAD+40+Math.random()*(AW-80),y:PAD+40+Math.random()*(AH-80)};pTimer=0}
+    const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2;py+=dy/d*2}
+    px=Math.max(PAD+8,Math.min(PAD+AW-8,px));py=Math.max(PAD+8,Math.min(PAD+AH-8,py));
+
+    // Shoot
+    shootTimer++;if(shootTimer>10&&enemies.length>0){let ne=null,nd=Infinity;for(const e of enemies){const d2=dist({x:px,y:py},e);if(d2<nd){nd=d2;ne=e}}if(ne){const a=Math.atan2(ne.y-py,ne.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:50});shootTimer=0}}
+
+    // Projs
+    for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0){projs.splice(i,1);continue}for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,'#ef5350',8);gold+=5+wave;kills++;enemies.splice(j,1)}break}}}
+
+    // Enemies
+    for(const e of enemies){const dx2=px-e.x,dy2=py-e.y,d2=Math.sqrt(dx2*dx2+dy2*dy2);if(d2>1){e.x+=dx2/d2*e.speed;e.y+=dy2/d2*e.speed}if(e.flash>0)e.flash--}
+
+    // Wave cleared?
+    if(enemies.length===0){state='wave_complete';stateTimer=0}
+  }
+
+  if(state==='wave_complete'){if(stateTimer>80){state='rest';stateTimer=0;shopSelected=-1}}
+
+  if(state==='rest'){
+    // Auto-buy after a moment
+    if(stateTimer===80){
+      const affordable=shopItems.filter(s=>gold>=s.cost);
+      if(affordable.length){const item=affordable[Math.floor(Math.random()*affordable.length)];shopSelected=shopItems.indexOf(item);gold-=item.cost}
+    }
+    if(stateTimer>140){state='countdown';stateTimer=0}
+  }
+
+  if(state==='countdown'){if(stateTimer>60){wave++;spawnWave();state='fighting';stateTimer=0;projs=[]}}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.95;p.vy*=.95;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.strokeRect(PAD,PAD,AW,AH);
+  for(let gx=PAD;gx<PAD+AW;gx+=40){ctx.beginPath();ctx.moveTo(gx,PAD);ctx.lineTo(gx,PAD+AH);ctx.stroke()}
+  for(let gy=PAD;gy<PAD+AH;gy+=40){ctx.beginPath();ctx.moveTo(PAD,gy);ctx.lineTo(PAD+AW,gy);ctx.stroke()}
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+  // Projs
+  ctx.fillStyle='#66bb6a';for(const p of projs){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // HUD top bar
+  ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(0,0,W,18);
+  ctx.font='600 9px "IBM Plex Mono"';ctx.textAlign='left';
+  ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText(`WAVE ${wave}`,8,13);
+  ctx.textAlign='center';
+  if(state==='fighting'){ctx.fillStyle='#ef5350';ctx.fillText(`${enemies.length} ENEMIES`,W/2,13)}
+  else if(state==='wave_complete'){ctx.fillStyle='#66bb6a';ctx.fillText('WAVE CLEARED!',W/2,13)}
+  else if(state==='rest'){ctx.fillStyle='#ffca28';ctx.fillText('REST — SHOP OPEN',W/2,13)}
+  else{ctx.fillStyle='#4fc3f7';ctx.fillText(`NEXT WAVE IN ${Math.ceil((60-stateTimer)/20)}...`,W/2,13)}
+  ctx.textAlign='right';ctx.fillStyle='#ffca28';ctx.fillText(`${gold} GOLD`,W-8,13);
+
+  // Wave complete splash
+  if(state==='wave_complete'){
+    ctx.fillStyle=`rgba(0,0,0,${Math.min(.5,stateTimer/40)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 22px "Chakra Petch"';ctx.fillStyle='#66bb6a';ctx.textAlign='center';
+    ctx.fillText(`WAVE ${wave} CLEAR!`,W/2,H/2-10);
+    ctx.font='400 10px "Outfit"';ctx.fillStyle='rgba(255,255,255,.4)';
+    ctx.fillText(`+${5+wave} gold earned`,W/2,H/2+10);
+  }
+
+  // Shop overlay
+  if(state==='rest'){
+    ctx.fillStyle='rgba(0,0,0,.65)';ctx.fillRect(0,0,W,H);
+    ctx.font='700 16px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.textAlign='center';
+    ctx.fillText('SHOP',W/2,60);
+    ctx.font='400 8px "Outfit"';ctx.fillStyle='rgba(255,255,255,.3)';
+    ctx.fillText(`Gold: ${gold}`,W/2,78);
+
+    for(let i=0;i<shopItems.length;i++){
+      const item=shopItems[i];
+      const ix=60+i*95,iy=100,iw=85,ih=100;
+      const sel=i===shopSelected;
+      ctx.fillStyle=sel?'rgba(102,187,106,.15)':'rgba(255,255,255,.05)';ctx.fillRect(ix,iy,iw,ih);
+      ctx.strokeStyle=sel?'#66bb6a':'rgba(255,255,255,.1)';ctx.lineWidth=sel?2:1;ctx.strokeRect(ix,iy,iw,ih);
+      ctx.font='500 10px "Outfit"';ctx.fillStyle=sel?'#66bb6a':'#fff';ctx.textAlign='center';ctx.fillText(item.name,ix+iw/2,iy+35);
+      ctx.font='500 9px "IBM Plex Mono"';ctx.fillStyle=gold>=item.cost?'#ffca28':'rgba(255,255,255,.2)';ctx.fillText(`${item.cost}g`,ix+iw/2,iy+55);
+      if(sel){ctx.font='600 8px "IBM Plex Mono"';ctx.fillStyle='#66bb6a';ctx.fillText('BOUGHT!',ix+iw/2,iy+80)}
+    }
+    // Next wave button
+    const by=220;ctx.fillStyle='rgba(79,195,247,.15)';ctx.fillRect(W/2-60,by,120,30);ctx.strokeStyle='#4fc3f7';ctx.lineWidth=1;ctx.strokeRect(W/2-60,by,120,30);
+    ctx.font='600 10px "IBM Plex Mono"';ctx.fillStyle='#4fc3f7';ctx.fillText('NEXT WAVE →',W/2,by+19);
+  }
+
+  // Countdown
+  if(state==='countdown'){
+    ctx.fillStyle=`rgba(0,0,0,${Math.max(0,.5-stateTimer/60)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 30px "Chakra Petch"';ctx.fillStyle='rgba(79,195,247,.6)';ctx.textAlign='center';
+    ctx.fillText(`WAVE ${wave+1}`,W/2,H/2);
+  }
+
+  // Phase indicator bar at bottom
+  const phases=['FIGHT','CLEAR','SHOP','NEXT'];
+  const phaseIdx=state==='fighting'?0:state==='wave_complete'?1:state==='rest'?2:3;
+  const bh=4;ctx.fillStyle='rgba(255,255,255,.03)';ctx.fillRect(0,H-bh,W,bh);
+  const colors=['#ef5350','#66bb6a','#ffca28','#4fc3f7'];
+  for(let i=0;i<=phaseIdx;i++){ctx.fillStyle=i===phaseIdx?colors[i]:'rgba(255,255,255,.08)';ctx.fillRect(i*(W/4),H-bh,W/4,bh)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

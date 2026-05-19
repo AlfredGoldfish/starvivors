@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Teleporter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Teleporter</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectile</div>
+      <div class="li"><span style="background:#ba68c8"></span>Teleporter</div>
+      <div class="li"><span style="background:rgba(186,104,200,.25);border-radius:50%"></span>Afterimage</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Appears, takes a quick attack, then vanishes and reappears somewhere else entirely. The same enemy — just impossible to pin down. The player gets a few shots in each window, chipping away at its HP bar over many cycles. Demands patience and quick aim. Every missed shot during the vulnerability window is wasted.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Teleports to random positions, no walking</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">Brief attack window while materialized</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Brief vulnerability window after appearing</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Unpredictable position, wastes ammo, drawn-out fight</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">RPG</span><span class="ft">Horror</span>
+    <span class="fe">e.g. Minecraft (Enderman), Hades, Doom (Archvile), Dishonored</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=25;
+let px=W/2,py=H*0.65,pVx=0,pVy=0,pWander=Math.random()*Math.PI*2,pTimer=0;
+let projectiles=[],particles=[],floats=[],hitFlash=0,shootTimer=0;
+
+// Single teleporter with lots of HP
+const tp={
+  x:W/2,y:H*0.3,size:11,hp:40,maxHp:40,
+  state:'gone',timer:0,fadeAlpha:0,hitFlash:0,
+  visibleDur:70,dead:false,respawnTimer:0,
+  ghostX:0,ghostY:0,ghostAlpha:0,
+  ghosts:[] // trail of old positions
+};
+
+function pickPos(){
+  for(let i=0;i<20;i++){
+    const x=PAD+50+Math.random()*(W-PAD*2-100);
+    const y=PAD+40+Math.random()*(H-PAD*2-100);
+    if(Math.hypot(x-px,y-py)>50&&Math.hypot(x-px,y-py)<200)return{x,y};
+  }
+  return{x:PAD+60+Math.random()*(W-PAD*2-120),y:PAD+50+Math.random()*(H-PAD*2-100)};
+}
+
+function burst(bx,by,col,n,sm){sm=sm||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=(.3+Math.random()*2)*sm;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:16+Math.random()*12,ml:28,color:col,size:1+Math.random()*1.5})}}
+function addFloat(x,y,t,col){floats.push({x,y,text:t,color:col,life:40,ml:40})}
+
+function update(){
+  pTimer++;
+  if(hitFlash>0)hitFlash--;
+  if(tp.hitFlash>0)tp.hitFlash--;
+  for(let i=tp.ghosts.length-1;i>=0;i--){tp.ghosts[i].a-=0.015;if(tp.ghosts[i].a<=0)tp.ghosts.splice(i,1)}
+
+  if(tp.dead){
+    tp.respawnTimer++;
+    if(tp.respawnTimer>90){tp.dead=false;tp.hp=tp.maxHp;tp.state='gone';tp.timer=0;tp.ghosts=[]}
+  }
+
+  // Player AI: wander, shoot at teleporter when visible
+  pWander+=Math.sin(pTimer*0.013)*0.04+(Math.random()-.5)*0.04;
+  let ax=Math.cos(pWander)*0.08,ay=Math.sin(pWander)*0.08;
+  ax+=(W/2-px)*0.0004;ay+=(H*0.6-py)*0.001;
+  if(px<PAD+30)ax+=0.15;if(px>W-PAD-30)ax-=0.15;
+  if(py<PAD+30)ay+=0.15;if(py>H-PAD-30)ay-=0.15;
+  pVx=(pVx+ax)*0.93;pVy=(pVy+ay)*0.93;
+  const vm=Math.hypot(pVx,pVy);
+  if(vm<0.4&&vm>0.01){pVx=pVx/vm*0.4;pVy=pVy/vm*0.4}
+  if(vm>1.2){pVx=pVx/vm*1.2;pVy=pVy/vm*1.2}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Shoot at teleporter when visible
+  if(!tp.dead&&(tp.state==='visible'||tp.state==='attacking')&&tp.fadeAlpha>0.5){
+    shootTimer++;
+    if(shootTimer>=12){
+      const a=Math.atan2(tp.y-py,tp.x-px);
+      projectiles.push({x:px,y:py,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:50});
+      shootTimer=0;
+    }
+  }
+
+  // Teleporter state machine
+  if(!tp.dead){
+    tp.timer++;
+    if(tp.state==='gone'){
+      if(tp.timer>50+Math.random()*30){
+        const pos=pickPos();
+        tp.ghosts.push({x:tp.x,y:tp.y,a:0.5}); // ghost at old position
+        tp.x=pos.x;tp.y=pos.y;
+        tp.state='materializing';tp.timer=0;tp.fadeAlpha=0;
+      }
+    }
+    else if(tp.state==='materializing'){
+      tp.fadeAlpha=Math.min(1,tp.fadeAlpha+0.05);
+      if(pTimer%2===0)burst(tp.x,tp.y,'rgba(186,104,200,0.4)',1,0.5);
+      if(tp.fadeAlpha>=1){tp.state='visible';tp.timer=0}
+    }
+    else if(tp.state==='visible'){
+      // Brief attack window
+      if(tp.timer>20){tp.state='attacking';tp.timer=0}
+      if(tp.timer>tp.visibleDur){tp.state='fading';tp.timer=0}
+    }
+    else if(tp.state==='attacking'){
+      // Contact damage if near player
+      if(Math.hypot(px-tp.x,py-tp.y)<22){hitFlash=6;burst(px,py,'#ba68c8',4)}
+      if(tp.timer>tp.visibleDur-20){tp.state='fading';tp.timer=0}
+    }
+    else if(tp.state==='fading'){
+      tp.fadeAlpha=Math.max(0,tp.fadeAlpha-0.04);
+      if(pTimer%3===0)burst(tp.x,tp.y,'rgba(186,104,200,0.3)',1,0.4);
+      if(tp.fadeAlpha<=0){
+        tp.state='gone';tp.timer=0;
+        burst(tp.x,tp.y,'#ba68c8',8,0.8);
+      }
+    }
+  }
+
+  // Projectile collision — only hits during visible/attacking states
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){projectiles.splice(i,1);continue}
+    if(!tp.dead&&tp.fadeAlpha>0.3&&(tp.state==='visible'||tp.state==='attacking'||tp.state==='materializing')){
+      if(Math.hypot(p.x-tp.x,p.y-tp.y)<tp.size+4){
+        tp.hp--;tp.hitFlash=5;burst(p.x,p.y,'#66bb6a',3);
+        projectiles.splice(i,1);
+        if(tp.hp<=0){
+          tp.dead=true;tp.respawnTimer=0;
+          burst(tp.x,tp.y,'#ba68c8',20,1.5);burst(tp.x,tp.y,'#ffca28',10,1);
+          addFloat(tp.x,tp.y-20,'DESTROYED','#ffca28');
+          tp.fadeAlpha=0;
+        }
+        continue;
+      }
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.4;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function drawHPBar(x,y,w,h,hp,max,col){
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(x-1,y-1,w+2,h+2);
+  ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(x,y,w,h);
+  ctx.fillStyle=col;ctx.fillRect(x,y,w*(hp/max),h);
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Ghost afterimages at old positions
+  for(const g of tp.ghosts){
+    ctx.globalAlpha=g.a;ctx.strokeStyle='#ba68c8';ctx.lineWidth=1;
+    ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI*2*i/6-Math.PI/6;ctx[i===0?'moveTo':'lineTo'](g.x+Math.cos(a)*(tp.size-1),g.y+Math.sin(a)*(tp.size-1))}
+    ctx.closePath();ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  // Teleporter
+  if(!tp.dead&&tp.state!=='gone'){
+    ctx.globalAlpha=tp.fadeAlpha;
+    const S=tp.size;
+
+    // Warp ring during transitions
+    if(tp.state==='materializing'||tp.state==='fading'){
+      const prog=tp.state==='materializing'?tp.fadeAlpha:1-tp.fadeAlpha;
+      ctx.strokeStyle=`rgba(186,104,200,${prog*0.5})`;ctx.lineWidth=1.5;
+      ctx.beginPath();ctx.arc(tp.x,tp.y,S+6+prog*10,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<4;i++){
+        const a=pTimer*0.08+i*Math.PI/2;const r=S+4+prog*8;
+        ctx.fillStyle=`rgba(186,104,200,${prog*0.6})`;
+        ctx.beginPath();ctx.arc(tp.x+Math.cos(a)*r,tp.y+Math.sin(a)*r,2,0,Math.PI*2);ctx.fill();
+      }
+    }
+
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.1)';ctx.beginPath();ctx.ellipse(tp.x,tp.y+S+2,S*.5,S*.15,0,0,Math.PI*2);ctx.fill();
+    // Body — hexagon
+    ctx.fillStyle=tp.hitFlash>0?'#e1bee7':'#ba68c8';
+    ctx.beginPath();
+    for(let i=0;i<6;i++){const a=Math.PI*2*i/6-Math.PI/6;ctx[i===0?'moveTo':'lineTo'](tp.x+Math.cos(a)*S,tp.y+Math.sin(a)*S)}
+    ctx.closePath();ctx.fill();
+    // Inner
+    ctx.fillStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.arc(tp.x,tp.y,S*0.4,0,Math.PI*2);ctx.fill();
+
+    // Attack indicator
+    if(tp.state==='attacking'){
+      const a=Math.atan2(py-tp.y,px-tp.x);
+      ctx.strokeStyle='rgba(186,104,200,.6)';ctx.lineWidth=2;
+      ctx.beginPath();ctx.moveTo(tp.x+Math.cos(a)*S,tp.y+Math.sin(a)*S);
+      ctx.lineTo(tp.x+Math.cos(a)*(S+15),tp.y+Math.sin(a)*(S+15));ctx.stroke();
+    }
+
+    // State label
+    ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={materializing:'rgba(186,104,200,.6)',visible:'rgba(186,104,200,.8)',attacking:'rgba(225,190,231,.9)',fading:'rgba(186,104,200,.4)'};
+    const lbls={materializing:'WARPING IN',visible:'VULNERABLE',attacking:'ATTACK!',fading:'WARPING OUT'};
+    ctx.fillStyle=cols[tp.state]||'';
+    if(lbls[tp.state])ctx.fillText(lbls[tp.state],tp.x,tp.y+S+15);
+
+    // HP bar — attached to enemy, fades with it
+    const barW=40,barH=4;
+    drawHPBar(tp.x-barW/2,tp.y-S-12,barW,barH,tp.hp,tp.maxHp,'#ba68c8');
+    ctx.font='600 6px "IBM Plex Mono"';ctx.fillStyle='rgba(186,104,200,.6)';
+    ctx.fillText(`${tp.hp}/${tp.maxHp}`,tp.x,tp.y-S-16);
+
+    ctx.globalAlpha=1;
+  }
+
+  // Death text
+  if(tp.dead){
+    ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.5)';
+    ctx.fillText('DESTROYED — RESPAWNING...',W/2,H/2);
+  }
+
+  // Projectiles
+  ctx.fillStyle='#66bb6a';
+  for(const p of projectiles){
+    ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-p.vx*2.5,p.y-p.vy*2.5);ctx.stroke();
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(186,104,200,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  for(const fl of floats){ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(186,104,200,.65)';
+  ctx.fillText('TELEPORTER',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

@@ -2,9 +2,11 @@ import Phaser from 'phaser';
 import type { PermanentUpgradeId } from '../data/permanentUpgrades';
 import type { ShipId } from '../data/ships';
 import type { UpgradeDefinition } from '../data/upgrades';
-import type { WeaponId } from '../data/weapons';
+import type { WeaponId, WeaponSlotType } from '../data/weapons';
 import type { EnemyStatProfile } from '../data/enemies';
 import type { BlackHoleCapturedProjectileState } from '../systems/blackHole';
+import type { EnemyLabInstance } from '../systems/enemyLabSpawner';
+import type { ResolvedProjectileEffectStats } from '../systems/weaponStats';
 
 export interface SavedBlackHolePngLayer {
   image: unknown;
@@ -61,6 +63,7 @@ export type AsteroidTier = 1 | 2 | 3 | 4 | 5;
 export type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
 export type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 export type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
+export type PlayerPickupKind = 'scrap' | 'banked-upgrade' | 'special-upgrade';
 export type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop' | 'shipSelect';
 export type ShopBackTarget = 'mainMenu' | 'results';
 export type DamageFeedbackSource = 'player' | 'enemy' | 'asteroid' | 'debris' | 'blackHole' | 'shield' | 'environment';
@@ -94,6 +97,11 @@ export interface StarvivorsTestHarnessState {
   nextXpThreshold: number;
   bankedUpgrades: number;
   isUpgradeOverlayOpen: boolean;
+  autoWeaponId: WeaponId;
+  primaryWeaponId: WeaponId | null;
+  secondaryWeaponId: WeaponId | null;
+  ownedAutoWeaponIds: WeaponId[];
+  ownedManualWeaponIds: WeaponId[];
   pulseDamageLevel: number;
   pulseFireRateLevel: number;
   pulseVelocityLevel: number;
@@ -139,6 +147,7 @@ export interface StarvivorsTestHarness {
   openUpgradeOverlay: () => StarvivorsTestHarnessState;
   closeUpgradeOverlay: () => StarvivorsTestHarnessState;
   selectPulseUpgrade: (choiceNumber: number) => StarvivorsTestHarnessState;
+  assignWeaponSlot: (slot: WeaponSlotType, weaponId: WeaponId) => StarvivorsTestHarnessState;
   clickUpgradeButton: () => StarvivorsTestHarnessState;
   toggleMinimap: () => StarvivorsTestHarnessState;
 }
@@ -168,11 +177,15 @@ export interface PlayerProjectile extends BlackHoleCapturedProjectileState {
   damage: number;
   hitRadius: number;
   pierceRemaining: number;
+  bouncesRemaining: number;
   piercedTargets: WeakSet<object>;
   expiresAt: number;
   distanceRemaining: number;
   nextTrailAt: number;
   trailColor: number;
+  effects: ResolvedProjectileEffectStats;
+  isOverloaded: boolean;
+  isEmergencyEmpowered: boolean;
 }
 
 export interface EnemyProjectile extends BlackHoleCapturedProjectileState {
@@ -268,10 +281,13 @@ export interface ScrapPickup {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
+  kind: PlayerPickupKind;
   value: number;
   mass: number;
   source: ScrapSourceType;
   pickupRadius: number;
+  magnetRadius: number;
+  isMagnetized: boolean;
   expiresAt: number;
   rotationSpeed: number;
   bobPhase: number;
@@ -285,7 +301,7 @@ export interface AsteroidBreakupProfile {
 }
 
 export interface PlayerEnemyContact {
-  enemy: BasicEnemy | ShooterEnemy | TankEnemy;
+  enemy: BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;

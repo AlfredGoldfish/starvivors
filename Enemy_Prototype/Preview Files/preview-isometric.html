@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Isometric</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Isometric (2.5D)</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:#66bb6a"></span>Tiles</div>
+      <div class="li"><span style="background:#8d6e63"></span>Elevated</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">An angled overhead view that gives the illusion of 3D depth on a 2D canvas. The world is made of diamond-shaped tiles. Objects further "back" appear higher on screen. Creates a rich tactical or RPG feel without true 3D rendering.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Fixed angle (~30°), diamond tile grid</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Tactics, RPGs, city builders, strategy, management</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Looks richer than flat top-down, natural depth perception</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Movement can feel unintuitive, harder to implement precisely</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">RPG</span><span class="ft">Strategy</span><span class="ft">Sim</span><span class="ft">Tactics</span>
+    <span class="fe">e.g. Diablo, Into the Breach, SimCity, Hades (partial)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const TW=40,TH=20; // Tile width/height in iso
+const GRID=8;
+const OX=W/2,OY=80; // Origin offset
+
+// Tile types: 0=floor, 1=elevated, 2=water
+const map=[];
+for(let r=0;r<GRID;r++){map[r]=[];for(let c2=0;c2<GRID;c2++){
+  map[r][c2]=Math.random()<.15?1:Math.random()<.1?2:0;
+}}
+map[3][3]=0;map[4][4]=0; // ensure player area clear
+
+// Convert grid to iso screen pos
+function toIso(gx,gy){return{x:OX+(gx-gy)*TW/2,y:OY+(gx+gy)*TH/2}}
+
+// Entities
+let player={gx:3,gy:3,tx:3,ty:3,progress:1};
+let enemies=[];
+for(let i=0;i<4;i++){let ex,ey;do{ex=Math.floor(Math.random()*GRID);ey=Math.floor(Math.random()*GRID)}while(map[ey][ex]!==0||(ex===3&&ey===3));
+  enemies.push({gx:ex,gy:ey,tx:ex,ty:ey,progress:1,color:`hsl(${Math.random()*30+350},70%,55%)`})}
+
+let moveTimer=0;
+function update(){
+  moveTimer++;
+  // Player AI: move to random adjacent tile
+  if(player.progress>=1&&moveTimer%60===0){
+    const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    const valid=dirs.filter(([dx,dy])=>{const nx=player.gx+dx,ny=player.gy+dy;return nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&map[ny][nx]===0});
+    if(valid.length){const[dx,dy]=valid[Math.floor(Math.random()*valid.length)];player.tx=player.gx+dx;player.ty=player.gy+dy;player.progress=0}
+  }
+  // Animate player movement
+  if(player.progress<1){player.progress=Math.min(1,player.progress+0.04);
+    if(player.progress>=1){player.gx=player.tx;player.gy=player.ty}}
+
+  // Enemies wander
+  for(const e of enemies){
+    if(e.progress>=1&&moveTimer%80===Math.floor(Math.random()*80)){
+      const dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+      const valid=dirs.filter(([dx,dy])=>{const nx=e.gx+dx,ny=e.gy+dy;return nx>=0&&nx<GRID&&ny>=0&&ny<GRID&&map[ny][nx]===0});
+      if(valid.length){const[dx,dy]=valid[Math.floor(Math.random()*valid.length)];e.tx=e.gx+dx;e.ty=e.gy+dy;e.progress=0}}
+    if(e.progress<1){e.progress=Math.min(1,e.progress+0.03);if(e.progress>=1){e.gx=e.tx;e.gy=e.ty}}
+  }
+}
+
+function drawTile(sx,sy,color,height){
+  const h=height||0;
+  // Top face
+  ctx.fillStyle=color;ctx.beginPath();
+  ctx.moveTo(sx,sy-h);ctx.lineTo(sx+TW/2,sy+TH/2-h);ctx.lineTo(sx,sy+TH-h);ctx.lineTo(sx-TW/2,sy+TH/2-h);ctx.closePath();ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=.5;ctx.stroke();
+  // Side faces if elevated
+  if(h>0){
+    ctx.fillStyle='rgba(0,0,0,.2)';ctx.beginPath();ctx.moveTo(sx,sy+TH-h);ctx.lineTo(sx+TW/2,sy+TH/2-h);ctx.lineTo(sx+TW/2,sy+TH/2);ctx.lineTo(sx,sy+TH);ctx.closePath();ctx.fill();
+    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.moveTo(sx,sy+TH-h);ctx.lineTo(sx-TW/2,sy+TH/2-h);ctx.lineTo(sx-TW/2,sy+TH/2);ctx.lineTo(sx,sy+TH);ctx.closePath();ctx.fill();
+  }
+}
+
+function drawEntity(gx,gy,tx,ty,progress,color,size){
+  const cx=gx+(tx-gx)*progress,cy=gy+(ty-gy)*progress;
+  const pos=toIso(cx,cy);
+  const jumpH=Math.sin(progress*Math.PI)*4;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(pos.x,pos.y+TH/2+2,size*1.2,size*0.5,0,0,Math.PI*2);ctx.fill();
+  // Body
+  ctx.fillStyle=color;ctx.beginPath();ctx.arc(pos.x,pos.y+TH/2-size-jumpH,size,0,Math.PI*2);ctx.fill();
+  // Highlight
+  ctx.fillStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.arc(pos.x-1,pos.y+TH/2-size-jumpH-2,size*0.4,0,Math.PI*2);ctx.fill();
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e1a';ctx.fillRect(0,0,W,H);
+
+  // Draw tiles back to front (painter's algorithm)
+  for(let r=0;r<GRID;r++){for(let cl=0;cl<GRID;cl++){
+    const pos=toIso(cl,r);const tile=map[r][cl];
+    if(tile===2){drawTile(pos.x,pos.y,'rgba(30,80,140,.4)',0)}
+    else if(tile===1){drawTile(pos.x,pos.y,'#5d4037',12);drawTile(pos.x,pos.y-12,'#8d6e63',0)}
+    else{drawTile(pos.x,pos.y,`rgba(40,${60+r*5},${40+cl*5},.35)`,0)}
+
+    // Draw entities on this tile
+    for(const e of enemies){
+      const egx=e.gx+(e.tx-e.gx)*e.progress,egy=e.gy+(e.ty-e.gy)*e.progress;
+      if(Math.floor(egy)===r&&Math.floor(egx)===cl)drawEntity(e.gx,e.gy,e.tx,e.ty,e.progress,e.color,5);
+    }
+    const pgx=player.gx+(player.tx-player.gx)*player.progress,pgy=player.gy+(player.ty-player.gy)*player.progress;
+    if(Math.floor(pgy)===r&&Math.floor(pgx)===cl)drawEntity(player.gx,player.gy,player.tx,player.ty,player.progress,'#4fc3f7',6);
+  }}
+
+  // Grid label
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.15)';ctx.textAlign='left';ctx.fillText(`GRID ${GRID}x${GRID}`,10,16);
+  ctx.textAlign='right';ctx.fillText('ISOMETRIC',W-10,16);
+
+  // Hover highlight on player tile
+  const pp=toIso(player.gx+(player.tx-player.gx)*player.progress,player.gy+(player.ty-player.gy)*player.progress);
+  ctx.strokeStyle='rgba(79,195,247,.3)';ctx.lineWidth=1;ctx.beginPath();
+  ctx.moveTo(pp.x,pp.y);ctx.lineTo(pp.x+TW/2,pp.y+TH/2);ctx.lineTo(pp.x,pp.y+TH);ctx.lineTo(pp.x-TW/2,pp.y+TH/2);ctx.closePath();ctx.stroke();
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

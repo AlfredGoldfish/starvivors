@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Splitter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Splitter</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectiles</div>
+      <div class="li"><span style="background:#7c4dff"></span>Large splitter</div>
+      <div class="li"><span style="background:#b388ff"></span>Medium split</div>
+      <div class="li"><span style="background:#d1c4e9"></span>Mini split</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">On death, this enemy splits into 2-3 smaller copies that continue fighting. Each generation is smaller, faster, and weaker. What looks like one enemy becomes a swarm. Forces the player to manage crowd control — killing carelessly floods the arena. The quintessential "be careful what you shoot" enemy.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Slow chase (large), faster chase (smaller)</div></div>
+    <div class="dr"><div class="dl">On death</div><div class="dv">Splits into 2-3 smaller copies per generation</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Smallest generation doesn't split, dies in 1 hit</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Population explodes if killed without area control</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Survival</span><span class="ft">Roguelike</span>
+    <span class="fe">e.g. Asteroids, Nuclear Throne, Vampire Survivors, Geometry Wars</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=20;
+
+let px=W/2,py=H*0.6,pSpeed=1.8;
+let pTarget={x:W/2,y:H/2},pTimer=0;
+let particles=[];
+let projectiles=[];
+let shootTimer=0;
+let totalSplit=0; // count for display
+
+const TIERS=[
+  {size:14,hp:3,speed:0.5,color:'#7c4dff',splits:3,label:'LARGE'},
+  {size:9,hp:2,speed:0.9,color:'#b388ff',splits:2,label:'MEDIUM'},
+  {size:5,hp:1,speed:1.5,color:'#d1c4e9',splits:0,label:'MINI'},
+];
+
+function makeEnemy(x,y,tier){
+  const t=TIERS[tier];
+  return{x,y,tier,size:t.size,hp:t.hp,maxHp:t.hp,speed:t.speed,
+    color:t.color,splits:t.splits,flash:0,
+    wobble:Math.random()*Math.PI*2};
+}
+let enemies=[];
+function spawn(){
+  enemies=[];totalSplit=0;
+  enemies.push(makeEnemy(W*0.3,H*0.3,0));
+  enemies.push(makeEnemy(W*0.7,H*0.35,0));
+}
+spawn();
+
+let respawnTimer=0;
+
+function pickPlayerTarget(){
+  // Keep distance from enemies, strafe around
+  let fleeX=0,fleeY=0,count=0;
+  for(const e of enemies){
+    const d=Math.hypot(px-e.x,py-e.y);
+    if(d<100){fleeX+=(px-e.x)/Math.max(d,1);fleeY+=(py-e.y)/Math.max(d,1);count++}
+  }
+  if(count>0){
+    const d=Math.hypot(fleeX,fleeY);
+    if(d>0){
+      let tx=px+fleeX/d*100,ty=py+fleeY/d*100;
+      tx=Math.max(PAD+25,Math.min(W-PAD-25,tx));
+      ty=Math.max(PAD+25,Math.min(H-PAD-25,ty));
+      pTarget={x:tx,y:ty};
+    }
+  }else{
+    pTarget={x:W/2+Math.random()*100-50,y:H/2+Math.random()*60-30};
+  }
+}
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=.8+Math.random()*2.5;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:18+Math.random()*12,ml:30,color:col,size:1+Math.random()*2})}}
+
+function update(){
+  pTimer++;
+  if(pTimer%30===0)pickPlayerTarget();
+
+  const pdx=pTarget.x-px,pdy=pTarget.y-py,pd=Math.hypot(pdx,pdy);
+  if(pd>3){px+=pdx/pd*pSpeed;py+=pdy/pd*pSpeed}
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));
+  py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Auto-shoot at nearest enemy
+  shootTimer++;
+  if(shootTimer>=10&&enemies.length>0){
+    let nearest=null,nd=Infinity;
+    for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<nd){nd=d;nearest=e}}
+    if(nearest){
+      const a=Math.atan2(nearest.y-py,nearest.x-px);
+      projectiles.push({x:px,y:py,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:50});
+      shootTimer=0;
+    }
+  }
+
+  // Projectiles
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){projectiles.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){
+      const e=enemies[j];
+      if(Math.hypot(p.x-e.x,p.y-e.y)<e.size+3){
+        e.hp--;e.flash=6;
+        burst(p.x,p.y,'#66bb6a',3);
+        projectiles.splice(i,1);
+        if(e.hp<=0){
+          // SPLIT!
+          burst(e.x,e.y,e.color,12);
+          if(e.splits>0&&e.tier<TIERS.length-1){
+            totalSplit++;
+            const nextTier=e.tier+1;
+            const count=e.splits;
+            for(let k=0;k<count;k++){
+              const a=Math.PI*2*k/count+Math.random()*.5;
+              const dist=e.size*1.5;
+              const nx=e.x+Math.cos(a)*dist;
+              const ny=e.y+Math.sin(a)*dist;
+              enemies.push(makeEnemy(
+                Math.max(PAD+5,Math.min(W-PAD-5,nx)),
+                Math.max(PAD+5,Math.min(H-PAD-5,ny)),
+                nextTier
+              ));
+            }
+          }
+          enemies.splice(j,1);
+        }
+        break;
+      }
+    }
+  }
+
+  // Enemy chase
+  for(const e of enemies){
+    if(e.flash>0)e.flash--;
+    e.wobble+=0.03;
+    const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    if(d>1){
+      e.x+=dx/d*e.speed;e.y+=dy/d*e.speed;
+    }
+    e.x=Math.max(PAD+5,Math.min(W-PAD-5,e.x));
+    e.y=Math.max(PAD+5,Math.min(H-PAD-5,e.y));
+  }
+
+  // Respawn if all dead
+  if(enemies.length===0){
+    respawnTimer++;
+    if(respawnTimer>90){spawn();respawnTimer=0}
+  }else{respawnTimer=0}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Enemies
+  for(const e of enemies){
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    ctx.beginPath();ctx.ellipse(e.x,e.y+e.size+2,e.size*.6,e.size*.2,0,0,Math.PI*2);ctx.fill();
+
+    // Wobble effect — pulses to show it's "alive" and about to split
+    const wobbleScale=1+Math.sin(e.wobble)*0.06;
+    const s=e.size*wobbleScale;
+
+    // Body — hexagonal-ish blob
+    ctx.fillStyle=e.flash>0?'#fff':e.color;
+    ctx.beginPath();
+    for(let i=0;i<6;i++){
+      const a=Math.PI*2*i/6-Math.PI/6;
+      const r=s*(0.9+Math.sin(e.wobble+i)*0.1);
+      const method=i===0?'moveTo':'lineTo';
+      ctx[method](e.x+Math.cos(a)*r,e.y+Math.sin(a)*r);
+    }
+    ctx.closePath();ctx.fill();
+
+    // Inner split line hint (shows it will split)
+    if(e.splits>0){
+      ctx.strokeStyle='rgba(0,0,0,.15)';ctx.lineWidth=1;
+      if(e.splits>=2){
+        ctx.beginPath();ctx.moveTo(e.x-s*.5,e.y);ctx.lineTo(e.x+s*.5,e.y);ctx.stroke();
+      }
+      if(e.splits>=3){
+        ctx.beginPath();ctx.moveTo(e.x,e.y-s*.4);ctx.lineTo(e.x,e.y+s*.4);ctx.stroke();
+      }
+    }
+
+    // HP pips
+    if(e.maxHp>1){
+      const pipW=4,pipG=2;
+      const totalW=e.maxHp*(pipW+pipG)-pipG;
+      for(let h=0;h<e.maxHp;h++){
+        ctx.fillStyle=h<e.hp?e.color:'rgba(255,255,255,.1)';
+        ctx.fillRect(e.x-totalW/2+h*(pipW+pipG),e.y-e.size-5,pipW,2);
+      }
+    }
+
+    // Tier label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    ctx.fillStyle=e.color+'80';
+    ctx.fillText(TIERS[e.tier].label+(e.splits>0?` → ×${e.splits}`:''),e.x,e.y+e.size+12);
+  }
+
+  // Projectiles
+  ctx.fillStyle='#66bb6a';
+  for(const p of projectiles){
+    ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(102,187,106,.2)';
+    ctx.beginPath();ctx.arc(p.x-p.vx*.4,p.y-p.vy*.4,1.5,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#66bb6a';
+  }
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // HUD
+  ctx.font='500 7px "IBM Plex Mono"';ctx.textAlign='left';
+  ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.fillText(`ENEMIES: ${enemies.length}`,PAD+4,H-PAD-6);
+  ctx.textAlign='right';
+  ctx.fillStyle='rgba(124,77,255,.6)';
+  ctx.fillText(`SPLITS: ${totalSplit}`,W-PAD-4,H-PAD-6);
+
+  // Respawn notice
+  if(enemies.length===0){
+    ctx.font='700 12px "Chakra Petch"';ctx.textAlign='center';
+    ctx.fillStyle='rgba(102,187,106,.75)';ctx.fillText('ALL CLEARED',W/2,H/2-6);
+    ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.4)';
+    ctx.fillText('New splitters spawning...',W/2,H/2+10);
+  }
+
+  // Labels
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(124,77,255,.65)';
+  ctx.fillText('SPLITTER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Kill → splits into smaller copies → each generation faster & weaker',W/2,H-PAD+12);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

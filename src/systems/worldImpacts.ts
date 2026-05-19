@@ -15,7 +15,15 @@ import type {
   ShooterEnemy,
   TankEnemy
 } from '../scenes/gameTypes';
+import type { EnemyLabInstance } from './enemyLabSpawner';
 import type { DebugImpactSourceType } from './debug/debugState';
+import {
+  getCapsuleCircleCollision,
+  getCircleCollision,
+  getWrappedDirection,
+  scaleHalfExtent,
+  type ShapeCollisionResult
+} from './collisionShapes';
 import {
   applyCollisionImpulse,
   getClosingSpeed,
@@ -23,7 +31,7 @@ import {
   getRelativeVelocity
 } from './physics';
 
-type WorldEnemy = BasicEnemy | ShooterEnemy | TankEnemy;
+type WorldEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
 type BodyImpactCollisionRequest = Pick<
   ResolveBodyImpactCollisionInput,
   | 'firstBody'
@@ -43,6 +51,9 @@ type BodyImpactCollisionRequest = Pick<
   | 'time'
   | 'damageFirst'
   | 'damageSecond'
+  | 'collisionNormal'
+  | 'collisionPenetration'
+  | 'collisionOffset'
 >;
 
 export interface ResolveWorldImpactCollisionsInput {
@@ -52,6 +63,9 @@ export interface ResolveWorldImpactCollisionsInput {
   debris: EnemyWreckageDebris[];
   time: number;
   getEnemyHitRadius: (enemy: WorldEnemy) => number;
+  getEnemyCollisionScale: () => number;
+  getAsteroidCollisionRadius: (asteroid: BasicAsteroid) => number;
+  getDebrisCollisionRadius: (debris: EnemyWreckageDebris) => number;
   getEnemyTotalVelocity: (enemy: WorldEnemy) => Phaser.Math.Vector2;
   getAsteroidMass: (tier: BasicAsteroid['tier']) => number;
   getGlobalMaxSpeed: () => number;
@@ -96,6 +110,9 @@ export interface ResolveBodyImpactCollisionInput {
   damageFirst: (damage: number) => void;
   damageSecond: (damage: number) => void;
   emitImpactExplosion: (x: number, y: number) => void;
+  collisionNormal?: Phaser.Math.Vector2;
+  collisionPenetration?: number;
+  collisionOffset?: Phaser.Math.Vector2;
 }
 
 export function resolveWorldImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
@@ -109,18 +126,14 @@ export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInpu
     return;
   }
 
-  const offset = getWrappedDirection(
-    input.arena,
-    input.secondBody.x,
-    input.secondBody.y,
-    input.firstBody.x,
-    input.firstBody.y
-  );
-  const normal = input.getCollisionNormal(offset);
+  const offset =
+    input.collisionOffset ??
+    getWrappedDirection(input.arena, input.secondBody.x, input.secondBody.y, input.firstBody.x, input.firstBody.y);
+  const normal = input.collisionNormal ?? input.getCollisionNormal(offset);
   const relativeVelocity = getRelativeVelocity(input.firstTotalVelocity, input.secondTotalVelocity);
   const closingSpeed = getClosingSpeed(relativeVelocity, normal);
   const hitRadius = input.firstRadius + input.secondRadius;
-  const penetration = Math.max(0, hitRadius - offset.length());
+  const penetration = input.collisionPenetration ?? Math.max(0, hitRadius - offset.length());
   const separation = Math.min(penetration * ASTEROID_COLLISION_SEPARATION_PERCENT, ASTEROID_COLLISION_MAX_SEPARATION);
   const firstShare = getMassResponseShare(input.secondMass, input.firstMass);
   const secondShare = getMassResponseShare(input.firstMass, input.secondMass);
@@ -176,17 +189,11 @@ function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollision
   for (const enemy of input.enemies) {
     for (const asteroid of [...input.asteroids]) {
       const enemyHitRadius = input.getEnemyHitRadius(enemy);
+      const asteroidRadius = input.getAsteroidCollisionRadius(asteroid);
+      const collision = getEnemyCircleCollision(input, enemy, asteroid.body.x, asteroid.body.y, asteroidRadius);
       if (
         !input.asteroids.includes(asteroid) ||
-        !isCircleCollision(
-          input.arena,
-          enemy.body.x,
-          enemy.body.y,
-          enemyHitRadius,
-          asteroid.body.x,
-          asteroid.body.y,
-          asteroid.hitRadius
-        )
+        !collision
       ) {
         continue;
       }
@@ -198,17 +205,20 @@ function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollision
         secondVelocity: asteroid.velocity,
         firstTotalVelocity: input.getEnemyTotalVelocity(enemy),
         secondTotalVelocity: asteroid.velocity,
-        firstMass: enemy.stats.mass,
+        firstMass: getEnemyMass(enemy),
         secondMass: input.getAsteroidMass(asteroid.tier),
         firstRadius: enemyHitRadius,
-        secondRadius: asteroid.hitRadius,
+        secondRadius: asteroidRadius,
         firstSource: 'enemy',
         secondSource: 'asteroid',
         firstMaxSpeed: input.getGlobalMaxSpeed(),
         secondMaxSpeed: input.getGlobalMaxSpeed(),
         time: input.time,
         damageFirst: (damage) => input.damageEnemyFromAsteroid(enemy, damage),
-        damageSecond: (damage) => input.damageAsteroidFromEnemy(asteroid, damage)
+        damageSecond: (damage) => input.damageAsteroidFromEnemy(asteroid, damage),
+        collisionNormal: collision.normal,
+        collisionPenetration: collision.penetration,
+        collisionOffset: collision.offset
       });
     }
   }
@@ -218,17 +228,11 @@ function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsI
   for (const enemy of input.enemies) {
     for (const debris of [...input.debris]) {
       const enemyHitRadius = input.getEnemyHitRadius(enemy);
+      const debrisRadius = input.getDebrisCollisionRadius(debris);
+      const collision = getEnemyCircleCollision(input, enemy, debris.body.x, debris.body.y, debrisRadius);
       if (
         !input.debris.includes(debris) ||
-        !isCircleCollision(
-          input.arena,
-          enemy.body.x,
-          enemy.body.y,
-          enemyHitRadius,
-          debris.body.x,
-          debris.body.y,
-          debris.hitRadius
-        )
+        !collision
       ) {
         continue;
       }
@@ -240,17 +244,20 @@ function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsI
         secondVelocity: debris.velocity,
         firstTotalVelocity: input.getEnemyTotalVelocity(enemy),
         secondTotalVelocity: debris.velocity,
-        firstMass: enemy.stats.mass,
+        firstMass: getEnemyMass(enemy),
         secondMass: debris.mass,
         firstRadius: enemyHitRadius,
-        secondRadius: debris.hitRadius,
+        secondRadius: debrisRadius,
         firstSource: 'enemy',
         secondSource: 'debris',
         firstMaxSpeed: input.getGlobalMaxSpeed(),
         secondMaxSpeed: input.getGlobalMaxSpeed(),
         time: input.time,
         damageFirst: (damage) => input.damageEnemyFromDebris(enemy, damage),
-        damageSecond: (damage) => input.damageDebrisFromEnemy(debris, damage)
+        damageSecond: (damage) => input.damageDebrisFromEnemy(debris, damage),
+        collisionNormal: collision.normal,
+        collisionPenetration: collision.penetration,
+        collisionOffset: collision.offset
       });
     }
   }
@@ -259,18 +266,17 @@ function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsI
 function resolveAsteroidDebrisImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
   for (const asteroid of [...input.asteroids]) {
     for (const debris of [...input.debris]) {
+      const asteroidRadius = input.getAsteroidCollisionRadius(asteroid);
+      const debrisRadius = input.getDebrisCollisionRadius(debris);
+      const collision = getCircleCollision(
+        input.arena,
+        { x: asteroid.body.x, y: asteroid.body.y, radius: asteroidRadius },
+        { x: debris.body.x, y: debris.body.y, radius: debrisRadius }
+      );
       if (
         !input.asteroids.includes(asteroid) ||
         !input.debris.includes(debris) ||
-        !isCircleCollision(
-          input.arena,
-          asteroid.body.x,
-          asteroid.body.y,
-          asteroid.hitRadius,
-          debris.body.x,
-          debris.body.y,
-          debris.hitRadius
-        )
+        !collision
       ) {
         continue;
       }
@@ -284,50 +290,72 @@ function resolveAsteroidDebrisImpactCollisions(input: ResolveWorldImpactCollisio
         secondTotalVelocity: debris.velocity,
         firstMass: input.getAsteroidMass(asteroid.tier),
         secondMass: debris.mass,
-        firstRadius: asteroid.hitRadius,
-        secondRadius: debris.hitRadius,
+        firstRadius: asteroidRadius,
+        secondRadius: debrisRadius,
         firstSource: 'asteroid',
         secondSource: 'debris',
         firstMaxSpeed: input.getGlobalMaxSpeed(),
         secondMaxSpeed: input.getGlobalMaxSpeed(),
         time: input.time,
         damageFirst: (damage) => input.damageAsteroidFromDebris(asteroid, damage),
-        damageSecond: (damage) => input.damageDebrisFromAsteroid(debris, damage)
+        damageSecond: (damage) => input.damageDebrisFromAsteroid(debris, damage),
+        collisionNormal: collision.normal,
+        collisionPenetration: collision.penetration,
+        collisionOffset: collision.offset
       });
     }
   }
 }
 
-function isCircleCollision(
-  arena: ArenaSize,
-  firstX: number,
-  firstY: number,
-  firstRadius: number,
-  secondX: number,
-  secondY: number,
-  secondRadius: number
-): boolean {
-  const hitRadius = firstRadius + secondRadius;
-  return getWrappedDirection(arena, secondX, secondY, firstX, firstY).lengthSq() <= hitRadius * hitRadius;
+function getEnemyCircleCollision(
+  input: ResolveWorldImpactCollisionsInput,
+  enemy: WorldEnemy,
+  circleX: number,
+  circleY: number,
+  circleRadius: number
+): ShapeCollisionResult | undefined {
+  if (isLiveEnemy(enemy)) {
+    return getCircleCollision(
+      input.arena,
+      {
+        x: enemy.body.x,
+        y: enemy.body.y,
+        radius: enemy.definition.stats.radius * input.getEnemyCollisionScale()
+      },
+      {
+        x: circleX,
+        y: circleY,
+        radius: circleRadius
+      }
+    );
+  }
+
+  const forward = new Phaser.Math.Vector2(Math.cos(enemy.body.rotation - Math.PI / 2), Math.sin(enemy.body.rotation - Math.PI / 2));
+  const right = new Phaser.Math.Vector2(-forward.y, forward.x);
+  const enemyScale = input.getEnemyCollisionScale();
+
+  return getCapsuleCircleCollision(
+    input.arena,
+    {
+      x: enemy.body.x,
+      y: enemy.body.y,
+      right,
+      forward,
+      halfWidth: scaleHalfExtent(enemy.stats.hitHalfWidth, enemyScale),
+      halfLength: scaleHalfExtent(enemy.stats.hitHalfLength, enemyScale)
+    },
+    {
+      x: circleX,
+      y: circleY,
+      radius: circleRadius
+    }
+  );
 }
 
-function getWrappedDirection(
-  arena: ArenaSize,
-  fromX: number,
-  fromY: number,
-  toX: number,
-  toY: number
-): Phaser.Math.Vector2 {
-  let x = toX - fromX;
-  let y = toY - fromY;
+function getEnemyMass(enemy: WorldEnemy): number {
+  return isLiveEnemy(enemy) ? enemy.definition.stats.mass ?? 1 : enemy.stats.mass;
+}
 
-  if (Math.abs(x) > arena.width / 2) {
-    x -= Math.sign(x) * arena.width;
-  }
-
-  if (Math.abs(y) > arena.height / 2) {
-    y -= Math.sign(y) * arena.height;
-  }
-
-  return new Phaser.Math.Vector2(x, y);
+function isLiveEnemy(enemy: WorldEnemy): enemy is EnemyLabInstance {
+  return 'definition' in enemy;
 }

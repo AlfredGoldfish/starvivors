@@ -3,7 +3,8 @@ import type { PlayerStatKey } from './stats';
 import { pulseCannonBalance, rammingShieldBalance } from './balance';
 
 export type WeaponId = 'pulse-cannon' | 'ramming-shield';
-export type WeaponSlotType = 'main' | 'secondary';
+export type WeaponSlotType = 'auto' | 'primary' | 'secondary';
+export type WeaponAssignmentType = 'auto' | 'manual';
 export type WeaponBehaviorType = 'projectile' | 'ramming-shield';
 export type WeaponInputBehavior = 'hold' | 'tap';
 export type WeaponTag = 'projectile' | 'pulse' | 'ramming' | 'shield';
@@ -37,6 +38,8 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   behaviorType: WeaponBehaviorType;
   tags: WeaponTag[];
   inputBehavior: WeaponInputBehavior;
+  autoFire?: boolean;
+  assignmentType: WeaponAssignmentType;
   slotCompatibility: WeaponSlotType[];
   slotBehavior: WeaponSlotBehaviorDefinition;
   startingShipId: string;
@@ -63,13 +66,15 @@ export const pulseCannon: WeaponRegistryEntry = {
   behaviorType: 'projectile',
   tags: ['projectile', 'pulse'],
   inputBehavior: 'hold',
-  slotCompatibility: ['main', 'secondary'],
+  autoFire: true,
+  assignmentType: 'auto',
+  slotCompatibility: ['auto'],
   slotBehavior: {
-    primary: 'Left-click or fire key fires the active primary projectile weapon.',
-    secondary: 'Right-click fires the projectile as a secondary weapon.'
+    primary: 'Auto-fires from the fixed auto weapon slot.',
+    secondary: 'Auto-fire weapons cannot be assigned to mouse buttons.'
   },
   startingShipId: 'interceptor',
-  eligibleAsSecondary: true,
+  eligibleAsSecondary: false,
   scaling: {
     broadStats: ['damage', 'attackSpeed', 'projectileSpeed', 'area', 'duration', 'amount', 'pierce'],
     weaponSpecificStats: ['damage', 'cooldownSeconds', 'projectileSpeed', 'projectileLifetimeSeconds', 'projectileRange']
@@ -100,7 +105,8 @@ export const rammingShield: WeaponRegistryEntry = {
   behaviorType: 'ramming-shield',
   tags: ['ramming', 'shield'],
   inputBehavior: 'tap',
-  slotCompatibility: ['main', 'secondary'],
+  assignmentType: 'manual',
+  slotCompatibility: ['primary', 'secondary'],
   slotBehavior: {
     primary: 'Left-click or fire key spends a dash charge for a forward ram burst.',
     secondary: 'Right-click spends a dash charge when equipped as a secondary weapon.'

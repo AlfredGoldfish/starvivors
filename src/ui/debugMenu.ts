@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { DebugAsteroidTier, DebugMenuCallbacks, DebugMenuValues } from '../systems/debug/debugTypes';
 import { formatIntegerDisplayUnits, toDisplayUnits } from '../systems/statUnits';
+import type { DeathShardStyle } from '../systems/deathEffects';
 
 export interface DebugMenuConfig {
   callbacks: DebugMenuCallbacks;
@@ -16,7 +17,7 @@ export interface DebugMenuController {
   destroy: () => void;
 }
 
-type DebugTabId = 'run' | 'ship' | 'weapons' | 'physics' | 'spawns' | 'blackHole' | 'visuals';
+type DebugTabId = 'run' | 'ship' | 'weapons' | 'physics' | 'collision' | 'spawns' | 'effects' | 'blackHole' | 'visuals';
 
 interface DebugTab {
   id: DebugTabId;
@@ -67,7 +68,9 @@ const TABS: DebugTab[] = [
   { id: 'ship', label: 'Ship' },
   { id: 'weapons', label: 'Weapons' },
   { id: 'physics', label: 'Physics' },
+  { id: 'collision', label: 'Hitboxes' },
   { id: 'spawns', label: 'Spawns' },
+  { id: 'effects', label: 'Effects' },
   { id: 'blackHole', label: 'Black Hole' },
   { id: 'visuals', label: 'Visuals' }
 ];
@@ -78,7 +81,9 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'tab-ship': 'Ship readouts for current hull, movement stats, shields, and projectiles.',
   'tab-weapons': 'Weapon tuning controls for temporary damage, fire-rate, and cooldown testing.',
   'tab-physics': 'Physics tuning for player control, enemy movement, and asteroid collision feel.',
+  'tab-collision': 'Simple gameplay hitbox scales for player, enemies, asteroids, and debris.',
   'tab-spawns': 'Spawn and clear enemies, asteroids, debris, and scrap for encounter testing.',
+  'tab-effects': 'Death shard effect tuning and quick effect tests.',
   'tab-blackHole': 'Black hole debug controls for radii, field forces, damage, and PNG lens layers.',
   'tab-visuals': 'Background and parallax controls for visual testing.',
   'run-state': 'Shows whether the debug pause toggle is currently stopping game updates.',
@@ -88,6 +93,22 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'restore-hull': 'Restore the player hull to full for survival and collision testing.',
   'player-invuln': 'Toggle debug invulnerability. Useful for testing hazards without ending the run.',
   'kill-player': 'Immediately defeat the player to test death, results, and restart behavior.',
+  'preset-save': 'Save all debug tuning settings to one markdown preset.',
+  'preset-load': 'Load all debug tuning settings from one markdown preset.',
+  'preset-reset': 'Reset all debug tuning settings to source defaults.',
+  profiler: 'Tracks frame time, subsystem timings, entity counts, and spike samples for lag diagnosis.',
+  'profiler-toggle': 'Enable or disable rolling lag profiling.',
+  'profiler-start': 'Start a focused manual profiling capture.',
+  'profiler-stop': 'Stop the focused manual profiling capture.',
+  'profiler-export': 'Download a markdown lag report with summary data and machine-readable JSON.',
+  'profiler-clear': 'Clear captured profiler frames and spike samples.',
+  'open-reports-folder': 'Open the desktop reports folder when running in Electron.',
+  'open-data-folder': 'Open the desktop data folder when running in Electron.',
+  diagnostics: 'Automatically writes local run diagnostic reports while a run is active.',
+  'diagnostics-toggle': 'Turn automatic run diagnostics on or off.',
+  'diagnostics-write-now': 'Write an immediate diagnostic report for the current run.',
+  'diagnostics-open-current': 'Open the current run diagnostics folder.',
+  'diagnostics-open-runs': 'Open the folder that stores all run diagnostics.',
   'spawn-scrap': 'Spawn a scrap pickup near the player.',
   'clear-scrap': 'Remove active scrap pickups from the scene.',
   'add-scrap': 'Add 100 run scrap without spawning pickups.',
@@ -222,6 +243,18 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'asteroid-impulse-down': 'Decrease asteroid collision knockback impulse.',
   'asteroid-impulse-up': 'Increase asteroid collision knockback impulse.',
   'physics-reset': 'Reset player, enemy, and asteroid physics tuning to debug defaults.',
+  'collision-shapes': 'Scales simple gameplay collision bounds. These shrink the tested pills and circles without changing art size.',
+  'collision-global-down': 'Decrease every gameplay collision shape.',
+  'collision-global-up': 'Increase every gameplay collision shape.',
+  'collision-player-down': 'Decrease the player ship collision circle.',
+  'collision-player-up': 'Increase the player ship collision circle.',
+  'collision-enemy-down': 'Decrease enemy ship collision capsules.',
+  'collision-enemy-up': 'Increase enemy ship collision capsules.',
+  'collision-asteroid-down': 'Decrease asteroid collision circles.',
+  'collision-asteroid-up': 'Increase asteroid collision circles.',
+  'collision-debris-down': 'Decrease debris collision circles.',
+  'collision-debris-up': 'Increase debris collision circles.',
+  'collision-reset': 'Reset collision shape scales to source defaults.',
   'spawn-state': 'Shows spawn director timing and active enemy count.',
   'enemy-spawning': 'Toggle automatic enemy spawning.',
   'spawn-chaser': 'Spawn one Chaser enemy near the play area.',
@@ -325,6 +358,12 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'damage-alpha-down': 'Make damage numbers more transparent.',
   'damage-alpha-up': 'Make damage numbers more opaque.',
   'feedback-reset': 'Reset health bar and damage number settings.',
+  'death-ship': 'Enemy ship death shard tuning.',
+  'death-player': 'Player death shard tuning.',
+  'death-asteroid': 'Asteroid death shard tuning.',
+  'death-blackHoleShip': 'Black hole ship death shard tuning.',
+  'death-blackHoleAsteroid': 'Black hole asteroid death shard tuning.',
+  'death-reset': 'Reset death shard tuning.',
   'background-stars': 'Toggle background star rendering.',
   'parallax-reset': 'Reset background parallax tuning.',
   'far-parallax-down': 'Decrease far starfield parallax.',
@@ -410,7 +449,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   buildShipTab();
   buildWeaponsTab();
   buildPhysicsTab();
+  buildCollisionTab();
   buildSpawnsTab();
+  buildEffectsTab();
   buildBlackHoleTab();
   buildVisualsTab();
   selectTab(activeTab);
@@ -432,7 +473,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   function createTabButtons(): void {
     const tabX = panelX + PANEL_PADDING;
     const tabY = panelY + 42;
-    const widths = [45, 45, 76, 67, 62, 91, 62];
+    const widths = [45, 45, 76, 67, 72, 62, 66, 91, 62];
     let x = tabX;
     let y = tabY;
 
@@ -456,6 +497,36 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addValue('run-state', 'run', y, VALUE_LINE_HEIGHT);
     y += VALUE_LINE_HEIGHT + BUTTON_GAP;
     addButton('run', 'debug-pause', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Pause game', config.callbacks.toggleDebugPause);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('run', y, 'Debug Preset');
+    addButton('run', 'preset-save', panelX + PANEL_PADDING, y, 101, 'Save all', config.callbacks.saveDebugPreset);
+    addButton('run', 'preset-load', panelX + PANEL_PADDING + 108, y, 101, 'Load all', config.callbacks.loadDebugPreset);
+    addButton('run', 'preset-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset all', config.callbacks.resetDebugTuning);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('run', y, 'Lag Profiler');
+    addValue('profiler', 'run', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButton('run', 'profiler-toggle', panelX + PANEL_PADDING, y, 154, 'Profiler', config.callbacks.togglePerformanceProfiler);
+    addButton('run', 'profiler-export', panelX + PANEL_PADDING + 162, y, 154, 'Export report', config.callbacks.exportPerformanceReport);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('run', 'profiler-start', panelX + PANEL_PADDING, y, 101, 'Start', config.callbacks.startPerformanceCapture);
+    addButton('run', 'profiler-stop', panelX + PANEL_PADDING + 108, y, 101, 'Stop', config.callbacks.stopPerformanceCapture);
+    addButton('run', 'profiler-clear', panelX + PANEL_PADDING + 216, y, 100, 'Clear', config.callbacks.clearPerformanceProfiler);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('run', 'open-reports-folder', panelX + PANEL_PADDING, y, 154, 'Open reports', config.callbacks.openReportsFolder);
+    addButton('run', 'open-data-folder', panelX + PANEL_PADDING + 162, y, 154, 'Open data', config.callbacks.openDataFolder);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('run', y, 'Auto Diagnostics');
+    addValue('diagnostics', 'run', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButton('run', 'diagnostics-toggle', panelX + PANEL_PADDING, y, 154, 'Diagnostics', config.callbacks.toggleAutoDiagnostics);
+    addButton('run', 'diagnostics-write-now', panelX + PANEL_PADDING + 162, y, 154, 'Write now', config.callbacks.writeAutoDiagnosticReportNow);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('run', 'diagnostics-open-current', panelX + PANEL_PADDING, y, 154, 'Open run', config.callbacks.openCurrentRunDiagnosticsFolder);
+    addButton('run', 'diagnostics-open-runs', panelX + PANEL_PADDING + 162, y, 154, 'Open runs', config.callbacks.openRunsFolder);
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('run', y, 'Player');
@@ -812,6 +883,45 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     setTabContentHeight('physics', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
 
+  function buildCollisionTab(): void {
+    let y = CONTENT_TOP;
+    y = addSection('collision', y, 'Simple Hitboxes');
+    addValue('collision-shapes', 'collision', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButtonPair('collision', 'collision-global', y, 'Global', () => config.callbacks.adjustCollisionShapeScale('global', -0.05), () => config.callbacks.adjustCollisionShapeScale('global', 0.05), {
+      getValue: (values) => parseSummaryValue(values.collisionShapeTuningSummary, /Global x([\d.]+)/),
+      setValue: (value) => config.callbacks.setCollisionShapeScale('global', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('collision', 'collision-player', y, 'Player', () => config.callbacks.adjustCollisionShapeScale('player', -0.05), () => config.callbacks.adjustCollisionShapeScale('player', 0.05), {
+      getValue: (values) => parseSummaryValue(values.collisionShapeTuningSummary, /Player x([\d.]+)/),
+      setValue: (value) => config.callbacks.setCollisionShapeScale('player', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('collision', 'collision-enemy', y, 'Enemy', () => config.callbacks.adjustCollisionShapeScale('enemy', -0.05), () => config.callbacks.adjustCollisionShapeScale('enemy', 0.05), {
+      getValue: (values) => parseSummaryValue(values.collisionShapeTuningSummary, /Enemy x([\d.]+)/),
+      setValue: (value) => config.callbacks.setCollisionShapeScale('enemy', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('collision', 'collision-asteroid', y, 'Asteroid', () => config.callbacks.adjustCollisionShapeScale('asteroid', -0.05), () => config.callbacks.adjustCollisionShapeScale('asteroid', 0.05), {
+      getValue: (values) => parseSummaryValue(values.collisionShapeTuningSummary, /Asteroid x([\d.]+)/),
+      setValue: (value) => config.callbacks.setCollisionShapeScale('asteroid', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('collision', 'collision-debris', y, 'Debris', () => config.callbacks.adjustCollisionShapeScale('debris', -0.05), () => config.callbacks.adjustCollisionShapeScale('debris', 0.05), {
+      getValue: (values) => parseSummaryValue(values.collisionShapeTuningSummary, /Debris x([\d.]+)/),
+      setValue: (value) => config.callbacks.setCollisionShapeScale('debris', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('collision', 'collision-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset hitboxes', config.callbacks.resetCollisionShapeTuning);
+    setTabContentHeight('collision', y + BUTTON_HEIGHT + PANEL_PADDING);
+  }
+
   function buildSpawnsTab(): void {
     let y = CONTENT_TOP;
     y = addSection('spawns', y, 'Enemy Spawns');
@@ -873,6 +983,69 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += VALUE_LINE_HEIGHT * 6 + BUTTON_GAP;
     addBlackHoleLayerButtons('blackHole', y);
     setTabContentHeight('blackHole', y + (BUTTON_HEIGHT + BUTTON_GAP) * 6 + PANEL_PADDING);
+  }
+
+  function buildEffectsTab(): void {
+    let y = CONTENT_TOP;
+    y = addDeathShardControls(y, 'ship', 'Enemy Ship');
+    y = addDeathShardControls(y, 'player', 'Player');
+    y = addDeathShardControls(y, 'asteroid', 'Asteroid');
+    y = addDeathShardControls(y, 'blackHoleShip', 'BH Ship');
+    y = addDeathShardControls(y, 'blackHoleAsteroid', 'BH Asteroid');
+    addButton('effects', 'death-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset death effects', config.callbacks.resetDeathShardTuning);
+    setTabContentHeight('effects', y + BUTTON_HEIGHT + PANEL_PADDING);
+  }
+
+  function addDeathShardControls(y: number, style: DeathShardStyle, label: string): number {
+    const key = `death-${style}`;
+    y = addSection('effects', y, label);
+    addValue(key, 'effects', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButton('effects', `${key}-test`, panelX + PANEL_PADDING, y, COLUMN_WIDTH, `Test ${label}`, () => config.callbacks.testDeathShardEffect(style));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-count`, y, 'Count', () => config.callbacks.adjustDeathShardTuning(style, 'countScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'countScale', 0.1), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Count x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'countScale', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-life`, y, 'Life', () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', 0.1), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Life x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'lifetimeScale', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-size`, y, 'Size', () => config.callbacks.adjustDeathShardTuning(style, 'sizeScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'sizeScale', 0.1), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Size x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'sizeScale', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-burst`, y, 'Burst', () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', 0.1), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Burst x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'burstSpeedScale', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-inherit`, y, 'Inherit', () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', 0.1), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Inherit x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'inheritedVelocityScale', value),
+      step: 0.1
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-alpha`, y, 'Alpha', () => config.callbacks.adjustDeathShardTuning(style, 'alphaScale', -0.05), () => config.callbacks.adjustDeathShardTuning(style, 'alphaScale', 0.05), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Alpha x([\d.]+)/),
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'alphaScale', value),
+      step: 0.05
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('effects', `${key}-dissolve`, y, 'Dissolve', () => config.callbacks.adjustDeathShardTuning(style, 'dissolveStart', -0.05), () => config.callbacks.adjustDeathShardTuning(style, 'dissolveStart', 0.05), {
+      getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Dissolve ([\d.]+)%/) / 100,
+      setValue: (value) => config.callbacks.setDeathShardTuning(style, 'dissolveStart', value),
+      step: 0.05
+    });
+
+    return y + BUTTON_HEIGHT + ROW_GAP;
   }
 
   function buildVisualsTab(): void {
@@ -1417,6 +1590,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       refreshNumberInputPositions();
       refreshNumberInputVisibility();
       setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
+      setValue('profiler', values.performanceProfilerSummary);
+      setValue('diagnostics', values.autoDiagnosticsSummary);
       setValue(
         'player',
         `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
@@ -1443,6 +1618,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       );
       setValue('weapon-loadout-pulse-cannon', values.weaponTuningSummaries['pulse-cannon']);
       setValue('weapon-loadout-ramming-shield', values.weaponTuningSummaries['ramming-shield']);
+      setValue('death-ship', values.deathShardTuningSummaries.ship);
+      setValue('death-player', values.deathShardTuningSummaries.player);
+      setValue('death-asteroid', values.deathShardTuningSummaries.asteroid);
+      setValue('death-blackHoleShip', values.deathShardTuningSummaries.blackHoleShip);
+      setValue('death-blackHoleAsteroid', values.deathShardTuningSummaries.blackHoleAsteroid);
       setValue(
         'physics-global',
         `Global max ${formatIntegerDisplayUnits(values.globalMaxSpeed)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
@@ -1461,6 +1641,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         'physics-asteroids',
         `Collision damage x${values.asteroidCollisionDamageScale.toFixed(2)}\nCollision impulse x${values.asteroidCollisionImpulseScale.toFixed(2)}`
       );
+      setValue('collision-shapes', values.collisionShapeTuningSummary);
       setValue(
         'health-bars',
         `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
@@ -1505,6 +1686,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         `Stars: ${values.backgroundStarsVisible ? 'on' : 'off'}\nFar ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
       );
       setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
+      setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
+      setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
+      setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
       setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
       setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
       setButtonLabel('background-stars', `Background stars: ${values.backgroundStarsVisible ? 'on' : 'off'}`);

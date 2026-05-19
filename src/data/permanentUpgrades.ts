@@ -1,3 +1,5 @@
+import { COMBAT_NUMBER_SCALE } from './combatScale';
+
 export type PermanentUpgradeId =
   | 'hull-reinforcement'
   | 'velocity-limiter'
@@ -25,7 +27,7 @@ export const PERMANENT_UPGRADE_DEFINITIONS: PermanentUpgradeDefinition[] = [
   {
     id: 'hull-reinforcement',
     name: 'Hull Reinforcement',
-    description: '+10 starting and max hull per level.',
+    description: '+500 starting and max hull per level.',
     baseCost: 50,
     maxLevel: 5,
     statLabel: 'HUL',
@@ -79,7 +81,7 @@ export const PERMANENT_UPGRADE_DEFINITIONS: PermanentUpgradeDefinition[] = [
   {
     id: 'armor-plating',
     name: 'Armor Plating',
-    description: '+1 defense per level.',
+    description: '+50 defense per level.',
     baseCost: 90,
     maxLevel: 5,
     statLabel: 'DEF',
@@ -137,13 +139,13 @@ export const INITIAL_PERMANENT_UPGRADE_LEVELS: Record<PermanentUpgradeId, number
   'lucky-charm': 0
 };
 
-export const HULL_REINFORCEMENT_MAX_HULL_BONUS = 10;
+export const HULL_REINFORCEMENT_MAX_HULL_BONUS = 10 * COMBAT_NUMBER_SCALE;
 export const VELOCITY_LIMITER_BASE_SPEED = 500;
 export const VELOCITY_LIMITER_SPEED_BONUS = 100;
 export const ENGINE_CALIBRATION_ACCELERATION_MULTIPLIER = 0.05;
 export const EXTRA_PAYLOAD_AMOUNT_BONUS = 1;
 export const PIERCING_ROUNDS_PIERCE_BONUS = 1;
-export const ARMOR_PLATING_DEFENSE_BONUS = 1;
+export const ARMOR_PLATING_DEFENSE_BONUS = 1 * COMBAT_NUMBER_SCALE;
 export const MAGNET_ARRAY_RADIUS_MULTIPLIER = 0.1;
 export const COMBAT_TRAINING_XP_MULTIPLIER = 0.05;
 export const SALVAGE_TRAINING_CREDIT_MULTIPLIER = 0.05;

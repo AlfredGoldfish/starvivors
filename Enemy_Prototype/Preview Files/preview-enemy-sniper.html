@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Sniper</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Sniper</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#e040fb"></span>Sniper</div>
+      <div class="li"><span style="background:rgba(224,64,251,.3)"></span>Warning laser</div>
+      <div class="li"><span style="background:#ff1744"></span>Shot</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">A stationary or slow-moving enemy that fires devastating long-range shots. Before each shot, a visible warning laser locks onto the player's position, giving a brief window to dodge. The shot fires at where the laser was aimed — not where the player moved to. Rewards awareness and movement.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Stationary or very slow repositioning</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">High damage single shot with warning laser</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Immobile, warning is dodgeable, vulnerable up close</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">High damage, forces constant awareness of sightlines</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">Arena</span><span class="ft">Tactical</span>
+    <span class="fe">e.g. Enter the Gungeon, Doom, XCOM (Thin Men), Halo</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=20;
+
+let px=W/2,py=H/2,pSpeed=1.6;
+let pTarget={x:W/2,y:H/2},pTimer=0;
+let particles=[];
+let hitFlash=0;
+
+// Sniper states: 'idle','aiming','locked','firing','cooldown'
+function makeSniper(x,y){
+  return{x,y,state:'idle',timer:0,size:8,
+    aimAngle:0,lockX:0,lockY:0,aimProgress:0,
+    shotTrail:null,shotTimer:0};
+}
+let enemies=[];
+function spawn(){
+  enemies=[];
+  // Place snipers at all 4 corners
+  enemies.push(makeSniper(PAD+25,PAD+25));
+  enemies.push(makeSniper(W-PAD-25,PAD+25));
+  enemies.push(makeSniper(W-PAD-25,H-PAD-25));
+  enemies.push(makeSniper(PAD+25,H-PAD-25));
+  // Stagger their timers so they don't all fire at once
+  enemies[0].timer=0;
+  enemies[1].timer=-50;
+  enemies[2].timer=-100;
+  enemies[3].timer=-25;
+}
+spawn();
+
+function pickPlayerTarget(){
+  // Move around the center area, occasionally darting sideways (dodging)
+  const nearestSniper=enemies.reduce((best,e)=>{
+    const d=Math.hypot(px-e.x,py-e.y);return d<best.d?{d,e}:best;
+  },{d:Infinity,e:null});
+
+  // If a sniper is locked on, dodge perpendicular
+  if(nearestSniper.e&&nearestSniper.e.state==='locked'){
+    const a=Math.atan2(py-nearestSniper.e.y,px-nearestSniper.e.x);
+    const dodge=a+(Math.random()>.5?Math.PI/2:-Math.PI/2);
+    pTarget={
+      x:Math.max(PAD+30,Math.min(W-PAD-30,px+Math.cos(dodge)*80)),
+      y:Math.max(PAD+30,Math.min(H-PAD-30,py+Math.sin(dodge)*80))
+    };
+    pSpeed=2.8; // Sprint to dodge
+  }else{
+    pTarget={
+      x:W/2+Math.random()*160-80,
+      y:H/2+Math.random()*100-50
+    };
+    pSpeed=1.4;
+  }
+}
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=.5+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:12+Math.random()*10,ml:22,color:col,size:1.5})}}
+
+function update(){
+  pTimer++;
+  if(pTimer%35===0)pickPlayerTarget();
+
+  const pdx=pTarget.x-px,pdy=pTarget.y-py,pd=Math.hypot(pdx,pdy);
+  if(pd>3){px+=pdx/pd*pSpeed;py+=pdy/pd*pSpeed}
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));
+  py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  if(hitFlash>0)hitFlash--;
+
+  for(const e of enemies){
+    e.timer++;
+
+    if(e.state==='idle'){
+      // Track player loosely
+      e.aimAngle=Math.atan2(py-e.y,px-e.x);
+      if(e.timer>80+Math.random()*60){
+        e.state='aiming';e.timer=0;e.aimProgress=0;
+      }
+    }
+    else if(e.state==='aiming'){
+      // Laser slowly tracks player
+      const targetAngle=Math.atan2(py-e.y,px-e.x);
+      let diff=targetAngle-e.aimAngle;
+      while(diff>Math.PI)diff-=Math.PI*2;
+      while(diff<-Math.PI)diff+=Math.PI*2;
+      e.aimAngle+=diff*0.06;
+      e.aimProgress=Math.min(1,e.aimProgress+0.015);
+
+      if(e.aimProgress>=1){
+        e.state='locked';e.timer=0;
+        // Lock position
+        e.lockX=px;e.lockY=py;
+      }
+    }
+    else if(e.state==='locked'){
+      // Brief flash — about to fire!
+      if(e.timer>25){
+        e.state='firing';e.timer=0;
+        // Create shot trail from sniper to locked position
+        e.shotTrail={x1:e.x,y1:e.y,x2:e.lockX,y2:e.lockY,life:15};
+        // Check if player is still near the lock point
+        if(Math.hypot(px-e.lockX,py-e.lockY)<20){
+          hitFlash=12;burst(px,py,'#ff1744',8);
+        }
+        burst(e.lockX,e.lockY,'#e040fb',5);
+        burst(e.x,e.y,'#e040fb',3);
+      }
+    }
+    else if(e.state==='firing'){
+      if(e.shotTrail){e.shotTrail.life--;if(e.shotTrail.life<=0)e.shotTrail=null}
+      if(e.timer>20){e.state='cooldown';e.timer=0}
+    }
+    else if(e.state==='cooldown'){
+      if(e.timer>60){e.state='idle';e.timer=0}
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Laser sightlines and enemies
+  for(const e of enemies){
+    // Aiming laser
+    if(e.state==='aiming'){
+      const len=400;
+      const ex=e.x+Math.cos(e.aimAngle)*len;
+      const ey=e.y+Math.sin(e.aimAngle)*len;
+      // Dashed warning line
+      ctx.strokeStyle=`rgba(224,64,251,${e.aimProgress*.25})`;
+      ctx.lineWidth=1;ctx.setLineDash([4,6]);
+      ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(ex,ey);ctx.stroke();ctx.setLineDash([]);
+      // Dot on player
+      const dotX=e.x+Math.cos(e.aimAngle)*Math.hypot(px-e.x,py-e.y);
+      const dotY=e.y+Math.sin(e.aimAngle)*Math.hypot(px-e.x,py-e.y);
+      ctx.fillStyle=`rgba(224,64,251,${e.aimProgress*.4})`;
+      ctx.beginPath();ctx.arc(dotX,dotY,3,0,Math.PI*2);ctx.fill();
+    }
+
+    // Locked — solid bright laser + flashing
+    if(e.state==='locked'){
+      const flash=Math.sin(e.timer*.5)>.0;
+      ctx.strokeStyle=flash?'rgba(255,23,68,.6)':'rgba(224,64,251,.5)';
+      ctx.lineWidth=flash?2.5:1.5;
+      ctx.beginPath();ctx.moveTo(e.x,e.y);ctx.lineTo(e.lockX,e.lockY);ctx.stroke();
+      // Target reticle
+      ctx.strokeStyle='rgba(255,23,68,.5)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.arc(e.lockX,e.lockY,10,0,Math.PI*2);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(e.lockX-14,e.lockY);ctx.lineTo(e.lockX+14,e.lockY);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(e.lockX,e.lockY-14);ctx.lineTo(e.lockX,e.lockY+14);ctx.stroke();
+      // "DODGE!" text
+      ctx.font='700 8px "Chakra Petch"';ctx.textAlign='center';
+      ctx.fillStyle='rgba(255,23,68,.6)';ctx.fillText('!',e.lockX,e.lockY-16);
+    }
+
+    // Shot trail
+    if(e.shotTrail){
+      const t=e.shotTrail;
+      ctx.globalAlpha=t.life/15;
+      ctx.strokeStyle='#ff1744';ctx.lineWidth=3;
+      ctx.beginPath();ctx.moveTo(t.x1,t.y1);ctx.lineTo(t.x2,t.y2);ctx.stroke();
+      // Thinner bright core
+      ctx.strokeStyle='#fff';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(t.x1,t.y1);ctx.lineTo(t.x2,t.y2);ctx.stroke();
+      ctx.globalAlpha=1;
+      // Impact flash
+      if(t.life>10){
+        ctx.fillStyle=`rgba(255,23,68,${(t.life-10)/5*.4})`;
+        ctx.beginPath();ctx.arc(t.x2,t.y2,15,0,Math.PI*2);ctx.fill();
+      }
+    }
+
+    // Enemy body
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(e.x,e.y+e.size+2,e.size*.6,e.size*.2,0,0,Math.PI*2);ctx.fill();
+    // Diamond shape for sniper
+    const firing=e.state==='firing';
+    ctx.fillStyle=firing?'#fff':e.state==='locked'?'#ff1744':'#e040fb';
+    ctx.beginPath();
+    ctx.moveTo(e.x,e.y-e.size);ctx.lineTo(e.x+e.size*.7,e.y);
+    ctx.lineTo(e.x,e.y+e.size*.6);ctx.lineTo(e.x-e.size*.7,e.y);ctx.closePath();ctx.fill();
+    // Scope glint
+    const aimDir=e.aimAngle||Math.atan2(py-e.y,px-e.x);
+    ctx.fillStyle=e.state==='aiming'||e.state==='locked'?'rgba(224,64,251,.6)':'rgba(224,64,251,.2)';
+    ctx.beginPath();ctx.arc(e.x+Math.cos(aimDir)*6,e.y+Math.sin(aimDir)*6,2,0,Math.PI*2);ctx.fill();
+
+    // State label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={idle:'rgba(224,64,251,.4)',aiming:'rgba(224,64,251,.7)',locked:'rgba(255,23,68,.85)',firing:'rgba(255,23,68,1)',cooldown:'rgba(255,255,255,.35)'};
+    const lbls={idle:'SCANNING',aiming:'AIMING',locked:'LOCKED ON',firing:'FIRE!',cooldown:'RELOADING'};
+    ctx.fillStyle=cols[e.state];
+    ctx.fillText(lbls[e.state],e.x,e.y+e.size+14);
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,23,68,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Ammo display
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-6);
+  ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(PAD+60,H-PAD-12,40,4);
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // Labels
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(224,64,251,.65)';
+  ctx.fillText('SNIPER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Scan → aim laser → lock position → fire → reload',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

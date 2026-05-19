@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Place and Build</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Place / Build</h2><div class="tag">Core Action</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#66bb6a"></span>Turret</div>
+      <div class="li"><span style="background:rgba(66,165,245,.4)"></span>Wall</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Turret bullet</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemy</div>
+      <div class="li"><span style="background:#ffca28"></span>Base</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Tower defense: enemies march from the left toward your base on the right. Place turrets to shoot them and walls to redirect their path. Turrets auto-target the nearest enemy in range. Walls force enemies to walk around them, buying time. Gold from kills funds more defenses. Strategic placement is everything.</div>
+    <div class="dr"><div class="dl">Turret</div><div class="dv">Auto-shoots nearest enemy in range</div></div>
+    <div class="dr"><div class="dl">Wall</div><div class="dv">Blocks enemy path, forces detour</div></div>
+    <div class="dr"><div class="dl">Economy</div><div class="dv">Kills earn gold, placements cost gold</div></div>
+    <div class="dr"><div class="dl">Goal</div><div class="dv">Protect the base on the right side</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Tower Defense</span><span class="ft">Strategy</span><span class="ft">Survival</span>
+    <span class="fe">e.g. Bloons TD, Kingdom Rush, Plants vs Zombies</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=14;
+let frame=0;
+const GS=28;
+const COLS=Math.floor((W-PAD*2)/GS),ROWS=Math.floor((H-PAD*2)/GS);
+let grid=[];for(let i=0;i<COLS*ROWS;i++)grid.push(0); // 0=empty 1=turret 2=wall
+
+let enemies=[],tBullets=[],parts=[];
+let gold=40,wave=0,spawnT=0,spawnQueue=0;
+let baseHP=10,placeFlash={x:0,y:0,life:0};
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rng(.3,2);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rng(10,16),ml:16,col,sz:rng(1,2)})}}
+function g2w(c,r){return{x:PAD+c*GS+GS/2,y:PAD+r*GS+GS/2}}
+function w2g(x,y){return{c:Math.floor((x-PAD)/GS),r:Math.floor((y-PAD)/GS)}}
+function gIdx(c,r){return r*COLS+c}
+function isBlocked(c,r){if(c<0||c>=COLS||r<0||r>=ROWS)return true;return grid[gIdx(c,r)]===2}
+
+// Base position (right side)
+const BASE_COL=COLS-1;
+
+// Simple pathfinding: enemies walk right, detour around walls
+function getDir(ex,ey){
+  const g=w2g(ex,ey);
+  // Primary: move right
+  // If blocked right, try up or down
+  if(!isBlocked(g.c+1,g.r))return{dx:1,dy:0};
+  // Try diagonal
+  if(!isBlocked(g.c+1,g.r-1)&&!isBlocked(g.c,g.r-1))return{dx:0,dy:-1};
+  if(!isBlocked(g.c+1,g.r+1)&&!isBlocked(g.c,g.r+1))return{dx:0,dy:1};
+  // Try pure vertical
+  if(!isBlocked(g.c,g.r-1))return{dx:0,dy:-1};
+  if(!isBlocked(g.c,g.r+1))return{dx:0,dy:1};
+  // Stuck, push through
+  return{dx:1,dy:0};
+}
+
+function spawnEnemy(){
+  const row=1+Math.floor(Math.random()*(ROWS-2));
+  const w=g2w(0,row);
+  enemies.push({x:PAD+3,y:w.y+rng(-5,5),sz:6,hp:2+Math.floor(wave/2),maxHp:2+Math.floor(wave/2),spd:rng(0.5,0.8),fl:0});
+}
+
+function startWave(){
+  wave++;spawnQueue=4+wave*2;spawnT=0;
+}
+startWave();
+
+// Auto-place turrets/walls
+let placeCD=0;
+function autoPlace(){
+  if(gold<12||placeCD>0)return;
+  // Place turrets in middle columns, walls to create maze
+  let bestC=-1,bestR=-1,bestScore=-1;
+  const isTurret=Math.random()>0.35; // mostly turrets
+  for(let r=0;r<ROWS;r++){for(let c=1;c<COLS-1;c++){
+    if(grid[gIdx(c,r)]!==0)continue;
+    const w=g2w(c,r);
+    let score=0;
+    // Prefer middle columns for turrets
+    if(isTurret)score+=Math.max(0,5-Math.abs(c-COLS/2));
+    // Prefer positions near enemy paths
+    for(const e of enemies)score+=Math.max(0,80-Math.hypot(e.x-w.x,e.y-w.y))*0.1;
+    // For walls, prefer positions that create detours
+    if(!isTurret){score+=c*0.5;if(r===Math.floor(ROWS/2))score+=3}
+    score+=rng(0,8);
+    if(score>bestScore){bestScore=score;bestC=c;bestR=r}
+  }}
+  if(bestC>=0){
+    grid[gIdx(bestC,bestR)]=isTurret?1:2;
+    gold-=12;placeCD=50;
+    const w=g2w(bestC,bestR);
+    placeFlash={x:w.x,y:w.y,life:15};
+    spark(w.x,w.y,isTurret?'#66bb6a':'#42a5f5',6);
+  }
+}
+
+function update(){
+  frame++;
+  if(placeCD>0)placeCD--;
+  if(placeFlash.life>0)placeFlash.life--;
+
+  // Spawn from queue
+  spawnT++;
+  if(spawnQueue>0&&spawnT>=25){spawnEnemy();spawnQueue--;spawnT=0}
+  // New wave when queue empty and enemies cleared
+  if(spawnQueue<=0&&enemies.length===0){
+    if(wave>=6){wave=0;grid=[];for(let i=0;i<COLS*ROWS;i++)grid.push(0);gold=40;baseHP=10}
+    startWave();
+  }
+
+  // Auto place
+  if(frame%60===0)autoPlace();
+
+  // Enemy movement
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];if(e.fl>0)e.fl--;
+    const dir=getDir(e.x,e.y);
+    e.x+=dir.dx*e.spd;e.y+=dir.dy*e.spd;
+    e.x=Math.max(PAD+3,Math.min(W-PAD-3,e.x));
+    e.y=Math.max(PAD+3,Math.min(H-PAD-3,e.y));
+    // Reached base?
+    if(e.x>W-PAD-GS){baseHP--;spark(W-PAD-GS/2,e.y,'#ef5350',6);enemies.splice(i,1);
+      if(baseHP<=0){baseHP=10;wave=0;grid=[];for(let j=0;j<COLS*ROWS;j++)grid.push(0);gold=40;enemies=[];startWave()}
+    }
+  }
+
+  // Turrets fire
+  for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){
+    if(grid[gIdx(c,r)]!==1)continue;
+    const w=g2w(c,r);
+    const shotFrame=((r*COLS+c)*11)%20;
+    if(frame%20!==shotFrame)continue;
+    let nearest=null,nd=Infinity;
+    for(const e of enemies){const d=Math.hypot(e.x-w.x,e.y-w.y);if(d<75&&d<nd){nd=d;nearest=e}}
+    if(nearest){const a=Math.atan2(nearest.y-w.y,nearest.x-w.x);
+      tBullets.push({x:w.x,y:w.y,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:25})}
+  }}
+
+  // Turret bullets
+  for(let i=tBullets.length-1;i>=0;i--){const b=tBullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0){tBullets.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(Math.hypot(b.x-enemies[j].x,b.y-enemies[j].y)<enemies[j].sz+3){
+      enemies[j].hp--;enemies[j].fl=4;spark(b.x,b.y,'#66bb6a',3);
+      if(enemies[j].hp<=0){spark(enemies[j].x,enemies[j].y,'#ef5350',6);enemies.splice(j,1);gold+=6}
+      tBullets.splice(i,1);break}}}
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.9;p.vy*=.9;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+
+  // Grid lines
+  ctx.strokeStyle='rgba(255,255,255,.025)';ctx.lineWidth=1;
+  for(let c=0;c<=COLS;c++){ctx.beginPath();ctx.moveTo(PAD+c*GS,PAD);ctx.lineTo(PAD+c*GS,PAD+ROWS*GS);ctx.stroke()}
+  for(let r=0;r<=ROWS;r++){ctx.beginPath();ctx.moveTo(PAD,PAD+r*GS);ctx.lineTo(PAD+COLS*GS,PAD+r*GS);ctx.stroke()}
+
+  // Spawn zone (left)
+  ctx.fillStyle='rgba(239,83,80,.04)';ctx.fillRect(PAD,PAD,GS,ROWS*GS);
+  ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+  ctx.save();ctx.translate(PAD+GS/2,PAD+ROWS*GS/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='rgba(239,83,80,.3)';ctx.fillText('SPAWN',0,0);ctx.restore();
+
+  // Base zone (right)
+  ctx.fillStyle='rgba(255,202,40,.06)';ctx.fillRect(PAD+(COLS-1)*GS,PAD,GS,ROWS*GS);
+  ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+  ctx.save();ctx.translate(PAD+(COLS-1)*GS+GS/2,PAD+ROWS*GS/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='rgba(255,202,40,.4)';ctx.fillText('BASE',0,0);ctx.restore();
+  // Base HP
+  for(let i=0;i<10;i++){
+    const by=PAD+i*(ROWS*GS/10);
+    ctx.fillStyle=i<baseHP?'rgba(255,202,40,.3)':'rgba(255,255,255,.03)';
+    ctx.fillRect(PAD+(COLS-1)*GS+4,by+2,GS-8,ROWS*GS/10-4);
+  }
+
+  // Buildings
+  for(let r=0;r<ROWS;r++){for(let c=0;c<COLS;c++){
+    const v=grid[gIdx(c,r)];if(v===0)continue;
+    const w=g2w(c,r);
+    if(v===1){
+      ctx.fillStyle='rgba(102,187,106,.2)';ctx.fillRect(w.x-GS/2+2,w.y-GS/2+2,GS-4,GS-4);
+      ctx.fillStyle='#66bb6a';ctx.beginPath();ctx.arc(w.x,w.y,5,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.arc(w.x,w.y,2,0,Math.PI*2);ctx.fill();
+      // Range hint
+      ctx.strokeStyle='rgba(102,187,106,.05)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+      ctx.beginPath();ctx.arc(w.x,w.y,75,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      // Aim line to nearest
+      let nearest=null,nd=Infinity;
+      for(const e of enemies){const d=Math.hypot(e.x-w.x,e.y-w.y);if(d<75&&d<nd){nd=d;nearest=e}}
+      if(nearest){ctx.strokeStyle='rgba(102,187,106,.15)';ctx.lineWidth=1;
+        ctx.beginPath();ctx.moveTo(w.x,w.y);ctx.lineTo(nearest.x,nearest.y);ctx.stroke()}
+    }else{
+      ctx.fillStyle='rgba(66,165,245,.2)';ctx.fillRect(w.x-GS/2+2,w.y-GS/2+2,GS-4,GS-4);
+      ctx.strokeStyle='rgba(66,165,245,.35)';ctx.lineWidth=2;ctx.strokeRect(w.x-GS/2+3,w.y-GS/2+3,GS-6,GS-6);
+    }
+  }}
+
+  // Place flash
+  if(placeFlash.life>0){ctx.fillStyle=`rgba(255,255,255,${placeFlash.life/15*0.2})`;
+    ctx.fillRect(placeFlash.x-GS/2,placeFlash.y-GS/2,GS,GS)}
+
+  // Enemies
+  for(const e of enemies){
+    ctx.fillStyle=e.fl>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.sz/2,e.y-e.sz/2,e.sz,e.sz);
+    // Mini HP bar
+    if(e.maxHp>1){const bw=e.sz+4;
+      ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(e.x-bw/2,e.y-e.sz/2-4,bw,2);
+      ctx.fillStyle='#ef5350';ctx.fillRect(e.x-bw/2,e.y-e.sz/2-4,bw*(e.hp/e.maxHp),2)}
+  }
+
+  // Turret bullets
+  ctx.fillStyle='#66bb6a';for(const b of tBullets){ctx.beginPath();ctx.arc(b.x,b.y,2,0,Math.PI*2);ctx.fill()}
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // HUD
+  ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.8)';
+  ctx.fillText(`WAVE ${wave}`,W/2,H-3);
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='#ffca28';
+  ctx.fillText('G '+gold,PAD+4,H-3);
+  ctx.textAlign='right';ctx.fillStyle='rgba(239,83,80,.6)';
+  ctx.fillText(`ENEMIES: ${enemies.length+spawnQueue}`,W-PAD-4,H-3);
+
+  const turrets=grid.filter(v=>v===1).length,walls=grid.filter(v=>v===2).length;
+  ctx.font='500 6px "IBM Plex Mono"';ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText(`T:${turrets} W:${walls} HP:${baseHP}/10`,W-PAD-4,PAD+10);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

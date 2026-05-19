@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Thief</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Thief</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectile</div>
+      <div class="li"><span style="background:#78909c"></span>Distraction enemy</div>
+      <div class="li"><span style="background:#ffca28"></span>Thief (carrying gold)</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Doesn't deal damage — steals your gold instead. While you're busy fighting other enemies, the thief darts in, snatches currency on contact, then sprints toward the edge to escape. Kill it before it escapes and you get your gold back plus bonus. The dilemma: keep fighting, or chase the thief?</div>
+    <div class="dr"><div class="dl">Approach</div><div class="dv">Sneaks in while player is distracted by combat</div></div>
+    <div class="dr"><div class="dl">Steal</div><div class="dv">Contact steals gold, then sprints to escape</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Low HP, dies in 1-2 hits, drops gold on death</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Economic damage, forces priority decision mid-combat</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">RPG</span><span class="ft">Roguelike</span><span class="ft">Action</span>
+    <span class="fe">e.g. Dark Souls (Crystal Lizard), Spelunky, Dragon Quest (Slime)</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0,px=W/2,py=H*0.65,pvx=0,pvy=0,wander=0,hitFlash=0;
+let bullets=[],parts=[],floats=[],shootTimer=0;
+let gold=100;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n,s){s=s||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=rng(.3,2.5)*s;parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rng(10,18),ml:18,col,sz:rng(1,2)})}}
+function addFloat(x,y,t,col){floats.push({x,y,text:t,color:col,life:45,ml:45})}
+
+// Distraction enemies — normal chasers that keep the player busy
+let distractions=[];
+function spawnDistraction(){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+  if(edge===0){x=PAD+5;y=rng(PAD+30,H-PAD-30)}
+  else if(edge===1){x=W-PAD-5;y=rng(PAD+30,H-PAD-30)}
+  else if(edge===2){x=rng(PAD+30,W-PAD-30);y=PAD+5}
+  else{x=rng(PAD+30,W-PAD-30);y=H-PAD-5}
+  distractions.push({x,y,sz:9,hp:6,maxHp:6,spd:0.5,fl:0,dead:false});
+}
+spawnDistraction();spawnDistraction();
+let distractSpawnT=0;
+
+// Thief
+let thief=null;
+let thiefSpawnT=0,thiefCooldown=250;
+
+function spawnThief(){
+  // Spawn from edge furthest from where player is looking (shooting)
+  let bestEdge=0,bestDist=0;
+  const edges=[{x:PAD+5,y:H/2},{x:W-PAD-5,y:H/2},{x:W/2,y:PAD+5},{x:W/2,y:H-PAD-5}];
+  for(let i=0;i<4;i++){const d=Math.hypot(edges[i].x-px,edges[i].y-py);if(d>bestDist){bestDist=d;bestEdge=i}}
+  const e=edges[bestEdge];
+  thief={x:e.x,y:e.y,sz:7,hp:2,state:'sneaking',fl:0,stolenGold:0,fleeAngle:0,trail:[]};
+}
+
+function update(){
+  frame++;distractSpawnT++;thiefSpawnT++;
+  if(hitFlash>0)hitFlash--;
+
+  // Replenish distractions
+  if(distractSpawnT>200&&distractions.filter(d=>!d.dead).length<2){spawnDistraction();distractSpawnT=0}
+
+  // Spawn thief periodically while player is busy
+  if(!thief&&thiefSpawnT>thiefCooldown&&distractions.some(d=>!d.dead)){spawnThief();thiefSpawnT=0}
+
+  // Player AI — focus on distractions, ignore thief until it steals
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.013)*0.04+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.06;ay+=Math.sin(wander)*0.06;
+  // Kite distractions
+  for(const d of distractions){
+    if(d.dead)continue;
+    const dist=Math.hypot(px-d.x,py-d.y);
+    if(dist<40&&dist>1){ax+=(px-d.x)/dist*0.12;ay+=(py-d.y)/dist*0.12}
+  }
+  ax+=(W/2-px)*0.0003;ay+=(H*0.6-py)*0.001;
+  if(px<PAD+30)ax+=0.12;if(px>W-PAD-30)ax-=0.12;
+  if(py<PAD+30)ay+=0.12;if(py>H-PAD-30)ay-=0.12;
+  pvx=(pvx+ax)*0.93;pvy=(pvy+ay)*0.93;
+  const vm=Math.hypot(pvx,pvy);if(vm>1.2){pvx=pvx/vm*1.2;pvy=pvy/vm*1.2}
+  px+=pvx;py+=pvy;
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Shoot — prioritize fleeing thief, otherwise shoot distractions
+  shootTimer++;
+  let target=null;
+  if(thief&&thief.state==='fleeing'){target=thief} // only notice thief after it steals
+  else{let bd=Infinity;for(const d of distractions){if(d.dead)continue;const dist=Math.hypot(px-d.x,py-d.y);if(dist<bd){bd=dist;target=d}}}
+  if(shootTimer>=14&&target){
+    const a=Math.atan2(target.y-py,target.x-px);
+    bullets.push({x:px,y:py,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:50});
+    shootTimer=0;
+  }
+
+  // Distraction AI
+  for(const d of distractions){
+    if(d.dead)continue;if(d.fl>0)d.fl--;
+    const dx=px-d.x,dy=py-d.y,dist=Math.hypot(dx,dy);
+    if(dist>1){d.x+=dx/dist*d.spd;d.y+=dy/dist*d.spd}
+    d.x=Math.max(PAD+5,Math.min(W-PAD-5,d.x));d.y=Math.max(PAD+5,Math.min(H-PAD-5,d.y));
+  }
+
+  // Thief AI
+  if(thief){
+    if(thief.fl>0)thief.fl--;
+    for(let i=thief.trail.length-1;i>=0;i--){thief.trail[i].life--;if(thief.trail[i].life<=0)thief.trail.splice(i,1)}
+
+    if(thief.state==='sneaking'){
+      // Approach player — fast but not targeting, just getting close
+      const dx=px-thief.x,dy=py-thief.y,d=Math.hypot(dx,dy);
+      if(d>2){thief.x+=dx/d*1.8;thief.y+=dy/d*1.8}
+      thief.trail.push({x:thief.x,y:thief.y,life:8});
+      if(d<14){
+        // STEAL
+        thief.state='fleeing';
+        const stolen=Math.min(30,gold);
+        thief.stolenGold=stolen;gold-=stolen;hitFlash=6;
+        spark(px,py,'#ffca28',8);
+        addFloat(px,py-15,`-${stolen} GOLD`,'#ef5350');
+        thief.fleeAngle=Math.atan2(thief.y-py,thief.x-px)+rng(-0.4,0.4);
+      }
+    }
+    else if(thief.state==='fleeing'){
+      thief.x+=Math.cos(thief.fleeAngle)*2.8;thief.y+=Math.sin(thief.fleeAngle)*2.8;
+      thief.trail.push({x:thief.x,y:thief.y,life:10});
+      if(thief.x<PAD-5||thief.x>W-PAD+5||thief.y<PAD-5||thief.y>H-PAD+5){
+        addFloat(Math.max(PAD+10,Math.min(W-PAD-10,thief.x)),Math.max(PAD+10,Math.min(H-PAD-10,thief.y)),
+          `ESCAPED WITH ${thief.stolenGold}G!`,'#ef5350');
+        thief=null;
+      }
+    }
+  }
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){bullets.splice(i,1);continue}
+    let hit=false;
+    // Hit thief
+    if(thief&&Math.hypot(b.x-thief.x,b.y-thief.y)<thief.sz+3){
+      thief.hp--;thief.fl=5;spark(b.x,b.y,'#66bb6a',3);
+      if(thief.hp<=0){
+        spark(thief.x,thief.y,thief.stolenGold>0?'#ffca28':'#78909c',12,1);
+        if(thief.stolenGold>0){
+          const bonus=Math.floor(thief.stolenGold*0.5);
+          gold+=thief.stolenGold+bonus;
+          addFloat(thief.x,thief.y-15,`+${thief.stolenGold+bonus} GOLD!`,'#66bb6a');
+        }
+        thief=null;
+      }hit=true;
+    }
+    // Hit distractions
+    if(!hit){for(let j=distractions.length-1;j>=0;j--){const d=distractions[j];if(d.dead)continue;
+      if(Math.hypot(b.x-d.x,b.y-d.y)<d.sz+3){d.hp--;d.fl=5;spark(b.x,b.y,'#66bb6a',3);
+        if(d.hp<=0){d.dead=true;spark(d.x,d.y,'#78909c',8)}hit=true;break}}}
+    if(hit)bullets.splice(i,1);
+  }
+
+  // Regen gold slowly
+  if(frame%50===0&&gold<100)gold+=3;
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)parts.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.4;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Distractions
+  for(const d of distractions){
+    if(d.dead)continue;
+    ctx.fillStyle='rgba(0,0,0,.1)';ctx.beginPath();ctx.ellipse(d.x,d.y+d.sz+1,d.sz*.5,d.sz*.15,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=d.fl>0?'#fff':'#78909c';ctx.fillRect(d.x-d.sz/2,d.y-d.sz/2,d.sz,d.sz);
+    const bw=20,bh=2;
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(d.x-bw/2,d.y-d.sz-6,bw,bh);
+    ctx.fillStyle='#78909c';ctx.fillRect(d.x-bw/2,d.y-d.sz-6,bw*(d.hp/d.maxHp),bh);
+  }
+
+  // Thief
+  if(thief){
+    for(const t of thief.trail){
+      ctx.globalAlpha=t.life/10*0.3;ctx.fillStyle=thief.stolenGold>0?'#ffca28':'#78909c';
+      ctx.beginPath();ctx.arc(t.x,t.y,2,0,Math.PI*2);ctx.fill();
+    }ctx.globalAlpha=1;
+
+    const hasGold=thief.stolenGold>0&&thief.state==='fleeing';
+    const dir=thief.state==='fleeing'?thief.fleeAngle:Math.atan2(py-thief.y,px-thief.x);
+    ctx.save();ctx.translate(thief.x,thief.y);ctx.rotate(dir);
+    ctx.fillStyle=thief.fl>0?'#fff':hasGold?'#ffca28':'#78909c';
+    ctx.beginPath();ctx.moveTo(thief.sz,0);ctx.lineTo(-thief.sz*.5,-thief.sz*.6);ctx.lineTo(-thief.sz*.5,thief.sz*.6);ctx.closePath();ctx.fill();
+    ctx.restore();
+
+    if(hasGold){
+      ctx.fillStyle='#ffca28';ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillText('💰',thief.x,thief.y-thief.sz-4);
+      ctx.font='700 7px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.fillText(`${thief.stolenGold}G`,thief.x,thief.y-thief.sz-12);
+    }
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={sneaking:'rgba(120,144,156,.55)',fleeing:'rgba(255,202,40,.8)'};
+    const lbls={sneaking:'SNEAKING',fleeing:'ESCAPING!'};
+    ctx.fillStyle=cols[thief.state];ctx.fillText(lbls[thief.state],thief.x,thief.y+thief.sz+12);
+  }
+
+  // Bullets
+  ctx.fillStyle='#66bb6a';for(const b of bullets){ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2.5,b.y-b.vy*2.5);ctx.stroke()}
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,202,40,.6)':'#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Gold HUD
+  ctx.font='700 10px "Chakra Petch"';ctx.textAlign='left';ctx.fillStyle='#ffca28';ctx.fillText(`💰 ${gold}`,PAD+4,H-PAD-8);
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  for(const fl of floats){ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.65)';
+  ctx.fillText('THIEF',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Sneaks in while distracted → steals gold → chase or let it escape?',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Shooter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Shooter</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#f44336"></span>Shooter</div>
+      <div class="li"><span style="background:#ff6e40;border-radius:50%"></span>Enemy bullet</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">A ranged enemy that maintains distance from the player, firing projectiles while strafing laterally. Won't chase — instead repositions to keep the player in firing range. Forces the player to close the gap or find cover. Multiple shooters create crossfire patterns that are hard to dodge.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Maintains preferred range, strafes side to side</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">Fires aimed projectiles at regular intervals</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Low HP, poor at close range, predictable fire rate</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Crossfire from multiple shooters, chip damage adds up</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Action</span><span class="ft">Roguelike</span>
+    <span class="fe">e.g. Enter the Gungeon, Nuclear Throne, Binding of Isaac</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=20;
+let px=W/2,py=H/2,pVx=0,pVy=0,pWander=Math.random()*Math.PI*2,pTimer=0;
+let particles=[],hitFlash=0;
+let eBullets=[];
+
+function makeShooter(x,y,strafeDir){
+  return{x,y,size:8,strafeDir,strafeAngle:Math.random()*Math.PI*2,
+    preferDist:120+Math.random()*40,shootTimer:Math.floor(Math.random()*60),
+    shootCD:55+Math.floor(Math.random()*20),state:'strafing',flash:0,
+    muzzleFlash:0};
+}
+let enemies=[];
+function spawn(){
+  enemies=[];
+  enemies.push(makeShooter(PAD+50,PAD+50,1));
+  enemies.push(makeShooter(W-PAD-50,PAD+60,-1));
+  enemies.push(makeShooter(W-PAD-40,H-PAD-50,1));
+  enemies.push(makeShooter(PAD+60,H-PAD-60,-1));
+  enemies.push(makeShooter(W/2,PAD+40,1));
+}
+spawn();
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=.5+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:14+Math.random()*8,ml:22,color:col,size:1.2})}}
+
+function update(){
+  pTimer++;
+  if(hitFlash>0)hitFlash--;
+
+  // Player AI: ALWAYS moving, reads bullet trajectories, adjusts course
+  // Core principle: never stand still, constantly wander, steer away from danger
+  let ax=0,ay=0;
+
+  // 1. Base movement — always wandering in smooth curves
+  pWander+=Math.sin(pTimer*0.018)*0.06+(Math.random()-.5)*0.03;
+  ax+=Math.cos(pWander)*0.15;ay+=Math.sin(pWander)*0.15;
+
+  // 2. Read bullet trajectories — steer away from incoming paths
+  for(const b of eBullets){
+    const dx=px-b.x,dy=py-b.y,d=Math.hypot(dx,dy);
+    if(d>150||d<1)continue;
+
+    // Is this bullet heading toward us?
+    const dot=b.vx*dx+b.vy*dy;
+    if(dot<=0)continue; // moving away
+
+    // How close will it pass? (perpendicular distance to trajectory line)
+    const bSpd=Math.hypot(b.vx,b.vy);
+    const cross=Math.abs(b.vx*dy-b.vy*dx)/bSpd;
+    if(cross>30)continue; // will miss
+
+    // Time until closest approach
+    const tClose=dot/(bSpd*bSpd);
+    // Only care about bullets arriving soon (within ~20 frames)
+    if(tClose>20)continue;
+
+    // Steer perpendicular — pick the side we're already moving toward
+    const ba=Math.atan2(b.vy,b.vx);
+    const side=(pVx*(-b.vy)+pVy*b.vx)>0?1:-1;
+
+    // Urgency based on how close it'll pass and how soon
+    const passUrgency=Math.max(0,1-cross/30);
+    const timeUrgency=Math.max(0,1-tClose/20);
+    const strength=passUrgency*timeUrgency*0.45;
+
+    ax+=Math.cos(ba+Math.PI/2*side)*strength;
+    ay+=Math.sin(ba+Math.PI/2*side)*strength;
+  }
+
+  // 3. Stay in the play area — soft center pull + wall repulsion
+  ax+=(W/2-px)*0.0004;ay+=(H/2-py)*0.0004;
+  if(px<PAD+40)ax+=0.2;if(px>W-PAD-40)ax-=0.2;
+  if(py<PAD+40)ay+=0.2;if(py>H-PAD-40)ay-=0.2;
+
+  // 4. Apply velocity — player always has momentum
+  pVx=(pVx+ax)*0.93;pVy=(pVy+ay)*0.93;
+  const vm=Math.hypot(pVx,pVy);
+  // Enforce minimum speed — never stop moving
+  const minSpd=0.7,maxSpd=2.4;
+  if(vm<minSpd&&vm>0.01){pVx=pVx/vm*minSpd;pVy=pVy/vm*minSpd}
+  if(vm>maxSpd){pVx=pVx/vm*maxSpd;pVy=pVy/vm*maxSpd}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Enemies
+  for(const e of enemies){
+    if(e.flash>0)e.flash--;
+    if(e.muzzleFlash>0)e.muzzleFlash--;
+    const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    const toPlayer=Math.atan2(dy,dx);
+
+    // Maintain preferred distance
+    if(d<e.preferDist-20){
+      // Too close — retreat
+      e.x-=dx/d*1.2;e.y-=dy/d*1.2;
+      e.state='retreating';
+    }else if(d>e.preferDist+30){
+      // Too far — close in
+      e.x+=dx/d*0.8;e.y+=dy/d*0.8;
+      e.state='closing';
+    }else{
+      // At range — strafe
+      e.strafeAngle+=e.strafeDir*0.03;
+      e.x+=Math.cos(toPlayer+Math.PI/2*e.strafeDir)*0.9;
+      e.y+=Math.sin(toPlayer+Math.PI/2*e.strafeDir)*0.9;
+      e.state='strafing';
+      // Occasionally flip strafe direction
+      if(Math.random()<0.005)e.strafeDir*=-1;
+    }
+
+    e.x=Math.max(PAD+8,Math.min(W-PAD-8,e.x));
+    e.y=Math.max(PAD+8,Math.min(H-PAD-8,e.y));
+
+    // Shoot
+    e.shootTimer++;
+    if(e.shootTimer>=e.shootCD){
+      e.shootTimer=0;e.muzzleFlash=6;
+      const a=Math.atan2(py-e.y,px-e.x);
+      // Slight inaccuracy
+      const spread=(Math.random()-.5)*.15;
+      eBullets.push({x:e.x+Math.cos(a)*e.size,y:e.y+Math.sin(a)*e.size,
+        vx:Math.cos(a+spread)*3.5,vy:Math.sin(a+spread)*3.5,life:70});
+      burst(e.x+Math.cos(a)*e.size,e.y+Math.sin(a)*e.size,'#ff6e40',2);
+    }
+  }
+
+  // Enemy bullets
+  for(let i=eBullets.length-1;i>=0;i--){
+    const b=eBullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD-5||b.x>W-PAD+5||b.y<PAD-5||b.y>H-PAD+5){eBullets.splice(i,1);continue}
+    if(Math.hypot(b.x-px,b.y-py)<10){hitFlash=8;burst(px,py,'#ff6e40',5);eBullets.splice(i,1)}
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Range rings around shooters (shows preferred distance)
+  for(const e of enemies){
+    ctx.strokeStyle='rgba(244,67,54,.06)';ctx.lineWidth=1;ctx.setLineDash([3,5]);
+    ctx.beginPath();ctx.arc(e.x,e.y,e.preferDist,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Enemy bullets
+  for(const b of eBullets){
+    ctx.fillStyle='#ff6e40';ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();
+    // Glow
+    ctx.fillStyle='rgba(255,110,64,.2)';ctx.beginPath();ctx.arc(b.x,b.y,6,0,Math.PI*2);ctx.fill();
+    // Trail
+    ctx.strokeStyle='rgba(255,110,64,.25)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*3,b.y-b.vy*3);ctx.stroke();
+  }
+
+  // Enemies
+  for(const e of enemies){
+    const toPlayer=Math.atan2(py-e.y,px-e.x);
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(e.x,e.y+e.size+2,e.size*.6,e.size*.2,0,0,Math.PI*2);ctx.fill();
+    // Body — diamond rotated toward player
+    ctx.save();ctx.translate(e.x,e.y);ctx.rotate(toPlayer);
+    ctx.fillStyle=e.flash>0?'#fff':e.muzzleFlash>0?'#ff8a65':'#f44336';
+    ctx.beginPath();ctx.moveTo(e.size,0);ctx.lineTo(0,-e.size*.6);ctx.lineTo(-e.size*.7,0);ctx.lineTo(0,e.size*.6);ctx.closePath();ctx.fill();
+    // Muzzle
+    if(e.muzzleFlash>0){
+      ctx.fillStyle='#ffca28';ctx.beginPath();ctx.arc(e.size+3,0,3,0,Math.PI*2);ctx.fill();
+    }
+    ctx.restore();
+
+    // Aim line (faint)
+    ctx.strokeStyle='rgba(244,67,54,.15)';ctx.lineWidth=1;ctx.setLineDash([2,4]);
+    ctx.beginPath();ctx.moveTo(e.x,e.y);
+    ctx.lineTo(e.x+Math.cos(toPlayer)*e.preferDist*.6,e.y+Math.sin(toPlayer)*e.preferDist*.6);
+    ctx.stroke();ctx.setLineDash([]);
+
+    // State label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={strafing:'rgba(244,67,54,.6)',retreating:'rgba(255,183,77,.7)',closing:'rgba(244,67,54,.5)'};
+    const lbls={strafing:'STRAFING',retreating:'TOO CLOSE!',closing:'CLOSING IN'};
+    ctx.fillStyle=cols[e.state]||'rgba(244,67,54,.5)';
+    ctx.fillText(lbls[e.state]||'',e.x,e.y+e.size+13);
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,110,64,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Ammo
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-6);
+  ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(PAD+60,H-PAD-12,40,4);
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(244,67,54,.65)';
+  ctx.fillText('SHOOTER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Keep distance → strafe → fire aimed shots → reposition',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

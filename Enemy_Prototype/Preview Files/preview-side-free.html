@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Side-View (Free)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Side-View (Free)</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectiles</div>
+      <div class="li"><span style="background:#ffca28;border-radius:50%"></span>Powerups</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Horizontal side-view with no gravity. The player moves freely in all directions — up, down, left, right. Screen scrolls automatically or follows the player. Think space shooters, underwater games, or flying mechanics. Movement feels floaty and omnidirectional.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Horizontal, auto-scrolling or following, no ground</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Shmups, space shooters, underwater, flight games</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Full freedom of movement, works great for bullet patterns</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">No platforming, can feel disorienting without reference</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Shmup</span><span class="ft">Shooter</span>
+    <span class="fe">e.g. Gradius, R-Type, Geometry Wars, Luftrausers</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+let scrollX=0,scrollSpeed=1.5;
+let px=120,py=H/2,pvx=0,pvy=0;
+let enemies=[],projs=[],particles=[],powerups=[];
+let score=0,shootTimer=0;
+const stars=[];for(let i=0;i<60;i++)stars.push({x:Math.random()*W,y:Math.random()*H,s:Math.random()*1.5+.3,speed:.5+Math.random()*2});
+
+function spawnEnemy(){
+  const type=Math.random()<.3?'sine':'straight';
+  enemies.push({x:W+10,y:30+Math.random()*(H-60),s:8+Math.random()*5,type,phase:Math.random()*6,speed:1+Math.random()*1.5,hp:1+Math.floor(Math.random()*2),flash:0,shootTimer:0});
+}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*3;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20+Math.random()*15,ml:35,color:col,size:1.5+Math.random()*2})}}
+
+let aiTimer=0,aiTargetY=H/2;
+function update(){
+  scrollX+=scrollSpeed;
+  // Stars
+  for(const s of stars){s.x-=s.speed;if(s.x<-5){s.x=W+5;s.y=Math.random()*H}}
+  // Spawn
+  if(Math.random()<.03)spawnEnemy();
+  if(Math.random()<.008)powerups.push({x:W+10,y:50+Math.random()*(H-100),pulse:0});
+
+  // Player AI — weave up and down, dodge enemies
+  aiTimer++;
+  if(aiTimer>60){aiTargetY=60+Math.random()*(H-120);aiTimer=0}
+  let nearDanger=false;
+  for(const e of enemies){if(Math.abs(e.x-px)<80&&Math.abs(e.y-py)<40)nearDanger=true}
+  const ty=nearDanger?(py<H/2?H*0.75:H*0.25):aiTargetY;
+  pvy+=(ty-py)*0.02;pvy*=0.92;py+=pvy;
+  px=120+Math.sin(scrollX*0.01)*30;
+  py=Math.max(15,Math.min(H-15,py));
+
+  // Auto-shoot
+  shootTimer++;
+  if(shootTimer>8){projs.push({x:px+10,y:py,vx:7,vy:0});shootTimer=0}
+
+  // Projectiles
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;if(p.x>W+10){projs.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){const e=enemies[j];if(Math.abs(p.x-e.x)<e.s&&Math.abs(p.y-e.y)<e.s){e.hp--;e.flash=4;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);if(e.hp<=0){burst(e.x,e.y,'#ef5350',10);score+=10;enemies.splice(j,1)}break}}}
+
+  // Enemies
+  for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];e.x-=e.speed+scrollSpeed*0.3;
+    if(e.type==='sine'){e.phase+=0.04;e.y+=Math.sin(e.phase)*1.5}
+    if(e.flash>0)e.flash--;if(e.x<-20)enemies.splice(i,1);
+    // Enemy shoot
+    e.shootTimer++;if(e.shootTimer>90&&e.x<W-20){projs.push({x:e.x-5,y:e.y,vx:-4,vy:0,enemy:true});e.shootTimer=0}
+  }
+
+  // Enemy projectiles hit player (visual only — flash)
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];if(p.enemy&&Math.abs(p.x-px)<10&&Math.abs(p.y-py)<10){burst(px,py,'#4fc3f7',5);projs.splice(i,1)}}
+
+  // Powerups
+  for(let i=powerups.length-1;i>=0;i--){const p=powerups[i];p.x-=scrollSpeed;p.pulse+=.06;if(p.x<-10){powerups.splice(i,1);continue}if(Math.abs(p.x-px)<15&&Math.abs(p.y-py)<15){burst(p.x,p.y,'#ffca28',8);score+=25;powerups.splice(i,1)}}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.95;p.vy*=.95;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#06081a';ctx.fillRect(0,0,W,H);
+  // Nebula bg
+  const ng=ctx.createRadialGradient(W*0.7,H*0.4,0,W*0.7,H*0.4,200);ng.addColorStop(0,'rgba(100,50,150,.06)');ng.addColorStop(1,'transparent');ctx.fillStyle=ng;ctx.fillRect(0,0,W,H);
+  // Stars
+  for(const s of stars){ctx.fillStyle=`rgba(255,255,255,${.15+s.s*.15})`;ctx.fillRect(s.x,s.y,s.s,s.s)}
+  // Powerups
+  for(const p of powerups){ctx.fillStyle=`rgba(255,202,40,${.4+Math.sin(p.pulse)*.3})`;ctx.beginPath();ctx.arc(p.x,p.y,5,0,Math.PI*2);ctx.fill();ctx.fillStyle='rgba(255,202,40,.1)';ctx.beginPath();ctx.arc(p.x,p.y,12,0,Math.PI*2);ctx.fill()}
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';
+    // Triangle pointing left
+    ctx.beginPath();ctx.moveTo(e.x+e.s,e.y-e.s*.7);ctx.lineTo(e.x-e.s*.5,e.y);ctx.lineTo(e.x+e.s,e.y+e.s*.7);ctx.closePath();ctx.fill();
+    if(e.hp>1){ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillRect(e.x-e.s/2,e.y-e.s-4,e.s*(e.hp/2),2)}}
+  // Projectiles
+  for(const p of projs){ctx.fillStyle=p.enemy?'#ef5350':'#66bb6a';ctx.fillRect(p.x-4,p.y-1,8,2);if(!p.enemy){ctx.fillStyle='rgba(102,187,106,.2)';ctx.fillRect(p.x-8,p.y-1,16,2)}}
+  // Player — triangle pointing right
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.moveTo(px-8,py-7);ctx.lineTo(px+10,py);ctx.lineTo(px-8,py+7);ctx.closePath();ctx.fill();
+  // Engine glow
+  ctx.fillStyle='rgba(79,195,247,.3)';ctx.beginPath();ctx.arc(px-10,py,4+Math.sin(scrollX*.2)*2,0,Math.PI*2);ctx.fill();
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+  // HUD
+  ctx.font='500 9px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.4)';ctx.textAlign='left';ctx.fillText(`SCORE ${score}`,10,16);
+  // No gravity indicator
+  ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillText('ZERO-G',W-10,16);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

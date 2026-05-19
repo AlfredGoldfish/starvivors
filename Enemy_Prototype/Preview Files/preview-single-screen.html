@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Single Screen</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Single Screen</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Everything happens on one static screen. No camera movement, no scrolling, no spatial navigation. The game is driven by clicking buttons, managing numbers, and making choices. Ideal for idle games, card games, visual novels, and management sims.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">None — fixed single screen</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Idle/clicker, card games, puzzles, management sims</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Simple to build, focus on systems and numbers, no physics</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">No spatial gameplay, no movement mechanics possible</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Idle</span><span class="ft">Puzzle</span><span class="ft">Sim</span><span class="ft">Cards</span>
+    <span class="fe">e.g. Cookie Clicker, Solitaire, Wordle, Reigns</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+let gold=0,goldPerSec=1,goldPerClick=1,level=1;
+let clickMulti=1,autoMulti=1;
+let floats=[],particles=[];
+let autoTimer=0,clickAnim=0;
+const upgrades=[
+  {name:"Click Power",desc:"+1 per click",cost:10,bought:0,effect:()=>{goldPerClick++}},
+  {name:"Auto Gold",desc:"+1 per second",cost:25,bought:0,effect:()=>{goldPerSec++}},
+  {name:"Multiplier",desc:"x2 all income",cost:100,bought:0,effect:()=>{clickMulti*=2;autoMulti*=2}},
+  {name:"Prestige",desc:"Reset for +50%",cost:500,bought:0,effect:()=>{gold=0;goldPerSec=1;goldPerClick=1;level++;clickMulti=1+level*0.5;autoMulti=1+level*0.5;for(const u of upgrades){u.bought=0;u.cost=Math.floor(u.cost*0.8)}}},
+];
+
+// Simulate clicks and purchases
+let aiAction=0;
+function update(){
+  autoTimer++;
+  if(autoTimer>=60){gold+=goldPerSec*autoMulti;autoTimer=0;
+    floats.push({x:W/2+Math.random()*40-20,y:140,text:`+${Math.floor(goldPerSec*autoMulti)}`,color:'rgba(255,202,40,.6)',life:40})}
+
+  // AI clicks periodically
+  aiAction++;
+  if(aiAction>40){
+    gold+=goldPerClick*clickMulti;clickAnim=10;
+    floats.push({x:W/2+Math.random()*60-30,y:130,text:`+${Math.floor(goldPerClick*clickMulti)}`,color:'#ffca28',life:30,big:true});
+    for(let i=0;i<4;i++){const a=Math.random()*Math.PI*2;particles.push({x:W/2,y:160,vx:Math.cos(a)*3,vy:Math.sin(a)*3,life:20,color:'#ffca28',size:2+Math.random()*2})}
+    aiAction=0;
+  }
+
+  // AI buys upgrades
+  if(aiAction===20){
+    for(let i=upgrades.length-1;i>=0;i--){
+      const u=upgrades[i];
+      if(gold>=u.cost){gold-=u.cost;u.effect();u.bought++;u.cost=Math.floor(u.cost*1.6);
+        floats.push({x:320+i*10,y:100+i*50,text:'UPGRADED!',color:'#66bb6a',life:40});break}
+    }
+  }
+
+  // Floats
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.8;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vy+=0.1;p.life--;if(p.life<=0)particles.splice(i,1)}
+  if(clickAnim>0)clickAnim--;
+}
+
+function formatNum(n){if(n>=1e6)return(n/1e6).toFixed(1)+'M';if(n>=1e3)return(n/1e3).toFixed(1)+'K';return Math.floor(n).toString()}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+
+  // Title
+  ctx.font='700 14px "Chakra Petch"';ctx.fillStyle='rgba(255,202,40,.8)';ctx.textAlign='center';
+  ctx.fillText('GOLD MINE IDLE',W/2,30);
+  ctx.font='400 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText(`PRESTIGE LEVEL ${level}`,W/2,45);
+
+  // Main gold counter
+  const goldSize=28+clickAnim*2;
+  ctx.font=`700 ${goldSize}px "Chakra Petch"`;ctx.fillStyle='#ffca28';
+  ctx.fillText(formatNum(gold),W/2,100);
+  ctx.font='500 10px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText('GOLD',W/2,115);
+
+  // Income display
+  ctx.font='400 9px "Outfit"';ctx.fillStyle='rgba(255,255,255,.25)';
+  ctx.fillText(`${formatNum(goldPerClick*clickMulti)}/click  •  ${formatNum(goldPerSec*autoMulti)}/sec`,W/2,132);
+
+  // Click button
+  const bx=W/2,by=170,br=35+clickAnim*2;
+  const bg=ctx.createRadialGradient(bx,by,0,bx,by,br);
+  bg.addColorStop(0,'rgba(255,202,40,.25)');bg.addColorStop(1,'rgba(255,202,40,.05)');
+  ctx.fillStyle=bg;ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='rgba(255,202,40,.4)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(bx,by,br,0,Math.PI*2);ctx.stroke();
+  ctx.font='700 12px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.fillText('CLICK',bx,174);
+
+  // Progress bar (to next auto-tick)
+  ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(60,210,W-120,6);
+  ctx.fillStyle='rgba(255,202,40,.3)';ctx.fillRect(60,210,(W-120)*(autoTimer/60),6);
+  ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';ctx.textAlign='center';ctx.fillText('AUTO-INCOME',W/2,228);
+
+  // Upgrade buttons
+  ctx.textAlign='left';
+  for(let i=0;i<upgrades.length;i++){
+    const u=upgrades[i];
+    const ux=30,uy=245+i*28,uw=W-60,uh=24;
+    const canBuy=gold>=u.cost;
+    ctx.fillStyle=canBuy?'rgba(255,255,255,.06)':'rgba(255,255,255,.02)';
+    ctx.fillRect(ux,uy,uw,uh);
+    ctx.strokeStyle=canBuy?'rgba(102,187,106,.3)':'rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.strokeRect(ux,uy,uw,uh);
+
+    ctx.font='500 9px "Outfit"';ctx.fillStyle=canBuy?'#fff':'rgba(255,255,255,.3)';
+    ctx.fillText(u.name,ux+8,uy+10);
+    ctx.font='400 7px "Outfit"';ctx.fillStyle='rgba(255,255,255,.25)';ctx.fillText(u.desc,ux+8,uy+19);
+
+    ctx.textAlign='right';
+    ctx.font='500 8px "IBM Plex Mono"';ctx.fillStyle=canBuy?'#66bb6a':'rgba(255,255,255,.2)';
+    ctx.fillText(`${formatNum(u.cost)} gold`,ux+uw-8,uy+10);
+    if(u.bought>0){ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillText(`x${u.bought}`,ux+uw-8,uy+19)}
+    ctx.textAlign='left';
+  }
+
+  // Floating text
+  for(const f of floats){ctx.globalAlpha=f.life/40;ctx.font=f.big?'700 14px "Chakra Petch"':'500 9px "IBM Plex Mono"';ctx.fillStyle=f.color;ctx.textAlign='center';ctx.fillText(f.text,f.x,f.y);ctx.globalAlpha=1}
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/20;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

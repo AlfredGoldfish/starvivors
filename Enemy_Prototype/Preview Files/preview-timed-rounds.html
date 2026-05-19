@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Timed Rounds</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Timed Rounds</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Each round has a fixed time limit — score as much as possible before time runs out. A big countdown dominates the HUD. When time expires, a results screen shows kills, score, and bonuses. Then the next round begins with harder enemies and a fresh timer. The pressure of the clock changes every decision.</div>
+    <div class="dr"><div class="dl">Duration</div><div class="dv">30s, 60s, 90s, or 120s per round</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Arcade survival, score attack, speedrun challenges</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Urgency, clear structure, easy to compare attempts</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Clock anxiety, rush decisions, "one more round" addiction</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Arcade</span><span class="ft">Runner</span>
+    <span class="fe">e.g. Super Hexagon, Minit, WarioWare, arcade time attack</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+const ROUND_TIME=600; // 10 seconds (sped up for demo)
+let timeLeft=ROUND_TIME,round=1,score=0,roundKills=0,totalScore=0;
+let state="playing",stateTimer=0;
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0;
+let enemies=[],projs=[],particles=[];
+let shootTimer=0,comboCount=0,comboTimer=0;
+let urgencyPulse=0;
+
+function spawnE(){const side=Math.floor(Math.random()*4);let x,y;if(side===0){x=10;y=10+Math.random()*340}else if(side===1){x=470;y=10+Math.random()*340}else if(side===2){x=10+Math.random()*460;y=10}else{x=10+Math.random()*460;y=350}enemies.push({x,y,s:5+Math.random()*4,hp:1,speed:.7+round*.2,flash:0})}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*2.5;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:18,ml:18,color:col,size:2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+for(let i=0;i<5;i++)spawnE();
+
+function update(){
+  stateTimer++;
+  if(comboTimer>0)comboTimer--;else comboCount=0;
+
+  if(state==="playing"){
+    timeLeft--;urgencyPulse++;
+    if(timeLeft<=0){state="results";stateTimer=0;totalScore+=score}
+
+    // Spawn
+    if(stateTimer%Math.max(8,25-round*3)===0)spawnE();
+
+    // Player AI
+    pTimer++;if(pTimer>50||dist({x:px,y:py},pt)<15){pt={x:30+Math.random()*(W-60),y:30+Math.random()*(H-60)};pTimer=0}
+    const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2.5;py+=dy/d*2.5}
+
+    // Shoot
+    shootTimer++;if(shootTimer>7&&enemies.length>0){let ne=null,nd=Infinity;for(const e of enemies){const d2=dist({x:px,y:py},e);if(d2<nd){nd=d2;ne=e}}if(ne){const a=Math.atan2(ne.y-py,ne.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*6,vy:Math.sin(a)*6,life:40});shootTimer=0}}
+
+    // Projs
+    for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0){projs.splice(i,1);continue}for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,'#ef5350',6);comboCount++;comboTimer=60;const pts=10*(1+Math.floor(comboCount/3));score+=pts;roundKills++;enemies.splice(j,1)}break}}}
+
+    // Enemies
+    for(const e of enemies){const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}if(e.flash>0)e.flash--}
+  }
+
+  if(state==="results"&&stateTimer>120){round++;timeLeft=ROUND_TIME;score=0;roundKills=0;enemies=[];projs=[];state="countdown";stateTimer=0}
+  if(state==="countdown"&&stateTimer>50){state="playing";stateTimer=0;for(let i=0;i<3+round*2;i++)spawnE()}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+
+  if(state==="playing"||state==="countdown"){
+    // Grid
+    ctx.strokeStyle='rgba(255,255,255,.03)';for(let gx=0;gx<W;gx+=40){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke()}for(let gy=0;gy<H;gy+=40){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke()}
+
+    // Enemies
+    for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+    // Projs
+    ctx.fillStyle='#66bb6a';for(const p of projs){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+    // Player
+    ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+    // Particles
+    for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+    // BIG TIMER (the key visual for this pattern)
+    const secs=Math.ceil(timeLeft/60);
+    const timeRatio=timeLeft/ROUND_TIME;
+    const timerColor=timeRatio>.5?'rgba(255,255,255,.3)':timeRatio>.25?'rgba(255,202,40,.6)':'rgba(239,83,80,.7)';
+
+    // Timer circle
+    ctx.strokeStyle=timerColor;ctx.lineWidth=3;ctx.beginPath();
+    ctx.arc(W/2,26,18,-Math.PI/2,-Math.PI/2+Math.PI*2*timeRatio);ctx.stroke();
+    ctx.fillStyle='rgba(0,0,0,.4)';ctx.beginPath();ctx.arc(W/2,26,15,0,Math.PI*2);ctx.fill();
+
+    // Time number
+    ctx.font='700 14px "Chakra Petch"';ctx.fillStyle=timerColor;ctx.textAlign='center';
+    ctx.fillText(secs,W/2,31);
+
+    // Urgency flash at low time
+    if(timeRatio<.25){ctx.fillStyle=`rgba(239,83,80,${Math.sin(urgencyPulse*.15)*.06})`;ctx.fillRect(0,0,W,H);
+      // Vignette
+      const vg=ctx.createRadialGradient(W/2,H/2,100,W/2,H/2,W/2);vg.addColorStop(0,'transparent');vg.addColorStop(1,`rgba(239,83,80,${.08+Math.sin(urgencyPulse*.1)*.04})`);ctx.fillStyle=vg;ctx.fillRect(0,0,W,H);
+    }
+
+    // Score
+    ctx.font='600 10px "IBM Plex Mono"';ctx.fillStyle='#ffca28';ctx.textAlign='right';ctx.fillText(`${score}`,W-12,20);
+    ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';ctx.fillText('SCORE',W-12,10);
+
+    // Combo
+    if(comboCount>1){ctx.font='700 12px "Chakra Petch"';ctx.fillStyle=`rgba(255,202,40,${comboTimer/60})`;ctx.textAlign='center';ctx.fillText(`x${comboCount} COMBO`,W/2,H-15)}
+
+    // Round + kills
+    ctx.font='500 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.25)';ctx.textAlign='left';
+    ctx.fillText(`ROUND ${round}`,12,16);ctx.fillText(`KILLS: ${roundKills}`,12,28);
+  }
+
+  // Countdown
+  if(state==="countdown"){
+    ctx.fillStyle=`rgba(0,0,0,${Math.max(0,.6-stateTimer/50)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 28px "Chakra Petch"';ctx.fillStyle='rgba(79,195,247,.6)';ctx.textAlign='center';
+    ctx.fillText(`ROUND ${round}`,W/2,H/2-10);
+    ctx.font='400 10px "Outfit"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('GET READY',W/2,H/2+15);
+  }
+
+  // Results
+  if(state==="results"){
+    ctx.fillStyle=`rgba(0,0,0,${Math.min(.8,stateTimer/30)})`;ctx.fillRect(0,0,W,H);
+
+    ctx.font='700 16px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.textAlign='center';
+    ctx.fillText("TIME'S UP!",W/2,70);
+
+    // Results card
+    ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(W/2-100,90,200,140);ctx.strokeStyle='rgba(255,255,255,.08)';ctx.strokeRect(W/2-100,90,200,140);
+
+    ctx.font='600 10px "Outfit"';ctx.fillStyle='rgba(255,255,255,.5)';
+    ctx.fillText(`Round ${round} Results`,W/2,112);
+
+    ctx.font='500 9px "IBM Plex Mono"';ctx.textAlign='left';const lx=W/2-80;
+    ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('KILLS',lx,140);ctx.textAlign='right';ctx.fillStyle='#fff';ctx.fillText(`${roundKills}`,W/2+80,140);
+    ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('SCORE',lx,160);ctx.textAlign='right';ctx.fillStyle='#ffca28';ctx.fillText(`${score}`,W/2+80,160);
+    ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('TOTAL',lx,185);ctx.textAlign='right';ctx.fillStyle='#ffca28';ctx.font='700 11px "Chakra Petch"';ctx.fillText(`${totalScore}`,W/2+80,185);
+    ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.3)';ctx.font='500 9px "IBM Plex Mono"';ctx.fillText('BEST COMBO',lx,205);ctx.textAlign='right';ctx.fillStyle='#ff9800';ctx.fillText(`x${comboCount}`,W/2+80,205);
+
+    ctx.font='400 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.15)';ctx.textAlign='center';
+    ctx.fillText(`NEXT: Round ${round+1} — harder enemies`,W/2,250);
+  }
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

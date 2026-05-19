@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Ambusher</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Ambusher</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectile</div>
+      <div class="li"><span style="background:#ef5350"></span>Normal enemy</div>
+      <div class="li"><span style="background:rgba(253,216,53,.06)"></span>Ambusher (hidden)</div>
+      <div class="li"><span style="background:#fdd835"></span>Ambusher (revealed)</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">While the player is busy fighting normal enemies, an ambusher erupts from hiding with a guaranteed surprise hit. Completely invisible until triggered by proximity. The first hit always lands because the player was focused on the existing fight. After revealing, it's weak — but the damage is done. Punishes tunnel vision.</div>
+    <div class="dr"><div class="dl">Hidden</div><div class="dv">Invisible, triggered by proximity during combat</div></div>
+    <div class="dr"><div class="dl">Reveal</div><div class="dv">Burst attack with guaranteed surprise damage</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Fragile once revealed, one-trick</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Interrupts active combat, punishes careless movement</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Horror</span><span class="ft">Roguelike</span><span class="ft">Stealth</span>
+    <span class="fe">e.g. Dark Souls (mimics), Spelunky, Resident Evil, Left 4 Dead</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+
+// ── Global state ──
+let frame=0,hitFlash=0,shakeT=0;
+let px=W/2,py=H*0.65,pvx=0,pvy=0,wander=Math.random()*Math.PI*2;
+let bullets=[];
+let parts=[];
+let shootCD=0;
+
+// ── Helpers ──
+function rng(a,b){return a+Math.random()*(b-a)}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function spark(x,y,col,n,str){str=str||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rng(.4,2.5)*str;parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rng(12,24),ml:24,col,sz:rng(1,2.5)})}}
+
+// ── Normals: simple red chasers ──
+let normals=[];
+function spawnNormal(){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+  if(edge===0){x=PAD+5;y=rng(PAD+20,H-PAD-20)}
+  else if(edge===1){x=W-PAD-5;y=rng(PAD+20,H-PAD-20)}
+  else if(edge===2){x=rng(PAD+20,W-PAD-20);y=PAD+5}
+  else{x=rng(PAD+20,W-PAD-20);y=H-PAD-5}
+  normals.push({x,y,sz:7,hp:3,mhp:3,spd:rng(0.6,0.9),fl:0});
+}
+// Start with some normals
+for(let i=0;i<4;i++)spawnNormal();
+let normalSpawnT=0;
+
+// ── Ambushers: hidden until proximity ──
+let ambushers=[];
+function placeAmbusher(){
+  // Place somewhere in the arena, prefer away from player
+  let bestX=PAD+60,bestY=PAD+60,bestD=0;
+  for(let tries=0;tries<30;tries++){
+    const x=rng(PAD+35,W-PAD-35),y=rng(PAD+35,H-PAD-35);
+    const d=Math.hypot(x-px,y-py);
+    if(d>bestD){bestD=d;bestX=x;bestY=y}
+    if(d>60){
+      ambushers.push({x,y,sz:9,hp:2,mhp:2,fl:0,state:'hidden',prog:0,timer:0});
+      return;
+    }
+  }
+  // Fallback: use the best position found
+  ambushers.push({x:bestX,y:bestY,sz:9,hp:2,mhp:2,fl:0,state:'hidden',prog:0,timer:0});
+}
+placeAmbusher();placeAmbusher();placeAmbusher();
+let ambReplaceT=0;
+
+// ── Update ──
+function update(){
+  frame++;
+  if(hitFlash>0)hitFlash--;
+  if(shakeT>0)shakeT--;
+  normalSpawnT++;
+  ambReplaceT++;
+
+  // Replenish normals
+  if(normalSpawnT>120&&normals.length<4){spawnNormal();normalSpawnT=0}
+
+  // Replace dead ambushers after a delay
+  const deadAmb=ambushers.filter(a=>a.state==='dead').length;
+  if(deadAmb>0&&ambReplaceT>200){
+    ambushers=ambushers.filter(a=>a.state!=='dead');
+    placeAmbusher();
+    ambReplaceT=0;
+  }
+
+  // ── Player AI: fight normals, strafe, dodge close enemies ──
+  let ax=0,ay=0;
+  // Find nearest alive target (normals + revealed ambushers)
+  let tgt=null,tgtD=Infinity;
+  for(const n of normals){const d=dist({x:px,y:py},n);if(d<tgtD){tgtD=d;tgt=n}}
+  for(const a of ambushers){if(a.state!=='chasing')continue;const d=dist({x:px,y:py},a);if(d<tgtD){tgtD=d;tgt=a}}
+
+  if(tgt){
+    const dx=tgt.x-px,dy=tgt.y-py,d=Math.hypot(dx,dy);
+    if(d>75){ax+=dx/d*0.14;ay+=dy/d*0.14}
+    else if(d<35){ax-=dx/d*0.15;ay-=dy/d*0.15}
+    else{ax+=dy/d*0.08;ay-=dx/d*0.08}
+  }
+  wander+=Math.sin(frame*0.014)*0.03+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.05;ay+=Math.sin(wander)*0.05;
+  if(px<PAD+30)ax+=0.18;if(px>W-PAD-30)ax-=0.18;
+  if(py<PAD+30)ay+=0.18;if(py>H-PAD-30)ay-=0.18;
+  pvx=(pvx+ax)*0.92;pvy=(pvy+ay)*0.92;
+  const vm=Math.hypot(pvx,pvy);
+  if(vm>1.6){pvx=pvx/vm*1.6;pvy=pvy/vm*1.6}
+  px+=pvx;py+=pvy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));
+  py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Shoot at target
+  shootCD++;
+  if(shootCD>=14&&tgt){
+    const a=Math.atan2(tgt.y-py,tgt.x-px);
+    bullets.push({x:px,y:py,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:50});
+    shootCD=0;
+  }
+
+  // ── Normal enemy AI ──
+  for(let i=normals.length-1;i>=0;i--){
+    const n=normals[i];if(n.fl>0)n.fl--;
+    const dx=px-n.x,dy=py-n.y,d=Math.hypot(dx,dy);
+    if(d>1){n.x+=dx/d*n.spd;n.y+=dy/d*n.spd}
+    n.x=Math.max(PAD+4,Math.min(W-PAD-4,n.x));
+    n.y=Math.max(PAD+4,Math.min(H-PAD-4,n.y));
+  }
+
+  // ── Ambusher AI ──
+  for(const a of ambushers){
+    if(a.state==='dead')continue;
+    if(a.fl>0)a.fl--;
+    const d=dist({x:px,y:py},a);
+
+    if(a.state==='hidden'){
+      if(d<a.sz+28){a.state='revealing';a.prog=0;a.timer=0}
+    }
+    else if(a.state==='revealing'){
+      a.prog=Math.min(1,a.prog+0.055);
+      a.x+=rng(-1,1)*a.prog*2;a.y+=rng(-1,1)*a.prog*1.5;
+      if(a.prog>=1){
+        a.state='chasing';a.timer=0;
+        hitFlash=12;shakeT=10;
+        spark(px,py,'#fdd835',8,1.2);spark(a.x,a.y,'#fdd835',6,1);
+      }
+    }
+    else if(a.state==='chasing'){
+      a.timer++;
+      if(d>1){a.x+=(px-a.x)/d*1.1;a.y+=(py-a.y)/d*1.1}
+      a.x=Math.max(PAD+4,Math.min(W-PAD-4,a.x));
+      a.y=Math.max(PAD+4,Math.min(H-PAD-4,a.y));
+    }
+  }
+
+  // ── Bullet collision ──
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){bullets.splice(i,1);continue}
+    let hit=false;
+    // Hit normals
+    for(let j=normals.length-1;j>=0;j--){
+      const n=normals[j];
+      if(Math.hypot(b.x-n.x,b.y-n.y)<n.sz+3){
+        n.hp--;n.fl=5;spark(b.x,b.y,'#66bb6a',3);
+        if(n.hp<=0){spark(n.x,n.y,'#ef5350',8,1);normals.splice(j,1)}
+        hit=true;break;
+      }
+    }
+    if(!hit){
+      // Hit revealed ambushers
+      for(const a of ambushers){
+        if(a.state!=='chasing')continue;
+        if(Math.hypot(b.x-a.x,b.y-a.y)<a.sz+3){
+          a.hp--;a.fl=5;spark(b.x,b.y,'#66bb6a',3);
+          if(a.hp<=0){spark(a.x,a.y,'#fdd835',12,1.2);a.state='dead'}
+          hit=true;break;
+        }
+      }
+    }
+    if(hit)bullets.splice(i,1);
+  }
+
+  // ── Particles ──
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+// ── Draw ──
+function draw(){
+  const sx=shakeT>0?(Math.random()-.5)*4:0,sy=shakeT>0?(Math.random()-.5)*4:0;
+  ctx.save();ctx.translate(sx,sy);
+  ctx.fillStyle='#0c0e18';ctx.fillRect(-5,-5,W+10,H+10);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // ── Hidden ambushers (faint shimmer) ──
+  for(const a of ambushers){
+    if(a.state!=='hidden')continue;
+    const shimmer=Math.sin(frame*0.04+a.x*0.1)*0.025+0.035;
+    ctx.fillStyle=`rgba(253,216,53,${shimmer})`;
+    ctx.fillRect(a.x-a.sz/2,a.y-a.sz/2,a.sz,a.sz);
+  }
+
+  // ── Revealing ambushers ──
+  for(const a of ambushers){
+    if(a.state!=='revealing')continue;
+    const p=a.prog;
+    ctx.fillStyle=`rgba(253,216,53,${p*0.8})`;
+    ctx.fillRect(a.x-a.sz/2,a.y-a.sz/2,a.sz,a.sz);
+    ctx.strokeStyle=`rgba(253,216,53,${p*0.5})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(a.x,a.y,a.sz+p*20,0,Math.PI*2);ctx.stroke();
+    ctx.font='700 18px "Chakra Petch"';ctx.textAlign='center';
+    ctx.fillStyle=`rgba(253,216,53,${p})`;ctx.fillText('!',a.x,a.y-a.sz-8);
+  }
+
+  // ── Chasing ambushers ──
+  for(const a of ambushers){
+    if(a.state!=='chasing')continue;
+    ctx.fillStyle=a.fl>0?'#fff':'#fdd835';
+    ctx.fillRect(a.x-a.sz/2,a.y-a.sz/2,a.sz,a.sz);
+    const toP=Math.atan2(py-a.y,px-a.x);
+    ctx.fillStyle='rgba(0,0,0,.35)';
+    ctx.beginPath();ctx.arc(a.x+Math.cos(toP)*2.5,a.y+Math.sin(toP)*1.5-1,2,0,Math.PI*2);ctx.fill();
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    ctx.fillStyle='rgba(253,216,53,.65)';ctx.fillText('AMBUSHER',a.x,a.y+a.sz+11);
+  }
+
+  // ── Normal enemies ──
+  for(const n of normals){
+    ctx.fillStyle=n.fl>0?'#fff':'#ef5350';
+    ctx.fillRect(n.x-n.sz/2,n.y-n.sz/2,n.sz,n.sz);
+    if(n.mhp>1){
+      const pw=4,pg=2,tw=n.mhp*(pw+pg)-pg;
+      for(let h=0;h<n.mhp;h++){
+        ctx.fillStyle=h<n.hp?'#ef5350':'rgba(255,255,255,.1)';
+        ctx.fillRect(n.x-tw/2+h*(pw+pg),n.y-n.sz/2-5,pw,2);
+      }
+    }
+  }
+
+  // ── Bullets ──
+  ctx.fillStyle='#66bb6a';
+  for(const b of bullets){
+    ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2.5,b.y-b.vy*2.5);ctx.stroke();
+  }
+
+  // ── Player ──
+  ctx.fillStyle=hitFlash>0?'rgba(253,216,53,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // ── Particles ──
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // ── HUD ──
+  const hidden=ambushers.filter(a=>a.state==='hidden').length;
+  const revealed=ambushers.filter(a=>a.state==='chasing').length;
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(239,83,80,.5)';
+  ctx.fillText(`ENEMIES: ${normals.length}`,PAD+4,H-PAD-6);
+  ctx.textAlign='right';ctx.fillStyle='rgba(253,216,53,.5)';
+  ctx.fillText(`HIDDEN: ${hidden}  ACTIVE: ${revealed}`,W-PAD-4,H-PAD-6);
+
+  ctx.restore();
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(253,216,53,.65)';
+  ctx.fillText('AMBUSHER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Hidden during combat → player walks too close → surprise burst → chaos',W/2,H-PAD+14);
+}
+
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

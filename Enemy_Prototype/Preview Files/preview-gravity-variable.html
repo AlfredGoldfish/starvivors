@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Variable Gravity</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Variable Gravity</h2><div class="tag">Gravity</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Gravity changes strength over time — cycling between heavy, standard, low, and zero-G. The player must adapt their platforming on the fly. A jump that works in heavy gravity overshoots in low gravity. Creates a constantly shifting challenge where timing and muscle memory get disrupted every few seconds.</div>
+    <div class="dr"><div class="dl">Cycle</div><div class="dv">Heavy → Standard → Low → Zero → reverse</div></div>
+    <div class="dr"><div class="dl">Warning</div><div class="dv">Visible meter + color shift shows current gravity</div></div>
+    <div class="dr"><div class="dl">Challenge</div><div class="dv">Platforming difficulty shifts mid-jump</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Platformer</span><span class="ft">Puzzle</span><span class="ft">Action</span>
+    <span class="fe">e.g. VVVVVV, Celeste (modifiers), Super Mario Galaxy</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+let frame=0;
+
+const FLOOR=H-35;
+const PHASES=[
+  {name:'HEAVY',grav:0.55,color:'#ef5350',dur:180},
+  {name:'STANDARD',grav:0.3,color:'#ffca28',dur:180},
+  {name:'LOW',grav:0.12,color:'#4fc3f7',dur:180},
+  {name:'ZERO-G',grav:0.0,color:'#ab47bc',dur:150},
+  {name:'LOW',grav:0.12,color:'#4fc3f7',dur:150},
+  {name:'STANDARD',grav:0.3,color:'#ffca28',dur:150},
+];
+let phaseIdx=0,phaseTimer=0;
+let currentGrav=0.3,targetGrav=0.3;
+
+// Platforms
+const plats=[
+  {x:60,y:FLOOR-60,w:70,h:5},
+  {x:180,y:FLOOR-110,w:60,h:5},
+  {x:310,y:FLOOR-70,w:65,h:5},
+  {x:220,y:FLOOR-160,w:55,h:5},
+  {x:390,y:FLOOR-130,w:60,h:5},
+  {x:100,y:FLOOR-180,w:50,h:5},
+];
+
+// Character
+let cx=100,cy=FLOOR-8,cvy=0,onGround=true;
+let jumpCD=0,targetPlat=0,trail=[];
+let floatingItems=[];
+
+// Floating debris to show zero-G
+for(let i=0;i<8;i++){
+  floatingItems.push({x:Math.random()*W,y:Math.random()*H*0.7+30,
+    vy:0,sz:2+Math.random()*2,baseY:0});
+}
+
+function update(){
+  frame++;phaseTimer++;jumpCD++;
+
+  // Phase cycling
+  if(phaseTimer>=PHASES[phaseIdx].dur){
+    phaseTimer=0;phaseIdx=(phaseIdx+1)%PHASES.length;
+  }
+  targetGrav=PHASES[phaseIdx].grav;
+  currentGrav+=(targetGrav-currentGrav)*0.05; // smooth transition
+
+  // Character physics
+  cvy+=currentGrav;
+  // Zero-G: slight float
+  if(currentGrav<0.05&&onGround){cvy=-1.5;onGround=false}
+  cy+=cvy;
+
+  // Trail
+  if(!onGround&&frame%2===0)trail.push({x:cx,y:cy,life:15});
+  for(let i=trail.length-1;i>=0;i--){trail[i].life--;if(trail[i].life<=0)trail.splice(i,1)}
+
+  // Floor collision
+  if(cy>=FLOOR-8){cy=FLOOR-8;cvy=0;onGround=true}
+
+  // Platform collision
+  for(const p of plats){
+    if(cvy>0&&cy>=p.y-8&&cy-cvy<p.y-8&&cx>p.x-5&&cx<p.x+p.w+5){
+      cy=p.y-8;cvy=0;onGround=true;
+    }
+  }
+
+  // Auto jump — pick a platform to jump toward
+  if(onGround&&jumpCD>40){
+    jumpCD=0;
+    // Jump strength adapts to gravity
+    const jumpV=currentGrav<0.05?-2:currentGrav<0.15?-6:currentGrav<0.35?-8.5:-7;
+    cvy=jumpV;onGround=false;
+    // Pick a target platform to move toward
+    targetPlat=(targetPlat+1)%plats.length;
+  }
+
+  // Horizontal movement toward target platform
+  if(!onGround){
+    const tp=plats[targetPlat];
+    const tx=tp.x+tp.w/2;
+    cx+=(tx-cx)*0.02;
+  }
+  cx=Math.max(15,Math.min(W-15,cx));
+
+  // Floating debris (react to gravity)
+  for(const f of floatingItems){
+    f.vy+=currentGrav*0.3;
+    if(currentGrav<0.05)f.vy+=(Math.sin(frame*0.02+f.x)*0.05-f.vy*0.05);
+    f.y+=f.vy;
+    if(f.y>FLOOR-5){f.y=FLOOR-5;f.vy=-Math.abs(f.vy)*0.3}
+    if(f.y<10){f.y=10;f.vy=Math.abs(f.vy)*0.3}
+  }
+}
+
+function draw(){
+  const phase=PHASES[phaseIdx];
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+
+  // Background tint based on gravity
+  ctx.fillStyle=`${phase.color}06`;ctx.fillRect(0,0,W,H);
+
+  // Floor
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(10,FLOOR,W-20,3);
+
+  // Platforms
+  for(const p of plats){
+    ctx.fillStyle='rgba(255,255,255,.07)';ctx.fillRect(p.x,p.y,p.w,p.h);
+    ctx.strokeStyle=`${phase.color}15`;ctx.lineWidth=1;ctx.strokeRect(p.x,p.y,p.w,p.h);
+  }
+
+  // Floating debris
+  for(const f of floatingItems){
+    ctx.fillStyle=`${phase.color}20`;
+    ctx.fillRect(f.x-f.sz/2,f.y-f.sz/2,f.sz,f.sz);
+  }
+
+  // Gravity arrows (background, showing pull direction and strength)
+  const arrowCount=Math.max(1,Math.floor(currentGrav*8));
+  for(let i=0;i<arrowCount;i++){
+    const ax=60+i*(W-120)/(Math.max(1,arrowCount-1));
+    const aLen=10+currentGrav*40;
+    ctx.strokeStyle=`${phase.color}15`;ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(ax,H*0.3);ctx.lineTo(ax,H*0.3+aLen);ctx.stroke();
+    if(aLen>5){ctx.beginPath();ctx.moveTo(ax,H*0.3+aLen);ctx.lineTo(ax-3,H*0.3+aLen-5);ctx.moveTo(ax,H*0.3+aLen);ctx.lineTo(ax+3,H*0.3+aLen-5);ctx.stroke()}
+  }
+
+  // Trail
+  for(const t of trail){
+    ctx.globalAlpha=t.life/15*0.35;ctx.fillStyle=phase.color;
+    ctx.beginPath();ctx.arc(t.x,t.y,3,0,Math.PI*2);ctx.fill();
+  }ctx.globalAlpha=1;
+
+  // Character
+  const stretch=Math.min(1.4,1+Math.abs(cvy)*0.025);
+  const squish=1/stretch;
+  ctx.fillStyle=phase.color;
+  ctx.save();ctx.translate(cx,cy);ctx.scale(squish,stretch);
+  ctx.fillRect(-7,-7,14,14);ctx.restore();
+  // Shadow on nearest surface below
+  ctx.fillStyle='rgba(0,0,0,.1)';ctx.beginPath();ctx.ellipse(cx,FLOOR+1,6,2,0,0,Math.PI*2);ctx.fill();
+
+  // Gravity meter (left side, prominent)
+  const meterX=18,meterY=40,meterH=120,meterW=10;
+  ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(meterX,meterY,meterW,meterH);
+  ctx.strokeStyle='rgba(255,255,255,.1)';ctx.lineWidth=1;ctx.strokeRect(meterX,meterY,meterW,meterH);
+  // Fill based on gravity (0 = bottom, 0.6 = top)
+  const gravPct=Math.min(1,currentGrav/0.6);
+  const fillH=meterH*gravPct;
+  ctx.fillStyle=phase.color;ctx.fillRect(meterX,meterY+meterH-fillH,meterW,fillH);
+  // Tick marks
+  ctx.fillStyle='rgba(255,255,255,.15)';
+  ctx.fillRect(meterX-3,meterY+meterH*0.5,meterW+6,1); // standard line
+  ctx.font='500 5px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.25)';
+  ctx.fillText('MAX',meterX+meterW+3,meterY+5);
+  ctx.fillText('0',meterX+meterW+3,meterY+meterH+3);
+
+  // Current gravity label (top center, large)
+  ctx.font='700 14px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=`${phase.color}CC`;
+  ctx.fillText(phase.name,W/2,28);
+  ctx.font='600 8px "IBM Plex Mono"';ctx.fillStyle=`${phase.color}70`;
+  ctx.fillText(`GRAVITY: ${currentGrav.toFixed(2)}`,W/2,42);
+
+  // Phase timer bar
+  const timerW=100,timerH=4,timerX=W/2-timerW/2;
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(timerX,48,timerW,timerH);
+  ctx.fillStyle=`${phase.color}50`;ctx.fillRect(timerX,48,timerW*(1-phaseTimer/phase.dur),timerH);
+  // Next phase hint
+  const nextPhase=PHASES[(phaseIdx+1)%PHASES.length];
+  ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';
+  ctx.fillText(`NEXT: ${nextPhase.name}`,W/2,62);
+
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText('Gravity shifts over time → player must adapt movement mid-game',W/2,H-8);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

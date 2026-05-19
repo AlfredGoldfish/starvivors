@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Reflector</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Reflector</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Player shot</div>
+      <div class="li"><span style="background:#7e57c2"></span>Reflector</div>
+      <div class="li"><span style="background:#ef5350;border-radius:50%"></span>Reflected shot</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Bounces your own projectiles back at you. Every shot you fire at this enemy gets reflected and becomes a threat. Forces the player to stop shooting and use melee, explosives, or wait for a vulnerability window. Punishes mindless spray-and-pray. The mirror shield pulses to warn you — shoot at your own risk.</div>
+    <div class="dr"><div class="dl">Defense</div><div class="dv">Reflects projectiles back toward the player</div></div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Slow approach, advances confidently</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Melee, AOE, or timed vulnerability windows</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Your own DPS becomes damage against you</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">Puzzle</span><span class="ft">RPG</span>
+    <span class="fe">e.g. Zelda (shield enemies), Hollow Knight, Enter the Gungeon</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0,px=W/2,py=H*0.7,pvx=0,pvy=0,wander=Math.random()*Math.PI*2,hitFlash=0;
+let pBullets=[],rBullets=[],parts=[],floats=[];
+let shootTimer=0,shootBurst=true,shootBurstT=0,shootBurstLen=120,shootPauseT=0;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n,s){s=s||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=rng(.3,2)*s;parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rng(10,18),ml:18,col,sz:rng(1,2)})}}
+function addFloat(x,y,t,col){floats.push({x,y,text:t,color:col,life:35,ml:35})}
+
+const reflector={x:W/2,y:H*0.3,sz:12,spd:0.3,reflectFlash:0};
+
+function update(){
+  frame++;
+  if(hitFlash>0)hitFlash--;
+  if(reflector.reflectFlash>0)reflector.reflectFlash--;
+
+  // Player AI: wander, dodge reflected bullets, keep shooting (demonstrates the problem)
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.013)*0.04+rng(-0.025,0.025);
+  ax+=Math.cos(wander)*0.08;ay+=Math.sin(wander)*0.08;
+  // Dodge reflected bullets
+  for(const b of rBullets){
+    const dx=px-b.x,dy=py-b.y,d=Math.hypot(dx,dy);
+    if(d>100||d<1)continue;
+    const dot=b.vx*(px-b.x)+b.vy*(py-b.y);
+    if(dot<=0)continue;
+    const bSpd=Math.hypot(b.vx,b.vy);
+    const cross=Math.abs(b.vx*dy-b.vy*dx)/bSpd;
+    if(cross>25)continue;
+    const ba=Math.atan2(b.vy,b.vx);
+    const side=(pvx*(-b.vy)+pvy*b.vx)>0?1:-1;
+    ax+=Math.cos(ba+Math.PI/2*side)*0.4;ay+=Math.sin(ba+Math.PI/2*side)*0.4;
+  }
+  ax+=(W/2-px)*0.0003;ay+=(H*0.65-py)*0.001;
+  if(px<PAD+30)ax+=0.15;if(px>W-PAD-30)ax-=0.15;
+  if(py<PAD+30)ay+=0.15;if(py>H-PAD-30)ay-=0.15;
+  pvx=(pvx+ax)*0.92;pvy=(pvy+ay)*0.92;
+  const vm=Math.hypot(pvx,pvy);
+  if(vm<0.5&&vm>0.01){pvx=pvx/vm*0.5;pvy=pvy/vm*0.5}
+  if(vm>2.0){pvx=pvx/vm*2.0;pvy=pvy/vm*2.0}
+  px+=pvx;py+=pvy;
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Player shoots in random bursts — pauses show reflector only reflects when shot at
+  shootTimer++;
+  if(shootPauseT>0){shootPauseT--;shootBurst=false}
+  else if(!shootBurst){shootBurst=true;shootBurstLen=90+Math.floor(Math.random()*80);shootBurstT=0}
+  if(shootBurst){
+    shootBurstT++;
+    if(shootBurstT>shootBurstLen){shootBurst=false;shootPauseT=80+Math.floor(Math.random()*60)}
+    else if(shootTimer>=18){
+      const a=Math.atan2(reflector.y-py,reflector.x-px);
+      pBullets.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:50});
+      shootTimer=0;
+    }
+  }
+
+  // Reflector slowly advances
+  const dx=px-reflector.x,dy=py-reflector.y,d=Math.hypot(dx,dy);
+  if(d>40){reflector.x+=dx/d*reflector.spd;reflector.y+=dy/d*reflector.spd}
+  reflector.x=Math.max(PAD+15,Math.min(W-PAD-15,reflector.x));
+  reflector.y=Math.max(PAD+15,Math.min(H-PAD-15,reflector.y));
+
+  // Player bullet collision with reflector — REFLECT
+  for(let i=pBullets.length-1;i>=0;i--){
+    const b=pBullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){pBullets.splice(i,1);continue}
+    if(Math.hypot(b.x-reflector.x,b.y-reflector.y)<reflector.sz+5){
+      // REFLECT — send it back toward player
+      reflector.reflectFlash=8;
+      spark(b.x,b.y,'#7e57c2',5,0.8);
+      addFloat(b.x,b.y-10,'REFLECTED','#7e57c2');
+      const ra=Math.atan2(py-b.y,px-b.x)+rng(-0.2,0.2);
+      rBullets.push({x:b.x,y:b.y,vx:Math.cos(ra)*4.5,vy:Math.sin(ra)*4.5,life:60});
+      pBullets.splice(i,1);
+    }
+  }
+
+  // Reflected bullets hit player
+  for(let i=rBullets.length-1;i>=0;i--){
+    const b=rBullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD-5||b.x>W-PAD+5||b.y<PAD-5||b.y>H-PAD+5){rBullets.splice(i,1);continue}
+    if(Math.hypot(b.x-px,b.y-py)<10){
+      hitFlash=8;spark(px,py,'#ef5350',5);
+      rBullets.splice(i,1);
+    }
+  }
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)parts.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.4;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Reflector
+  const rx=reflector.x,ry=reflector.y,rs=reflector.sz;
+  // Mirror aura
+  const pulse=Math.sin(frame*0.05)*0.1+0.9;
+  ctx.fillStyle=`rgba(126,87,194,${pulse*0.08})`;
+  ctx.beginPath();ctx.arc(rx,ry,rs+10,0,Math.PI*2);ctx.fill();
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(rx,ry+rs+3,rs*.7,rs*.2,0,0,Math.PI*2);ctx.fill();
+  // Body — octagonal
+  ctx.fillStyle=reflector.reflectFlash>0?'#b39ddb':'#7e57c2';
+  ctx.beginPath();
+  for(let i=0;i<8;i++){const a=Math.PI*2*i/8;ctx[i===0?'moveTo':'lineTo'](rx+Math.cos(a)*rs,ry+Math.sin(a)*rs)}
+  ctx.closePath();ctx.fill();
+  // Mirror surface shimmer
+  ctx.strokeStyle=`rgba(255,255,255,${pulse*0.25})`;ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<8;i++){const a=Math.PI*2*i/8;ctx[i===0?'moveTo':'lineTo'](rx+Math.cos(a)*rs,ry+Math.sin(a)*rs)}
+  ctx.closePath();ctx.stroke();
+  // Inner reflection symbol
+  ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText('↻',rx,ry+4);
+  // Flash on reflect
+  if(reflector.reflectFlash>0){
+    ctx.fillStyle=`rgba(179,157,219,${reflector.reflectFlash/8*0.3})`;
+    ctx.beginPath();ctx.arc(rx,ry,rs+15,0,Math.PI*2);ctx.fill();
+  }
+  // Label
+  ctx.font='700 8px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(126,87,194,.7)';
+  ctx.fillText('REFLECTOR',rx,ry+rs+16);
+
+  // Player bullets (green, heading toward reflector)
+  ctx.fillStyle='#66bb6a';
+  for(const b of pBullets){
+    ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2.5,b.y-b.vy*2.5);ctx.stroke();
+  }
+
+  // Reflected bullets (RED, heading back at player)
+  ctx.fillStyle='#ef5350';
+  for(const b of rBullets){
+    ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(239,83,80,.2)';ctx.beginPath();ctx.arc(b.x,b.y,6,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(239,83,80,.3)';ctx.lineWidth=1.5;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*3,b.y-b.vy*3);ctx.stroke();
+    ctx.fillStyle='#ef5350';
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(239,83,80,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  for(const fl of floats){ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(126,87,194,.65)';
+  ctx.fillText('REFLECTOR',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Player shoots → bullet hits reflector → bounces back as enemy projectile',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

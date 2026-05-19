@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Continuous Escalation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Continuous Escalation</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">No waves, no breaks, no breathing room. Enemies spawn constantly and the difficulty ramps up over time. More enemies, faster enemies, new enemy types — all blending together. The only score is how long you survive. The quintessential "one more run" format.</div>
+    <div class="dr"><div class="dl">Pacing</div><div class="dv">Continuous — never stops, always escalating</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Endless survival, score chasers, arena games</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Pure flow state, no interruptions, addictive "how far" loop</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Gradually overwhelming, heroic last stands, cathartic chaos</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Survival</span><span class="ft">Endless</span>
+    <span class="fe">e.g. Vampire Survivors, Crimsonland, Nuclear Throne (endless)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=15;
+let time=0,difficulty=1,score=0,kills=0;
+let spawnRate=80,enemySpeed=0.8;
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0;
+let enemies=[],projs=[],particles=[],xpGems=[];
+let spawnTimer=0,shootTimer=0;
+
+function spawnE(){
+  const side=Math.floor(Math.random()*4);let x,y;
+  if(side===0){x=PAD;y=PAD+Math.random()*(H-PAD*2)}
+  else if(side===1){x=W-PAD;y=PAD+Math.random()*(H-PAD*2)}
+  else if(side===2){x=PAD+Math.random()*(W-PAD*2);y=PAD}
+  else{x=PAD+Math.random()*(W-PAD*2);y=H-PAD}
+  const type=difficulty>3&&Math.random()<.2?'fast':difficulty>5&&Math.random()<.15?'tank':'normal';
+  const s=type==='tank'?10:type==='fast'?5:7;
+  const hp=type==='tank'?4:type==='fast'?1:2;
+  const sp=type==='fast'?enemySpeed*1.8:type==='tank'?enemySpeed*0.5:enemySpeed;
+  enemies.push({x,y,s,hp,speed:sp,type,flash:0});
+}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*2.5;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:18+Math.random()*12,ml:30,color:col,size:1.5+Math.random()*2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+
+function update(){
+  time++;score=Math.floor(time/6);
+  // Escalate
+  difficulty=1+Math.floor(time/300);
+  spawnRate=Math.max(10,80-difficulty*8);
+  enemySpeed=0.8+difficulty*0.15;
+
+  // Spawn
+  spawnTimer++;if(spawnTimer>=spawnRate){spawnE();if(difficulty>2&&Math.random()<.3)spawnE();if(difficulty>5&&Math.random()<.2)spawnE();spawnTimer=0}
+
+  // Player AI
+  pTimer++;if(pTimer>60||dist({x:px,y:py},pt)<15){pt={x:PAD+30+Math.random()*(W-PAD*2-60),y:PAD+30+Math.random()*(H-PAD*2-60)};pTimer=0}
+  const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2.2;py+=dy/d*2.2}
+  px=Math.max(PAD+6,Math.min(W-PAD-6,px));py=Math.max(PAD+6,Math.min(H-PAD-6,py));
+
+  // Shoot
+  shootTimer++;if(shootTimer>8&&enemies.length>0){let ne=null,nd=Infinity;for(const e of enemies){const d2=dist({x:px,y:py},e);if(d2<nd){nd=d2;ne=e}}if(ne){const a=Math.atan2(ne.y-py,ne.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*6,vy:Math.sin(a)*6,life:40});shootTimer=0}}
+
+  // Projs
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){projs.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,enemies[j].type==='fast'?'#ffca28':enemies[j].type==='tank'?'#78909c':'#ef5350',8);xpGems.push({x:enemies[j].x,y:enemies[j].y,life:120});kills++;enemies.splice(j,1)}break}}}
+
+  // Enemies
+  for(const e of enemies){const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}if(e.flash>0)e.flash--}
+
+  // XP gems
+  for(let i=xpGems.length-1;i>=0;i--){const g=xpGems[i];g.life--;const gd=dist({x:px,y:py},g);if(gd<35){g.x+=(px-g.x)*.1;g.y+=(py-g.y)*.1}if(gd<10||g.life<=0){if(gd<10)burst(g.x,g.y,'#ab47bc',4);xpGems.splice(i,1)}}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.94;p.vy*=.94;p.life--;if(p.life<=0)particles.splice(i,1)}
+
+  // Reset if overwhelmed
+  if(enemies.length>40){enemies.length=0;time=0;kills=0;difficulty=1}
+}
+
+function draw(){
+  // Background gets redder as difficulty increases
+  const r=15+difficulty*3,g2=17-difficulty,b=24-difficulty*2;
+  ctx.fillStyle=`rgb(${r},${Math.max(0,g2)},${Math.max(0,b)})`;ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // XP gems
+  for(const g of xpGems){ctx.fillStyle=`rgba(171,71,188,${.3+Math.sin(g.life*.1)*.3})`;ctx.beginPath();ctx.moveTo(g.x,g.y-4);ctx.lineTo(g.x+3,g.y);ctx.lineTo(g.x,g.y+4);ctx.lineTo(g.x-3,g.y);ctx.closePath();ctx.fill()}
+
+  // Enemies
+  for(const e of enemies){
+    const col=e.flash>0?'#fff':e.type==='fast'?'#ffca28':e.type==='tank'?'#78909c':'#ef5350';
+    ctx.fillStyle=col;
+    if(e.type==='tank'){ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+    else{ctx.beginPath();ctx.arc(e.x,e.y,e.s/2,0,Math.PI*2);ctx.fill()}
+  }
+
+  // Projs
+  ctx.fillStyle='#66bb6a';for(const p of projs){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,22);gr.addColorStop(0,'rgba(79,195,247,.15)');gr.addColorStop(1,'transparent');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,22,0,Math.PI*2);ctx.fill();
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // HUD
+  ctx.font='600 10px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.fillText(`TIME ${Math.floor(time/60)}:${(Math.floor(time/1)%60).toString().padStart(2,'0')}`,PAD+4,PAD+14);
+
+  ctx.textAlign='center';
+  // Difficulty meter — the key visual for this pattern
+  const diffColors=['#66bb6a','#66bb6a','#ffca28','#ffca28','#ff9800','#ff9800','#ef5350','#ef5350','#d32f2f','#b71c1c'];
+  const diffCol=diffColors[Math.min(difficulty-1,diffColors.length-1)];
+  ctx.fillStyle=diffCol;ctx.font='700 12px "Chakra Petch"';
+  ctx.fillText(`DANGER LV.${difficulty}`,W/2,PAD+14);
+
+  // Difficulty bar
+  ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(W/2-60,PAD+20,120,5);
+  ctx.fillStyle=diffCol;ctx.fillRect(W/2-60,PAD+20,120*Math.min(1,(time%300)/300),5);
+
+  ctx.textAlign='right';ctx.font='500 9px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText(`KILLS ${kills}`,W-PAD-4,PAD+14);
+  ctx.fillText(`ON SCREEN ${enemies.length}`,W-PAD-4,PAD+26);
+
+  // Score
+  ctx.textAlign='center';ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';
+  ctx.fillText(`SCORE ${score}`,W/2,H-PAD-4);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

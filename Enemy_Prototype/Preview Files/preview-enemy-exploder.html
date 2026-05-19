@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Exploder</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Exploder</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ff5722"></span>Instant (proximity)</div>
+      <div class="li"><span style="background:#ff9800;border-radius:50%"></span>Fuse (timed)</div>
+      <div class="li"><span style="background:rgba(255,87,34,.3);border-radius:50%"></span>Blast radius</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Two variants of the same threat. Square exploders detonate instantly when they reach the player — no warning, just run. Circle exploders have a visible fuse: they stop, flash, swell up over ~2 seconds, then detonate. The fuse type gives you a window to escape. Both create large AOE blasts. Never stand near either.</div>
+    <div class="dr"><div class="dl">Square</div><div class="dv">Detonates instantly on reaching proximity</div></div>
+    <div class="dr"><div class="dl">Circle</div><div class="dv">Starts fuse timer near player, ~2s before blast</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Low HP, dies before reaching you if focused</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Massive AOE, deadly in groups, punishes standing still</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Survival</span><span class="ft">Horde</span>
+    <span class="fe">e.g. Left 4 Dead (Boomer), Halo (Grunts), Creepers (Minecraft)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=20;
+let px=W/2,py=H/2,pVx=0,pVy=0,pWander=Math.random()*Math.PI*2,pTimer=0;
+let particles=[],hitFlash=0,shakeX=0,shakeY=0,shakeDur=0;
+let blasts=[];
+
+function makeExploder(x,y,type){
+  // type: 'instant' (square) or 'fuse' (circle)
+  return{x,y,type,size:type==='instant'?7:8,speed:type==='instant'?1.6:1.2,
+    state:'chasing',fuseTimer:0,fuseMax:120,blastR:type==='instant'?45:55,
+    flash:0,swellProg:0};
+}
+let enemies=[];
+let spawnTimer=0,spawnCD=80;
+
+function spawnOne(type){
+  const edge=Math.floor(Math.random()*4);
+  let x,y;
+  if(edge===0){x=PAD+5;y=PAD+Math.random()*(H-PAD*2)}
+  else if(edge===1){x=W-PAD-5;y=PAD+Math.random()*(H-PAD*2)}
+  else if(edge===2){x=PAD+Math.random()*(W-PAD*2);y=PAD+5}
+  else{x=PAD+Math.random()*(W-PAD*2);y=H-PAD-5}
+  enemies.push(makeExploder(x,y,type));
+}
+// Start with 1 of each
+spawnOne('instant');spawnOne('fuse');
+let nextSpawnType='instant';
+
+function burst(bx,by,col,n,sm){sm=sm||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=(.5+Math.random()*2.5)*sm;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:16+Math.random()*14,ml:30,color:col,size:1.5+Math.random()*1.5})}}
+function shake(d){shakeDur=d}
+function explode(e){
+  burst(e.x,e.y,e.type==='instant'?'#ff5722':'#ff9800',18,1.5);
+  burst(e.x,e.y,'#ffca28',8,1);
+  blasts.push({x:e.x,y:e.y,r:0,maxR:e.blastR,life:20,color:e.type==='instant'?'#ff5722':'#ff9800'});
+  shake(6);
+  if(Math.hypot(px-e.x,py-e.y)<e.blastR){hitFlash=12}
+}
+
+function update(){
+  pTimer++;spawnTimer++;
+  if(hitFlash>0)hitFlash--;
+  if(shakeDur>0){shakeDur--;shakeX=(Math.random()-.5)*4;shakeY=(Math.random()-.5)*4}else{shakeX=0;shakeY=0}
+
+  // Spawn: one at a time, alternating types after each explosion
+  if(enemies.length===0&&spawnTimer>=60){
+    spawnOne(nextSpawnType);
+    nextSpawnType=nextSpawnType==='instant'?'fuse':'instant';
+    spawnTimer=0;
+  }
+
+  // Player AI: overconfident — wanders casually, only reacts late
+  // This lets exploders get close and sometimes hit
+  let ax=0,ay=0;
+
+  // Casual wandering — the player isn't worried
+  pWander+=Math.sin(pTimer*0.012)*0.04+(Math.random()-.5)*0.03;
+  ax+=Math.cos(pWander)*0.12;ay+=Math.sin(pWander)*0.12;
+
+  for(const e of enemies){
+    const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    if(d<1)continue;
+
+    if(e.state==='fusing'){
+      // Fuse lit — NOW we care, run away (but not always fast enough)
+      const prog=e.fuseTimer/e.fuseMax;
+      if(prog>0.3){ // doesn't react immediately
+        const urgency=Math.max(0,1-d/e.blastR)*0.6;
+        ax+=dx/d*urgency;ay+=dy/d*urgency;
+      }
+    }else{
+      // Chasing — player barely reacts until very close
+      if(d<35){
+        // Oh no, too close! Panic dodge (but late)
+        ax+=dx/d*0.35;ay+=dy/d*0.35;
+      }
+      // Otherwise just keep wandering — doesn't respect the threat
+    }
+  }
+  // Flee from active blasts (reactive, after the fact)
+  for(const b of blasts){
+    const d=Math.hypot(px-b.x,py-b.y);
+    if(d<b.maxR+15&&d>1){ax+=(px-b.x)/d*0.4;ay+=(py-b.y)/d*0.4}
+  }
+
+  ax+=(W/2-px)*0.0004;ay+=(H/2-py)*0.0004;
+  if(px<PAD+35)ax+=0.15;if(px>W-PAD-35)ax-=0.15;
+  if(py<PAD+35)ay+=0.15;if(py>H-PAD-35)ay-=0.15;
+  pVx=(pVx+ax)*0.93;pVy=(pVy+ay)*0.93;
+  const vm=Math.hypot(pVx,pVy);
+  if(vm<0.5&&vm>0.01){pVx=pVx/vm*0.5;pVy=pVy/vm*0.5}
+  if(vm>1.8){pVx=pVx/vm*1.8;pVy=pVy/vm*1.8}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Enemies
+  for(let i=enemies.length-1;i>=0;i--){
+    const e=enemies[i];
+    const d=Math.hypot(px-e.x,py-e.y);
+
+    if(e.state==='chasing'){
+      const dx=px-e.x,dy=py-e.y;
+      if(d>1){e.x+=dx/d*e.speed;e.y+=dy/d*e.speed}
+      e.x=Math.max(PAD+4,Math.min(W-PAD-4,e.x));
+      e.y=Math.max(PAD+4,Math.min(H-PAD-4,e.y));
+
+      if(e.type==='instant'&&d<22){
+        // INSTANT DETONATE
+        explode(e);enemies.splice(i,1);continue;
+      }
+      if(e.type==='fuse'&&d<35){
+        // Start fuse
+        e.state='fusing';e.fuseTimer=0;
+      }
+    }
+    else if(e.state==='fusing'){
+      e.fuseTimer++;
+      e.swellProg=e.fuseTimer/e.fuseMax;
+      // Stop moving, swell up
+      e.x+=(Math.random()-.5)*e.swellProg*3;
+      e.y+=(Math.random()-.5)*e.swellProg*3;
+      if(e.fuseTimer>=e.fuseMax){
+        explode(e);enemies.splice(i,1);continue;
+      }
+    }
+  }
+
+  // Blasts
+  for(let i=blasts.length-1;i>=0;i--){
+    const b=blasts[i];
+    b.r+=(b.maxR-b.r)*0.2;b.life--;
+    if(b.life<=0)blasts.splice(i,1);
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.save();ctx.translate(shakeX,shakeY);
+  ctx.fillStyle='#0c0e18';ctx.fillRect(-5,-5,W+10,H+10);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Blast radius previews (for fusing enemies)
+  for(const e of enemies){
+    if(e.state==='fusing'){
+      const prog=e.fuseTimer/e.fuseMax;
+      ctx.strokeStyle=`rgba(255,152,0,${0.15+prog*0.3})`;ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+      ctx.beginPath();ctx.arc(e.x,e.y,e.blastR,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=`rgba(255,152,0,${prog*0.06})`;
+      ctx.beginPath();ctx.arc(e.x,e.y,e.blastR,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Blast waves
+  for(const b of blasts){
+    const alpha=b.life/20;
+    ctx.strokeStyle=b.color;ctx.globalAlpha=alpha*0.6;ctx.lineWidth=3;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.stroke();
+    ctx.fillStyle=b.color;ctx.globalAlpha=alpha*0.08;
+    ctx.beginPath();ctx.arc(b.x,b.y,b.r,0,Math.PI*2);ctx.fill();
+    ctx.globalAlpha=1;
+  }
+
+  // Enemies
+  for(const e of enemies){
+    const fusing=e.state==='fusing';
+    const prog=fusing?e.fuseTimer/e.fuseMax:0;
+    const flashOn=fusing&&Math.sin(e.fuseTimer*(0.15+prog*0.4))>0;
+    const swell=1+prog*0.6;
+
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.12)';
+    ctx.beginPath();ctx.ellipse(e.x,e.y+e.size*swell+2,e.size*swell*.6,e.size*.2,0,0,Math.PI*2);ctx.fill();
+
+    if(e.type==='instant'){
+      // SQUARE — instant detonator
+      const s=e.size*swell;
+      ctx.fillStyle=flashOn?'#fff':'#ff5722';
+      ctx.fillRect(e.x-s/2,e.y-s/2,s,s);
+      // Danger symbol
+      ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(0,0,0,.4)';
+      ctx.fillText('!',e.x,e.y+3);
+    }else{
+      // CIRCLE — fuse detonator
+      const r=e.size*swell;
+      ctx.fillStyle=flashOn?'#fff':'#ff9800';
+      ctx.beginPath();ctx.arc(e.x,e.y,r/2,0,Math.PI*2);ctx.fill();
+      // Fuse timer ring
+      if(fusing){
+        ctx.strokeStyle='#fff';ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(e.x,e.y,r/2+4,-Math.PI/2,-Math.PI/2+Math.PI*2*prog);ctx.stroke();
+        // Countdown text
+        const secsLeft=Math.ceil((e.fuseMax-e.fuseTimer)/60*10)/10;
+        ctx.font='700 8px "Chakra Petch"';ctx.textAlign='center';
+        ctx.fillStyle='rgba(255,255,255,.8)';ctx.fillText(secsLeft.toFixed(1),e.x,e.y-r/2-8);
+      }
+    }
+
+    // State label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    if(fusing){
+      ctx.fillStyle='rgba(255,152,0,.85)';ctx.fillText('FUSE LIT!',e.x,e.y+e.size*swell+12);
+    }else{
+      ctx.fillStyle=e.type==='instant'?'rgba(255,87,34,.5)':'rgba(255,152,0,.5)';
+      ctx.fillText(e.type==='instant'?'INSTANT':'FUSE',e.x,e.y+e.size+12);
+    }
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,87,34,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-6);
+  ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(PAD+60,H-PAD-12,40,4);
+
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  ctx.restore();
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,87,34,.65)';
+  ctx.fillText('EXPLODER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('■ Square = instant proximity blast  ● Circle = fuse timer then blast',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

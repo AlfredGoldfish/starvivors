@@ -24,7 +24,11 @@ export function getAvailableRunUpgrades(
   upgrades: UpgradeDefinition[] = UPGRADE_CHOICES
 ): UpgradeDefinition[] {
   const available = upgrades.filter(
-    (upgrade) => isUpgradeRelevantForWeapons(upgrade, equippedWeapons) && !isRunUpgradeAtMaxLevel(levels, upgrade)
+    (upgrade) =>
+      isUpgradeActiveInRuns(upgrade) &&
+      areUpgradePrerequisitesMet(levels, upgrade) &&
+      isUpgradeRelevantForWeapons(upgrade, equippedWeapons) &&
+      !isRunUpgradeAtMaxLevel(levels, upgrade)
   );
 
   if (available.length > 0) {
@@ -32,8 +36,19 @@ export function getAvailableRunUpgrades(
   }
 
   return upgrades.filter(
-    (upgrade) => (upgrade.category === 'passive' || upgrade.category === 'utility') && !isRunUpgradeAtMaxLevel(levels, upgrade)
+    (upgrade) =>
+      isUpgradeActiveInRuns(upgrade) &&
+      (upgrade.category === 'passive' || upgrade.category === 'utility') &&
+      !isRunUpgradeAtMaxLevel(levels, upgrade)
   );
+}
+
+export function isUpgradeActiveInRuns(upgrade: UpgradeDefinition): boolean {
+  return upgrade.status !== 'data-only';
+}
+
+export function areUpgradePrerequisitesMet(levels: RunUpgradeLevels, upgrade: UpgradeDefinition): boolean {
+  return (upgrade.prerequisites ?? []).every((prerequisite) => (levels[prerequisite.id] ?? 0) >= prerequisite.minLevel);
 }
 
 export function isUpgradeRelevantForWeapons(upgrade: UpgradeDefinition, equippedWeapons: WeaponRegistryEntry[]): boolean {

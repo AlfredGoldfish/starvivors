@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Throw</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Throw</h2><div class="tag">Core Action</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ff9800"></span>Thrown object</div>
+      <div class="li"><span style="background:rgba(255,152,0,.15)"></span>Arc trajectory</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemy</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">The player picks up and hurls objects in an arc. Two modes cycle: a lobbed bomb that arcs to a target point and explodes on impact, and a boomerang that travels out and returns to the player, hitting enemies in both directions. Physics-based trajectories with a shadow on the ground showing the landing point.</div>
+    <div class="dr"><div class="dl">Lob</div><div class="dv">Arc throw to target position, explodes on impact</div></div>
+    <div class="dr"><div class="dl">Boomerang</div><div class="dv">Travels out and returns, hits on both passes</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Area damage, can hit behind cover</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Slow windup, predictable arc, cooldown</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">Platformer</span><span class="ft">Adventure</span>
+    <span class="fe">e.g. Zelda (boomerang), Worms, Angry Birds, God of War (axe)</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0,px=W/2,py=H*0.65,pvx=0,pvy=0,wander=0;
+let enemies=[],parts=[],thrown=[];
+let throwCD=0,shakeT=0;
+const MODES=['LOB','BOOMERANG'];
+let modeIdx=0,modeTimer=0;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n,s){s=s||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=rng(.4,2.5)*s;parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rng(10,18),ml:18,col,sz:rng(1,2.5)})}}
+
+function spawnEnemy(){
+  const edge=Math.floor(Math.random()*4);let x,y;
+  if(edge===0){x=PAD;y=rng(PAD+10,H-PAD-10)}else if(edge===1){x=W-PAD;y=rng(PAD+10,H-PAD-10)}
+  else if(edge===2){x=rng(PAD+10,W-PAD-10);y=PAD}else{x=rng(PAD+10,W-PAD-10);y=H-PAD}
+  enemies.push({x,y,sz:7,hp:2,spd:rng(0.4,0.6),fl:0});
+}
+for(let i=0;i<4;i++)spawnEnemy();
+let spawnT=0;
+
+function doThrow(target){
+  if(throwCD>0)return;throwCD=80;
+  if(MODES[modeIdx]==='LOB'){
+    thrown.push({type:'lob',x:px,y:py,tx:target.x,ty:target.y,
+      prog:0,height:0,trail:[]});
+  }else{
+    const a=Math.atan2(target.y-py,target.x-px);
+    thrown.push({type:'boom',x:px,y:py,vx:Math.cos(a)*3.5,vy:Math.sin(a)*3.5,
+      returnPhase:false,dist:0,maxDist:120,spin:0,trail:[]});
+  }
+}
+
+function update(){
+  frame++;spawnT++;modeTimer++;
+  if(throwCD>0)throwCD--;
+  if(shakeT>0)shakeT--;
+  if(spawnT>100&&enemies.length<4){spawnEnemy();spawnT=0}
+  if(modeTimer>360){modeTimer=0;modeIdx=(modeIdx+1)%MODES.length}
+
+  // Player AI
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.012)*0.04+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.07;ay+=Math.sin(wander)*0.07;
+  for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<45&&d>1){ax+=(px-e.x)/d*0.12;ay+=(py-e.y)/d*0.12}}
+  ax+=(W/2-px)*0.0003;ay+=(H*0.6-py)*0.001;
+  if(px<PAD+30)ax+=0.12;if(px>W-PAD-30)ax-=0.12;if(py<PAD+30)ay+=0.12;if(py>H-PAD-30)ay-=0.12;
+  pvx=(pvx+ax)*0.92;pvy=(pvy+ay)*0.92;
+  const vm=Math.hypot(pvx,pvy);if(vm>1.2){pvx=pvx/vm*1.2;pvy=pvy/vm*1.2}
+  px+=pvx;py+=pvy;px=Math.max(PAD+10,Math.min(W-PAD-10,px));py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Throw at nearest enemy
+  if(throwCD<=0&&enemies.length>0){
+    let nearest=null,nd=Infinity;
+    for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<nd){nd=d;nearest=e}}
+    if(nearest)doThrow(nearest);
+  }
+
+  // Update thrown objects
+  for(let i=thrown.length-1;i>=0;i--){
+    const t=thrown[i];
+    if(t.type==='lob'){
+      t.prog+=0.02;
+      // Interpolate ground position
+      const gx=px+(t.tx-px)*t.prog,gy=py+(t.ty-py)*t.prog;
+      t.x=gx;t.y=gy;
+      t.height=Math.sin(t.prog*Math.PI)*50; // parabolic arc
+      t.trail.push({x:gx,y:gy-t.height,life:12});
+      if(t.prog>=1){
+        // IMPACT
+        shakeT=4;spark(t.tx,t.ty,'#ff9800',12,1.5);
+        for(let j=enemies.length-1;j>=0;j--){
+          if(Math.hypot(enemies[j].x-t.tx,enemies[j].y-t.ty)<35){
+            enemies[j].hp-=2;enemies[j].fl=6;spark(enemies[j].x,enemies[j].y,'#ff9800',4);
+            if(enemies[j].hp<=0){spark(enemies[j].x,enemies[j].y,'#ef5350',8);enemies.splice(j,1)}}}
+        thrown.splice(i,1);continue;
+      }
+    }else{
+      t.spin+=0.15;
+      if(!t.returnPhase){
+        t.x+=t.vx;t.y+=t.vy;t.dist+=Math.hypot(t.vx,t.vy);
+        t.trail.push({x:t.x,y:t.y,life:10});
+        if(t.dist>=t.maxDist){t.returnPhase=true}
+      }else{
+        const dx=px-t.x,dy=py-t.y,d=Math.hypot(dx,dy);
+        t.x+=dx/d*3.5;t.y+=dy/d*3.5;
+        t.trail.push({x:t.x,y:t.y,life:10});
+        if(d<12){thrown.splice(i,1);continue}
+      }
+      // Hit enemies on both passes
+      for(let j=enemies.length-1;j>=0;j--){
+        if(Math.hypot(t.x-enemies[j].x,t.y-enemies[j].y)<enemies[j].sz+6){
+          enemies[j].hp--;enemies[j].fl=5;spark(t.x,t.y,'#ff9800',4);
+          if(enemies[j].hp<=0){spark(enemies[j].x,enemies[j].y,'#ef5350',8);enemies.splice(j,1)}
+          break; // one hit per frame
+        }
+      }
+    }
+    // Trail decay
+    for(let j=t.trail.length-1;j>=0;j--){t.trail[j].life--;if(t.trail[j].life<=0)t.trail.splice(j,1)}
+  }
+
+  for(const e of enemies){if(e.fl>0)e.fl--;const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    if(d>1){e.x+=dx/d*e.spd;e.y+=dy/d*e.spd}}
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.9;p.vy*=.9;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  const sx=shakeT>0?rng(-2,2):0,sy=shakeT>0?rng(-2,2):0;
+  ctx.save();ctx.translate(sx,sy);
+  ctx.fillStyle='#0c0e18';ctx.fillRect(-5,-5,W+10,H+10);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.fl>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.sz/2,e.y-e.sz/2,e.sz,e.sz)}
+
+  // Thrown objects
+  for(const t of thrown){
+    // Trail
+    for(const tr of t.trail){ctx.globalAlpha=tr.life/12*0.3;ctx.fillStyle='#ff9800';
+      ctx.beginPath();ctx.arc(tr.x,tr.y,2,0,Math.PI*2);ctx.fill()}ctx.globalAlpha=1;
+
+    if(t.type==='lob'){
+      // Shadow on ground
+      ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(t.x,t.y,6,3,0,0,Math.PI*2);ctx.fill();
+      // Landing zone
+      ctx.strokeStyle='rgba(255,152,0,.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(t.tx,t.ty,35,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+      // Object in air
+      const drawY=t.y-t.height;
+      ctx.fillStyle='#ff9800';ctx.fillRect(t.x-4,drawY-4,8,8);
+    }else{
+      // Boomerang — spinning
+      ctx.save();ctx.translate(t.x,t.y);ctx.rotate(t.spin);
+      ctx.fillStyle='#ff9800';
+      ctx.beginPath();ctx.moveTo(0,-6);ctx.lineTo(8,0);ctx.lineTo(0,2);ctx.lineTo(-8,0);ctx.closePath();ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,.2)';ctx.beginPath();ctx.arc(0,0,2,0,Math.PI*2);ctx.fill();
+      ctx.restore();
+      // Direction indicator
+      if(t.returnPhase){ctx.font='500 6px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.5)';
+        ctx.fillText('RETURN',t.x,t.y-10)}
+    }
+  }
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // Mode display
+  ctx.font='700 11px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.9)';
+  ctx.fillText(MODES[modeIdx],W/2,PAD+16);
+  const bw=60,bh=3;
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(W/2-bw/2,PAD+20,bw,bh);
+  ctx.fillStyle='rgba(255,152,0,.4)';ctx.fillRect(W/2-bw/2,PAD+20,bw*(1-modeTimer/360),bh);
+
+  // Cooldown
+  if(throwCD>0){
+    ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.4)';
+    ctx.fillText('COOLDOWN',px,py+18);
+  }
+
+  ctx.restore();
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.65)';
+  ctx.fillText('THROW',W/2,H-PAD+2);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Lob = arc to target + AOE | Boomerang = out and back, hits both ways',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

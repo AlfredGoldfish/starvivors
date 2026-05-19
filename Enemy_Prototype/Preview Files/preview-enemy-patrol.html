@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Patrol</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Patrol</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ffa726"></span>Patrol (idle)</div>
+      <div class="li"><span style="background:#ef5350"></span>Patrol (alert)</div>
+      <div class="li"><span style="background:rgba(255,167,38,.2)"></span>Patrol path</div>
+      <div class="li"><span style="background:rgba(255,167,38,.15);border-radius:50%"></span>Detection range</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">An enemy that walks a fixed route, minding its own business — until the player gets too close. When alerted, it breaks from its path and chases aggressively. If the player escapes detection range, the patrol disengages and returns to its route. Rewards careful navigation and route memorization.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Fixed path when idle, aggressive chase when alerted</div></div>
+    <div class="dr"><div class="dl">Detection</div><div class="dv">Proximity-based, visible detection radius</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Predictable routes, can be avoided entirely</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Fast when alerted, blocks corridors, surprises careless players</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Stealth</span><span class="ft">RPG</span><span class="ft">Platformer</span><span class="ft">Roguelike</span>
+    <span class="fe">e.g. Metal Gear, Zelda guards, Hotline Miami, Spelunky</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=20;
+let px=W/2,py=H*0.7,pVx=0,pVy=0,pWander=0,pTimer=0;
+let particles=[],hitFlash=0;
+
+function makePatrol(path,detectR){
+  return{path,pathIdx:0,pathDir:1,x:path[0].x,y:path[0].y,size:8,
+    detectR:detectR||75,state:'patrol',chaseSpeed:2.2,patrolSpeed:0.8,
+    alertTimer:0,returnPath:null,exclamation:0};
+}
+let enemies=[];
+function spawn(){
+  enemies=[];
+  // Horizontal patrol across top
+  enemies.push(makePatrol([{x:PAD+40,y:PAD+50},{x:W-PAD-40,y:PAD+50}],80));
+  // Vertical patrol on left
+  enemies.push(makePatrol([{x:PAD+70,y:PAD+80},{x:PAD+70,y:H-PAD-60}],70));
+  // Diagonal patrol
+  enemies.push(makePatrol([{x:W-PAD-80,y:PAD+80},{x:W-PAD-50,y:H-PAD-80}],75));
+  // Square patrol in center-right
+  enemies.push(makePatrol([{x:W*0.55,y:H*0.35},{x:W*0.75,y:H*0.35},{x:W*0.75,y:H*0.6},{x:W*0.55,y:H*0.6}],70));
+}
+spawn();
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=.5+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:12+Math.random()*8,ml:20,color:col,size:1.2})}}
+
+function update(){
+  pTimer++;
+  if(hitFlash>0)hitFlash--;
+
+  // Player AI: cycle between wandering INTO patrol zones and fleeing when caught
+  let ax=0,ay=0,fleeing=false;
+  let anyChasing=false;
+  for(const e of enemies){
+    const d=Math.hypot(px-e.x,py-e.y);
+    if(e.state==='chase'){
+      anyChasing=true;
+      if(d<140){
+        // Flee from chasing enemies
+        ax+=(px-e.x)/d*0.4;ay+=(py-e.y)/d*0.4;fleeing=true;
+      }
+    }
+  }
+
+  if(!fleeing){
+    // Actively wander TOWARD the nearest patrolling enemy's route
+    // This ensures we trigger detection and show the mechanic
+    let bestTarget=null,bestDist=Infinity;
+    for(const e of enemies){
+      if(e.state==='patrol'){
+        // Target a point slightly ahead of where the patrol is heading
+        const wp=e.path[e.pathIdx];
+        const d=Math.hypot(px-wp.x,py-wp.y);
+        if(d<bestDist){bestDist=d;bestTarget={x:wp.x,y:wp.y}}
+      }
+    }
+    if(bestTarget){
+      // Walk toward the patrol waypoint (will trigger detection)
+      const dx=bestTarget.x-px,dy=bestTarget.y-py,d=Math.hypot(dx,dy);
+      if(d>5){ax+=dx/d*0.1;ay+=dy/d*0.1}
+    }
+    // Add gentle wander on top
+    pWander+=Math.sin(pTimer*0.013)*0.03+(Math.random()-.5)*0.03;
+    ax+=Math.cos(pWander)*0.04;ay+=Math.sin(pWander)*0.04;
+  }
+
+  if(px<PAD+30)ax+=0.15;if(px>W-PAD-30)ax-=0.15;
+  if(py<PAD+30)ay+=0.15;if(py>H-PAD-30)ay-=0.15;
+  const spd=fleeing?2.5:1.2;
+  pVx=(pVx+ax)*0.91;pVy=(pVy+ay)*0.91;
+  const vm=Math.hypot(pVx,pVy);if(vm>spd){pVx=pVx/vm*spd;pVy=pVy/vm*spd}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  for(const e of enemies){
+    const d=Math.hypot(px-e.x,py-e.y);
+    if(e.exclamation>0)e.exclamation--;
+
+    if(e.state==='patrol'){
+      // Walk toward current path point
+      const target=e.path[e.pathIdx];
+      const dx=target.x-e.x,dy=target.y-e.y,td=Math.hypot(dx,dy);
+      if(td>3){e.x+=dx/td*e.patrolSpeed;e.y+=dy/td*e.patrolSpeed}
+      else{
+        // Next waypoint
+        e.pathIdx+=e.pathDir;
+        if(e.pathIdx>=e.path.length){
+          if(e.path.length>2){e.pathIdx=0} // loop
+          else{e.pathDir=-1;e.pathIdx=e.path.length-2} // bounce
+        }
+        if(e.pathIdx<0){e.pathDir=1;e.pathIdx=1}
+      }
+      // Check detection
+      if(d<e.detectR){
+        e.state='chase';e.alertTimer=0;e.exclamation=30;
+        burst(e.x,e.y,'#ef5350',4);
+      }
+    }
+    else if(e.state==='chase'){
+      e.alertTimer++;
+      const dx=px-e.x,dy=py-e.y;
+      if(d>1){e.x+=dx/d*1.4;e.y+=dy/d*1.4}
+      // Hit player
+      if(d<e.size+7){hitFlash=8;burst(px,py,'#ef5350',4)}
+      // Give up after ~1 second
+      if(e.alertTimer>60){
+        e.state='returning';e.alertTimer=0;
+        let best=0,bd=Infinity;
+        for(let i=0;i<e.path.length;i++){const pd2=Math.hypot(e.path[i].x-e.x,e.path[i].y-e.y);if(pd2<bd){bd=pd2;best=i}}
+        e.pathIdx=best;
+      }
+    }
+    else if(e.state==='returning'){
+      const target=e.path[e.pathIdx];
+      const dx=target.x-e.x,dy=target.y-e.y,td=Math.hypot(dx,dy);
+      if(td>5){e.x+=dx/td*(e.patrolSpeed*1.5);e.y+=dy/td*(e.patrolSpeed*1.5)}
+      else{e.state='patrol'}
+      // Re-detect player?
+      if(d<e.detectR*0.7){e.state='chase';e.alertTimer=0;e.exclamation=30;burst(e.x,e.y,'#ef5350',3)}
+    }
+
+    e.x=Math.max(PAD+5,Math.min(W-PAD-5,e.x));
+    e.y=Math.max(PAD+5,Math.min(H-PAD-5,e.y));
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.92;p.vy*=.92;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Patrol paths (drawn behind everything)
+  for(const e of enemies){
+    ctx.strokeStyle=e.state==='patrol'?'rgba(255,167,38,.2)':'rgba(255,167,38,.08)';
+    ctx.lineWidth=1.5;ctx.setLineDash([4,4]);
+    ctx.beginPath();
+    for(let i=0;i<e.path.length;i++){
+      const p=e.path[i];
+      i===0?ctx.moveTo(p.x,p.y):ctx.lineTo(p.x,p.y);
+    }
+    if(e.path.length>2)ctx.closePath();
+    ctx.stroke();ctx.setLineDash([]);
+
+    // Waypoint dots
+    for(const p of e.path){
+      ctx.fillStyle='rgba(255,167,38,.25)';
+      ctx.beginPath();ctx.arc(p.x,p.y,3,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Detection zones
+  for(const e of enemies){
+    const alert=e.state==='chase';
+    const col=alert?'rgba(239,83,80,.1)':'rgba(255,167,38,.06)';
+    ctx.fillStyle=col;ctx.beginPath();ctx.arc(e.x,e.y,e.detectR,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=alert?'rgba(239,83,80,.25)':'rgba(255,167,38,.15)';
+    ctx.lineWidth=1;ctx.beginPath();ctx.arc(e.x,e.y,e.detectR,0,Math.PI*2);ctx.stroke();
+  }
+
+  // Enemies
+  for(const e of enemies){
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(e.x,e.y+e.size+2,e.size*.6,e.size*.2,0,0,Math.PI*2);ctx.fill();
+
+    const alert=e.state==='chase';
+    const returning=e.state==='returning';
+    ctx.fillStyle=alert?'#ef5350':returning?'#ffb74d':'#ffa726';
+    ctx.fillRect(e.x-e.size/2,e.y-e.size/2,e.size,e.size);
+
+    // Eyes — direction indicator
+    const lookAt=alert?Math.atan2(py-e.y,px-e.x):Math.atan2(e.path[e.pathIdx].y-e.y,e.path[e.pathIdx].x-e.x);
+    ctx.fillStyle='rgba(0,0,0,.5)';
+    ctx.beginPath();ctx.arc(e.x+Math.cos(lookAt)*3,e.y+Math.sin(lookAt)*2-1,2,0,Math.PI*2);ctx.fill();
+
+    // Exclamation mark on alert
+    if(e.exclamation>0){
+      ctx.font='700 14px "Chakra Petch"';ctx.textAlign='center';
+      ctx.fillStyle=`rgba(239,83,80,${Math.min(1,e.exclamation/10)})`;
+      ctx.fillText('!',e.x,e.y-e.size-6);
+    }
+
+    // State label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={patrol:'rgba(255,167,38,.55)',chase:'rgba(239,83,80,.8)',returning:'rgba(255,183,77,.55)'};
+    const lbls={patrol:'PATROLLING',chase:'ALERT!',returning:'RETURNING'};
+    ctx.fillStyle=cols[e.state];
+    ctx.fillText(lbls[e.state],e.x,e.y+e.size+13);
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(239,83,80,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-6);
+  ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(PAD+60,H-PAD-12,40,4);
+
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,167,38,.65)';
+  ctx.fillText('PATROL',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Walk route → detect player → chase → lose sight → return to path',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

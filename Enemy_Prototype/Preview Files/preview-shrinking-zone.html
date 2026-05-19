@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Shrinking Zone</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Shrinking Zone</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:rgba(239,83,80,.2)"></span>Danger Zone</div>
+      <div class="li"><span style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3)"></span>Safe Zone</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">The playable area shrinks over time. Standing outside the safe zone deals damage. The zone gets smaller at set intervals, forcing players into tighter and tighter spaces. Creates escalating tension as the arena compresses. Warning indicators show when the next shrink is coming.</div>
+    <div class="dr"><div class="dl">Trigger</div><div class="dv">Timer-based (every 30-60s) or continuous</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Battle royale, survival arenas, last-man-standing</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Forces engagement, prevents camping, natural endgame</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Mounting pressure, claustrophobia, urgent decision-making</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Survival</span><span class="ft">Battle Royale</span>
+    <span class="fe">e.g. PUBG, Fortnite, Surviv.io, Tetris 99 (conceptually)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+
+let zoneRadius=160,targetRadius=160,minRadius=30;
+let zoneCX=W/2,zoneCY=H/2;
+let shrinkTimer=0,shrinkInterval=180,shrinkAmount=25;
+let phase=0,warning=false,warningTimer=0;
+
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0,pHP=100;
+let enemies=[];
+for(let i=0;i<8;i++){const a=Math.random()*Math.PI*2,r=50+Math.random()*100;enemies.push({x:W/2+Math.cos(a)*r,y:H/2+Math.sin(a)*r,s:6+Math.random()*3,speed:.5+Math.random()*0.5})}
+let projs=[],particles=[];
+
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20,ml:20,color:col,size:2})}}
+
+let shootTimer=0;
+function update(){
+  shrinkTimer++;
+
+  // Warning before shrink
+  if(shrinkTimer>shrinkInterval-60)warning=true;
+  else warning=false;
+  if(warning)warningTimer++;else warningTimer=0;
+
+  // Shrink
+  if(shrinkTimer>=shrinkInterval&&zoneRadius>minRadius){
+    targetRadius=Math.max(minRadius,zoneRadius-shrinkAmount);
+    shrinkTimer=0;phase++;
+    if(phase>4){phase=0;zoneRadius=160;targetRadius=160;pHP=100} // reset
+  }
+  // Animate zone shrink
+  zoneRadius+=(targetRadius-zoneRadius)*0.02;
+
+  // Player AI — stay inside zone
+  pTimer++;
+  const distFromCenter=dist({x:px,y:py},{x:zoneCX,y:zoneCY});
+  if(distFromCenter>zoneRadius*0.6||pTimer>100){
+    // Move toward center area
+    pt={x:zoneCX+Math.random()*zoneRadius*0.5-zoneRadius*0.25,y:zoneCY+Math.random()*zoneRadius*0.5-zoneRadius*0.25};
+    pTimer=0;
+  }
+  const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);
+  if(d>3){px+=dx/d*1.8;py+=dy/d*1.8}
+
+  // Damage outside zone
+  if(dist({x:px,y:py},{x:zoneCX,y:zoneCY})>zoneRadius){
+    pHP=Math.max(0,pHP-0.3);
+    if(pHP<=0){pHP=100;px=zoneCX;py=zoneCY} // respawn
+  }
+
+  // Auto shoot
+  shootTimer++;
+  if(shootTimer>14&&enemies.length>0){
+    let ne=null,nd=Infinity;for(const e of enemies){const d2=dist({x:px,y:py},e);if(d2<nd){nd=d2;ne=e}}
+    if(ne&&nd<150){const a=Math.atan2(ne.y-py,ne.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:40});shootTimer=0}
+  }
+
+  // Projectiles
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0){projs.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(dist(projs[i],enemies[j])<enemies[j].s+3){burst(projs[i].x,projs[i].y,'#ef5350',6);
+      enemies[j].x=zoneCX+Math.cos(Math.random()*Math.PI*2)*zoneRadius*0.8;enemies[j].y=zoneCY+Math.sin(Math.random()*Math.PI*2)*zoneRadius*0.8;projs.splice(i,1);break}}}
+
+  // Enemies move toward player but stay in zone
+  for(const e of enemies){
+    const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);
+    if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}
+    // Push into zone
+    const edc=dist(e,{x:zoneCX,y:zoneCY});
+    if(edc>zoneRadius){const a=Math.atan2(zoneCY-e.y,zoneCX-e.x);e.x+=Math.cos(a)*2;e.y+=Math.sin(a)*2}
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.94;p.vy*=.94;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+
+  // Danger zone (outside circle = red overlay)
+  ctx.fillStyle='rgba(239,83,80,.08)';ctx.fillRect(0,0,W,H);
+  // Clear safe zone
+  ctx.save();ctx.beginPath();ctx.arc(zoneCX,zoneCY,zoneRadius,0,Math.PI*2);ctx.clip();
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+  // Grid inside safe zone
+  ctx.strokeStyle='rgba(255,255,255,.03)';for(let gx=0;gx<W;gx+=30){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke()}for(let gy=0;gy<H;gy+=30){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke()}
+  ctx.restore();
+
+  // Zone border
+  ctx.strokeStyle=warning?`rgba(239,83,80,${.4+Math.sin(warningTimer*.15)*.4})`:'rgba(255,255,255,.2)';
+  ctx.lineWidth=warning?3:1.5;ctx.beginPath();ctx.arc(zoneCX,zoneCY,zoneRadius,0,Math.PI*2);ctx.stroke();
+
+  // Next zone preview (if shrinking soon)
+  if(warning){
+    ctx.strokeStyle='rgba(239,83,80,.15)';ctx.setLineDash([4,4]);ctx.lineWidth=1;
+    ctx.beginPath();ctx.arc(zoneCX,zoneCY,targetRadius,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Enemies
+  ctx.fillStyle='#ef5350';for(const e of enemies)ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s);
+  // Projectiles
+  ctx.fillStyle='#66bb6a';for(const p of projs){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,20);gr.addColorStop(0,'rgba(79,195,247,.12)');gr.addColorStop(1,'transparent');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,20,0,Math.PI*2);ctx.fill();
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // HP bar
+  ctx.fillStyle='rgba(0,0,0,.4)';ctx.fillRect(10,10,80,6);
+  ctx.fillStyle=pHP>50?'#4fc3f7':pHP>25?'#ffca28':'#ef5350';ctx.fillRect(11,11,78*(pHP/100),4);
+
+  // Zone info
+  ctx.font='600 9px "IBM Plex Mono"';ctx.textAlign='center';
+  if(warning){ctx.fillStyle=`rgba(239,83,80,${.5+Math.sin(warningTimer*.2)*.5})`;ctx.fillText('⚠ ZONE SHRINKING ⚠',W/2,20)}
+  else{ctx.fillStyle='rgba(255,255,255,.25)';ctx.fillText(`PHASE ${phase+1} — ZONE ${Math.floor(zoneRadius)}px`,W/2,20)}
+
+  // Timer bar
+  const progress=shrinkTimer/shrinkInterval;
+  ctx.fillStyle='rgba(255,255,255,.05)';ctx.fillRect(W/2-80,28,160,4);
+  ctx.fillStyle=warning?'#ef5350':'rgba(255,255,255,.15)';ctx.fillRect(W/2-80,28,160*progress,4);
+
+  // Alive counter
+  ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';ctx.textAlign='right';
+  ctx.fillText(`${enemies.length+1} ALIVE`,W-10,16);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

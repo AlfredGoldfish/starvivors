@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Summoner</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Summoner</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Player shot</div>
+      <div class="li"><span style="background:#00bcd4"></span>Summoner</div>
+      <div class="li"><span style="background:#ff6e40;border-radius:50%"></span>Summoner shot</div>
+      <div class="li"><span style="background:#4dd0e1;border-radius:50%"></span>Summoned add</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Unlike a spawner, a summoner is a full combat enemy — it fights you directly with ranged attacks while maintaining distance. Periodically it stops, channels a summon ritual, and calls in 2-3 reinforcements from off-screen. You're fighting the summoner AND managing its adds simultaneously. Kill it first or get overwhelmed.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Keeps distance, strafes like a shooter</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">Ranged projectiles + periodic summon of adds</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Vulnerable during summon channel, adds stop spawning on death</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Dual threat: direct damage + growing add count</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">RPG</span><span class="ft">Boss</span>
+    <span class="fe">e.g. Diablo (summoner mobs), Hades (Witch), Destiny (Wizards)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=20;
+let px=W/2,py=H*0.7,pVx=0,pVy=0,pWander=Math.random()*Math.PI*2,pTimer=0;
+let pProjectiles=[],eProjectiles=[],particles=[],floats=[];
+let pShootTimer=0,hitFlash=0;
+
+const summoner={
+  x:W/2,y:H*0.25,size:12,hp:250,maxHp:250,hitFlash:0,
+  shootTimer:0,shootCD:50,muzzleFlash:0,
+  summonTimer:0,summonCD:300,summoning:false,summonProg:0,summonDur:90,
+  strafeDir:1,preferDist:130,state:'fighting',dead:false,respawnTimer:0
+};
+let adds=[];
+
+function makeAdd(x,y){
+  return{x,y,size:4,speed:0.9+Math.random()*0.3,hp:1,flash:0};
+}
+
+function burst(bx,by,col,n,sm){sm=sm||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=(.4+Math.random()*2)*sm;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:14+Math.random()*10,ml:24,color:col,size:1.2+Math.random()})}}
+function addFloat(x,y,text,color){floats.push({x,y,text,color,life:50,ml:50})}
+
+function update(){
+  pTimer++;
+  if(hitFlash>0)hitFlash--;
+  if(summoner.hitFlash>0)summoner.hitFlash--;
+  if(summoner.muzzleFlash>0)summoner.muzzleFlash--;
+
+  // Player AI: dodge enemy bullets, always moving
+  let ax=0,ay=0;
+  pWander+=Math.sin(pTimer*0.016)*0.05+(Math.random()-.5)*0.03;
+  ax+=Math.cos(pWander)*0.1;ay+=Math.sin(pWander)*0.1;
+  // Dodge enemy bullets
+  for(const b of eProjectiles){
+    const dx=px-b.x,dy=py-b.y,d=Math.hypot(dx,dy);
+    if(d>120||d<1)continue;
+    const dot=b.vx*dx+b.vy*dy;if(dot<=0)continue;
+    const bSpd=Math.hypot(b.vx,b.vy);
+    const cross=Math.abs(b.vx*dy-b.vy*dx)/bSpd;
+    if(cross>25)continue;
+    const ba=Math.atan2(b.vy,b.vx);
+    const side=(pVx*(-b.vy)+pVy*b.vx)>0?1:-1;
+    ax+=Math.cos(ba+Math.PI/2*side)*0.35;
+    ay+=Math.sin(ba+Math.PI/2*side)*0.35;
+  }
+  // Flee from close adds
+  for(const m of adds){
+    const d=Math.hypot(px-m.x,py-m.y);
+    if(d<40&&d>1){ax+=(px-m.x)/d*0.15;ay+=(py-m.y)/d*0.15}
+  }
+  ax+=(W/2-px)*0.0003;ay+=(H*0.65-py)*0.001;
+  if(px<PAD+30)ax+=0.15;if(px>W-PAD-30)ax-=0.15;
+  if(py<PAD+30)ay+=0.15;if(py>H-PAD-30)ay-=0.15;
+  pVx=(pVx+ax)*0.92;pVy=(pVy+ay)*0.92;
+  const vm=Math.hypot(pVx,pVy);
+  if(vm<0.6&&vm>0.01){pVx=pVx/vm*0.6;pVy=pVy/vm*0.6}
+  if(vm>2.0){pVx=pVx/vm*2.0;pVy=pVy/vm*2.0}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Player shoots at summoner (priority) or adds
+  pShootTimer++;
+  if(pShootTimer>=16){
+    let tx,ty;
+    if(!summoner.dead){tx=summoner.x;ty=summoner.y}
+    else if(adds.length>0){
+      let nd=Infinity,nm=null;
+      for(const m of adds){const d=Math.hypot(px-m.x,py-m.y);if(d<nd){nd=d;nm=m}}
+      if(nm){tx=nm.x;ty=nm.y}
+    }
+    if(tx!==undefined){
+      const a=Math.atan2(ty-py,tx-px);
+      pProjectiles.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:55});
+      pShootTimer=0;
+    }
+  }
+
+  // Summoner AI
+  if(!summoner.dead){
+    const d=Math.hypot(px-summoner.x,py-summoner.y);
+    const toP=Math.atan2(py-summoner.y,px-summoner.x);
+    summoner.summonTimer++;
+
+    if(summoner.summoning){
+      // Channeling summon — stays still
+      summoner.summonProg+=1/summoner.summonDur;
+      if(summoner.summonProg>=1){
+        // Summon 2-3 adds from the summoner's body, burst outward
+        const count=2+Math.floor(Math.random()*2);
+        for(let i=0;i<count;i++){
+          const a=Math.PI*2*i/count+Math.random()*0.5;
+          const dist=summoner.size+8;
+          const mx=summoner.x+Math.cos(a)*dist;
+          const my=summoner.y+Math.sin(a)*dist;
+          adds.push(makeAdd(mx,my));
+          burst(mx,my,'#4dd0e1',4);
+        }
+        addFloat(summoner.x,summoner.y-20,'SUMMONED!','#00bcd4');
+        burst(summoner.x,summoner.y,'#00bcd4',10,1.2);
+        summoner.summoning=false;summoner.summonTimer=0;summoner.summonProg=0;
+      }
+    }else{
+      // Movement: keep distance, strafe
+      if(d<summoner.preferDist-20){
+        summoner.x-=(px-summoner.x)/d*0.8;summoner.y-=(py-summoner.y)/d*0.8;
+      }else if(d>summoner.preferDist+30){
+        summoner.x+=(px-summoner.x)/d*0.5;summoner.y+=(py-summoner.y)/d*0.5;
+      }else{
+        summoner.x+=Math.cos(toP+Math.PI/2*summoner.strafeDir)*0.7;
+        summoner.y+=Math.sin(toP+Math.PI/2*summoner.strafeDir)*0.7;
+        if(Math.random()<0.005)summoner.strafeDir*=-1;
+      }
+
+      // Shoot at player
+      summoner.shootTimer++;
+      if(summoner.shootTimer>=summoner.shootCD){
+        summoner.shootTimer=0;summoner.muzzleFlash=6;
+        const a=Math.atan2(py-summoner.y,px-summoner.x)+(Math.random()-.5)*.12;
+        eProjectiles.push({x:summoner.x+Math.cos(a)*summoner.size,y:summoner.y+Math.sin(a)*summoner.size,
+          vx:Math.cos(a)*3.2,vy:Math.sin(a)*3.2,life:70});
+      }
+
+      // Start summon channel
+      if(summoner.summonTimer>=summoner.summonCD&&adds.length<8){
+        summoner.summoning=true;summoner.summonProg=0;
+        addFloat(summoner.x,summoner.y-25,'CHANNELING...','#00bcd4');
+      }
+    }
+
+    summoner.x=Math.max(PAD+15,Math.min(W-PAD-15,summoner.x));
+    summoner.y=Math.max(PAD+15,Math.min(H-PAD-15,summoner.y));
+  }else{
+    summoner.respawnTimer++;
+    if(summoner.respawnTimer>250){
+      summoner.dead=false;summoner.hp=summoner.maxHp;summoner.respawnTimer=0;
+      summoner.summonTimer=0;adds=[];
+    }
+  }
+
+  // Adds chase player
+  for(const m of adds){
+    if(m.flash>0)m.flash--;
+    const dx=px-m.x,dy=py-m.y,d=Math.hypot(dx,dy);
+    if(d>1){m.x+=dx/d*m.speed;m.y+=dy/d*m.speed}
+    m.x=Math.max(PAD+3,Math.min(W-PAD-3,m.x));m.y=Math.max(PAD+3,Math.min(H-PAD-3,m.y));
+    if(d<10)hitFlash=4;
+  }
+
+  // Player projectile collision
+  for(let i=pProjectiles.length-1;i>=0;i--){
+    const p=pProjectiles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){pProjectiles.splice(i,1);continue}
+    if(!summoner.dead&&Math.hypot(p.x-summoner.x,p.y-summoner.y)<summoner.size+4){
+      summoner.hp--;summoner.hitFlash=6;burst(p.x,p.y,'#66bb6a',4);
+      pProjectiles.splice(i,1);
+      if(summoner.hp<=0){summoner.dead=true;burst(summoner.x,summoner.y,'#00bcd4',20,1.5);
+        addFloat(summoner.x,summoner.y-20,'DESTROYED','#ffca28')}
+      continue;
+    }
+    for(let j=adds.length-1;j>=0;j--){
+      if(Math.hypot(p.x-adds[j].x,p.y-adds[j].y)<adds[j].size+3){
+        burst(adds[j].x,adds[j].y,'#4dd0e1',4);adds.splice(j,1);pProjectiles.splice(i,1);break;
+      }
+    }
+  }
+
+  // Enemy projectiles
+  for(let i=eProjectiles.length-1;i>=0;i--){
+    const b=eProjectiles[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD-5||b.x>W-PAD+5||b.y<PAD-5||b.y>H-PAD+5){eProjectiles.splice(i,1);continue}
+    if(Math.hypot(b.x-px,b.y-py)<10){hitFlash=6;burst(px,py,'#ff6e40',4);eProjectiles.splice(i,1)}
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)particles.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.45;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Summoner
+  if(!summoner.dead){
+    const sx=summoner.x,sy=summoner.y,S=summoner.size;
+    // Summon channel ring
+    if(summoner.summoning){
+      const p=summoner.summonProg;
+      ctx.strokeStyle=`rgba(0,188,212,${0.3+p*0.4})`;ctx.lineWidth=2.5;
+      ctx.beginPath();ctx.arc(sx,sy,S+8+p*15,-Math.PI/2,-Math.PI/2+Math.PI*2*p);ctx.stroke();
+      // Inner glow
+      ctx.fillStyle=`rgba(0,188,212,${p*0.15})`;
+      ctx.beginPath();ctx.arc(sx,sy,S+8+p*15,0,Math.PI*2);ctx.fill();
+      // Symbols orbiting
+      for(let i=0;i<3;i++){
+        const a=-Math.PI/2+Math.PI*2*p+i*Math.PI*2/3;
+        const r=S+10+p*12;
+        ctx.font='8px sans-serif';ctx.textAlign='center';ctx.fillStyle=`rgba(0,188,212,${p})`;
+        ctx.fillText('✦',sx+Math.cos(a)*r,sy+Math.sin(a)*r+3);
+      }
+    }
+    // Shadow
+    ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(sx,sy+S+3,S*.7,S*.2,0,0,Math.PI*2);ctx.fill();
+    // Body — diamond shape (distinct from spawner)
+    ctx.fillStyle=summoner.hitFlash>0?'#80deea':summoner.muzzleFlash>0?'#4dd0e1':'#00bcd4';
+    ctx.beginPath();ctx.moveTo(sx,sy-S);ctx.lineTo(sx+S*.7,sy);ctx.lineTo(sx,sy+S*.7);ctx.lineTo(sx-S*.7,sy);ctx.closePath();ctx.fill();
+    // Inner eye
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.arc(sx,sy-2,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(sx,sy-2,1.5,0,Math.PI*2);ctx.fill();
+    // HP bar
+    const barW=45,barH=4;
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(sx-barW/2-1,sy-S-14,barW+2,barH+2);
+    ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(sx-barW/2,sy-S-13,barW,barH);
+    ctx.fillStyle=summoner.hp>summoner.maxHp*.5?'#00bcd4':'#ef5350';
+    ctx.fillRect(sx-barW/2,sy-S-13,barW*(summoner.hp/summoner.maxHp),barH);
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.45)';
+    ctx.fillText(`${summoner.hp}/${summoner.maxHp}`,sx,sy-S-18);
+    // State
+    ctx.font='600 7px "IBM Plex Mono"';
+    ctx.fillStyle=summoner.summoning?'rgba(0,188,212,.85)':'rgba(0,188,212,.55)';
+    ctx.fillText(summoner.summoning?'CHANNELING':'FIGHTING',sx,sy+S+14);
+  }else{
+    ctx.fillStyle='rgba(0,188,212,.12)';ctx.beginPath();ctx.arc(summoner.x,summoner.y,8,0,Math.PI*2);ctx.fill();
+    ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(0,188,212,.4)';
+    ctx.fillText('DESTROYED',summoner.x,summoner.y+4);
+  }
+
+  // Adds
+  for(const m of adds){
+    ctx.fillStyle=m.flash>0?'#fff':'#4dd0e1';
+    ctx.beginPath();ctx.arc(m.x,m.y,m.size,0,Math.PI*2);ctx.fill();
+  }
+
+  // Enemy projectiles
+  for(const b of eProjectiles){
+    ctx.fillStyle='#ff6e40';ctx.beginPath();ctx.arc(b.x,b.y,3,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,110,64,.2)';ctx.beginPath();ctx.arc(b.x,b.y,5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(255,110,64,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(b.x,b.y);ctx.lineTo(b.x-b.vx*2.5,b.y-b.vy*2.5);ctx.stroke();
+  }
+
+  // Player projectiles
+  ctx.fillStyle='#66bb6a';
+  for(const p of pProjectiles){
+    ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-p.vx*2.5,p.y-p.vy*2.5);ctx.stroke();
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,110,64,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  for(const fl of floats){ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);ctx.globalAlpha=1}
+
+  // HUD
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='right';ctx.fillStyle='rgba(77,208,225,.6)';
+  ctx.fillText(`ADDS: ${adds.length}`,W-PAD-4,H-PAD-6);
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(0,188,212,.65)';
+  ctx.fillText('SUMMONER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Fights directly + channels summon ritual → calls in adds from off-screen',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

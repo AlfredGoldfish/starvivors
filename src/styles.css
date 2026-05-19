@@ -11,3 +11,92 @@ body,
 canvas {
   display: block;
 }
+
+.enemy-lab-overlay {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  width: min(360px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid rgba(168, 199, 255, 0.22);
+  border-radius: 6px;
+  background: rgba(2, 4, 10, 0.86);
+  color: #f2fbff;
+  font-family: Arial, Helvetica, sans-serif;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(8px);
+}
+
+.enemy-lab-title {
+  margin-bottom: 8px;
+  color: #73f2ff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.enemy-lab-overlay label {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 7px 0;
+  color: rgba(242, 251, 255, 0.76);
+  font-size: 12px;
+}
+
+.enemy-lab-overlay select,
+.enemy-lab-overlay input,
+.enemy-lab-overlay button {
+  min-width: 0;
+  border: 1px solid rgba(168, 199, 255, 0.22);
+  border-radius: 4px;
+  background: rgba(15, 24, 42, 0.92);
+  color: #f2fbff;
+  font: inherit;
+}
+
+.enemy-lab-overlay select,
+.enemy-lab-overlay input {
+  width: 100%;
+  padding: 5px 7px;
+}
+
+.enemy-lab-overlay input[type='range'] {
+  padding: 0;
+}
+
+.enemy-lab-overlay button {
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.enemy-lab-overlay button:hover {
+  border-color: rgba(115, 242, 255, 0.62);
+  background: rgba(22, 42, 66, 0.96);
+}
+
+.enemy-lab-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.enemy-lab-help,
+.enemy-lab-status {
+  margin-top: 9px;
+  color: rgba(242, 251, 255, 0.62);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.enemy-lab-status {
+  color: rgba(115, 242, 255, 0.86);
+}

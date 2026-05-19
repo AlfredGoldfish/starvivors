@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Shop Between Rounds</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Shop Between Rounds</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">After each wave, a shop screen opens with more items than fit on screen. Browse by scrolling through categories — weapons, consumables, stat upgrades, equipment. Hover over items to see details and compare. Buy what fits your build, skip what doesn't. Reroll for new stock. When ready, continue to the next wave.</div>
+    <div class="dr"><div class="dl">Timing</div><div class="dv">Opens between waves, player-paced (no rush)</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Wave shooters, tower defense, arena survival</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Strategic depth, build planning, meaningful gold spending</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Shopping spree, build optimization, "one more upgrade" pull</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Strategy</span><span class="ft">Survival</span>
+    <span class="fe">e.g. CoD Zombies, Brotato, Kingdom Rush, Shop Titans</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+
+const SHOP_ITEMS=[
+  {name:"Iron Sword",icon:"⚔",cost:25,cat:"Weapon",color:"#ef5350",desc:"Base damage +15%",stats:"+15% DMG"},
+  {name:"Fire Blade",icon:"🔥",cost:55,cat:"Weapon",color:"#ff5722",desc:"Attacks burn enemies",stats:"+10% DMG, Burn"},
+  {name:"Ice Staff",icon:"❄",cost:50,cat:"Weapon",color:"#00bcd4",desc:"Attacks slow enemies",stats:"+8% DMG, Slow"},
+  {name:"Thunder Axe",icon:"⚡",cost:65,cat:"Weapon",color:"#ffd600",desc:"Chain lightning on hit",stats:"+12% DMG, Chain"},
+  {name:"Health Potion",icon:"🧪",cost:12,cat:"Consumable",color:"#66bb6a",desc:"Restore 25 HP instantly",stats:"+25 HP"},
+  {name:"Shield Orb",icon:"🔮",cost:18,cat:"Consumable",color:"#42a5f5",desc:"Block next 3 hits",stats:"3 charges"},
+  {name:"Speed Tonic",icon:"💨",cost:15,cat:"Consumable",color:"#4fc3f7",desc:"Move 30% faster for 1 wave",stats:"1 wave buff"},
+  {name:"XP Scroll",icon:"📜",cost:20,cat:"Consumable",color:"#ab47bc",desc:"Gain 50 bonus XP",stats:"+50 XP"},
+  {name:"Max HP +10",icon:"❤",cost:30,cat:"Stat",color:"#e91e63",desc:"Permanently increase max HP",stats:"+10 Max HP"},
+  {name:"Crit Rate +8%",icon:"🎯",cost:35,cat:"Stat",color:"#ff9800",desc:"Higher critical hit chance",stats:"+8% Crit"},
+  {name:"Armor +2",icon:"🛡",cost:28,cat:"Stat",color:"#78909c",desc:"Reduce all incoming damage",stats:"+2 DEF"},
+  {name:"Luck +5%",icon:"🍀",cost:22,cat:"Stat",color:"#66bb6a",desc:"Better drops and crits",stats:"+5% Luck"},
+  {name:"Vampiric Ring",icon:"🦇",cost:70,cat:"Equipment",color:"#e91e63",desc:"Heal 5% of damage dealt",stats:"Lifesteal 5%"},
+  {name:"Sprint Boots",icon:"👢",cost:40,cat:"Equipment",color:"#4fc3f7",desc:"Permanent speed boost",stats:"+12% Speed"},
+  {name:"Lucky Charm",icon:"🎲",cost:45,cat:"Equipment",color:"#ffca28",desc:"Double gold from kills",stats:"2x Gold"},
+  {name:"Phoenix Feather",icon:"🔥",cost:80,cat:"Equipment",color:"#ff9800",desc:"Revive once on death",stats:"1 Extra Life"},
+];
+
+let state="fight",timer=0,wave=1,gold=80;
+let shopScroll=0,shopScrollTarget=0,hoveredIdx=-1,hoverTimer=0;
+let boughtIdxs=[],buyFlash=null;
+let inspecting=-1,inspectTimer=0;
+
+// AI behavior schedule for the shop
+let aiSchedule=[],aiStep=0;
+
+function buildAISchedule(){
+  aiSchedule=[];aiStep=0;
+  // Browse: scroll down slowly, pause, scroll more, hover some items, buy a couple
+  const totalItems=SHOP_ITEMS.length;
+  // Scroll to see first batch
+  aiSchedule.push({action:"wait",duration:30});
+  aiSchedule.push({action:"scroll",target:0,duration:20});
+  aiSchedule.push({action:"hover",idx:0,duration:40});
+  aiSchedule.push({action:"hover",idx:1,duration:50});
+  aiSchedule.push({action:"hover",idx:2,duration:35});
+  // Scroll down to consumables
+  aiSchedule.push({action:"scroll",target:1,duration:40});
+  aiSchedule.push({action:"hover",idx:4,duration:45});
+  aiSchedule.push({action:"inspect",idx:4,duration:60}); // open detail view
+  aiSchedule.push({action:"close_inspect",duration:20});
+  aiSchedule.push({action:"hover",idx:5,duration:30});
+  // Buy a consumable
+  aiSchedule.push({action:"buy",idx:4,duration:40});
+  // Scroll to stats
+  aiSchedule.push({action:"scroll",target:2,duration:40});
+  aiSchedule.push({action:"hover",idx:8,duration:40});
+  aiSchedule.push({action:"hover",idx:9,duration:50});
+  aiSchedule.push({action:"inspect",idx:9,duration:55});
+  aiSchedule.push({action:"close_inspect",duration:20});
+  aiSchedule.push({action:"buy",idx:9,duration:40});
+  // Scroll to equipment
+  aiSchedule.push({action:"scroll",target:3,duration:40});
+  aiSchedule.push({action:"hover",idx:12,duration:45});
+  aiSchedule.push({action:"inspect",idx:12,duration:60});
+  aiSchedule.push({action:"close_inspect",duration:20});
+  aiSchedule.push({action:"hover",idx:13,duration:35});
+  // Buy equipment if affordable
+  aiSchedule.push({action:"buy",idx:13,duration:40});
+  // Scroll back up to review
+  aiSchedule.push({action:"scroll",target:0,duration:50});
+  aiSchedule.push({action:"wait",duration:40});
+  // Continue to next wave
+  aiSchedule.push({action:"continue",duration:30});
+}
+
+// Fight scene (simplified)
+let px=W/2,py=H/2,enemies=[],projs=[],particles=[];
+function spawnE(n){for(let i=0;i<n;i++){const s=Math.floor(Math.random()*4);let x,y;if(s===0){x=10;y=Math.random()*H}else if(s===1){x=W-10;y=Math.random()*H}else if(s===2){x=Math.random()*W;y=10}else{x=Math.random()*W;y=H-10}enemies.push({x,y,s:6,hp:1,speed:.8,flash:0})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s2=1+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s2,vy:Math.sin(a)*s2,life:16,ml:16,color:col,size:2})}}
+
+spawnE(5);
+let pt={x:W/2,y:H/2},pTimer=0,shootTimer=0;
+
+function update(){
+  timer++;
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+  if(buyFlash){buyFlash.timer--;if(buyFlash.timer<=0)buyFlash=null}
+
+  if(state==="fight"){
+    pTimer++;if(pTimer>60||dist({x:px,y:py},pt)<15){pt={x:30+Math.random()*(W-60),y:30+Math.random()*(H-60)};pTimer=0}
+    const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2.2;py+=dy/d*2.2}
+    shootTimer++;if(shootTimer>10&&enemies.length>0){let ne=null,nd=Infinity;for(const e of enemies){const d2=dist({x:px,y:py},e);if(d2<nd){nd=d2;ne=e}}if(ne){const a=Math.atan2(ne.y-py,ne.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:40});shootTimer=0}}
+    for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;if(p.life<=0){projs.splice(i,1);continue}for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);gold+=3+Math.floor(Math.random()*4);burst(enemies[j].x,enemies[j].y,'#ef5350',5);enemies.splice(j,1);break}}}
+    for(const e of enemies){const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}if(e.flash>0)e.flash--}
+    if(enemies.length===0){state="shop_intro";timer=0}
+  }
+
+  if(state==="shop_intro"&&timer>50){state="shop";timer=0;buildAISchedule();boughtIdxs=[];inspecting=-1;shopScroll=0;shopScrollTarget=0;hoveredIdx=-1}
+
+  if(state==="shop"){
+    // Smooth scroll
+    shopScroll+=(shopScrollTarget-shopScroll)*0.08;
+
+    // Execute AI schedule
+    const step=aiSchedule[aiStep];
+    if(step){
+      step.duration--;
+      if(step.action==="scroll")shopScrollTarget=step.target*95;
+      else if(step.action==="hover")hoveredIdx=step.idx;
+      else if(step.action==="inspect"){inspecting=step.idx;inspectTimer=Math.min(inspectTimer+3,255)}
+      else if(step.action==="close_inspect"){inspecting=-1;inspectTimer=0}
+      else if(step.action==="buy"){
+        if(step.duration===20&&!boughtIdxs.includes(step.idx)&&gold>=SHOP_ITEMS[step.idx].cost){
+          gold-=SHOP_ITEMS[step.idx].cost;boughtIdxs.push(step.idx);
+          buyFlash={name:SHOP_ITEMS[step.idx].name,icon:SHOP_ITEMS[step.idx].icon,timer:35};
+          hoveredIdx=step.idx;
+        }
+      }else if(step.action==="continue"&&step.duration===1){
+        wave++;state="fight";timer=0;spawnE(4+wave*2);projs=[];
+      }
+      if(step.duration<=0)aiStep++;
+    }
+    if(inspecting>=0)inspectTimer=Math.min(inspectTimer+8,255);
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+
+  if(state==="fight"){
+    ctx.strokeStyle='rgba(255,255,255,.04)';for(let gx=0;gx<W;gx+=35){ctx.beginPath();ctx.moveTo(gx,0);ctx.lineTo(gx,H);ctx.stroke()}for(let gy=0;gy<H;gy+=35){ctx.beginPath();ctx.moveTo(0,gy);ctx.lineTo(W,gy);ctx.stroke()}
+    for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+    ctx.fillStyle='#66bb6a';for(const p of projs){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+    ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+    for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.fillRect(0,0,W,18);
+    ctx.font='600 9px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.4)';ctx.fillText(`WAVE ${wave}`,8,13);
+    ctx.textAlign='center';ctx.fillStyle='#ef5350';ctx.fillText(`${enemies.length} LEFT`,W/2,13);
+    ctx.textAlign='right';ctx.fillStyle='#ffca28';ctx.fillText(`${gold}g`,W-8,13);
+  }
+
+  if(state==="shop_intro"){
+    ctx.fillStyle=`rgba(0,0,0,${Math.min(.75,timer/25)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 18px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.textAlign='center';ctx.fillText('SHOP',W/2,H/2-10);
+    ctx.font='400 9px "Outfit"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText(`Wave ${wave} cleared! Browse upgrades.`,W/2,H/2+12);
+  }
+
+  if(state==="shop"){
+    ctx.fillStyle='rgba(6,8,18,.95)';ctx.fillRect(0,0,W,H);
+
+    // Header
+    ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(0,0,W,38);
+    ctx.font='700 13px "Chakra Petch"';ctx.fillStyle='#ffca28';ctx.textAlign='left';ctx.fillText('SHOP',15,18);
+    ctx.font='500 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,202,40,.6)';ctx.fillText(`${gold} GOLD`,15,30);
+    ctx.textAlign='right';ctx.font='400 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';
+    ctx.fillText(`Wave ${wave} complete — ${boughtIdxs.length} purchased`,W-15,18);
+    // Reroll + Continue buttons in header
+    ctx.fillStyle='rgba(171,71,188,.12)';ctx.fillRect(W-155,22,60,14);ctx.strokeStyle='rgba(171,71,188,.3)';ctx.lineWidth=1;ctx.strokeRect(W-155,22,60,14);
+    ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='#ab47bc';ctx.textAlign='center';ctx.fillText('🔄 REROLL',W-125,32);
+    ctx.fillStyle='rgba(79,195,247,.12)';ctx.fillRect(W-85,22,72,14);ctx.strokeStyle='#4fc3f7';ctx.strokeRect(W-85,22,72,14);
+    ctx.fillStyle='#4fc3f7';ctx.fillText(`WAVE ${wave+1} →`,W-49,32);
+
+    // Category tabs
+    const cats=["Weapons","Consumables","Stats","Equipment"];
+    const catColors=["#ef5350","#66bb6a","#ff9800","#e91e63"];
+    const activeTab=Math.floor(shopScroll/95);
+    for(let i=0;i<cats.length;i++){
+      const tx=15+i*115,ty=44;
+      ctx.fillStyle=i===activeTab?'rgba(255,255,255,.06)':'transparent';
+      ctx.fillRect(tx,ty,105,16);
+      ctx.fillStyle=i===activeTab?catColors[i]:'rgba(255,255,255,.2)';
+      ctx.font='500 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillText(cats[i].toUpperCase(),tx+52,ty+11);
+      if(i===activeTab){ctx.fillStyle=catColors[i];ctx.fillRect(tx,ty+15,105,1.5)}
+    }
+
+    // Items (scrollable area)
+    ctx.save();ctx.beginPath();ctx.rect(0,62,W,240);ctx.clip();
+
+    const itemW=90,itemH=105,gap=8,cols=4;
+    const startX=(W-(cols*itemW+(cols-1)*gap))/2;
+
+    for(let i=0;i<SHOP_ITEMS.length;i++){
+      const item=SHOP_ITEMS[i];
+      const col=i%cols,row=Math.floor(i/cols);
+      const ix=startX+col*(itemW+gap);
+      const iy=68+row*(itemH+gap)-shopScroll;
+
+      if(iy>H||iy+itemH<62)continue;
+
+      const bought=boughtIdxs.includes(i);
+      const hovered=hoveredIdx===i;
+      const canBuy=!bought&&gold>=item.cost;
+
+      // Item card
+      ctx.fillStyle=hovered?'rgba(255,255,255,.08)':bought?'rgba(102,187,106,.06)':'rgba(255,255,255,.03)';
+      ctx.fillRect(ix,iy,itemW,itemH);
+      ctx.strokeStyle=hovered?item.color:bought?'#66bb6a':'rgba(255,255,255,.06)';
+      ctx.lineWidth=hovered?2:1;ctx.strokeRect(ix,iy,itemW,itemH);
+
+      // Hover highlight glow
+      if(hovered&&!bought){
+        ctx.fillStyle=item.color+'15';ctx.fillRect(ix-2,iy-2,itemW+4,itemH+4);
+      }
+
+      // Category color bar
+      ctx.fillStyle=item.color;ctx.fillRect(ix,iy,itemW,3);
+
+      // Icon
+      ctx.font='22px sans-serif';ctx.textAlign='center';
+      ctx.globalAlpha=bought?.4:1;
+      ctx.fillText(item.icon,ix+itemW/2,iy+30);
+      ctx.globalAlpha=1;
+
+      // Name
+      ctx.font='500 8px "Outfit"';ctx.fillStyle=bought?'rgba(255,255,255,.3)':'#fff';
+      ctx.fillText(item.name,ix+itemW/2,iy+48);
+
+      // Category
+      ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.2)';
+      ctx.fillText(item.cat.toUpperCase(),ix+itemW/2,iy+60);
+
+      // Stats preview
+      ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle=item.color+'88';
+      ctx.fillText(item.stats,ix+itemW/2,iy+73);
+
+      // Price or SOLD
+      if(bought){
+        ctx.font='700 8px "IBM Plex Mono"';ctx.fillStyle='#66bb6a';ctx.fillText('✓ OWNED',ix+itemW/2,iy+92);
+      }else{
+        ctx.font='600 9px "IBM Plex Mono"';ctx.fillStyle=canBuy?'#ffca28':'rgba(255,255,255,.15)';
+        ctx.fillText(`${item.cost}g`,ix+itemW/2,iy+92);
+        if(!canBuy){ctx.font='400 5px "IBM Plex Mono"';ctx.fillStyle='rgba(239,83,80,.4)';ctx.fillText('NOT ENOUGH',ix+itemW/2,iy+100)}
+      }
+    }
+    ctx.restore();
+
+    // Scroll indicator
+    const totalRows=Math.ceil(SHOP_ITEMS.length/cols);
+    const maxScroll=(totalRows)*(itemH+gap)-200;
+    if(maxScroll>0){
+      const scrollRatio=shopScroll/maxScroll;
+      const barH=180,barY=68;
+      ctx.fillStyle='rgba(255,255,255,.04)';ctx.fillRect(W-6,barY,3,barH);
+      ctx.fillStyle='rgba(255,255,255,.15)';const thumbH=Math.max(20,barH*(200/((totalRows)*(itemH+gap))));
+      ctx.fillRect(W-6,barY+scrollRatio*(barH-thumbH),3,thumbH);
+    }
+
+    // Inspect overlay (detail popup)
+    if(inspecting>=0&&inspectTimer>50){
+      const item=SHOP_ITEMS[inspecting];
+      const a=Math.min(1,inspectTimer/150);
+      ctx.fillStyle=`rgba(0,0,0,${a*.6})`;ctx.fillRect(0,0,W,H);
+
+      const pw=200,ph=180,ppx=W/2-pw/2,ppy=H/2-ph/2-10;
+      ctx.globalAlpha=a;
+      ctx.fillStyle='#161825';ctx.fillRect(ppx,ppy,pw,ph);
+      ctx.strokeStyle=item.color;ctx.lineWidth=2;ctx.strokeRect(ppx,ppy,pw,ph);
+      ctx.fillStyle=item.color;ctx.fillRect(ppx,ppy,pw,4);
+
+      ctx.font='28px sans-serif';ctx.textAlign='center';ctx.fillText(item.icon,W/2,ppy+40);
+      ctx.font='700 12px "Outfit"';ctx.fillStyle='#fff';ctx.fillText(item.name,W/2,ppy+62);
+      ctx.font='500 8px "IBM Plex Mono"';ctx.fillStyle=item.color;ctx.fillText(item.cat.toUpperCase(),W/2,ppy+78);
+      ctx.font='300 9px "Outfit"';ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText(item.desc,W/2,ppy+98);
+      ctx.font='600 10px "IBM Plex Mono"';ctx.fillStyle=item.color;ctx.fillText(item.stats,W/2,ppy+118);
+
+      const canBuy=!boughtIdxs.includes(inspecting)&&gold>=item.cost;
+      ctx.fillStyle=canBuy?'rgba(255,202,40,.15)':'rgba(255,255,255,.03)';ctx.fillRect(W/2-50,ppy+130,100,22);
+      ctx.strokeStyle=canBuy?'#ffca28':'rgba(255,255,255,.08)';ctx.lineWidth=1;ctx.strokeRect(W/2-50,ppy+130,100,22);
+      ctx.font='600 8px "IBM Plex Mono"';ctx.fillStyle=canBuy?'#ffca28':'rgba(255,255,255,.2)';
+      ctx.fillText(boughtIdxs.includes(inspecting)?'OWNED':`BUY — ${item.cost}g`,W/2,ppy+144);
+
+      ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.15)';ctx.fillText('CLICK ANYWHERE TO CLOSE',W/2,ppy+170);
+      ctx.globalAlpha=1;
+    }
+
+    // Buy flash notification
+    if(buyFlash){
+      const a=buyFlash.timer/35;
+      ctx.fillStyle=`rgba(102,187,106,${a*.12})`;ctx.fillRect(0,H-35,W,35);
+      ctx.font='600 10px "Outfit"';ctx.fillStyle=`rgba(102,187,106,${a})`;ctx.textAlign='center';
+      ctx.fillText(`${buyFlash.icon} ${buyFlash.name} purchased!`,W/2,H-15);
+    }
+  }
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

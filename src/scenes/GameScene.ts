@@ -11,17 +11,16 @@ import blackHoleFullLines2Url from '../../assets/blackhole/blackhole_full2.png';
 import blackHoleFullLinesUrl from '../../assets/blackhole/blackhole_full3.png';
 import blackHoleFullLines4Url from '../../assets/blackhole/blackhole_full4.png';
 import blackHoleFullLines5Url from '../../assets/blackhole/blackhole_full5.png';
-import enemyChaserUrl from '../../assets/ships/enemy_chaser.png';
-import enemyShooterUrl from '../../assets/ships/enemy_shooter.png';
-import enemyTankUrl from '../../assets/ships/enemy_tank.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
+import upgradeCratePickupUrl from '../../assets/upgrade_create.png';
 import bulwarkShipUrl from '../../assets/ships/bulwark.png';
 import rammingShieldUrl from '../../assets/ships/ramming shield.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../data/enemies';
+import { COMBAT_NUMBER_SCALE, COMBAT_VARIANCE } from '../data/combatScale';
 import { interceptorMovement } from '../data/balance';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
@@ -41,15 +40,19 @@ import {
   type PlayerStats
 } from '../data/stats';
 import {
+  UPGRADE_CHOICES,
   type PassiveUpgradeId,
   type UpgradeId,
   type UpgradeDefinition
 } from '../data/upgrades';
-import { getWeaponDefinition, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
+import { getWeaponDefinition, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import {
   createPlayerWeaponRuntimeState,
-  getActiveMainWeaponDefinition,
+  getActiveAutoWeaponDefinition,
+  getActivePrimaryWeaponDefinition,
   getActiveSecondaryWeaponDefinition,
+  getOwnedAutoWeaponDefinitions,
+  getOwnedManualWeaponDefinitions,
   type PlayerWeaponRuntimeState,
   type PlayerWeaponUpgradeState
 } from '../systems/playerWeapons';
@@ -127,9 +130,12 @@ import {
 import {
   createDebugShipLoadoutMarkdown,
   createDebugWeaponLoadoutMarkdown,
+  createDebugPresetMarkdown,
   downloadTextFile,
   getTimestampSlug,
   loadMarkdownFile,
+  openDesktopDataFolder,
+  parseDebugPresetMarkdown,
   parseDebugShipLoadoutMarkdown,
   parseDebugWeaponLoadoutMarkdown,
   toRawDebugDelta,
@@ -165,10 +171,36 @@ import {
   updateTankEnemies as updateTankEnemiesSystem
 } from '../systems/enemies';
 import {
+  ENEMY_LAB_DEFINITIONS,
+  ENEMY_LAB_SQUADS,
+  type EnemyLabDefinition,
+  type EnemyLabSquadDefinition
+} from '../data/enemyLabDefinitions';
+import { createEnemyLabVisualTextures, getEnemyLabTextureKey } from '../systems/enemyVisuals';
+import {
+  updateEnemyLabAi as updateLiveEnemyAiSystem,
+  type EnemyLabProjectileRequest,
+  type EnemyLabScrapTarget
+} from '../systems/enemyLabAi';
+import {
+  clearEnemyLabEnemies as clearLiveEnemiesSystem,
+  destroyEnemyLabEnemy as destroyLiveEnemySystem,
+  spawnEnemyLabEnemy as spawnLiveEnemySystem,
+  spawnEnemyLabSquad as spawnLiveEnemySquadSystem,
+  type EnemyLabInstance
+} from '../systems/enemyLabSpawner';
+import {
   clearEnemyWreckageDebris as clearEnemyWreckageDebrisSystem,
   destroyEnemyWreckageDebris as destroyEnemyWreckageDebrisSystem,
   updateEnemyWreckageDebris as updateEnemyWreckageDebrisSystem
 } from '../systems/debris';
+import {
+  clearDeathShards as clearDeathShardsSystem,
+  emitDeathShards as emitDeathShardsSystem,
+  updateDeathShards as updateDeathShardsSystem,
+  type DeathShard,
+  type DeathShardStyle
+} from '../systems/deathEffects';
 import {
   clearScrapPickups as clearScrapPickupsSystem,
   destroyScrapPickup as destroyScrapPickupSystem,
@@ -183,6 +215,7 @@ import { createMainMenuScreen } from '../ui/mainMenuScreen';
 import { createResultsScreen } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
+import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
 import { destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import type {
   AsteroidBreakupProfile,
@@ -197,6 +230,7 @@ import type {
   PlayerAsteroidContact,
   PlayerDebrisContact,
   PlayerEnemyContact,
+  PlayerPickupKind,
   PlayerProjectile,
   RammingShieldCollision,
   ScrapPickup,
@@ -210,9 +244,36 @@ import type {
 } from './gameTypes';
 import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
 import { CollisionDebugOverlaySystem, type CollisionDebugOverlaySnapshot } from '../systems/collisionDebugOverlay';
-import { GameplayHudSystem, type GameplayHudSnapshot } from '../systems/gameplayHud';
+import {
+  AutoRunDiagnosticsSystem,
+  type AutoRunDiagnosticsRunState
+} from '../systems/autoRunDiagnostics';
+import {
+  getCapsuleCircleCollision,
+  getCircleCollision,
+  scaleHalfExtent,
+  scaleRadius
+} from '../systems/collisionShapes';
+import { GameplayHudSystem, type GameplayHudSnapshot, type WeaponHotbarSlotSnapshot } from '../systems/gameplayHud';
 import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
+import {
+  PerformanceProfilerSystem,
+  type PerformanceProfilerCounts,
+  type PerformanceProfilerFlags
+} from '../systems/performanceProfiler';
 import { StarfieldSystem } from '../systems/starfield';
+import {
+  cloneGameSettings,
+  loadGameSettings,
+  resetControlSettings,
+  resetGameSettings,
+  saveGameSettings,
+  type BindingSlot,
+  type GameSettings,
+  type MovementMode,
+  type RunControlAction
+} from '../systems/gameSettings';
+
 import {
   ASTEROID_BREAKUP_FEEDBACK_MS,
   ASTEROID_COLLISION_COOLDOWN_MS,
@@ -287,6 +348,9 @@ import {
   ENEMY_CONTACT_DAMAGE,
   ENEMY_CONTACT_RESTITUTION_SHARE,
   ENEMY_IMPACT_EXPLOSION_MS,
+  ENEMY_SCALING_TARGET_DAMAGE_MULTIPLIER,
+  ENEMY_SCALING_TARGET_HP_MULTIPLIER,
+  ENEMY_SCALING_TARGET_RUN_MINUTES,
   ENEMY_SPAWN_DOUBLE_SPAWN_STEP,
   ENEMY_SPAWN_ESCALATION_INTERVAL_MS,
   ENEMY_SPAWN_INITIAL_DELAY_MS,
@@ -297,6 +361,12 @@ import {
   ENEMY_SPAWN_MIN_INTERVAL_MS,
   ENEMY_SPAWN_SAFE_DISTANCE,
   ENEMY_SPAWN_WEIGHTS_BY_STEP,
+  ENEMY_SWARM_BASE_PACK_SIZE,
+  ENEMY_SWARM_FIRST_SPAWN_MS,
+  ENEMY_SWARM_INTERVAL_MS,
+  ENEMY_SWARM_MAX_PACK_SIZE,
+  ENEMY_SWARM_OVERFLOW_HARD_CAP,
+  ENEMY_SWARM_PACK_SIZE_PER_MINUTE,
   ENEMY_VELOCITY_RESPONSE,
   ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE,
   ENEMY_WRECKAGE_DEBRIS_COUNT_BY_ENEMY,
@@ -362,8 +432,12 @@ import {
   TANK_ENEMY_TEXTURE_KEY,
   TANK_ENEMY_VISUAL_ROTATION,
   THRUSTER_FADE_MS,
+  UPGRADE_CRATE_PICKUP_TEXTURE_KEY,
   XP_THRESHOLD_GROWTH
 } from './gameConstants';
+
+type LiveGameEnemy = EnemyLabInstance;
+type AnyGameEnemy = BasicEnemy | ShooterEnemy | TankEnemy | LiveGameEnemy;
 
 const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-1', url: asteroidVariant1Url },
@@ -385,6 +459,18 @@ const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
 ] as const;
 
 const UPGRADE_OVERLAY_CHOICE_COUNT = 6;
+const DEATH_SHARD_MAX_ACTIVE = 180;
+const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
+const SPECIAL_UPGRADE_DROP_CHANCE = 0.025;
+const PICKUP_MAGNET_RADIUS_MULTIPLIER = 4.2;
+
+interface EnemyTimeScaling {
+  elapsedMinutes: number;
+  difficultyMinute: number;
+  progress: number;
+  hpMultiplier: number;
+  damageMultiplier: number;
+}
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -397,29 +483,39 @@ export class GameScene extends Phaser.Scene {
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
   private upgradeButtonGraphics!: Phaser.GameObjects.Graphics;
   private upgradeButtonText!: Phaser.GameObjects.Text;
+  private resultsButtonContainer?: Phaser.GameObjects.Container;
+  private resultsButtonGraphics?: Phaser.GameObjects.Graphics;
+  private resultsButtonText?: Phaser.GameObjects.Text;
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
+  private readonly performanceProfiler = new PerformanceProfilerSystem();
+  private readonly autoRunDiagnostics = new AutoRunDiagnosticsSystem({
+    getRunState: () => this.getAutoRunDiagnosticsState(),
+    getProfiler: () => this.performanceProfiler,
+    getTimeMs: () => this.time.now
+  });
   private mainMenuScreen?: ScreenHandle;
   private shipSelectScreen?: ScreenHandle;
   private shopScreen?: ScreenHandle;
   private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: ScreenHandle;
+  private pauseMenuScreen?: ScreenHandle;
+  private pauseMenuTab: PauseMenuTab = 'pause';
   private starfield!: StarfieldSystem;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasdKeys!: Record<'W' | 'A' | 'S' | 'D', Phaser.Input.Keyboard.Key>;
-  private fireKey!: Phaser.Input.Keyboard.Key;
-  private restartKey!: Phaser.Input.Keyboard.Key;
+  private gameSettings: GameSettings = loadGameSettings();
+  private controlKeys = new Map<string, Phaser.Input.Keyboard.Key>();
+  private awaitingBinding?: { action: RunControlAction; slot: BindingSlot };
   private debugMenuKey!: Phaser.Input.Keyboard.Key;
-  private upgradeKey!: Phaser.Input.Keyboard.Key;
+  private escapeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
-  private upgradeCancelKey!: Phaser.Input.Keyboard.Key;
-  private minimapKey!: Phaser.Input.Keyboard.Key;
   private playerProjectiles: PlayerProjectile[] = [];
   private enemyProjectiles: EnemyProjectile[] = [];
   private basicEnemies: BasicEnemy[] = [];
   private shooterEnemies: ShooterEnemy[] = [];
   private tankEnemies: TankEnemy[] = [];
+  private liveEnemies: LiveGameEnemy[] = [];
   private basicAsteroids: BasicAsteroid[] = [];
   private enemyWreckageDebris: EnemyWreckageDebris[] = [];
+  private deathShards: DeathShard[] = [];
   private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
   private gameFlowState: GameFlowState = 'mainMenu';
@@ -446,9 +542,7 @@ export class GameScene extends Phaser.Scene {
   private asteroidCameraViewCount = 0;
   private asteroidWrappedViewCount = 0;
   private asteroidWrapMirrorCount = 0;
-  private playerWeapons: PlayerWeaponRuntimeState = createPlayerWeaponRuntimeState(
-    getShipDefinition(DEFAULT_SHIP_ID).startingMainWeaponId
-  );
+  private playerWeapons: PlayerWeaponRuntimeState = createPlayerWeaponRuntimeState(getShipDefinition(DEFAULT_SHIP_ID));
   private hasResolvedSecondaryWeaponChoice = false;
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
@@ -458,13 +552,24 @@ export class GameScene extends Phaser.Scene {
   private nextPlayerContactImpulseAt = 0;
   private playerBodyImpactCooldowns = new WeakMap<object, number>();
   private asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
+  private pulseVolleyCount = 0;
+  private isPulseEmergencyCharged = false;
+  private pulseLifestealWindowStartedAt = 0;
+  private pulseLifestealRestoredThisWindow = 0;
+  private pulseIonizedTargets = new WeakMap<object, number>();
+  private pulseCriticalTargets = new WeakMap<object, { stacks: number; expiresAt: number }>();
   private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
+  private nextEnemySwarmAt = 0;
   private runStartedAt = 0;
   private readonly debugState = new DebugState();
   private runUpgradeLevels: RunUpgradeLevels = createInitialRunUpgradeLevels();
   private isUpgradeOverlayOpen = false;
+  private isPauseMenuOpen = false;
+  private pauseMenuOpenedAt = 0;
+  private totalPauseMenuPauseMs = 0;
+  private suppressPauseToggleUntil = 0;
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
   private debugMenuHost?: DebugMenuHost;
@@ -475,6 +580,14 @@ export class GameScene extends Phaser.Scene {
   private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
+  private upgradeOverlayPromptText!: Phaser.GameObjects.Text;
+  private upgradeOverlayChoiceTexts: Phaser.GameObjects.Text[] = [];
+  private upgradeOverlayChoiceMetaTexts: Phaser.GameObjects.Text[] = [];
+  private upgradeOverlayChoiceHitZones: Phaser.GameObjects.Zone[] = [];
+  private normalUpgradeOverlayChoices: UpgradeOverlayChoice[] | null = null;
+  private specialUpgradeOverlayChoices: UpgradeDefinition[] | null = null;
+  private nextDebugMenuRefreshAt = 0;
+  private isDebugMenuRefreshDirty = true;
   private minimap!: MinimapSystem;
   private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
   private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
@@ -497,11 +610,9 @@ export class GameScene extends Phaser.Scene {
       this.load.image(asteroidTexture.key, asteroidTexture.url);
     }
 
-    this.load.image(BASIC_ENEMY_TEXTURE_KEY, enemyChaserUrl);
-    this.load.image(SHOOTER_ENEMY_TEXTURE_KEY, enemyShooterUrl);
-    this.load.image(TANK_ENEMY_TEXTURE_KEY, enemyTankUrl);
     this.load.image(ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY, enemyWreckageDebrisUrl);
     this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapPickupUrl);
+    this.load.image(UPGRADE_CRATE_PICKUP_TEXTURE_KEY, upgradeCratePickupUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
     this.load.image('player-ship-bulwark', bulwarkShipUrl);
     this.load.image(RAMMING_SHIELD_TEXTURE_KEY, rammingShieldUrl);
@@ -525,8 +636,11 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
     });
+    createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
     this.minimap = new MinimapSystem(this);
-    this.gameplayHud = new GameplayHudSystem(this);
+    this.gameplayHud = new GameplayHudSystem(this, {
+      assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId)
+    });
     this.collisionDebugOverlay = new CollisionDebugOverlaySystem({
       scene: this,
       getNearestWrappedRenderCoordinate: (value, cameraCenter, arenaSize) =>
@@ -571,71 +685,79 @@ export class GameScene extends Phaser.Scene {
     this.createBackgroundTextures();
     this.showMainMenu();
     this.installTestHarness();
+    this.autoRunDiagnostics.installGlobalHandlers();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
 
   update(time: number, delta: number): void {
-    this.updateDebugMenuInput(time);
+    this.beginPerformanceFrame(time, delta);
+    this.profileStep('debug-menu-input', () => this.updateDebugMenuInput(time));
 
     if (this.gameFlowState === 'mainMenu' || this.gameFlowState === 'shop' || this.gameFlowState === 'shipSelect') {
-      this.refreshDebugMenu();
+      this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.endPerformanceFrame();
       return;
     }
 
-    this.updateUpgradeOverlayInput(time);
+    this.profileStep('upgrade-overlay-input', () => this.updateUpgradeOverlayInput(time));
+    this.profileStep('pause-menu-input', () => this.updatePauseMenuInput(time));
 
     if (this.isUpgradeOverlayOpen) {
-      this.refreshDebugMenu();
-      this.updateBackgroundTiles(time);
-      this.updateGameplayHud(time);
-      this.updateMinimap();
-      this.updateDebugText(time);
+      this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('background', () => this.updateBackgroundTiles(time));
+      this.profileStep('hud', () => this.updateGameplayHud(time));
+      this.profileStep('minimap', () => this.updateMinimap());
+      this.profileStep('debug-text', () => this.updateDebugText(time));
+      this.endPerformanceFrame();
       return;
     }
 
-    if (this.isPlayerDead) {
-      this.updatePlayerMovement(time, 0);
-      this.updateCollisionDebugOverlay();
-      this.updateBackgroundTiles(time);
-      this.updateGameplayHud(time);
-      this.updateMinimap();
-      this.refreshDebugMenu();
-      this.updateDebugText(time);
+    if (this.isPauseMenuOpen) {
+      this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('background', () => this.updateBackgroundTiles(time));
+      this.profileStep('hud', () => this.updateGameplayHud(time));
+      this.profileStep('minimap', () => this.updateMinimap());
+      this.profileStep('debug-text', () => this.updateDebugText(time));
+      this.endPerformanceFrame();
       return;
     }
 
     const deltaSeconds = delta / 1000;
 
     if (this.debugState.debugGamePaused) {
-      this.updateBlackHole(time, deltaSeconds, false);
+      this.profileStep('black-hole', () => this.updateBlackHole(time, deltaSeconds, false));
     } else {
-      this.updatePlayerMovement(time, deltaSeconds);
-      this.updateEnemySpawnDirector(time);
-      this.updateBasicEnemies(deltaSeconds);
-      this.updateShooterEnemies(time, deltaSeconds);
-      this.updateTankEnemies(deltaSeconds);
-      this.updateBasicAsteroids(deltaSeconds);
-      this.updateBlackHole(time, deltaSeconds, true);
-      this.updateEnemyWreckageDebris(time, deltaSeconds);
-      this.resolveWorldImpactCollisions(time);
-      this.wrapPlayer();
-      this.updateScrapPickups(time, deltaSeconds);
-      this.updateBlackHolePlayerCollision();
-      this.updatePlayerContactDamage(time);
-      this.updateRammingShield(time, deltaSeconds);
-      this.updateActiveMainWeapon(time);
-      this.updatePlayerProjectiles(time, deltaSeconds);
-      this.updateEnemyProjectiles(time, deltaSeconds);
-      this.updatePlayerDamageVisuals(time);
+      this.profileStep('player-movement', () => this.updatePlayerMovement(time, this.isPlayerDead ? 0 : deltaSeconds));
+      this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
+      this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
+      this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
+      this.profileStep('black-hole', () => this.updateBlackHole(time, deltaSeconds, true));
+      this.profileStep('debris', () => this.updateEnemyWreckageDebris(time, deltaSeconds));
+      this.profileStep('death-shards', () => this.updateDeathShards(delta));
+      this.profileStep('world-impacts', () => this.resolveWorldImpactCollisions(time));
+      if (!this.isPlayerDead) {
+        this.profileStep('player-wrap', () => this.wrapPlayer());
+      }
+      this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
+      if (!this.isPlayerDead) {
+        this.profileStep('black-hole-player-collision', () => this.updateBlackHolePlayerCollision());
+        this.profileStep('player-contact', () => this.updatePlayerContactDamage(time));
+        this.profileStep('ramming-shield', () => this.updateRammingShield(time, deltaSeconds));
+        this.profileStep('active-main-weapon', () => this.updateActiveMainWeapon(time));
+      }
+      this.profileStep('player-projectiles', () => this.updatePlayerProjectiles(time, deltaSeconds));
+      this.profileStep('enemy-projectiles', () => this.updateEnemyProjectiles(time, deltaSeconds));
+      this.profileStep('player-damage-visuals', () => this.updatePlayerDamageVisuals(time));
     }
 
-    this.combatFeedback.update(delta, this.getCombatFeedbackSnapshot());
-    this.updateCollisionDebugOverlay();
-    this.updateBackgroundTiles(time);
-    this.updateGameplayHud(time);
-    this.updateMinimap();
-    this.refreshDebugMenu();
-    this.updateDebugText(time);
+    this.profileStep('combat-feedback', () => this.combatFeedback.update(delta, this.getCombatFeedbackSnapshot()));
+    this.profileStep('collision-overlay', () => this.updateCollisionDebugOverlay());
+    this.profileStep('background', () => this.updateBackgroundTiles(time));
+    this.profileStep('hud', () => this.updateGameplayHud(time));
+    this.profileStep('minimap', () => this.updateMinimap());
+    this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+    this.profileStep('debug-text', () => this.updateDebugText(time));
+    this.endPerformanceFrame();
   }
 
   private createInput(): void {
@@ -644,15 +766,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.input.mouse?.disableContextMenu();
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasdKeys = this.input.keyboard.addKeys('W,A,S,D') as Record<
-      'W' | 'A' | 'S' | 'D',
-      Phaser.Input.Keyboard.Key
-    >;
-    this.fireKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    this.restartKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+    this.rebuildControlKeys();
     this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
-    this.upgradeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U);
+    this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
@@ -661,8 +777,73 @@ export class GameScene extends Phaser.Scene {
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FIVE),
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SIX)
     ];
-    this.upgradeCancelKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
-    this.minimapKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.M);
+  }
+
+  private rebuildControlKeys(): void {
+    if (!this.input.keyboard) {
+      return;
+    }
+
+    this.controlKeys.clear();
+    for (const binding of Object.values(this.gameSettings.keyBindings)) {
+      for (const code of [binding.primary, binding.secondary]) {
+        const keyCode = this.getPhaserKeyCode(code);
+        if (code && keyCode !== undefined && !this.controlKeys.has(code)) {
+          this.controlKeys.set(code, this.input.keyboard.addKey(keyCode));
+        }
+      }
+    }
+  }
+
+  private getPhaserKeyCode(code: string | undefined): number | undefined {
+    if (!code) {
+      return undefined;
+    }
+
+    if (code.startsWith('Key') && code.length === 4) {
+      return Phaser.Input.Keyboard.KeyCodes[code.slice(3) as keyof typeof Phaser.Input.Keyboard.KeyCodes] as number | undefined;
+    }
+
+    if (code.startsWith('Digit') && code.length === 6) {
+      return Phaser.Input.Keyboard.KeyCodes[code.slice(5) as keyof typeof Phaser.Input.Keyboard.KeyCodes] as number | undefined;
+    }
+
+    const specialCodes: Record<string, number> = {
+      ArrowUp: Phaser.Input.Keyboard.KeyCodes.UP,
+      ArrowDown: Phaser.Input.Keyboard.KeyCodes.DOWN,
+      ArrowLeft: Phaser.Input.Keyboard.KeyCodes.LEFT,
+      ArrowRight: Phaser.Input.Keyboard.KeyCodes.RIGHT,
+      Space: Phaser.Input.Keyboard.KeyCodes.SPACE,
+      Escape: Phaser.Input.Keyboard.KeyCodes.ESC,
+      ShiftLeft: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      ShiftRight: Phaser.Input.Keyboard.KeyCodes.SHIFT,
+      ControlLeft: Phaser.Input.Keyboard.KeyCodes.CTRL,
+      ControlRight: Phaser.Input.Keyboard.KeyCodes.CTRL,
+      AltLeft: Phaser.Input.Keyboard.KeyCodes.ALT,
+      AltRight: Phaser.Input.Keyboard.KeyCodes.ALT,
+      Tab: Phaser.Input.Keyboard.KeyCodes.TAB,
+      Enter: Phaser.Input.Keyboard.KeyCodes.ENTER,
+      Backspace: Phaser.Input.Keyboard.KeyCodes.BACKSPACE
+    };
+
+    return specialCodes[code];
+  }
+
+  private isControlDown(action: RunControlAction): boolean {
+    const binding = this.gameSettings.keyBindings[action];
+    return [binding.primary, binding.secondary].some((code) => Boolean(code && this.controlKeys.get(code)?.isDown));
+  }
+
+  private isControlJustDown(action: RunControlAction): boolean {
+    const binding = this.gameSettings.keyBindings[action];
+    return [binding.primary, binding.secondary].some((code) => {
+      const key = code ? this.controlKeys.get(code) : undefined;
+      return Boolean(key && Phaser.Input.Keyboard.JustDown(key));
+    });
+  }
+
+  private isPauseJustDown(): boolean {
+    return this.isControlJustDown('pause') || Phaser.Input.Keyboard.JustDown(this.escapeKey);
   }
 
   private createDebugMenu(): void {
@@ -671,7 +852,22 @@ export class GameScene extends Phaser.Scene {
       getValues: () => this.getDebugMenuValues(),
       callbacks: {
         close: () => this.closeDebugMenu(this.time.now),
+        saveDebugPreset: () => this.runDebugMenuAction(() => this.saveDebugPreset()),
+        loadDebugPreset: () => this.runDebugMenuAction(() => this.loadDebugPreset()),
+        resetDebugTuning: () => this.runDebugMenuAction(() => this.resetDebugTuning()),
         toggleDebugPause: () => this.runDebugMenuAction(() => this.toggleDebugGamePause(this.time.now)),
+        togglePerformanceProfiler: () => this.runDebugMenuAction(() => this.performanceProfiler.toggleEnabled()),
+        startPerformanceCapture: () => this.runDebugMenuAction(() => this.performanceProfiler.startManualCapture()),
+        stopPerformanceCapture: () => this.runDebugMenuAction(() => this.performanceProfiler.stopManualCapture()),
+        exportPerformanceReport: () => this.runDebugMenuAction(() => this.exportPerformanceReport()),
+        clearPerformanceProfiler: () => this.runDebugMenuAction(() => this.performanceProfiler.clear()),
+        openReportsFolder: () => this.runDebugMenuAction(() => openDesktopDataFolder('reports')),
+        openDataFolder: () => this.runDebugMenuAction(() => openDesktopDataFolder()),
+        toggleAutoDiagnostics: () => this.runDebugMenuAction(() => this.autoRunDiagnostics.toggleEnabled()),
+        writeAutoDiagnosticReportNow: () => this.runDebugMenuAction(() => this.autoRunDiagnostics.writeManualReport()),
+        openCurrentRunDiagnosticsFolder: () =>
+          this.runDebugMenuAction(() => openDesktopDataFolder('runs', this.autoRunDiagnostics.getCurrentRunId())),
+        openRunsFolder: () => this.runDebugMenuAction(() => openDesktopDataFolder('runs')),
         toggleEnemySpawning: () => this.runDebugMenuAction(() => {
           this.debugState.enemySpawningEnabled = !this.debugState.enemySpawningEnabled;
         }),
@@ -750,13 +946,24 @@ export class GameScene extends Phaser.Scene {
         adjustDamageNumberFadeStart: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberFadeStart(delta)),
         adjustDamageNumberAlpha: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberAlpha(delta)),
         resetCombatFeedbackTuning: () => this.runDebugMenuAction(() => this.debugState.resetCombatFeedbackTuning()),
+        adjustCollisionShapeScale: (key, delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustCollisionShapeScale(key, delta)),
+        setCollisionShapeScale: (key, value) =>
+          this.runDebugMenuAction(() => this.debugState.setCollisionShapeScale(key, value)),
+        resetCollisionShapeTuning: () => this.runDebugMenuAction(() => this.debugState.resetCollisionShapeTuning()),
+        adjustDeathShardTuning: (style, key, delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustDeathShardTuning(style, key, delta)),
+        setDeathShardTuning: (style, key, value) =>
+          this.runDebugMenuAction(() => this.debugState.setDeathShardTuning(style, key, value)),
+        resetDeathShardTuning: () => this.runDebugMenuAction(() => this.debugState.resetDeathShardTuning()),
+        testDeathShardEffect: (style) => this.runDebugMenuAction(() => this.testDeathShardEffect(style)),
         adjustWeaponDamage: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponDamageMultiplier(delta)),
         adjustWeaponFireRate: (delta) => this.runDebugMenuAction(() => this.debugState.adjustWeaponFireRateMultiplier(delta)),
         adjustWeaponCooldownSeconds: (deltaSeconds) =>
           this.runDebugMenuAction(() =>
             this.debugState.adjustWeaponCooldownSeconds(
-              this.getActiveMainWeaponBaseCooldownMs() / 1000,
-              this.getActiveMainWeaponCooldownMs() / 1000,
+              this.getActiveAutoWeaponBaseCooldownMs() / 1000,
+              this.getActiveAutoWeaponCooldownMs() / 1000,
               deltaSeconds
             )
           ),
@@ -837,7 +1044,8 @@ export class GameScene extends Phaser.Scene {
 
   private runDebugMenuAction(action: () => void): void {
     action();
-    this.refreshDebugMenu();
+    this.isDebugMenuRefreshDirty = true;
+    this.refreshDebugMenu(this.time.now, true);
     this.updateCollisionDebugOverlay();
   }
 
@@ -851,7 +1059,7 @@ export class GameScene extends Phaser.Scene {
       this.showShipSelect();
     } else if (this.gameFlowState === 'shop') {
       this.showShop(this.shopBackTarget);
-    } else if (this.gameFlowState === 'results') {
+    } else if (this.gameFlowState === 'results' && this.resultsScreen) {
       this.showResultsScreen();
     } else {
       this.updateGameplayHud(this.time.now);
@@ -873,11 +1081,95 @@ export class GameScene extends Phaser.Scene {
     const pauseDurationMs = Math.max(0, time - this.debugMenuOpenedAt);
     this.totalDebugPauseMs += pauseDurationMs;
     this.nextEnemySpawnAt += pauseDurationMs;
+    this.nextEnemySwarmAt += pauseDurationMs;
     this.debugMenuOpenedAt = 0;
   }
 
-  private refreshDebugMenu(): void {
-    this.debugMenuHost?.refresh();
+  private refreshDebugMenu(time = this.time.now, force = false): void {
+    if (!this.debugMenuHost?.isOpen()) {
+      this.isDebugMenuRefreshDirty = true;
+      return;
+    }
+
+    if (!force && !this.isDebugMenuRefreshDirty && time < this.nextDebugMenuRefreshAt) {
+      return;
+    }
+
+    this.debugMenuHost.refresh();
+    this.isDebugMenuRefreshDirty = false;
+    this.nextDebugMenuRefreshAt = time + DEBUG_UPDATE_INTERVAL_MS;
+  }
+
+  private beginPerformanceFrame(time: number, delta: number): void {
+    this.performanceProfiler.beginFrame({
+      timeMs: time,
+      deltaMs: delta,
+      fps: this.game.loop.actualFps,
+      counts: this.getPerformanceProfilerCounts(),
+      flags: this.getPerformanceProfilerFlags()
+    });
+  }
+
+  private profileStep<T>(name: string, callback: () => T): T {
+    return this.performanceProfiler.measure(name, callback);
+  }
+
+  private endPerformanceFrame(): void {
+    this.performanceProfiler.endFrame(this.getPerformanceProfilerCounts());
+    this.autoRunDiagnostics.update();
+  }
+
+  private getAutoRunDiagnosticsState(): AutoRunDiagnosticsRunState {
+    return {
+      selectedShipName: this.getSelectedShipDefinition().displayName,
+      runTimeSeconds: this.getSurvivalElapsedMs(this.time.now) / 1000,
+      playerHull: this.playerHull,
+      playerMaxHull: this.getPlayerMaxHull(),
+      playerXp: this.playerXp,
+      bankedUpgrades: this.bankedUpgrades,
+      runScrapTotal: this.runScrapTotal,
+      totalCredits: this.totalCredits,
+      activeWeaponName: this.getActiveAutoWeaponDefinition().displayName,
+      mainWeaponUpgradeSummary: this.getActiveAutoWeaponUpgradeHudSummary(),
+      counts: this.getPerformanceProfilerCounts()
+    };
+  }
+
+  private getPerformanceProfilerCounts(): PerformanceProfilerCounts {
+    return {
+      chasers: this.basicEnemies.length,
+      shooters: this.shooterEnemies.length,
+      tanks: this.tankEnemies.length,
+      asteroids: this.basicAsteroids.length,
+      debris: this.enemyWreckageDebris.length,
+      scrap: this.scrapPickups.length,
+      playerProjectiles: this.playerProjectiles.length,
+      enemyProjectiles: this.enemyProjectiles.length,
+      deathShards: this.deathShards.length
+    };
+  }
+
+  private getPerformanceProfilerFlags(): PerformanceProfilerFlags {
+    return {
+      flowState: this.gameFlowState,
+      debugMenuOpen: this.debugMenuHost?.isOpen() ?? false,
+      debugPaused: this.debugState.debugGamePaused,
+      upgradeOverlayOpen: this.isUpgradeOverlayOpen,
+      collisionDebugEnabled: this.debugState.collisionDebugEnabled,
+      blackHoleActive: Boolean(this.blackHole)
+    };
+  }
+
+  private exportPerformanceReport(): void {
+    const markdown = this.performanceProfiler.createMarkdownReport({
+      savedAt: new Date(),
+      selectedShipName: this.getSelectedShipDefinition().displayName,
+      runTimeSeconds: this.getSurvivalElapsedMs(this.time.now) / 1000,
+      playerHull: this.playerHull,
+      playerMaxHull: this.getPlayerMaxHull()
+    });
+
+    downloadTextFile(`starvivors-lag-report-${getTimestampSlug()}.md`, markdown, 'text/markdown', 'reports');
   }
 
   private getDebugMenuValues() {
@@ -885,7 +1177,7 @@ export class GameScene extends Phaser.Scene {
 
     return this.debugState.createMenuValues({
       selectedShipName: this.getSelectedShipDefinition().displayName,
-      weaponCooldownSeconds: this.getActiveMainWeaponCooldownMs() / 1000,
+      weaponCooldownSeconds: this.getActiveAutoWeaponCooldownMs() / 1000,
       ...this.starfield.getDebugValues(),
       blackHoleLensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
       blackHoleLensDensity: this.debugBlackHoleLensDensity,
@@ -911,6 +1203,12 @@ export class GameScene extends Phaser.Scene {
       blackHoleAddPngTextureKey: this.debugAddBlackHolePngTextureKey,
       blackHoleAddPngTextureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey],
       debugGamePaused: this.debugState.debugGamePaused,
+      performanceProfilerEnabled: this.performanceProfiler.isEnabled(),
+      performanceProfilerManualActive: this.performanceProfiler.isManualCaptureActive(),
+      performanceProfilerSummary: this.performanceProfiler.getMenuSummary(),
+      autoDiagnosticsEnabled: this.autoRunDiagnostics.isEnabled(),
+      autoDiagnosticsActive: this.autoRunDiagnostics.isActive(),
+      autoDiagnosticsSummary: this.autoRunDiagnostics.getMenuSummary(),
       activeEnemies: this.getActiveEnemyCount(),
       activeAsteroids: this.basicAsteroids.length,
       activeDebris: this.enemyWreckageDebris.length,
@@ -1027,10 +1325,7 @@ export class GameScene extends Phaser.Scene {
         const enemy = this.basicEnemies[0];
 
         if (enemy && !this.isPlayerDead) {
-          enemy.body.destroy(true);
-          enemy.wrapMirrorBody.destroy(true);
-          this.basicEnemies.splice(0, 1);
-          this.grantXp(basicEnemy.stats.xpValue);
+          this.destroyEnemyWithRewards(enemy, this.basicEnemies, 0, 'chaser');
         }
 
         return this.getTestHarnessState();
@@ -1077,6 +1372,10 @@ export class GameScene extends Phaser.Scene {
 
         return this.getTestHarnessState();
       },
+      assignWeaponSlot: (slot: WeaponSlotType, weaponId: WeaponId) => {
+        this.assignWeaponHotbarSlot(slot, weaponId);
+        return this.getTestHarnessState();
+      },
       clickUpgradeButton: () => {
         this.handleUpgradeButtonClick();
         return this.getTestHarnessState();
@@ -1109,8 +1408,22 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessSecondaryWeapons();
     }
 
+    if (query.get('testHarness') === 'weaponHotbar') {
+      this.runTestHarnessWeaponHotbar();
+    }
+
     if (query.get('testHarness') === 'velocityLimiter') {
       this.runTestHarnessVelocityLimiter();
+    }
+
+    if (query.get('testHarness') === 'enemyScaling') {
+      this.startRun();
+      this.runTestHarnessEnemyScaling();
+    }
+
+    if (query.get('testHarness') === 'combatScale') {
+      this.startRun();
+      this.runTestHarnessCombatScale();
     }
   }
 
@@ -1137,6 +1450,11 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
+      autoWeaponId: this.playerWeapons.activeAutoWeaponId,
+      primaryWeaponId: this.playerWeapons.activePrimaryWeaponId,
+      secondaryWeaponId: this.playerWeapons.activeSecondaryWeaponId,
+      ownedAutoWeaponIds: [...this.playerWeapons.ownedAutoWeaponIds],
+      ownedManualWeaponIds: [...this.playerWeapons.ownedManualWeaponIds],
       pulseDamageLevel: this.getRunUpgradeLevelById('pulse_damage'),
       pulseFireRateLevel: this.getRunUpgradeLevelById('pulse_fire_rate'),
       pulseVelocityLevel: this.getRunUpgradeLevelById('pulse_velocity'),
@@ -1147,9 +1465,9 @@ export class GameScene extends Phaser.Scene {
       velocityLimiterActiveLevel: this.getActivePermanentUpgradeLevel('velocity-limiter'),
       playerVelocityLimit: this.getPlayerVelocityLimit(),
       playerSpeed: this.playerVelocity.length(),
-      weaponDamageMultiplier: this.getActiveMainWeaponDamageMultiplier(),
-      pulseCooldownMs: this.getActiveMainWeaponCooldownMs(),
-      pulseProjectileSpeed: this.getActiveMainWeaponProjectileSpeed(),
+      weaponDamageMultiplier: this.getActiveAutoWeaponDamageMultiplier(),
+      pulseCooldownMs: this.getActiveAutoWeaponCooldownMs(),
+      pulseProjectileSpeed: this.getActiveAutoWeaponProjectileSpeed(),
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
       playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
@@ -1164,6 +1482,64 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  private runTestHarnessCombatScale(): void {
+    const basePulseDamage = this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'auto').projectile?.damage ?? 0;
+    this.runUpgradeLevels = {
+      ...this.runUpgradeLevels,
+      pulse_flat_damage_common: 1
+    };
+    const flatPulseDamage = this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'auto').projectile?.damage ?? 0;
+    const baselineChaser = this.createScaledEnemyStats('chaser', this.runStartedAt, { applyVariance: false });
+    const varianceSamples = Array.from({ length: 24 }, () =>
+      this.createScaledEnemyStats('chaser', this.runStartedAt, { applyVariance: true })
+    );
+    const minVarianceHp = Math.round(basicEnemy.stats.maxHull * (1 - COMBAT_VARIANCE));
+    const maxVarianceHp = Math.round(basicEnemy.stats.maxHull * (1 + COMBAT_VARIANCE));
+    const varianceWithinRange = varianceSamples.every(
+      (sample) => sample.maxHull >= minVarianceHp && sample.maxHull <= maxVarianceHp
+    );
+    const varianceApplied = varianceSamples.some((sample) => sample.maxHull !== basicEnemy.stats.maxHull);
+    const flatRewards =
+      baselineChaser.xpValue === basicEnemy.stats.xpValue &&
+      baselineChaser.scrapValue === basicEnemy.stats.scrapValue;
+    const wholeNumbers =
+      Number.isInteger(basePulseDamage) &&
+      Number.isInteger(flatPulseDamage) &&
+      Number.isInteger(baselineChaser.maxHull) &&
+      Number.isInteger(this.getPlayerMaxHull());
+
+    const pass =
+      basePulseDamage === 1 * COMBAT_NUMBER_SCALE &&
+      flatPulseDamage === 1 * COMBAT_NUMBER_SCALE + 5 &&
+      baselineChaser.maxHull === 4 * COMBAT_NUMBER_SCALE &&
+      this.getPlayerMaxHull() === 40 * COMBAT_NUMBER_SCALE &&
+      varianceWithinRange &&
+      varianceApplied &&
+      flatRewards &&
+      wholeNumbers;
+
+    document.body.setAttribute('data-starvivors-combat-scale-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-combat-scale-harness-details',
+      JSON.stringify({
+        basePulseDamage,
+        flatPulseDamage,
+        baselineChaser,
+        playerMaxHull: this.getPlayerMaxHull(),
+        minVarianceHp,
+        maxVarianceHp,
+        varianceSamples: varianceSamples.map((sample) => ({
+          maxHull: sample.maxHull,
+          contactDamage: sample.contactDamage
+        })),
+        varianceWithinRange,
+        varianceApplied,
+        flatRewards,
+        wholeNumbers
+      })
+    );
+  }
+
   private runTestHarnessSmoke(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -1173,6 +1549,20 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const selectUpgradeById = (upgradeId: UpgradeId): StarvivorsTestHarnessState => {
+      const upgrade = UPGRADE_CHOICES.find((candidate) => candidate.id === upgradeId);
+      if (!upgrade) {
+        return this.getTestHarnessState();
+      }
+
+      if (!this.isUpgradeOverlayOpen && this.bankedUpgrades > 0 && !this.isPlayerDead) {
+        this.openUpgradeOverlay(this.time.now);
+      }
+
+      this.selectUpgrade(upgrade, this.time.now);
+      return this.getTestHarnessState();
+    };
+
     const initial = harness.getState();
     const enemyXp = harness.destroyFirstEnemy();
     const rollover = harness.grantXp(95);
@@ -1180,14 +1570,14 @@ export class GameScene extends Phaser.Scene {
     const buttonOpened = harness.clickUpgradeButton();
     harness.closeUpgradeOverlay();
     const opened = harness.openUpgradeOverlay();
-    const damageUpgrade = harness.selectPulseUpgrade(1);
-    const fireRateUpgrade = harness.selectPulseUpgrade(2);
+    const damageUpgrade = selectUpgradeById('pulse_damage');
+    const fireRateUpgrade = selectUpgradeById('pulse_fire_rate');
     const rebanked = harness.grantXp(10);
-    const velocityUpgrade = harness.selectPulseUpgrade(3);
+    const velocityUpgrade = selectUpgradeById('pulse_velocity');
     const passiveBank = harness.grantXp(900);
-    const hullUpgrade = harness.selectPulseUpgrade(4);
-    const engineUpgrade = harness.selectPulseUpgrade(5);
-    const damageControlUpgrade = harness.selectPulseUpgrade(6);
+    const hullUpgrade = selectUpgradeById('hull-plating');
+    const engineUpgrade = selectUpgradeById('engine-tuning');
+    const damageControlUpgrade = selectUpgradeById('damage-control');
     const minimapOff = harness.toggleMinimap();
     const minimapOn = harness.toggleMinimap();
     const dead = harness.killPlayer();
@@ -1210,26 +1600,30 @@ export class GameScene extends Phaser.Scene {
       buttonOpened.isUpgradeOverlayOpen &&
       opened.isUpgradeOverlayOpen &&
       damageUpgrade.bankedUpgrades === 1 &&
-      !damageUpgrade.isUpgradeOverlayOpen &&
+      damageUpgrade.isUpgradeOverlayOpen &&
       damageUpgrade.pulseDamageLevel === 1 &&
       damageUpgrade.weaponDamageMultiplier === 1.25 &&
       fireRateUpgrade.bankedUpgrades === 0 &&
+      !fireRateUpgrade.isUpgradeOverlayOpen &&
       fireRateUpgrade.pulseFireRateLevel === 1 &&
-      fireRateUpgrade.pulseCooldownMs === 1100 &&
+      fireRateUpgrade.pulseCooldownMs === 748 &&
       rebanked.bankedUpgrades === 1 &&
       velocityUpgrade.bankedUpgrades === 0 &&
       velocityUpgrade.pulseVelocityLevel === 1 &&
       velocityUpgrade.pulseProjectileSpeed === 1176 &&
       passiveBank.bankedUpgrades === 3 &&
       hullUpgrade.bankedUpgrades === 2 &&
+      hullUpgrade.isUpgradeOverlayOpen &&
       hullUpgrade.hullPlatingLevel === 1 &&
       hullUpgrade.maxHull === PLAYER_MAX_HULL + HULL_PLATING_MAX_HULL_BONUS &&
       hullUpgrade.hull === PLAYER_MAX_HULL + HULL_PLATING_REPAIR &&
       engineUpgrade.bankedUpgrades === 1 &&
+      engineUpgrade.isUpgradeOverlayOpen &&
       engineUpgrade.engineTuningLevel === 1 &&
       engineUpgrade.playerAccelerationMultiplier === 1.08 &&
       engineUpgrade.playerMaxSpeed === Math.round(interceptorMovement.maxSpeed * 1.04) &&
       damageControlUpgrade.bankedUpgrades === 0 &&
+      !damageControlUpgrade.isUpgradeOverlayOpen &&
       damageControlUpgrade.damageControlLevel === 1 &&
       damageControlUpgrade.playerInvulnerabilityMs === PLAYER_DAMAGE_INVULNERABILITY_MS + DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS &&
       !minimapOff.isMinimapVisible &&
@@ -1280,6 +1674,54 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessEnemyScaling(): void {
+    const samples = [0, 5, 10, 15].map((minutes) => ({
+      minutes,
+      scaling: this.getEnemyTimeScalingForElapsedMs(minutes * 60000),
+      chaser: this.createScaledEnemyStats('chaser', this.runStartedAt + minutes * 60000, { applyVariance: false }),
+      shooter: this.createScaledEnemyStats('shooter', this.runStartedAt + minutes * 60000, { applyVariance: false }),
+      tank: this.createScaledEnemyStats('tank', this.runStartedAt + minutes * 60000, { applyVariance: false })
+    }));
+    const initial = samples[0];
+    const target = samples[3];
+    const clonedStats = initial.chaser !== basicEnemy.stats && target.shooter !== shooterEnemy.stats && target.tank !== tankEnemy.stats;
+    const flatRewards =
+      target.chaser.xpValue === basicEnemy.stats.xpValue &&
+      target.chaser.scrapValue === basicEnemy.stats.scrapValue &&
+      target.shooter.xpValue === shooterEnemy.stats.xpValue &&
+      target.shooter.scrapValue === shooterEnemy.stats.scrapValue &&
+      target.tank.xpValue === tankEnemy.stats.xpValue &&
+      target.tank.scrapValue === tankEnemy.stats.scrapValue;
+    const pass =
+      initial.scaling.hpMultiplier === 1 &&
+      initial.scaling.damageMultiplier === 1 &&
+      Math.abs(target.scaling.hpMultiplier - ENEMY_SCALING_TARGET_HP_MULTIPLIER) < 0.001 &&
+      Math.abs(target.scaling.damageMultiplier - ENEMY_SCALING_TARGET_DAMAGE_MULTIPLIER) < 0.001 &&
+      target.chaser.maxHull === Math.round(basicEnemy.stats.maxHull * ENEMY_SCALING_TARGET_HP_MULTIPLIER) &&
+      target.shooter.attackDamage === shooterEnemy.stats.attackDamage * ENEMY_SCALING_TARGET_DAMAGE_MULTIPLIER &&
+      clonedStats &&
+      flatRewards;
+
+    document.body.setAttribute('data-starvivors-enemy-scaling-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-enemy-scaling-harness-details',
+      JSON.stringify({
+        samples: samples.map((sample) => ({
+          minutes: sample.minutes,
+          hpMultiplier: sample.scaling.hpMultiplier,
+          damageMultiplier: sample.scaling.damageMultiplier,
+          chaserHp: sample.chaser.maxHull,
+          shooterDamage: sample.shooter.attackDamage,
+          tankContactDamage: sample.tank.contactDamage,
+          chaserXp: sample.chaser.xpValue,
+          chaserScrap: sample.chaser.scrapValue
+        })),
+        clonedStats,
+        flatRewards
+      })
+    );
+  }
+
   private runTestHarnessBulwark(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -1305,8 +1747,8 @@ export class GameScene extends Phaser.Scene {
       unlocked.unlockedShipIds.includes('bulwark') &&
       selected.selectedShipId === 'bulwark' &&
       started.selectedShipId === 'bulwark' &&
-      started.hull === 150 &&
-      started.maxHull === 150 &&
+      started.hull === 60 * COMBAT_NUMBER_SCALE &&
+      started.maxHull === 60 * COMBAT_NUMBER_SCALE &&
       started.playerMaxSpeed === 425 &&
       started.playerAccelerationMultiplier === 1 &&
       started.rammingShieldDashMaxCharges === 6 &&
@@ -1314,8 +1756,8 @@ export class GameScene extends Phaser.Scene {
       afterScrap.runScrapTotal === 0 &&
       afterScrapGain.runScrapTotal === 10 &&
       restarted.selectedShipId === 'bulwark' &&
-      restarted.hull === 150 &&
-      restarted.maxHull === 150 &&
+      restarted.hull === 60 * COMBAT_NUMBER_SCALE &&
+      restarted.maxHull === 60 * COMBAT_NUMBER_SCALE &&
       !restarted.isPlayerDead;
 
     document.body.setAttribute('data-starvivors-bulwark-harness', pass ? 'pass' : 'fail');
@@ -1445,10 +1887,9 @@ export class GameScene extends Phaser.Scene {
       started.rammingShieldDashMaxCharges === 6 &&
       afterDash.rammingShieldDashCharges === this.getRammingShieldStats().dashMaxCharges - 1 &&
       dashVelocityAfter > dashVelocityBefore &&
-      afterShieldHit.rammingShieldHp < this.getRammingShieldStats().shieldMaxHp &&
       afterShieldHit.hull === started.hull &&
       afterBrokenHit.hull < afterShieldHit.hull &&
-      afterRegen.rammingShieldHp === 20;
+      afterRegen.rammingShieldHp === 10 + this.getRammingShieldStats().shieldRegenRatePerSecond;
 
     document.body.setAttribute('data-starvivors-shield-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -1480,7 +1921,7 @@ export class GameScene extends Phaser.Scene {
     this.startRun();
     harness.grantXp(INITIAL_XP_THRESHOLD);
     const interceptorChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
-    const interceptorSecondary = harness.selectPulseUpgrade(1);
+    const interceptorRamming = harness.selectPulseUpgrade(1);
     const interceptorLaterChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
     const interceptorRestarted = harness.restartRun();
     harness.grantXp(INITIAL_XP_THRESHOLD);
@@ -1490,26 +1931,34 @@ export class GameScene extends Phaser.Scene {
     this.startRun();
     harness.grantXp(INITIAL_XP_THRESHOLD);
     const bulwarkChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
-    const bulwarkSecondary = harness.selectPulseUpgrade(1);
+    const bulwarkPulseUpgradeAvailable = getAvailableRunUpgrades(
+      this.runUpgradeLevels,
+      this.getEquippedWeaponDefinitions()
+    ).some((upgrade) => upgrade.id === 'pulse_damage');
+    const bulwarkRammingUpgradeAvailable = getAvailableRunUpgrades(
+      this.runUpgradeLevels,
+      this.getEquippedWeaponDefinitions()
+    ).some((upgrade) => upgrade.id === 'ram_damage');
     const shotsBefore = this.playerProjectiles.length;
-    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
-
-    if (secondaryWeapon) {
-      this.usePlayerWeapon(secondaryWeapon, 'secondary', this.time.now + 1000);
-    }
-
+    this.usePlayerWeapon(this.getActiveAutoWeaponDefinition(), 'auto', this.time.now + 1000);
     const shotsAfter = this.playerProjectiles.length;
     const pass =
+      interceptorRestarted.autoWeaponId === 'pulse-cannon' &&
+      interceptorRestarted.primaryWeaponId === null &&
       interceptorChoices.includes('ramming-shield') &&
-      interceptorSecondary.rammingShieldMaxHp === this.getRammingShieldStats().shieldMaxHp &&
-      interceptorSecondary.rammingShieldDashMaxCharges === 3 &&
+      interceptorRamming.primaryWeaponId === 'ramming-shield' &&
+      interceptorRamming.secondaryWeaponId === null &&
+      interceptorRamming.rammingShieldMaxHp === this.getRammingShieldStats().shieldMaxHp &&
+      interceptorRamming.rammingShieldDashMaxCharges === 3 &&
       interceptorLaterChoices.length === 0 &&
       interceptorRestarted.rammingShieldMaxHp === 0 &&
       interceptorRestartChoices.includes('ramming-shield') &&
-      bulwarkChoices.includes('pulse-cannon') &&
-      bulwarkSecondary.rammingShieldMaxHp === this.getRammingShieldStats().shieldMaxHp &&
-      bulwarkSecondary.rammingShieldDashMaxCharges === 6 &&
-      secondaryWeapon?.id === 'pulse-cannon' &&
+      bulwarkChoices.length === 0 &&
+      this.playerWeapons.activeAutoWeaponId === 'pulse-cannon' &&
+      this.playerWeapons.activePrimaryWeaponId === 'ramming-shield' &&
+      this.playerWeapons.activeSecondaryWeaponId === null &&
+      bulwarkPulseUpgradeAvailable &&
+      bulwarkRammingUpgradeAvailable &&
       shotsAfter === shotsBefore + 1;
 
     document.body.setAttribute('data-starvivors-secondary-harness', pass ? 'pass' : 'fail');
@@ -1517,15 +1966,66 @@ export class GameScene extends Phaser.Scene {
       'data-starvivors-secondary-harness-details',
       JSON.stringify({
         interceptorChoices,
-        interceptorSecondary,
+        interceptorRamming,
         interceptorLaterChoices,
         interceptorRestarted,
         interceptorRestartChoices,
         bulwarkChoices,
-        bulwarkSecondary,
-        secondaryWeaponId: secondaryWeapon?.id,
+        bulwarkPulseUpgradeAvailable,
+        bulwarkRammingUpgradeAvailable,
+        bulwarkWeaponState: this.playerWeapons,
         shotsBefore,
         shotsAfter
+      })
+    );
+  }
+
+  private runTestHarnessWeaponHotbar(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-hotbar-harness', 'fail');
+      document.body.setAttribute('data-starvivors-hotbar-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.addCredits(100);
+    harness.unlockShip('bulwark');
+    harness.selectShip('interceptor');
+    this.startRun();
+    harness.grantXp(INITIAL_XP_THRESHOLD);
+    const acquired = harness.selectPulseUpgrade(1);
+    const blockedAutoAssign = harness.assignWeaponSlot('auto', 'ramming-shield');
+    const movedToSecondary = harness.assignWeaponSlot('secondary', 'ramming-shield');
+    const movedToPrimary = harness.assignWeaponSlot('primary', 'ramming-shield');
+    const blockedManualAssign = harness.assignWeaponSlot('primary', 'pulse-cannon');
+    const slots = this.getWeaponHotbarSlots(this.time.now);
+    const autoTooltip = slots.find((slot) => slot.slot === 'auto')?.tooltipLines ?? [];
+    const primaryTooltip = slots.find((slot) => slot.slot === 'primary')?.tooltipLines ?? [];
+    const pass =
+      acquired.primaryWeaponId === 'ramming-shield' &&
+      acquired.ownedManualWeaponIds.includes('ramming-shield') &&
+      blockedAutoAssign.autoWeaponId === 'pulse-cannon' &&
+      movedToSecondary.primaryWeaponId === null &&
+      movedToSecondary.secondaryWeaponId === 'ramming-shield' &&
+      movedToPrimary.primaryWeaponId === 'ramming-shield' &&
+      movedToPrimary.secondaryWeaponId === null &&
+      blockedManualAssign.primaryWeaponId === 'ramming-shield' &&
+      slots.length === 3 &&
+      autoTooltip.some((line) => line.includes('Damage:')) &&
+      primaryTooltip.some((line) => line.includes('Shield')) &&
+      primaryTooltip.some((line) => line.includes('Ram damage levels'));
+
+    document.body.setAttribute('data-starvivors-hotbar-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-hotbar-harness-details',
+      JSON.stringify({
+        acquired,
+        blockedAutoAssign,
+        movedToSecondary,
+        movedToPrimary,
+        blockedManualAssign,
+        slots
       })
     );
   }
@@ -1537,13 +2037,14 @@ export class GameScene extends Phaser.Scene {
     const center = getArenaCenter(this.arena);
 
     this.debugMenuHost?.destroy();
+    this.deathShards = clearDeathShardsSystem(this.deathShards);
     this.children.removeAll(true);
     this.combatFeedback.clear();
     this.debugMenuHost = undefined;
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
-    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition().startingMainWeaponId);
+    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition());
     this.hasResolvedSecondaryWeaponChoice = false;
     this.rammingShieldImage = undefined;
     this.rammingShieldState = createRammingShieldRuntimeState(
@@ -1567,8 +2068,10 @@ export class GameScene extends Phaser.Scene {
     this.basicEnemies = [];
     this.shooterEnemies = [];
     this.tankEnemies = [];
+    this.liveEnemies = [];
     this.basicAsteroids = [];
     this.enemyWreckageDebris = [];
+    this.deathShards = [];
     this.scrapPickups = [];
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
@@ -1582,16 +2085,29 @@ export class GameScene extends Phaser.Scene {
     this.nextPlayerContactImpulseAt = 0;
     this.playerBodyImpactCooldowns = new WeakMap<object, number>();
     this.asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
+    this.pulseVolleyCount = 0;
+    this.isPulseEmergencyCharged = false;
+    this.pulseLifestealWindowStartedAt = 0;
+    this.pulseLifestealRestoredThisWindow = 0;
+    this.pulseIonizedTargets = new WeakMap<object, number>();
+    this.pulseCriticalTargets = new WeakMap<object, { stacks: number; expiresAt: number }>();
     this.nextBlackHolePlayerDamageAt = 0;
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
+    this.nextEnemySwarmAt = this.runStartedAt + ENEMY_SWARM_FIRST_SPAWN_MS;
     this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
     this.isUpgradeOverlayOpen = false;
+    this.isPauseMenuOpen = false;
     this.upgradeOverlayOpenedAt = 0;
+    this.pauseMenuOpenedAt = 0;
+    this.specialUpgradeOverlayChoices = null;
     this.totalUpgradePauseMs = 0;
+    this.totalPauseMenuPauseMs = 0;
     this.debugMenuOpenedAt = 0;
     this.totalDebugPauseMs = 0;
+    this.awaitingBinding = undefined;
+    this.pauseMenuScreen = undefined;
     this.minimap.reset();
     this.debugState.resetForRun();
     this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
@@ -1609,9 +2125,7 @@ export class GameScene extends Phaser.Scene {
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
-    this.createBasicEnemies(center);
-    this.createShooterEnemies(center);
-    this.createTankEnemies(center);
+    this.createInitialLiveEnemies(center);
     this.createBasicAsteroids(center);
     this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
@@ -1634,6 +2148,7 @@ export class GameScene extends Phaser.Scene {
     this.collisionDebugOverlay.create();
 
     this.createUpgradeButton();
+    this.createResultsButton();
     this.createUpgradeOverlay();
     this.blackHoleDebugControls.create();
     this.createDebugMenu();
@@ -1643,6 +2158,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private startRun(): void {
+    if (this.autoRunDiagnostics.isActive()) {
+      this.autoRunDiagnostics.endRun('restart');
+    }
+
     const selectedShip = this.getSelectedShipDefinition();
 
     if (!this.canStartRunWithShip(selectedShip)) {
@@ -1653,17 +2172,28 @@ export class GameScene extends Phaser.Scene {
     this.destroyShipSelectScreen();
     this.destroyShopScreen();
     this.destroyResultsScreen();
+    this.pauseMenuScreen = destroyScreenHandle(this.pauseMenuScreen, { disableZones: true, resetCursor: () => this.resetUiCursor() });
+    this.isPauseMenuOpen = false;
     this.rebuildWorld();
+    this.autoRunDiagnostics.startRun(this.getSelectedShipDefinition().displayName);
   }
 
   private showMainMenu(): void {
+    if (this.autoRunDiagnostics.isActive()) {
+      this.autoRunDiagnostics.endRun('main-menu');
+    }
+
     this.gameFlowState = 'mainMenu';
+    this.deathShards = clearDeathShardsSystem(this.deathShards);
     this.children.removeAll(true);
     this.debugMenuHost = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
     this.shipSelectScreen = undefined;
     this.resultsScreen = undefined;
+    this.pauseMenuScreen = undefined;
+    this.isPauseMenuOpen = false;
+    this.awaitingBinding = undefined;
 
     this.mainMenuScreen = createMainMenuScreen({
       scene: this,
@@ -1749,6 +2279,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showShop(backTarget: ShopBackTarget): void {
+    if (this.autoRunDiagnostics.isActive() && this.gameFlowState === 'running') {
+      this.autoRunDiagnostics.endRun('shop');
+    }
+
     this.shopBackTarget = backTarget;
     this.gameFlowState = 'shop';
     this.destroyShopScreen();
@@ -1812,7 +2346,12 @@ export class GameScene extends Phaser.Scene {
       passiveLevels: {
         hullPlating: this.getRunUpgradeLevelById('hull-plating'),
         engineTuning: this.getRunUpgradeLevelById('engine-tuning'),
-        damageControl: this.getRunUpgradeLevelById('damage-control')
+        damageControl: this.getRunUpgradeLevelById('damage-control'),
+        amount: this.getRunUpgradeLevelById('stat_amount'),
+        magnet: this.getRunUpgradeLevelById('stat_magnet'),
+        luck: this.getRunUpgradeLevelById('stat_luck'),
+        growth: this.getRunUpgradeLevelById('stat_growth'),
+        greed: this.getRunUpgradeLevelById('stat_greed')
       },
       permanentLevels: this.getResolvedPermanentUpgradeLevels()
     });
@@ -1820,7 +2359,7 @@ export class GameScene extends Phaser.Scene {
 
   private hasRammingShield(): boolean {
     return (
-      this.playerWeapons.activeMainWeaponId === 'ramming-shield' ||
+      this.playerWeapons.activePrimaryWeaponId === 'ramming-shield' ||
       this.playerWeapons.activeSecondaryWeaponId === 'ramming-shield'
     );
   }
@@ -1829,7 +2368,7 @@ export class GameScene extends Phaser.Scene {
     return this.hasRammingShield() ? this.getRammingShieldStats().shieldMaxHp : 0;
   }
 
-  private getResolvedWeaponStats(weapon: WeaponRegistryEntry, slot: 'main' | 'secondary'): ResolvedWeaponStats {
+  private getResolvedWeaponStats(weapon: WeaponRegistryEntry, slot: 'auto' | 'primary' | 'secondary'): ResolvedWeaponStats {
     return resolveWeaponStats({
       weapon: this.debugState.getEffectiveWeaponDefinition(weapon),
       slot,
@@ -1844,11 +2383,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getRammingShieldStats(): RammingShieldStats {
-    const primaryWeapon = this.getActiveMainWeaponDefinition();
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const resolved =
-      primaryWeapon.id === 'ramming-shield'
-        ? this.getResolvedWeaponStats(primaryWeapon, 'main').rammingShield
+      primaryWeapon?.id === 'ramming-shield'
+        ? this.getResolvedWeaponStats(primaryWeapon, 'primary').rammingShield
         : secondaryWeapon?.id === 'ramming-shield'
           ? this.getResolvedWeaponStats(secondaryWeapon, 'secondary').rammingShield
           : undefined;
@@ -1880,6 +2419,26 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerHitRadius(): number {
     return this.debugState.getEffectiveShipHitRadius(this.getSelectedShipDefinition());
+  }
+
+  private getPlayerCollisionRadius(): number {
+    return scaleRadius(this.getPlayerHitRadius(), this.debugState.getCollisionShapeScale('player'));
+  }
+
+  private getAsteroidCollisionRadius(asteroid: BasicAsteroid): number {
+    return scaleRadius(asteroid.hitRadius, this.debugState.getCollisionShapeScale('asteroid'));
+  }
+
+  private getDebrisCollisionRadius(debris: EnemyWreckageDebris): number {
+    return scaleRadius(debris.hitRadius, this.debugState.getCollisionShapeScale('debris'));
+  }
+
+  private getEnemyCollisionHalfWidth(enemy: BasicEnemy | ShooterEnemy | TankEnemy): number {
+    return scaleHalfExtent(enemy.stats.hitHalfWidth, this.debugState.getCollisionShapeScale('enemy'));
+  }
+
+  private getEnemyCollisionHalfLength(enemy: BasicEnemy | ShooterEnemy | TankEnemy): number {
+    return scaleHalfExtent(enemy.stats.hitHalfLength, this.debugState.getCollisionShapeScale('enemy'));
   }
 
   private getPlayerBlackHoleWhirlpoolTuning(): BlackHoleWhirlpoolTuning {
@@ -2046,6 +2605,17 @@ export class GameScene extends Phaser.Scene {
     return shield;
   }
 
+  private createInitialLiveEnemies(center: Phaser.Math.Vector2): void {
+    const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.78;
+
+    for (let index = 0; index < BASIC_ENEMY_COUNT; index += 1) {
+      const angle = (Math.PI * 2 * index) / BASIC_ENEMY_COUNT + Math.PI / 8;
+      const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
+      this.spawnLiveEnemy('scout', x, y, this.time.now, 'chaser');
+    }
+  }
+
   private createBasicEnemies(center: Phaser.Math.Vector2): void {
     const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.78;
 
@@ -2132,16 +2702,17 @@ export class GameScene extends Phaser.Scene {
 
   private createBasicEnemyInstance(
     body: Phaser.GameObjects.Container,
-    wrapMirrorBody: Phaser.GameObjects.Container
+    wrapMirrorBody: Phaser.GameObjects.Container,
+    stats: EnemyStatProfile = this.createScaledEnemyStats('chaser', this.time.now)
   ): BasicEnemy {
     return {
       body,
       wrapMirrorBody,
-      stats: basicEnemy.stats,
+      stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: basicEnemy.stats.maxHull,
+      hp: stats.maxHull,
       nextBlackHoleDamageAt: 0
     };
   }
@@ -2149,45 +2720,103 @@ export class GameScene extends Phaser.Scene {
   private createShooterEnemyInstance(
     body: Phaser.GameObjects.Container,
     wrapMirrorBody: Phaser.GameObjects.Container,
-    time: number
+    time: number,
+    stats: EnemyStatProfile = this.createScaledEnemyStats('shooter', time)
   ): ShooterEnemy {
     return {
       body,
       wrapMirrorBody,
-      stats: shooterEnemy.stats,
+      stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      nextFireAt: time + Phaser.Math.Between(700, Math.round(shooterEnemy.stats.attackCooldown * 1000)),
-      hp: shooterEnemy.stats.maxHull,
+      nextFireAt: time + Phaser.Math.Between(700, Math.round(stats.attackCooldown * 1000)),
+      hp: stats.maxHull,
       nextBlackHoleDamageAt: 0
     };
   }
 
   private createTankEnemyInstance(
     body: Phaser.GameObjects.Container,
-    wrapMirrorBody: Phaser.GameObjects.Container
+    wrapMirrorBody: Phaser.GameObjects.Container,
+    stats: EnemyStatProfile = this.createScaledEnemyStats('tank', this.time.now)
   ): TankEnemy {
     return {
       body,
       wrapMirrorBody,
-      stats: tankEnemy.stats,
+      stats,
       velocity: new Phaser.Math.Vector2(0, 0),
       knockbackVelocity: new Phaser.Math.Vector2(0, 0),
       blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
-      hp: tankEnemy.stats.maxHull,
+      hp: stats.maxHull,
       nextBlackHoleDamageAt: 0
+    };
+  }
+
+  private createScaledEnemyStats(
+    enemyType: EnemySpawnType,
+    time: number,
+    options: { applyVariance?: boolean } = {}
+  ): EnemyStatProfile {
+    const baseStats =
+      enemyType === 'shooter' ? shooterEnemy.stats : enemyType === 'tank' ? tankEnemy.stats : basicEnemy.stats;
+    const scaling = this.getEnemyTimeScaling(time);
+    const hpVariance = options.applyVariance === false ? 1 : this.getCombatVarianceMultiplier();
+    const damageVariance = options.applyVariance === false ? 1 : this.getCombatVarianceMultiplier();
+
+    return {
+      ...baseStats,
+      maxHull: Math.max(1, Math.round(baseStats.maxHull * scaling.hpMultiplier * hpVariance)),
+      contactDamage: Math.max(1, Math.round(baseStats.contactDamage * scaling.damageMultiplier * damageVariance)),
+      attackDamage:
+        baseStats.attackDamage > 0
+          ? Math.max(1, Math.round(baseStats.attackDamage * scaling.damageMultiplier * damageVariance))
+          : 0
+    };
+  }
+
+  private getCombatVarianceMultiplier(): number {
+    return Phaser.Math.FloatBetween(1 - COMBAT_VARIANCE, 1 + COMBAT_VARIANCE);
+  }
+
+  private rollPlayerDamage(damage: number): number {
+    if (damage <= 0) {
+      return 0;
+    }
+
+    return Math.max(1, Math.round(damage * this.getCombatVarianceMultiplier()));
+  }
+
+  private getEnemyTimeScaling(time: number): EnemyTimeScaling {
+    return this.getEnemyTimeScalingForElapsedMs(this.getSurvivalElapsedMs(time));
+  }
+
+  private getEnemyTimeScalingForElapsedMs(elapsedMs: number): EnemyTimeScaling {
+    const elapsedMinutes = Math.max(0, elapsedMs / 60000);
+    const progress = Phaser.Math.Clamp(elapsedMinutes / ENEMY_SCALING_TARGET_RUN_MINUTES, 0, 1);
+
+    return {
+      elapsedMinutes,
+      difficultyMinute: Math.floor(elapsedMinutes),
+      progress,
+      hpMultiplier: Phaser.Math.Linear(1, ENEMY_SCALING_TARGET_HP_MULTIPLIER, progress),
+      damageMultiplier: Phaser.Math.Linear(1, ENEMY_SCALING_TARGET_DAMAGE_MULTIPLIER, progress)
     };
   }
 
   private updateEnemySpawnDirector(time: number): void {
     if (
-      this.isPlayerDead ||
       this.isUpgradeOverlayOpen ||
       this.debugMenuHost?.isOpen() ||
       !this.debugState.enemySpawningEnabled ||
-      time < this.nextEnemySpawnAt
+      this.isPlayerDead
     ) {
+      return;
+    }
+
+    this.updateEnemySwarmDirector(time);
+
+    if (time < this.nextEnemySpawnAt) {
       return;
     }
 
@@ -2210,30 +2839,120 @@ export class GameScene extends Phaser.Scene {
     this.nextEnemySpawnAt = time + this.getEnemySpawnIntervalMs(time);
   }
 
+  private updateEnemySwarmDirector(time: number): void {
+    if (time < this.nextEnemySwarmAt || this.getActiveEnemyCount() >= ENEMY_SWARM_OVERFLOW_HARD_CAP) {
+      return;
+    }
+
+    const packSize = Math.min(
+      ENEMY_SWARM_MAX_PACK_SIZE,
+      ENEMY_SWARM_BASE_PACK_SIZE + Math.floor(this.getEnemyTimeScaling(time).elapsedMinutes * ENEMY_SWARM_PACK_SIZE_PER_MINUTE)
+    );
+    const spawnCount = Math.min(packSize, Math.max(0, ENEMY_SWARM_OVERFLOW_HARD_CAP - this.getActiveEnemyCount()));
+    const center = this.getEnemyDirectorSpawnPosition();
+    if (spawnCount >= 4) {
+      this.spawnLiveEnemySquad('scout-pack', center.x, center.y, time);
+      this.nextEnemySwarmAt = time + ENEMY_SWARM_INTERVAL_MS;
+      return;
+    }
+
+    const approachOffset = this.getWrappedDirection(center.x, center.y, this.player.x, this.player.y);
+    const approach = approachOffset.lengthSq() > 0 ? approachOffset.normalize() : new Phaser.Math.Vector2(0, 1);
+    const lateral = new Phaser.Math.Vector2(-approach.y, approach.x);
+
+    for (let i = 0; i < spawnCount; i += 1) {
+      const row = Math.floor(i / 4);
+      const column = i % 4;
+      const lateralOffset = (column - 1.5) * Phaser.Math.FloatBetween(42, 76);
+      const depthOffset = row * Phaser.Math.FloatBetween(54, 88);
+      const x = wrapCoordinate(center.x + lateral.x * lateralOffset - approach.x * depthOffset, this.arena.width);
+      const y = wrapCoordinate(center.y + lateral.y * lateralOffset - approach.y * depthOffset, this.arena.height);
+      this.spawnDirectedEnemyAt(this.chooseSwarmEnemyType(time, i), time, x, y);
+    }
+
+    this.nextEnemySwarmAt = time + ENEMY_SWARM_INTERVAL_MS;
+  }
+
   private spawnDirectedEnemy(enemyType: EnemySpawnType, time: number): void {
     const position = this.getEnemyDirectorSpawnPosition();
-    const body =
-      enemyType === 'shooter'
-        ? this.createShooterEnemy(position.x, position.y)
-        : enemyType === 'tank'
-          ? this.createTankEnemy(position.x, position.y)
-          : this.createBasicEnemy(position.x, position.y);
-    const wrapMirrorBody =
-      enemyType === 'shooter'
-        ? this.createShooterEnemy(position.x, position.y)
-        : enemyType === 'tank'
-          ? this.createTankEnemy(position.x, position.y)
-          : this.createBasicEnemy(position.x, position.y);
+    this.spawnDirectedEnemyAt(enemyType, time, position.x, position.y);
+  }
 
-    wrapMirrorBody.setVisible(false);
+  private spawnDirectedEnemyAt(enemyType: EnemySpawnType, time: number, x: number, y: number): void {
+    this.spawnLiveEnemy(this.getLiveEnemyDefinitionIdForSpawnType(enemyType), x, y, time, enemyType);
+  }
 
-    if (enemyType === 'shooter') {
-      this.shooterEnemies.push(this.createShooterEnemyInstance(body, wrapMirrorBody, time));
-    } else if (enemyType === 'tank') {
-      this.tankEnemies.push(this.createTankEnemyInstance(body, wrapMirrorBody));
-    } else {
-      this.basicEnemies.push(this.createBasicEnemyInstance(body, wrapMirrorBody));
+  private spawnLiveEnemy(
+    definitionId: string,
+    x: number,
+    y: number,
+    time: number,
+    legacySpawnType: EnemySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId)
+  ): LiveGameEnemy {
+    const scaling = this.getEnemyTimeScaling(time);
+    const hpVariance = this.getCombatVarianceMultiplier();
+    const enemy = spawnLiveEnemySystem({
+      scene: this,
+      arena: this.arena,
+      definitionId,
+      x,
+      y,
+      time,
+      hpMultiplier: scaling.hpMultiplier * hpVariance,
+      showDebugLabel: false
+    });
+
+    enemy.damageMultiplier = scaling.damageMultiplier * this.getCombatVarianceMultiplier();
+    enemy.stateData.legacySpawnType = legacySpawnType;
+    this.liveEnemies.push(enemy);
+    return enemy;
+  }
+
+  private spawnLiveEnemySquad(squadId: string, centerX: number, centerY: number, time: number): void {
+    const scaling = this.getEnemyTimeScaling(time);
+    const squad = ENEMY_LAB_SQUADS.find((candidate) => candidate.id === squadId);
+    const spawned = spawnLiveEnemySquadSystem({
+      scene: this,
+      arena: this.arena,
+      squadId,
+      centerX,
+      centerY,
+      time,
+      hpMultiplier: scaling.hpMultiplier,
+      showDebugLabel: false
+    });
+
+    for (const enemy of spawned) {
+      enemy.damageMultiplier = scaling.damageMultiplier * this.getCombatVarianceMultiplier();
+      enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(enemy.definitionId);
+      enemy.stateData.squadId = squad?.id ?? squadId;
     }
+
+    this.liveEnemies.push(...spawned);
+  }
+
+  private getLiveEnemyDefinitionIdForSpawnType(enemyType: EnemySpawnType): string {
+    if (enemyType === 'shooter') {
+      return 'diamond-gunner';
+    }
+
+    if (enemyType === 'tank') {
+      return 'hex-tank';
+    }
+
+    return 'scout';
+  }
+
+  private getLegacySpawnTypeForLiveDefinition(definitionId: string): EnemySpawnType {
+    if (definitionId === 'diamond-gunner' || definitionId === 'needle-sniper') {
+      return 'shooter';
+    }
+
+    if (definitionId === 'hex-tank' || definitionId === 'carrier') {
+      return 'tank';
+    }
+
+    return 'chaser';
   }
 
   private getEnemyDirectorSpawnPosition(): Phaser.Math.Vector2 {
@@ -2264,6 +2983,28 @@ export class GameScene extends Phaser.Scene {
 
   private chooseDirectedEnemyType(time: number): EnemySpawnType {
     const weights = this.getEnemySpawnWeights(time);
+    return this.rollEnemyType(weights);
+  }
+
+  private chooseSwarmEnemyType(time: number, index: number): EnemySpawnType {
+    const minute = this.getEnemyTimeScaling(time).difficultyMinute;
+    const weights =
+      minute < 4
+        ? { chaser: 100, shooter: 0, tank: 0 }
+        : minute < 8
+          ? { chaser: 82, shooter: 16, tank: 2 }
+          : minute < 12
+            ? { chaser: 68, shooter: 26, tank: 6 }
+            : { chaser: 56, shooter: 34, tank: 10 };
+
+    if (index === 0) {
+      return 'chaser';
+    }
+
+    return this.rollEnemyType(weights);
+  }
+
+  private rollEnemyType(weights: Record<EnemySpawnType, number>): EnemySpawnType {
     const totalWeight = weights.chaser + weights.shooter + weights.tank;
     let roll = Phaser.Math.FloatBetween(0, totalWeight);
 
@@ -2300,7 +3041,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveEnemyCount(): number {
-    return this.basicEnemies.length + this.shooterEnemies.length + this.tankEnemies.length;
+    return this.liveEnemies.length + this.basicEnemies.length + this.shooterEnemies.length + this.tankEnemies.length;
   }
 
   private spawnDebugEnemy(enemyType: DebugEnemyType): void {
@@ -2327,6 +3068,7 @@ export class GameScene extends Phaser.Scene {
       enemy.wrapMirrorBody.destroy(true);
     }
 
+    this.liveEnemies = clearLiveEnemiesSystem(this.liveEnemies);
     this.basicEnemies = [];
     this.shooterEnemies = [];
     this.tankEnemies = [];
@@ -2374,7 +3116,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateBlackHole(time: number, deltaSeconds: number, shouldMove = true): void {
-    if (!this.blackHole || this.isPlayerDead) {
+    if (!this.blackHole) {
       return;
     }
 
@@ -2491,7 +3233,7 @@ export class GameScene extends Phaser.Scene {
       asteroid.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
 
       if (asteroid.hp <= 0) {
-        this.destroyBasicAsteroid(index, false);
+        this.destroyBasicAsteroid(index, false, 'blackHoleAsteroid');
         return true;
       }
 
@@ -2532,6 +3274,77 @@ export class GameScene extends Phaser.Scene {
       time,
       BLACK_HOLE_TANK_WHIRLPOOL_TUNING
     );
+  }
+
+  private applyBlackHoleToLiveEnemy(enemy: LiveGameEnemy, index: number, deltaSeconds: number, time: number): boolean {
+    if (!this.blackHole) {
+      return false;
+    }
+
+    const tuning = this.getLiveEnemyBlackHoleTuning(enemy);
+    const result = this.blackHole.applyWhirlpoolToVelocity(
+      enemy.body.x,
+      enemy.body.y,
+      enemy.blackHoleVelocity,
+      deltaSeconds,
+      {
+        ...tuning,
+        mass: enemy.definition.stats.mass ?? tuning.mass,
+        maxSpeed: this.getGlobalMaxSpeed()
+      },
+      this.arena,
+      this.getActiveDebugBlackHoleFieldTuning()
+    );
+
+    enemy.blackHoleVelocity.scale(Math.pow(BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds * 60));
+
+    if (result.isInsideEventHorizon) {
+      this.destroyLiveEnemyWithoutRewards(enemy);
+      this.liveEnemies.splice(index, 1);
+      return true;
+    }
+
+    if (
+      this.debugState.blackHoleFieldDamageEnabled &&
+      result.isInsideDamage &&
+      time >= enemy.nextBlackHoleDamageAt
+    ) {
+      this.damageLiveEnemy(
+        enemy,
+        this.getBlackHoleTidalDamage(
+          result.proximity,
+          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
+          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
+          BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
+        ),
+        'blackHole',
+        false
+      );
+      enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
+
+      if (enemy.hp <= 0) {
+        this.destroyLiveEnemyWithoutRewards(enemy);
+        this.liveEnemies.splice(index, 1);
+        return true;
+      }
+
+      this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+    }
+
+    return false;
+  }
+
+  private getLiveEnemyBlackHoleTuning(enemy: LiveGameEnemy): BlackHoleWhirlpoolTuning {
+    const legacyType = this.getLiveEnemyLegacySpawnType(enemy);
+    if (legacyType === 'shooter') {
+      return BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING;
+    }
+
+    if (legacyType === 'tank') {
+      return BLACK_HOLE_TANK_WHIRLPOOL_TUNING;
+    }
+
+    return BLACK_HOLE_CHASER_WHIRLPOOL_TUNING;
   }
 
   private applyBlackHoleToEnemy<T extends BasicEnemy | ShooterEnemy | TankEnemy>(
@@ -2608,9 +3421,213 @@ export class GameScene extends Phaser.Scene {
     return damagePerSecond * (intervalMs / 1000);
   }
 
-  private destroyEnemyWithoutRewards(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
+  private updateDeathShards(deltaMs: number): void {
+    if (this.deathShards.length <= 0) {
+      return;
+    }
+
+    this.deathShards = updateDeathShardsSystem({
+      shards: this.deathShards,
+      deltaMs
+    });
+  }
+
+  private emitDeathShards(
+    textureKey: string,
+    x: number,
+    y: number,
+    displaySize: number,
+    rotation: number,
+    inheritedVelocity: Phaser.Math.Vector2,
+    style: DeathShardStyle
+  ): void {
+    emitDeathShardsSystem({
+      scene: this,
+      shards: this.deathShards,
+      textureKey,
+      x,
+      y,
+      displaySize,
+      rotation,
+      inheritedVelocity,
+      style,
+      tuning: this.debugState.deathShardTuning[style],
+      maxActive: DEATH_SHARD_MAX_ACTIVE,
+      getNearestWrappedRenderPosition: (worldX, worldY) => this.getNearestWrappedRenderPosition(worldX, worldY)
+    });
+  }
+
+  private emitEnemyDeathShards(
+    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
+    enemyType: EnemySpawnType,
+    inheritedVelocity: Phaser.Math.Vector2,
+    style: DeathShardStyle = 'ship'
+  ): void {
+    const visual = this.getEnemyDeathShardVisual(enemyType);
+
+    this.emitDeathShards(
+      visual.textureKey,
+      enemy.body.x,
+      enemy.body.y,
+      visual.displaySize,
+      enemy.body.rotation + visual.visualRotation,
+      inheritedVelocity,
+      style
+    );
+  }
+
+  private testDeathShardEffect(style: DeathShardStyle): void {
+    if (!this.isGameplayWorldActive() || !this.player) {
+      return;
+    }
+
+    const forward = this.getForwardDirection(this.player.rotation);
+    const x = wrapCoordinate(this.player.x + forward.x * 135, this.arena.width);
+    const y = wrapCoordinate(this.player.y + forward.y * 135, this.arena.height);
+    const inheritedVelocity = this.playerVelocity.clone().add(forward.scale(120));
+
+    if (style === 'player') {
+      const ship = this.getSelectedShipDefinition();
+      this.emitDeathShards(ship.textureKey, x, y, ship.displaySize, this.player.rotation + ship.visualRotation, inheritedVelocity, style);
+      return;
+    }
+
+    if (style === 'asteroid' || style === 'blackHoleAsteroid') {
+      this.emitDeathShards('asteroid-variant-1', x, y, ASTEROID_TIER_CONFIG[3].displaySize, this.player.rotation, inheritedVelocity, style);
+      return;
+    }
+
+    this.emitDeathShards(BASIC_ENEMY_TEXTURE_KEY, x, y, BASIC_ENEMY_DISPLAY_SIZE, this.player.rotation, inheritedVelocity, style);
+  }
+
+  private getEnemyDeathShardVisual(enemyType: EnemySpawnType): {
+    textureKey: string;
+    displaySize: number;
+    visualRotation: number;
+  } {
+    switch (enemyType) {
+      case 'shooter':
+        return {
+          textureKey: SHOOTER_ENEMY_TEXTURE_KEY,
+          displaySize: SHOOTER_ENEMY_DISPLAY_SIZE,
+          visualRotation: SHOOTER_ENEMY_VISUAL_ROTATION
+        };
+      case 'tank':
+        return {
+          textureKey: TANK_ENEMY_TEXTURE_KEY,
+          displaySize: TANK_ENEMY_DISPLAY_SIZE,
+          visualRotation: TANK_ENEMY_VISUAL_ROTATION
+        };
+      default:
+        return {
+          textureKey: BASIC_ENEMY_TEXTURE_KEY,
+          displaySize: BASIC_ENEMY_DISPLAY_SIZE,
+          visualRotation: BASIC_ENEMY_VISUAL_ROTATION
+        };
+    }
+  }
+
+  private destroyEnemyWithRewards<T extends BasicEnemy | ShooterEnemy | TankEnemy>(
+    enemy: T,
+    enemies: T[],
+    index: number,
+    enemyType: EnemySpawnType,
+    inheritedVelocity = this.getEnemyTotalVelocity(enemy)
+  ): void {
+    const x = enemy.body.x;
+    const y = enemy.body.y;
+
+    this.emitEnemyDeathShards(enemy, enemyType, inheritedVelocity);
+    this.spawnEnemyWreckageDebris(enemyType, x, y, inheritedVelocity);
+    this.trySpawnEnemyRewardPickup(enemy.stats.scrapValue, x, y, inheritedVelocity, enemy.stats.scrapDropChance);
     enemy.body.destroy(true);
     enemy.wrapMirrorBody.destroy(true);
+    enemies.splice(index, 1);
+    this.grantXp(enemy.stats.xpValue);
+  }
+
+  private destroyLiveEnemyWithRewards(enemy: LiveGameEnemy, index: number, inheritedVelocity = this.getLiveEnemyTotalVelocity(enemy)): void {
+    const x = enemy.body.x;
+    const y = enemy.body.y;
+    const legacyType = this.getLiveEnemyLegacySpawnType(enemy);
+
+    this.emitLiveEnemyDeathShards(enemy, inheritedVelocity);
+    this.spawnEnemyWreckageDebris(legacyType, x, y, inheritedVelocity);
+    this.trySpawnEnemyRewardPickup(
+      enemy.definition.rewards?.scrap ?? this.getLiveEnemyFallbackScrapValue(enemy),
+      x,
+      y,
+      inheritedVelocity,
+      1
+    );
+    destroyLiveEnemySystem(enemy);
+    this.liveEnemies.splice(index, 1);
+    this.grantXp(enemy.definition.rewards?.xp ?? this.getLiveEnemyFallbackXpValue(enemy));
+
+    if (enemy.definition.behavior.id === 'splitterChase') {
+      const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
+      const childCount = Number(enemy.definition.behavior.params?.childCount ?? 3);
+      for (let i = 0; i < childCount; i += 1) {
+        const angle = (Math.PI * 2 * i) / Math.max(1, childCount);
+        this.spawnLiveEnemy(childId, x + Math.cos(angle) * 42, y + Math.sin(angle) * 42, this.time.now, 'chaser');
+      }
+    }
+  }
+
+  private destroyLiveEnemyWithoutRewards(enemy: LiveGameEnemy): void {
+    this.emitLiveEnemyDeathShards(enemy, this.getLiveEnemyTotalVelocity(enemy), 'blackHoleShip');
+    destroyLiveEnemySystem(enemy);
+  }
+
+  private emitLiveEnemyDeathShards(
+    enemy: LiveGameEnemy,
+    inheritedVelocity: Phaser.Math.Vector2,
+    style: DeathShardStyle = 'ship'
+  ): void {
+    this.emitDeathShards(
+      getEnemyLabTextureKey(enemy.definitionId),
+      enemy.body.x,
+      enemy.body.y,
+      enemy.definition.visual.size,
+      enemy.body.rotation,
+      inheritedVelocity,
+      style
+    );
+  }
+
+  private getLiveEnemyLegacySpawnType(enemy: LiveGameEnemy): EnemySpawnType {
+    const raw = enemy.stateData.legacySpawnType;
+    return raw === 'shooter' || raw === 'tank' || raw === 'chaser'
+      ? raw
+      : this.getLegacySpawnTypeForLiveDefinition(enemy.definitionId);
+  }
+
+  private getLiveEnemyFallbackScrapValue(enemy: LiveGameEnemy): number {
+    const legacyType = this.getLiveEnemyLegacySpawnType(enemy);
+    return legacyType === 'tank' ? tankEnemy.stats.scrapValue : legacyType === 'shooter' ? shooterEnemy.stats.scrapValue : basicEnemy.stats.scrapValue;
+  }
+
+  private getLiveEnemyFallbackXpValue(enemy: LiveGameEnemy): number {
+    const legacyType = this.getLiveEnemyLegacySpawnType(enemy);
+    return legacyType === 'tank' ? tankEnemy.stats.xpValue : legacyType === 'shooter' ? shooterEnemy.stats.xpValue : basicEnemy.stats.xpValue;
+  }
+
+  private destroyEnemyWithoutRewards(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
+    this.emitEnemyDeathShards(enemy, this.getEnemySpawnType(enemy), this.getEnemyTotalVelocity(enemy), 'blackHoleShip');
+    enemy.body.destroy(true);
+    enemy.wrapMirrorBody.destroy(true);
+  }
+
+  private getEnemySpawnType(enemy: BasicEnemy | ShooterEnemy | TankEnemy): EnemySpawnType {
+    if (this.shooterEnemies.includes(enemy as ShooterEnemy)) {
+      return 'shooter';
+    }
+
+    if (this.tankEnemies.includes(enemy as TankEnemy)) {
+      return 'tank';
+    }
+
+    return 'chaser';
   }
 
   private spawnEnemyWreckageDebris(
@@ -2677,7 +3694,7 @@ export class GameScene extends Phaser.Scene {
       debris: this.enemyWreckageDebris,
       time,
       deltaSeconds,
-      isPlayerDead: this.isPlayerDead,
+      isPlayerDead: false,
       applyBlackHoleToDebris: (debris, blackHoleDeltaSeconds) =>
         this.applyBlackHoleToDebris(debris, blackHoleDeltaSeconds),
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
@@ -2755,6 +3772,32 @@ export class GameScene extends Phaser.Scene {
     this.spawnScrapPickup(source, value, x, y, inheritedVelocity);
   }
 
+  private trySpawnEnemyRewardPickup(
+    scrapValue: number,
+    x: number,
+    y: number,
+    inheritedVelocity: Phaser.Math.Vector2,
+    baseDropChance = 1
+  ): void {
+    const playerStats = this.getResolvedPlayerStats();
+    const luckMultiplier = 1 + playerStats.luck;
+    const specialDropChance = Phaser.Math.Clamp(SPECIAL_UPGRADE_DROP_CHANCE * luckMultiplier, 0, 0.35);
+    const normalDropChance = Phaser.Math.Clamp(NORMAL_UPGRADE_DROP_CHANCE * luckMultiplier, 0, 0.55);
+    const roll = Phaser.Math.FloatBetween(0, 1);
+
+    if (roll < specialDropChance && this.getSpecialUpgradeDropChoices().length > 0) {
+      this.spawnRewardPickup('special-upgrade', 'enemy', 0, x, y, inheritedVelocity);
+      return;
+    }
+
+    if (roll < specialDropChance + normalDropChance) {
+      this.spawnRewardPickup('banked-upgrade', 'enemy', 0, x, y, inheritedVelocity);
+      return;
+    }
+
+    this.trySpawnScrapPickup('enemy', scrapValue, x, y, inheritedVelocity, baseDropChance);
+  }
+
   private spawnScrapPickup(
     source: ScrapSourceType,
     value: number,
@@ -2762,28 +3805,55 @@ export class GameScene extends Phaser.Scene {
     y: number,
     inheritedVelocity: Phaser.Math.Vector2
   ): void {
+    this.spawnRewardPickup('scrap', source, value, x, y, inheritedVelocity);
+  }
+
+  private spawnRewardPickup(
+    kind: PlayerPickupKind,
+    source: ScrapSourceType,
+    value: number,
+    x: number,
+    y: number,
+    inheritedVelocity: Phaser.Math.Vector2
+  ): void {
+    const collectRadius = SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet;
     this.scrapPickups = spawnScrapPickupSystem({
       arena: this.arena,
       pickups: this.scrapPickups,
+      kind,
       source,
       value,
       x,
       y,
       inheritedVelocity,
-      pickupRadius: SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet,
+      pickupRadius: collectRadius,
+      magnetRadius: collectRadius * PICKUP_MAGNET_RADIUS_MULTIPLIER,
       time: this.time.now,
-      createPickupBody: (spawnX, spawnY) => this.createScrapPickupBody(spawnX, spawnY)
+      createPickupBody: (spawnX, spawnY, pickupKind) => this.createPickupBody(spawnX, spawnY, pickupKind)
     });
   }
 
-  private createScrapPickupBody(x: number, y: number): Phaser.GameObjects.Container {
-    const glow = this.add.ellipse(0, 0, SCRAP_PICKUP_DISPLAY_SIZE * 1.55, SCRAP_PICKUP_DISPLAY_SIZE * 1.55, 0x73f2ff, 0.18);
-    const sprite = this.add.image(0, 0, SCRAP_PICKUP_TEXTURE_KEY);
-    sprite.setOrigin(0.5, 0.5);
-    sprite.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
-    sprite.setTint(0xdaf8ff);
+  private createPickupBody(x: number, y: number, kind: PlayerPickupKind): Phaser.GameObjects.Container {
+    const isSpecialUpgrade = kind === 'special-upgrade';
+    const isUpgradePickup = kind === 'banked-upgrade' || isSpecialUpgrade;
+    const glowColor = isSpecialUpgrade ? 0xffc857 : isUpgradePickup ? 0x73f2ff : 0x73f2ff;
+    const glowAlpha = isSpecialUpgrade ? 0.42 : isUpgradePickup ? 0.24 : 0.18;
+    const glowScale = isSpecialUpgrade ? 2.2 : 1.65;
+    const glow = this.add.ellipse(
+      0,
+      0,
+      SCRAP_PICKUP_DISPLAY_SIZE * glowScale,
+      SCRAP_PICKUP_DISPLAY_SIZE * glowScale,
+      glowColor,
+      glowAlpha
+    );
+    const visual = this.add.image(0, 0, isUpgradePickup ? UPGRADE_CRATE_PICKUP_TEXTURE_KEY : SCRAP_PICKUP_TEXTURE_KEY);
 
-    const body = this.add.container(x, y, [glow, sprite]);
+    visual.setOrigin(0.5, 0.5);
+    visual.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
+    visual.setTint(isSpecialUpgrade ? 0xfff0a8 : 0xdaf8ff);
+
+    const body = this.add.container(x, y, [glow, visual]);
     body.setSize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
     body.setDepth(7);
     body.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
@@ -2799,7 +3869,7 @@ export class GameScene extends Phaser.Scene {
       playerY: this.player.y,
       time,
       deltaSeconds,
-      isPlayerDead: this.isPlayerDead,
+      isPlayerDead: false,
       applyBlackHoleToPickup: (pickup, blackHoleDeltaSeconds) =>
         this.applyBlackHoleToScrap(pickup, blackHoleDeltaSeconds),
       collectPickup: (pickup) => this.collectScrapPickup(pickup),
@@ -2835,6 +3905,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private collectScrapPickup(scrap: ScrapPickup): void {
+    if (scrap.kind === 'banked-upgrade') {
+      this.bankedUpgrades += 1;
+      this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Upgrade banked', 0xffc857);
+      this.destroyScrapPickup(scrap);
+      this.updateGameplayHud(this.time.now);
+      this.updateUpgradeButton();
+      return;
+    }
+
+    if (scrap.kind === 'special-upgrade') {
+      this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Rare upgrade', 0xb88cff);
+      this.destroyScrapPickup(scrap);
+      this.openSpecialUpgradeOverlay(this.time.now);
+      return;
+    }
+
     this.addRunScrap(scrap.value);
     this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrap.value);
     this.destroyScrapPickup(scrap);
@@ -2974,7 +4060,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.isPlayerDead) {
-      if (Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+      if (this.isControlJustDown('restart')) {
         this.startRun();
       }
 
@@ -2983,33 +4069,36 @@ export class GameScene extends Phaser.Scene {
 
     this.updatePlayerFacing();
 
-    const strafeLeft = this.wasdKeys.A.isDown || this.cursors.left.isDown;
-    const strafeRight = this.wasdKeys.D.isDown || this.cursors.right.isDown;
-    const thrustForward = this.wasdKeys.W.isDown || this.cursors.up.isDown;
-    const thrustReverse = this.wasdKeys.S.isDown || this.cursors.down.isDown;
-    const forward = this.getForwardDirection(this.player.rotation);
-    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
+    const strafeLeft = this.isControlDown('moveLeft');
+    const strafeRight = this.isControlDown('moveRight');
+    const thrustForward = this.isControlDown('moveUp');
+    const thrustReverse = this.isControlDown('moveDown');
+    const shipForward = this.getForwardDirection(this.player.rotation);
+    const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
+    const isWorldRelative = this.gameSettings.movementMode === 'worldRelative';
+    const movementForward = isWorldRelative ? new Phaser.Math.Vector2(0, -1) : shipForward;
+    const movementRight = isWorldRelative ? new Phaser.Math.Vector2(1, 0) : shipRight;
 
     const playerAcceleration = new Phaser.Math.Vector2(0, 0);
 
     if (thrustForward) {
-      playerAcceleration.x += forward.x * this.getPlayerThrustAcceleration();
-      playerAcceleration.y += forward.y * this.getPlayerThrustAcceleration();
+      playerAcceleration.x += movementForward.x * this.getPlayerThrustAcceleration();
+      playerAcceleration.y += movementForward.y * this.getPlayerThrustAcceleration();
     }
 
     if (thrustReverse) {
-      playerAcceleration.x -= forward.x * this.getPlayerReverseThrustAcceleration();
-      playerAcceleration.y -= forward.y * this.getPlayerReverseThrustAcceleration();
+      playerAcceleration.x -= movementForward.x * this.getPlayerReverseThrustAcceleration();
+      playerAcceleration.y -= movementForward.y * this.getPlayerReverseThrustAcceleration();
     }
 
     if (strafeLeft) {
-      playerAcceleration.x -= right.x * this.getPlayerStrafeThrustAcceleration();
-      playerAcceleration.y -= right.y * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.x -= movementRight.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y -= movementRight.y * this.getPlayerStrafeThrustAcceleration();
     }
 
     if (strafeRight) {
-      playerAcceleration.x += right.x * this.getPlayerStrafeThrustAcceleration();
-      playerAcceleration.y += right.y * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.x += movementRight.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y += movementRight.y * this.getPlayerStrafeThrustAcceleration();
     }
 
     if (playerAcceleration.lengthSq() > 0) {
@@ -3024,7 +4113,7 @@ export class GameScene extends Phaser.Scene {
       });
     }
 
-    this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
+    this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight, isWorldRelative);
 
     this.applyBlackHoleToPlayer(time, deltaSeconds);
     if (this.isPlayerDead) {
@@ -3056,7 +4145,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.debugMenuHost.isOpen() && this.isPlayerDead && Phaser.Input.Keyboard.JustDown(this.restartKey)) {
+    if (this.debugMenuHost.isOpen() && this.isPlayerDead && this.isControlJustDown('restart')) {
       this.startRun();
       return;
     }
@@ -3088,7 +4177,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.debugMenuHost.open();
-    this.refreshDebugMenu();
+    this.isDebugMenuRefreshDirty = true;
+    this.refreshDebugMenu(time, true);
   }
 
   private closeDebugMenu(time: number): void {
@@ -3101,7 +4191,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateUpgradeOverlayInput(time: number): void {
-    if (Phaser.Input.Keyboard.JustDown(this.minimapKey)) {
+    if (this.isControlJustDown('minimap')) {
       this.minimap.toggle();
     }
 
@@ -3114,29 +4204,168 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (!this.isUpgradeOverlayOpen) {
-      if (this.bankedUpgrades > 0 && Phaser.Input.Keyboard.JustDown(this.upgradeKey)) {
+      if (this.bankedUpgrades > 0 && this.isControlJustDown('upgrade')) {
         this.openUpgradeOverlay(time);
       }
 
       return;
     }
 
-    if (Phaser.Input.Keyboard.JustDown(this.upgradeCancelKey)) {
+    if (this.isPauseJustDown()) {
       this.closeUpgradeOverlay(time);
+      this.suppressPauseToggleUntil = time + 120;
       return;
     }
 
     for (let i = 0; i < this.upgradeChoiceKeys.length; i += 1) {
       if (Phaser.Input.Keyboard.JustDown(this.upgradeChoiceKeys[i])) {
-        const choice = this.getUpgradeOverlayChoices()[i];
-
-        if (choice) {
-          this.selectUpgradeOverlayChoice(choice, time);
-        }
-
+        this.selectUpgradeOverlayChoiceAt(i, time);
         return;
       }
     }
+  }
+
+  private updatePauseMenuInput(time: number): void {
+    if (this.isUpgradeOverlayOpen || this.gameFlowState !== 'running') {
+      return;
+    }
+
+    if (this.awaitingBinding) {
+      return;
+    }
+
+    if (time < this.suppressPauseToggleUntil) {
+      return;
+    }
+
+    if (this.isPauseJustDown()) {
+      if (this.isPauseMenuOpen) {
+        if (this.pauseMenuTab === 'pause') {
+          this.closePauseMenu(time);
+        } else {
+          this.pauseMenuTab = 'pause';
+          this.refreshPauseMenu();
+        }
+      } else if (!this.isPlayerDead) {
+        this.openPauseMenu(time, 'pause');
+      }
+    }
+  }
+
+  private openPauseMenu(time: number, tab: PauseMenuTab): void {
+    if (this.isPauseMenuOpen || this.isUpgradeOverlayOpen || this.gameFlowState !== 'running') {
+      return;
+    }
+
+    this.isPauseMenuOpen = true;
+    this.pauseMenuTab = tab;
+    this.pauseMenuOpenedAt = time;
+    this.refreshPauseMenu();
+  }
+
+  private closePauseMenu(time: number): void {
+    if (!this.isPauseMenuOpen) {
+      return;
+    }
+
+    const pauseDurationMs = Math.max(0, time - this.pauseMenuOpenedAt);
+    this.totalPauseMenuPauseMs += pauseDurationMs;
+    this.nextEnemySpawnAt += pauseDurationMs;
+    this.nextEnemySwarmAt += pauseDurationMs;
+    this.pauseMenuOpenedAt = 0;
+    this.pauseMenuTab = 'pause';
+    this.awaitingBinding = undefined;
+    this.pauseMenuScreen = destroyScreenHandle(this.pauseMenuScreen, {
+      disableZones: true,
+      resetCursor: () => this.resetUiCursor()
+    });
+    this.isPauseMenuOpen = false;
+    this.updateGameplayHud(time);
+  }
+
+  private refreshPauseMenu(): void {
+    if (!this.isPauseMenuOpen) {
+      return;
+    }
+
+    this.pauseMenuScreen = destroyScreenHandle(this.pauseMenuScreen, {
+      disableZones: true,
+      resetCursor: () => this.resetUiCursor()
+    });
+    this.pauseMenuScreen = createPauseMenuScreen({
+      scene: this,
+      settings: cloneGameSettings(this.gameSettings),
+      activeTab: this.pauseMenuTab,
+      awaitingBinding: this.awaitingBinding,
+      isActionActive: () => this.isPauseMenuOpen,
+      resetCursor: () => this.resetUiCursor(),
+      onResume: () => {
+        if (this.pauseMenuTab === 'pause') {
+          this.closePauseMenu(this.time.now);
+        } else {
+          this.pauseMenuTab = 'pause';
+          this.refreshPauseMenu();
+        }
+      },
+      onRestart: () => {
+        this.closePauseMenu(this.time.now);
+        this.startRun();
+      },
+      onMainMenu: () => {
+        this.closePauseMenu(this.time.now);
+        this.showMainMenu();
+      },
+      onSelectTab: (tab) => {
+        this.pauseMenuTab = tab;
+        this.awaitingBinding = undefined;
+        this.refreshPauseMenu();
+      },
+      onSetMovementMode: (mode) => this.setMovementMode(mode),
+      onCaptureBinding: (action, slot) => this.startBindingCapture(action, slot),
+      onResetControls: () => {
+        this.gameSettings = resetControlSettings(this.gameSettings);
+        this.rebuildControlKeys();
+        this.awaitingBinding = undefined;
+        this.refreshPauseMenu();
+      },
+      onResetAll: () => {
+        this.gameSettings = resetGameSettings();
+        this.rebuildControlKeys();
+        this.awaitingBinding = undefined;
+        this.refreshPauseMenu();
+      }
+    });
+  }
+
+  private setMovementMode(mode: MovementMode): void {
+    this.gameSettings = { ...this.gameSettings, movementMode: mode };
+    saveGameSettings(this.gameSettings);
+    this.refreshPauseMenu();
+  }
+
+  private startBindingCapture(action: RunControlAction, slot: BindingSlot): void {
+    if (!this.input.keyboard) {
+      return;
+    }
+
+    this.awaitingBinding = { action, slot };
+    this.refreshPauseMenu();
+    this.input.keyboard.once('keydown', (event: KeyboardEvent) => {
+      if (!this.awaitingBinding) {
+        return;
+      }
+
+      if (event.code !== 'Escape') {
+        const keyBindings = cloneGameSettings(this.gameSettings).keyBindings;
+        keyBindings[action] = { ...keyBindings[action], [slot]: event.code };
+        this.gameSettings = { ...this.gameSettings, keyBindings };
+        saveGameSettings(this.gameSettings);
+        this.rebuildControlKeys();
+      }
+
+      this.awaitingBinding = undefined;
+      this.refreshPauseMenu();
+    });
   }
 
   private getActiveDebugWeaponDamageMultiplier(): number {
@@ -3202,6 +4431,30 @@ export class GameScene extends Phaser.Scene {
     this.refreshUpgradeOverlayText();
     this.upgradeOverlayGraphics.setVisible(true);
     this.upgradeOverlayText.setVisible(true);
+    this.upgradeOverlayPromptText.setVisible(true);
+    this.updateUpgradeButton();
+  }
+
+  private openSpecialUpgradeOverlay(time: number): void {
+    if (this.isUpgradeOverlayOpen || this.isPlayerDead) {
+      return;
+    }
+
+    const choices = this.getSpecialUpgradeDropChoices();
+    if (choices.length <= 0) {
+      this.bankedUpgrades += 1;
+      this.updateGameplayHud(time);
+      this.updateUpgradeButton();
+      return;
+    }
+
+    this.specialUpgradeOverlayChoices = choices;
+    this.isUpgradeOverlayOpen = true;
+    this.upgradeOverlayOpenedAt = time;
+    this.refreshUpgradeOverlayText();
+    this.upgradeOverlayGraphics.setVisible(true);
+    this.upgradeOverlayText.setVisible(true);
+    this.upgradeOverlayPromptText.setVisible(true);
     this.updateUpgradeButton();
   }
 
@@ -3210,52 +4463,82 @@ export class GameScene extends Phaser.Scene {
       const pauseDurationMs = Math.max(0, time - this.upgradeOverlayOpenedAt);
       this.totalUpgradePauseMs += pauseDurationMs;
       this.nextEnemySpawnAt += pauseDurationMs;
+      this.nextEnemySwarmAt += pauseDurationMs;
     }
 
     this.isUpgradeOverlayOpen = false;
     this.upgradeOverlayOpenedAt = 0;
+    this.normalUpgradeOverlayChoices = null;
+    this.specialUpgradeOverlayChoices = null;
     this.upgradeOverlayGraphics.setVisible(false);
     this.upgradeOverlayText.setVisible(false);
+    this.upgradeOverlayPromptText.setVisible(false);
+    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts]) {
+      text.setVisible(false);
+    }
+    for (const hitZone of this.upgradeOverlayChoiceHitZones) {
+      hitZone.setVisible(false).disableInteractive();
+    }
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
   }
 
   private getUpgradeOverlayChoices(): UpgradeOverlayChoice[] {
+    if (this.specialUpgradeOverlayChoices) {
+      return this.specialUpgradeOverlayChoices;
+    }
+
+    if (this.normalUpgradeOverlayChoices) {
+      return this.normalUpgradeOverlayChoices;
+    }
+
     const secondaryChoices = this.getSecondaryWeaponChoices();
-    return secondaryChoices.length > 0
-      ? secondaryChoices
-      : getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions()).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+    this.normalUpgradeOverlayChoices =
+      secondaryChoices.length > 0
+        ? secondaryChoices
+        : Phaser.Utils.Array.Shuffle([
+            ...getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions())
+          ]).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+
+    return this.normalUpgradeOverlayChoices;
+  }
+
+  private getSpecialUpgradeDropChoices(): UpgradeDefinition[] {
+    const specialPool = UPGRADE_CHOICES.filter((upgrade) => upgrade.rarity === 'rare');
+    const available = getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions(), specialPool);
+    return Phaser.Utils.Array.Shuffle([...available]).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
   }
 
   private getEquippedWeaponDefinitions(): WeaponRegistryEntry[] {
-    const weapons = [this.getActiveMainWeaponDefinition()];
-    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+    const weaponIds = new Set<WeaponId>([
+      ...this.playerWeapons.ownedAutoWeaponIds,
+      ...this.playerWeapons.ownedManualWeaponIds
+    ]);
 
-    if (secondaryWeapon) {
-      weapons.push(secondaryWeapon);
-    }
-
-    return weapons;
+    return [...weaponIds].map((weaponId) => getWeaponDefinition(weaponId));
   }
 
   private getSecondaryWeaponChoices(): SecondaryWeaponChoice[] {
-    if (this.hasResolvedSecondaryWeaponChoice || this.playerWeapons.activeSecondaryWeaponId) {
+    if (this.playerWeapons.ownedManualWeaponIds.length >= 3) {
       return [];
     }
 
-    const primaryWeaponId = this.playerWeapons.activeMainWeaponId;
+    const ownedWeaponIds = new Set<WeaponId>([
+      ...this.playerWeapons.ownedAutoWeaponIds,
+      ...this.playerWeapons.ownedManualWeaponIds
+    ]);
     const seenWeaponIds = new Set<WeaponId>();
 
     return shipRegistry
       .filter((ship) => this.isShipUnlocked(ship.id))
-      .map((ship) => ship.startingMainWeaponId)
+      .map((ship) => ship.startingPrimaryWeaponId)
       .filter((weaponId): weaponId is WeaponId => {
-        if (weaponId === primaryWeaponId || weaponId === this.playerWeapons.activeSecondaryWeaponId) {
+        if (!weaponId || ownedWeaponIds.has(weaponId)) {
           return false;
         }
 
         const weapon = getWeaponDefinition(weaponId);
-        if (!weapon.eligibleAsSecondary || !weapon.slotCompatibility.includes('secondary') || seenWeaponIds.has(weaponId)) {
+        if (weapon.assignmentType !== 'manual' || !weapon.eligibleAsSecondary || seenWeaponIds.has(weaponId)) {
           return false;
         }
 
@@ -3283,22 +4566,49 @@ export class GameScene extends Phaser.Scene {
     this.selectUpgrade(choice, time);
   }
 
+  private selectUpgradeOverlayChoiceAt(index: number, time: number): void {
+    if (!this.isUpgradeOverlayOpen || this.isPlayerDead) {
+      return;
+    }
+
+    const choice = this.getUpgradeOverlayChoices()[index];
+    if (!choice) {
+      return;
+    }
+
+    this.selectUpgradeOverlayChoice(choice, time);
+  }
+
   private selectSecondaryWeapon(weaponId: WeaponId, time: number): void {
-    if (this.bankedUpgrades <= 0 || this.playerWeapons.activeSecondaryWeaponId) {
+    const weapon = getWeaponDefinition(weaponId);
+    if (
+      this.bankedUpgrades <= 0 ||
+      weapon.assignmentType !== 'manual' ||
+      this.playerWeapons.ownedManualWeaponIds.includes(weaponId) ||
+      this.playerWeapons.ownedManualWeaponIds.length >= 3
+    ) {
       this.closeUpgradeOverlay(time);
       return;
     }
 
-    this.playerWeapons.activeSecondaryWeaponId = weaponId;
+    this.playerWeapons.ownedManualWeaponIds.push(weaponId);
+    if (!this.playerWeapons.activePrimaryWeaponId) {
+      this.playerWeapons.activePrimaryWeaponId = weaponId;
+      this.playerWeapons.nextPrimaryWeaponFireAt = 0;
+    } else if (!this.playerWeapons.activeSecondaryWeaponId) {
+      this.playerWeapons.activeSecondaryWeaponId = weaponId;
+      this.playerWeapons.nextSecondaryWeaponFireAt = 0;
+    }
     this.hasResolvedSecondaryWeaponChoice = true;
-    this.playerWeapons.nextSecondaryWeaponFireAt = 0;
     this.ensureRammingShieldRuntime();
     this.bankedUpgrades -= 1;
-    this.closeUpgradeOverlay(time);
+    this.advanceOrCloseNormalUpgradeOverlay(time);
   }
 
   private selectUpgrade(upgrade: UpgradeDefinition, time: number): void {
-    if (this.bankedUpgrades <= 0) {
+    const isSpecialChoice = this.specialUpgradeOverlayChoices !== null;
+
+    if (!isSpecialChoice && this.bankedUpgrades <= 0) {
       this.closeUpgradeOverlay(time);
       return;
     }
@@ -3314,8 +4624,28 @@ export class GameScene extends Phaser.Scene {
       this.applyPassiveUpgrade(upgrade.id);
     }
 
-    this.bankedUpgrades -= 1;
-    this.closeUpgradeOverlay(time);
+    if (!isSpecialChoice) {
+      this.bankedUpgrades -= 1;
+    }
+
+    if (isSpecialChoice) {
+      this.closeUpgradeOverlay(time);
+    } else {
+      this.advanceOrCloseNormalUpgradeOverlay(time);
+    }
+  }
+
+  private advanceOrCloseNormalUpgradeOverlay(time: number): void {
+    this.normalUpgradeOverlayChoices = null;
+
+    if (this.bankedUpgrades <= 0 || this.isPlayerDead) {
+      this.closeUpgradeOverlay(time);
+      return;
+    }
+
+    this.refreshUpgradeOverlayText();
+    this.updateGameplayHud(time);
+    this.updateUpgradeButton();
   }
 
   private applyPassiveUpgrade(upgradeId: PassiveUpgradeId): void {
@@ -3327,7 +4657,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isPassiveStatUpgradeId(upgradeId: UpgradeId): upgradeId is PassiveUpgradeId {
-    return upgradeId === 'hull-plating' || upgradeId === 'engine-tuning' || upgradeId === 'damage-control';
+    return (
+      upgradeId === 'hull-plating' ||
+      upgradeId === 'engine-tuning' ||
+      upgradeId === 'damage-control' ||
+      upgradeId === 'stat_amount' ||
+      upgradeId === 'stat_magnet' ||
+      upgradeId === 'stat_luck' ||
+      upgradeId === 'stat_growth' ||
+      upgradeId === 'stat_greed'
+    );
   }
 
   private isUpgradeAtMaxLevel(upgrade: UpgradeDefinition): boolean {
@@ -3610,7 +4949,7 @@ export class GameScene extends Phaser.Scene {
   private loadDebugShipLoadout(shipId: ShipId): void {
     loadMarkdownFile((contents) => {
       this.applyDebugShipLoadoutMarkdown(shipId, contents);
-      this.refreshDebugMenu();
+      this.refreshDebugMenu(this.time.now, true);
     });
   }
 
@@ -3623,7 +4962,7 @@ export class GameScene extends Phaser.Scene {
   private loadDebugWeaponLoadout(weaponId: WeaponId): void {
     loadMarkdownFile((contents) => {
       this.applyDebugWeaponLoadoutMarkdown(weaponId, contents);
-      this.refreshDebugMenu();
+      this.refreshDebugMenu(this.time.now, true);
     });
   }
 
@@ -3649,6 +4988,141 @@ export class GameScene extends Phaser.Scene {
     this.syncRammingShieldDebugRuntime();
   }
 
+  private saveDebugPreset(): void {
+    const markdown = createDebugPresetMarkdown(this.createDebugPresetSetup());
+    downloadTextFile(`starvivors-debug-preset-${getTimestampSlug()}.md`, markdown, 'text/markdown');
+  }
+
+  private loadDebugPreset(): void {
+    loadMarkdownFile((contents) => {
+      this.applyDebugPresetMarkdown(contents);
+      this.refreshDebugMenu(this.time.now, true);
+    });
+  }
+
+  private applyDebugPresetMarkdown(markdown: string): void {
+    const setup = parseDebugPresetMarkdown(markdown);
+
+    if (!setup) {
+      return;
+    }
+
+    this.applyDebugPresetSetup(setup);
+  }
+
+  private createDebugPresetSetup(): Record<string, unknown> {
+    return {
+      debugState: this.debugState.createDebugPresetState(),
+      starfield: this.starfield.getDebugValues(),
+      blackHole: {
+        lensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
+        lensDensity: this.debugBlackHoleLensDensity,
+        lensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
+        influenceRadiusScale: this.debugBlackHoleInfluenceRadiusScale,
+        damageRadiusScale: this.debugBlackHoleDamageRadiusScale,
+        visualScale: this.debugBlackHoleVisualScale,
+        coreScale: this.debugBlackHoleCoreScale,
+        fieldTuning: { ...this.debugBlackHoleFieldTuning },
+        projectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
+        selectedPngLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
+        addPngTextureKey: this.debugAddBlackHolePngTextureKey,
+        pngLayers: (this.blackHole?.getPngLayerSummaries() ?? []).map((layer) => ({
+          image: layer.textureKey,
+          speedRps: layer.speedRps,
+          size: layer.sizeMultiplier,
+          alpha: layer.alpha,
+          enabled: layer.enabled,
+          initialRotation: layer.initialRotation
+        }))
+      }
+    };
+  }
+
+  private applyDebugPresetSetup(setup: Record<string, unknown>): void {
+    this.debugState.applyDebugPresetState(setup.debugState);
+    this.playerInvulnerableUntil = this.debugState.playerInvulnerable ? Number.MAX_SAFE_INTEGER : 0;
+    this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
+    this.syncRammingShieldDebugRuntime();
+
+    const starfield = this.getRecord(setup.starfield);
+    this.starfield.setDebugValues({
+      backgroundStarsVisible: this.getBoolean(starfield.backgroundStarsVisible, this.starfield.getDebugValues().backgroundStarsVisible),
+      starfieldFarParallax: this.getNumber(starfield.starfieldFarParallax, this.starfield.getDebugValues().starfieldFarParallax),
+      starfieldMidParallax: this.getNumber(starfield.starfieldMidParallax, this.starfield.getDebugValues().starfieldMidParallax),
+      starfieldNearParallax: this.getNumber(starfield.starfieldNearParallax, this.starfield.getDebugValues().starfieldNearParallax)
+    });
+
+    const blackHole = this.getRecord(setup.blackHole);
+    this.debugBlackHoleLensOrbitSpeedMultiplier = this.clampBlackHoleForceMultiplier(
+      this.getNumber(blackHole.lensOrbitSpeedMultiplier, this.debugBlackHoleLensOrbitSpeedMultiplier)
+    );
+    this.debugBlackHoleLensDensity = Math.round(this.getNumber(blackHole.lensDensity, this.debugBlackHoleLensDensity));
+    this.debugBlackHoleLensLengthMultiplier = this.clampBlackHoleForceMultiplier(
+      this.getNumber(blackHole.lensLengthMultiplier, this.debugBlackHoleLensLengthMultiplier)
+    );
+    this.debugBlackHoleInfluenceRadiusScale = this.clampBlackHoleRadiusScale(
+      this.getNumber(blackHole.influenceRadiusScale, this.debugBlackHoleInfluenceRadiusScale)
+    );
+    this.debugBlackHoleDamageRadiusScale = this.clampBlackHoleRadiusScale(
+      this.getNumber(blackHole.damageRadiusScale, this.debugBlackHoleDamageRadiusScale)
+    );
+    this.debugBlackHoleVisualScale = this.clampBlackHoleRadiusScale(
+      this.getNumber(blackHole.visualScale, this.debugBlackHoleVisualScale)
+    );
+    this.debugBlackHoleCoreScale = this.clampBlackHoleRadiusScale(
+      this.getNumber(blackHole.coreScale, this.debugBlackHoleCoreScale)
+    );
+    this.debugBlackHoleFieldTuning = normalizeBlackHoleFieldTuningDebug(
+      this.getRecord(blackHole.fieldTuning),
+      this.debugBlackHoleFieldTuning
+    );
+    this.areDebugBlackHoleProjectionLensLayersEnabled = this.getBoolean(
+      blackHole.projectionLensLayersEnabled,
+      this.areDebugBlackHoleProjectionLensLayersEnabled
+    );
+    if (isBlackHolePngTextureKeyDebug(blackHole.addPngTextureKey)) {
+      this.debugAddBlackHolePngTextureKey = blackHole.addPngTextureKey;
+    }
+
+    const rawLayers = Array.isArray(blackHole.pngLayers) ? blackHole.pngLayers : undefined;
+    const layers = normalizeBlackHolePngSetupLayersDebug(rawLayers);
+    if (layers) {
+      this.blackHole?.setPngLayers(layers);
+    }
+    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
+    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
+      Math.trunc(this.getNumber(blackHole.selectedPngLayerIndex, this.debugSelectedBlackHolePngLayerIndex)),
+      0,
+      Math.max(0, layerCount - 1)
+    );
+  }
+
+  private resetDebugTuning(): void {
+    this.debugState.resetAllDebugTuning();
+    this.playerInvulnerableUntil = 0;
+    this.playerHull = Math.min(this.playerHull, this.getPlayerMaxHull());
+    this.syncRammingShieldDebugRuntime();
+    this.starfield.setDebugValues({
+      backgroundStarsVisible: true,
+      starfieldFarParallax: DEFAULT_STARFIELD_FAR_PARALLAX,
+      starfieldMidParallax: DEFAULT_STARFIELD_MID_PARALLAX,
+      starfieldNearParallax: DEFAULT_STARFIELD_NEAR_PARALLAX
+    });
+    this.resetBlackHoleLensTuning();
+  }
+
+  private getRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  }
+
+  private getNumber(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  }
+
+  private getBoolean(value: unknown, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
   private syncRammingShieldDebugRuntime(): void {
     if (!this.hasRammingShield()) {
       return;
@@ -3669,7 +5143,7 @@ export class GameScene extends Phaser.Scene {
   private loadBlackHolePngSetup(): void {
     loadMarkdownFile((contents) => {
       this.applyBlackHolePngSetupMarkdown(contents);
-      this.refreshDebugMenu();
+      this.refreshDebugMenu(this.time.now, true);
     });
   }
 
@@ -3683,7 +5157,7 @@ export class GameScene extends Phaser.Scene {
   private loadBlackHoleFieldTuning(): void {
     loadMarkdownFile((contents) => {
       this.applyBlackHoleFieldTuningMarkdown(contents);
-      this.refreshDebugMenu();
+      this.refreshDebugMenu(this.time.now, true);
     });
   }
 
@@ -3844,38 +5318,106 @@ export class GameScene extends Phaser.Scene {
     this.upgradeButtonGraphics.strokeRoundedRect(-95, -21, 190, 42, 6);
   }
 
+  private createResultsButton(): void {
+    this.resultsButtonGraphics = this.add.graphics();
+    this.resultsButtonText = this.add
+      .text(0, 0, 'See Results', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '15px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0.5);
+
+    this.resultsButtonContainer = this.add
+      .container(this.scale.width / 2, 54, [this.resultsButtonGraphics, this.resultsButtonText])
+      .setScrollFactor(0)
+      .setDepth(1003)
+      .setSize(170, 34)
+      .setInteractive({ useHandCursor: true });
+
+    this.resultsButtonContainer.on('pointerdown', () => this.showResultsScreen());
+    this.updateResultsButton();
+  }
+
+  private updateResultsButton(): void {
+    if (!this.resultsButtonContainer || !this.resultsButtonGraphics || !this.resultsButtonText) {
+      return;
+    }
+
+    const isVisible = this.isPlayerDead && !this.resultsScreen;
+    this.resultsButtonContainer
+      .setPosition(this.scale.width / 2, 54)
+      .setVisible(isVisible)
+      .disableInteractive();
+
+    if (isVisible) {
+      this.resultsButtonContainer.setInteractive({ useHandCursor: true });
+    }
+
+    this.resultsButtonGraphics.clear();
+    this.resultsButtonGraphics.fillStyle(0x071018, 0.94);
+    this.resultsButtonGraphics.fillRoundedRect(-85, -17, 170, 34, 6);
+    this.resultsButtonGraphics.lineStyle(2, 0xffc857, 0.9);
+    this.resultsButtonGraphics.strokeRoundedRect(-85, -17, 170, 34, 6);
+  }
+
   private createUpgradeOverlay(): void {
     const width = this.scale.width;
     const height = this.scale.height;
     const centerX = width / 2;
     const panelWidth = Math.min(width - 48, 720);
-    const panelHeight = Math.min(height - 48, 430);
+    const panelHeight = Math.min(height - 48, 560);
     const panelX = centerX - panelWidth / 2;
     const panelY = Math.max(56, height / 2 - panelHeight / 2);
     const cardX = panelX + 28;
     const cardWidth = panelWidth - 56;
-    const cardHeight = 40;
+    const cardHeight = 54;
 
     this.upgradeOverlayGraphics = this.add.graphics().setScrollFactor(0).setDepth(1200);
-    this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
-    this.upgradeOverlayGraphics.fillRect(0, 0, width, height);
-    this.upgradeOverlayGraphics.fillStyle(0x071018, 0.95);
-    this.upgradeOverlayGraphics.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-    this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
-    this.upgradeOverlayGraphics.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
-      const cardY = panelY + 96 + i * (cardHeight + 8);
-      this.upgradeOverlayGraphics.fillStyle(0x111a24, 0.94);
-      this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
-      this.upgradeOverlayGraphics.lineStyle(1, 0x52627f, 0.82);
-      this.upgradeOverlayGraphics.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
+      const cardY = panelY + 118 + i * (cardHeight + 8);
+      const choiceText = this.add
+        .text(cardX + 16, cardY + 9, '', {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '13px',
+          color: '#f2fbff',
+          fixedWidth: cardWidth - 258,
+          wordWrap: { width: cardWidth - 258 },
+          lineSpacing: 2
+        })
+        .setScrollFactor(0)
+        .setDepth(1201);
+      const metaText = this.add
+        .text(cardX + cardWidth - 16, cardY + 8, '', {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '11px',
+          color: '#a8c7ff',
+          align: 'right',
+          fixedWidth: 210
+        })
+        .setOrigin(1, 0)
+        .setScrollFactor(0)
+        .setDepth(1201);
+
+      this.upgradeOverlayChoiceTexts.push(choiceText);
+      this.upgradeOverlayChoiceMetaTexts.push(metaText);
+
+      const hitZone = this.add
+        .zone(cardX, cardY, cardWidth, cardHeight)
+        .setOrigin(0, 0)
+        .setScrollFactor(0)
+        .setDepth(1202)
+        .setVisible(false);
+
+      hitZone.on('pointerdown', () => this.selectUpgradeOverlayChoiceAt(i, this.time.now));
+      this.upgradeOverlayChoiceHitZones.push(hitZone);
     }
 
     this.upgradeOverlayText = this.add
       .text(centerX, panelY + 28, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
+        fontSize: '13px',
         color: '#f2fbff',
         align: 'left',
         fixedWidth: panelWidth - 56,
@@ -3886,37 +5428,131 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1201);
 
+    this.upgradeOverlayPromptText = this.add
+      .text(cardX, panelY + panelHeight - 34, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#f2fbff',
+        fixedWidth: cardWidth,
+        wordWrap: { width: cardWidth }
+      })
+      .setScrollFactor(0)
+      .setDepth(1201);
+
     this.upgradeOverlayGraphics.setVisible(false);
     this.upgradeOverlayText.setVisible(false);
+    this.upgradeOverlayPromptText.setVisible(false);
+    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts]) {
+      text.setVisible(false);
+    }
+    for (const hitZone of this.upgradeOverlayChoiceHitZones) {
+      hitZone.disableInteractive();
+    }
   }
 
   private refreshUpgradeOverlayText(): void {
-    const activeWeapon = this.getActiveMainWeaponDefinition();
-    const damageMultiplier = this.getActiveMainWeaponDamageMultiplier();
-    const cooldownSeconds = this.getActiveMainWeaponCooldownMs() / 1000;
-    const speed = Math.round(this.getActiveMainWeaponProjectileSpeed());
+    const activeWeapon = this.getActiveAutoWeaponDefinition();
+    const damageMultiplier = this.getActiveAutoWeaponDamageMultiplier();
+    const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, 'auto');
+    const activeDamage = Math.round(
+      resolvedActiveWeapon.projectile?.damage ?? resolvedActiveWeapon.rammingShield?.baseDamage ?? 0
+    );
+    const cooldownSeconds = this.getActiveAutoWeaponCooldownMs() / 1000;
+    const speed = Math.round(this.getActiveAutoWeaponProjectileSpeed());
     const choices = this.getUpgradeOverlayChoices();
-    const choiceLines = choices.map((choice, index) => {
+    const choicePrompt =
+      choices.length > 0 ? `Click a card or press 1-${choices.length} to choose.  Esc closes without spending.` : 'Esc closes.';
+
+    this.drawUpgradeOverlayCards(choices);
+    choices.forEach((choice, index) => {
+      const text = this.upgradeOverlayChoiceTexts[index];
+      const metaText = this.upgradeOverlayChoiceMetaTexts[index];
       if (choice.category === 'secondary-weapon') {
-        return `${index + 1}. ${choice.name}\n   ${choice.description}`;
+        text.setText(`${index + 1}. ${choice.name}\n${choice.description}`);
+        metaText.setText('SECONDARY');
+        return;
       }
 
       const level = this.getUpgradeLevel(choice);
       const maxLevel = choice.maxLevel ? `/${choice.maxLevel}` : '';
       const maxLabel = this.isUpgradeAtMaxLevel(choice) ? '  MAX' : '';
+      text.setText(`${index + 1}. ${choice.name}\n${choice.description}`);
+      metaText.setText(`${choice.rarity.toUpperCase()}  ${choice.category.toUpperCase()}\nLv ${level}${maxLevel}${maxLabel}`);
+    });
 
-      return `${index + 1}. ${choice.name}  Lv ${level}${maxLevel}${maxLabel}\n   ${choice.description}`;
-    }).join('\n\n');
-    const choicePrompt = choices.length > 0 ? `Press 1-${choices.length} to choose.  Esc closes without spending.` : 'Esc closes.';
+    for (let i = choices.length; i < this.upgradeOverlayChoiceTexts.length; i += 1) {
+      this.upgradeOverlayChoiceTexts[i].setText('');
+      this.upgradeOverlayChoiceMetaTexts[i].setText('');
+    }
 
     this.upgradeOverlayText.setText(
-      `UPGRADE SELECTION\n` +
+      `${this.specialUpgradeOverlayChoices ? 'SPECIAL UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
         `Banked upgrades: ${this.bankedUpgrades}\n` +
-        `${activeWeapon.displayName}: x${damageMultiplier.toFixed(2)} damage, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
-        `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames\n\n` +
-        `${choiceLines}\n\n` +
-        choicePrompt
+        `${activeWeapon.displayName}: ${activeDamage} damage, x${damageMultiplier.toFixed(2)}, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
+        `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames`
     );
+    this.upgradeOverlayPromptText.setText(choicePrompt);
+  }
+
+  private drawUpgradeOverlayCards(choices: UpgradeOverlayChoice[]): void {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const panelWidth = Math.min(width - 48, 720);
+    const panelHeight = Math.min(height - 48, 560);
+    const panelX = centerX - panelWidth / 2;
+    const panelY = Math.max(56, height / 2 - panelHeight / 2);
+    const cardX = panelX + 28;
+    const cardWidth = panelWidth - 56;
+    const cardHeight = 54;
+
+    this.upgradeOverlayGraphics.clear();
+    this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
+    this.upgradeOverlayGraphics.fillRect(0, 0, width, height);
+    this.upgradeOverlayGraphics.fillStyle(0x071018, 0.95);
+    this.upgradeOverlayGraphics.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
+    this.upgradeOverlayGraphics.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+
+    for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
+      const choice = choices[i];
+      const cardY = panelY + 118 + i * (cardHeight + 8);
+      const accentColor = choice && choice.category !== 'secondary-weapon' ? this.getUpgradeRarityColor(choice.rarity) : 0x42f5d7;
+      const hitZone = this.upgradeOverlayChoiceHitZones[i];
+
+      this.upgradeOverlayGraphics.fillStyle(0x111a24, choice ? 0.94 : 0.42);
+      this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
+      this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.9 : 0.2);
+      this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, 5, cardHeight, 3);
+      this.upgradeOverlayGraphics.lineStyle(1, choice ? accentColor : 0x52627f, choice ? 0.72 : 0.28);
+      this.upgradeOverlayGraphics.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
+
+      hitZone.setPosition(cardX, cardY).setSize(cardWidth, cardHeight).setVisible(Boolean(choice));
+      if (choice && this.isUpgradeOverlayOpen) {
+        hitZone.setInteractive({ useHandCursor: true });
+      } else {
+        hitZone.disableInteractive();
+      }
+    }
+
+    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts, this.upgradeOverlayPromptText]) {
+      text.setVisible(this.isUpgradeOverlayOpen);
+    }
+  }
+
+  private getUpgradeRarityColor(rarity: UpgradeDefinition['rarity']): number {
+    switch (rarity) {
+      case 'common':
+        return 0xa8c7ff;
+      case 'uncommon':
+        return 0x42f5d7;
+      case 'rare':
+        return 0xffc857;
+      case 'epic':
+        return 0xb88cff;
+      default:
+        return 0xf2fbff;
+    }
   }
 
   private updatePlayerFacing(): void {
@@ -3934,31 +5570,34 @@ export class GameScene extends Phaser.Scene {
     thrustForward: boolean,
     thrustReverse: boolean,
     strafeLeft: boolean,
-    strafeRight: boolean
+    strafeRight: boolean,
+    useWorldRelativeThrusters: boolean
   ): void {
-    const forward = this.getForwardDirection(this.player.rotation);
-    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
+    const shipForward = this.getForwardDirection(this.player.rotation);
+    const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
+    const forward = useWorldRelativeThrusters ? new Phaser.Math.Vector2(0, -1) : shipForward;
+    const right = useWorldRelativeThrusters ? new Phaser.Math.Vector2(1, 0) : shipRight;
     const visualScale = this.selectedShipId === 'bulwark' ? 0.52 : 1;
 
     if (thrustForward && time >= this.nextForwardThrusterAt) {
-      this.emitThrusterParticle({ x: -10, y: 39 }, forward.clone().negate(), visualScale, right);
-      this.emitThrusterParticle({ x: 10, y: 39 }, forward.clone().negate(), visualScale, right);
+      this.emitThrusterParticle({ x: -13, y: 42 }, forward.clone().negate(), 1.45 * visualScale, forward, right);
+      this.emitThrusterParticle({ x: 13, y: 42 }, forward.clone().negate(), 1.45 * visualScale, forward, right);
       this.nextForwardThrusterAt = time + FORWARD_THRUSTER_INTERVAL_MS;
     }
 
     if (thrustReverse && time >= this.nextReverseThrusterAt) {
-      this.emitThrusterParticle({ x: -9, y: -34 }, forward, 0.62 * visualScale, right);
-      this.emitThrusterParticle({ x: 9, y: -34 }, forward, 0.62 * visualScale, right);
+      this.emitThrusterParticle({ x: -11, y: -37 }, forward, 0.95 * visualScale, forward, right);
+      this.emitThrusterParticle({ x: 11, y: -37 }, forward, 0.95 * visualScale, forward, right);
       this.nextReverseThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
     }
 
     if (strafeLeft && time >= this.nextLeftStrafeThrusterAt) {
-      this.emitThrusterParticle({ x: 35, y: 2 }, right, 0.48 * visualScale, right);
+      this.emitThrusterParticle({ x: 38, y: 2 }, right, 0.8 * visualScale, forward, right);
       this.nextLeftStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
     }
 
     if (strafeRight && time >= this.nextRightStrafeThrusterAt) {
-      this.emitThrusterParticle({ x: -35, y: 2 }, right.clone().negate(), 0.48 * visualScale, right);
+      this.emitThrusterParticle({ x: -38, y: 2 }, right.clone().negate(), 0.8 * visualScale, forward, right);
       this.nextRightStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
     }
   }
@@ -4023,26 +5662,28 @@ export class GameScene extends Phaser.Scene {
     localOffset: { x: number; y: number },
     exhaustDirection: Phaser.Math.Vector2,
     intensity: number,
+    forward: Phaser.Math.Vector2,
     right: Phaser.Math.Vector2
   ): void {
-    const forward = this.getForwardDirection(this.player.rotation);
     const offset = this.getShipLocalOffset(localOffset.x, localOffset.y, forward, right);
-    const jitter = Phaser.Math.FloatBetween(-2.2, 2.2) * intensity;
+    const jitter = Phaser.Math.FloatBetween(-4.4, 4.4) * intensity;
     const startX = this.player.x + offset.x + right.x * jitter;
     const startY = this.player.y + offset.y + right.y * jitter;
-    const particle = this.add.circle(startX, startY, Phaser.Math.FloatBetween(2.2, 4.4) * intensity, 0x73f2ff, 0.75);
-    const travel = Phaser.Math.FloatBetween(14, 26) * intensity;
+    const color = Phaser.Math.Between(0, 4) === 0 ? 0xf2fbff : Phaser.Math.Between(0, 1) === 0 ? 0x73f2ff : 0x42f5d7;
+    const particle = this.add.circle(startX, startY, Phaser.Math.FloatBetween(3.6, 7.4) * intensity, color, 0.86);
+    const spread = right.clone().scale(Phaser.Math.FloatBetween(-6, 6) * intensity);
+    const travel = Phaser.Math.FloatBetween(24, 44) * intensity;
 
     particle.setDepth(7);
     particle.setBlendMode(Phaser.BlendModes.ADD);
 
     this.tweens.add({
       targets: particle,
-      x: startX + exhaustDirection.x * travel,
-      y: startY + exhaustDirection.y * travel,
+      x: startX + exhaustDirection.x * travel + spread.x,
+      y: startY + exhaustDirection.y * travel + spread.y,
       alpha: 0,
-      scale: 0.2,
-      duration: THRUSTER_FADE_MS,
+      scale: 0.14,
+      duration: THRUSTER_FADE_MS + Phaser.Math.Between(45, 95),
       ease: 'Quad.easeOut',
       onComplete: () => particle.destroy()
     });
@@ -4147,14 +5788,45 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemyContact(): PlayerEnemyContact | undefined {
-    const playerHitRadius = this.getPlayerHitRadius();
-    for (const enemy of this.basicEnemies) {
-      const hitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
-      const hitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
+    const playerHitRadius = this.getPlayerCollisionRadius();
+    for (const enemy of this.liveEnemies) {
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
+        enemy.definition.stats.radius
+      );
+      if (shieldCollision) {
+        return {
+          enemy,
+          normal: shieldCollision.normal,
+          penetration: shieldCollision.penetration,
+          damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier,
+          mass: enemy.definition.stats.mass ?? 1,
+          hitRammingShield: true
+        };
+      }
+
+      const collision = getCircleCollision(
+        this.arena,
+        { x: enemy.body.x, y: enemy.body.y, radius: enemy.definition.stats.radius },
+        { x: this.player.x, y: this.player.y, radius: playerHitRadius }
+      );
+      if (collision) {
+        return {
+          enemy,
+          normal: collision.normal,
+          penetration: collision.penetration,
+          damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier,
+          mass: enemy.definition.stats.mass ?? 1
+        };
+      }
+    }
+
+    for (const enemy of this.basicEnemies) {
+      const shieldCollision = this.getRammingShieldCircleCollision(
+        enemy.body.x,
+        enemy.body.y,
+        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
       );
       if (shieldCollision) {
         return {
@@ -4167,18 +5839,12 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
-
-      if (normalizedHit <= 1) {
+      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
+      if (collision) {
         return {
           enemy,
-          normal: this.getCollisionNormal(offset),
-          penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(hitHalfWidth, hitHalfLength),
+          normal: collision.normal,
+          penetration: collision.penetration,
           damage: enemy.stats.contactDamage,
           mass: enemy.stats.mass
         };
@@ -4186,12 +5852,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const enemy of this.shooterEnemies) {
-      const shooterHitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
-      const shooterHitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
+        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
       );
       if (shieldCollision) {
         return {
@@ -4204,20 +5868,12 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit =
-        (localX * localX) / (shooterHitHalfWidth * shooterHitHalfWidth) +
-        (localY * localY) / (shooterHitHalfLength * shooterHitHalfLength);
-
-      if (normalizedHit <= 1) {
+      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
+      if (collision) {
         return {
           enemy,
-          normal: this.getCollisionNormal(offset),
-          penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(shooterHitHalfWidth, shooterHitHalfLength),
+          normal: collision.normal,
+          penetration: collision.penetration,
           damage: enemy.stats.contactDamage,
           mass: enemy.stats.mass
         };
@@ -4225,12 +5881,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     for (const enemy of this.tankEnemies) {
-      const tankHitHalfWidth = enemy.stats.hitHalfWidth + playerHitRadius;
-      const tankHitHalfLength = enemy.stats.hitHalfLength + playerHitRadius;
       const shieldCollision = this.getRammingShieldCircleCollision(
         enemy.body.x,
         enemy.body.y,
-        Math.max(enemy.stats.hitHalfWidth, enemy.stats.hitHalfLength)
+        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
       );
       if (shieldCollision) {
         return {
@@ -4243,18 +5897,12 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
-      const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
-      const localX = offset.dot(enemyRight);
-      const localY = offset.dot(enemyForward);
-      const normalizedHit = (localX * localX) / (tankHitHalfWidth * tankHitHalfWidth) + (localY * localY) / (tankHitHalfLength * tankHitHalfLength);
-
-      if (normalizedHit <= 1) {
+      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
+      if (collision) {
         return {
           enemy,
-          normal: this.getCollisionNormal(offset),
-          penetration: (1 - Math.sqrt(normalizedHit)) * Math.min(tankHitHalfWidth, tankHitHalfLength),
+          normal: collision.normal,
+          penetration: collision.penetration,
           damage: enemy.stats.contactDamage,
           mass: enemy.stats.mass
         };
@@ -4264,11 +5912,45 @@ export class GameScene extends Phaser.Scene {
     return undefined;
   }
 
+  private getEnemyCapsulePlayerCollision(
+    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
+    playerRadius: number
+  ): { normal: Phaser.Math.Vector2; penetration: number } | undefined {
+    const enemyForward = this.getForwardDirection(enemy.body.rotation);
+    const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+    const collision = getCapsuleCircleCollision(
+      this.arena,
+      {
+        x: enemy.body.x,
+        y: enemy.body.y,
+        right: enemyRight,
+        forward: enemyForward,
+        halfWidth: this.getEnemyCollisionHalfWidth(enemy),
+        halfLength: this.getEnemyCollisionHalfLength(enemy)
+      },
+      {
+        x: this.player.x,
+        y: this.player.y,
+        radius: playerRadius
+      }
+    );
+
+    if (!collision) {
+      return undefined;
+    }
+
+    return {
+      normal: collision.normal.clone().scale(-1),
+      penetration: collision.penetration
+    };
+  }
+
   private getAsteroidContact(): PlayerAsteroidContact | undefined {
-    const playerHitRadius = this.getPlayerHitRadius();
+    const playerHitRadius = this.getPlayerCollisionRadius();
 
     for (const asteroid of this.basicAsteroids) {
-      const shieldCollision = this.getRammingShieldCircleCollision(asteroid.body.x, asteroid.body.y, asteroid.hitRadius);
+      const asteroidRadius = this.getAsteroidCollisionRadius(asteroid);
+      const shieldCollision = this.getRammingShieldCircleCollision(asteroid.body.x, asteroid.body.y, asteroidRadius);
       if (shieldCollision) {
         return {
           asteroid,
@@ -4279,14 +5961,16 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const offset = this.getWrappedDirection(asteroid.body.x, asteroid.body.y, this.player.x, this.player.y);
-      const hitRadius = asteroid.hitRadius + playerHitRadius;
-
-      if (offset.lengthSq() <= hitRadius * hitRadius) {
+      const collision = getCircleCollision(
+        this.arena,
+        { x: this.player.x, y: this.player.y, radius: playerHitRadius },
+        { x: asteroid.body.x, y: asteroid.body.y, radius: asteroidRadius }
+      );
+      if (collision) {
         return {
           asteroid,
-          normal: this.getCollisionNormal(offset),
-          penetration: hitRadius - offset.length(),
+          normal: collision.normal,
+          penetration: collision.penetration,
           damage: ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier]
         };
       }
@@ -4296,10 +5980,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getDebrisContact(): PlayerDebrisContact | undefined {
-    const playerHitRadius = this.getPlayerHitRadius();
+    const playerHitRadius = this.getPlayerCollisionRadius();
 
     for (const debris of this.enemyWreckageDebris) {
-      const shieldCollision = this.getRammingShieldCircleCollision(debris.body.x, debris.body.y, debris.hitRadius);
+      const debrisRadius = this.getDebrisCollisionRadius(debris);
+      const shieldCollision = this.getRammingShieldCircleCollision(debris.body.x, debris.body.y, debrisRadius);
       if (shieldCollision) {
         return {
           debris,
@@ -4310,14 +5995,16 @@ export class GameScene extends Phaser.Scene {
         };
       }
 
-      const offset = this.getWrappedDirection(debris.body.x, debris.body.y, this.player.x, this.player.y);
-      const hitRadius = debris.hitRadius + playerHitRadius;
-
-      if (offset.lengthSq() <= hitRadius * hitRadius) {
+      const collision = getCircleCollision(
+        this.arena,
+        { x: this.player.x, y: this.player.y, radius: playerHitRadius },
+        { x: debris.body.x, y: debris.body.y, radius: debrisRadius }
+      );
+      if (collision) {
         return {
           debris,
-          normal: this.getCollisionNormal(offset),
-          penetration: hitRadius - offset.length(),
+          normal: collision.normal,
+          penetration: collision.penetration,
           damage: debris.damage
         };
       }
@@ -4362,18 +6049,19 @@ export class GameScene extends Phaser.Scene {
 
     const collision = getRammingShieldCircleCollisionResult({
       collider,
+      arenaWidth: this.arena.width,
+      arenaHeight: this.arena.height,
+      targetX,
+      targetY,
       targetRadius,
-      offsetFromShield: this.getWrappedDirection(collider.centerX, collider.centerY, targetX, targetY)
     });
 
     if (!collision) {
       return undefined;
     }
 
-    const normal = this.getCollisionNormal(this.getWrappedDirection(targetX, targetY, this.player.x, this.player.y));
-
     return {
-      normal,
+      normal: new Phaser.Math.Vector2(collision.normalX, collision.normalY),
       penetration: collision.penetration
     };
   }
@@ -4536,12 +6224,13 @@ export class GameScene extends Phaser.Scene {
     this.playerBodyImpactCooldowns.set(target, time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS);
   }
 
-  private applyPlayerBodyImpactDamageToEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, normal: Phaser.Math.Vector2, time: number): void {
+  private applyPlayerBodyImpactDamageToEnemy(enemy: AnyGameEnemy, normal: Phaser.Math.Vector2, time: number): void {
     if (!this.canApplyPlayerBodyImpactDamage(enemy.body, time)) {
       return;
     }
 
-    const damage = this.getPlayerBodyImpactDamage(enemy.stats.mass, this.getEnemyTotalVelocity(enemy), normal);
+    const enemyMass = this.isLiveEnemy(enemy) ? enemy.definition.stats.mass ?? 1 : enemy.stats.mass;
+    const damage = this.getPlayerBodyImpactDamage(enemyMass, this.getEnemyTotalVelocity(enemy), normal);
     this.markPlayerBodyImpactDamageApplied(enemy.body, time);
     if (damage <= 0) {
       return;
@@ -4645,18 +6334,43 @@ export class GameScene extends Phaser.Scene {
       maxDamage: stats.maxDamage
     });
 
-    return impactDamage * activeMultiplier * dashMultiplier * playerStats.damage;
+    return this.rollPlayerDamage(impactDamage * activeMultiplier * dashMultiplier * playerStats.damage);
   }
 
   private damageEnemy(
-    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
+    enemy: AnyGameEnemy,
     damage: number,
     source: DamageFeedbackSource = 'environment',
     revealHealthBar = false
-  ): void {
-    const appliedDamage = Math.max(1, damage - enemy.stats.defense);
+  ): number {
+    if (this.isLiveEnemy(enemy)) {
+      return this.damageLiveEnemy(enemy, damage, source, revealHealthBar);
+    }
+
+    if (damage <= 0) {
+      return 0;
+    }
+
+    const appliedDamage = Math.max(1, Math.round(damage - enemy.stats.defense));
     enemy.hp -= appliedDamage;
     this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), appliedDamage, source, revealHealthBar);
+    return appliedDamage;
+  }
+
+  private damageLiveEnemy(
+    enemy: LiveGameEnemy,
+    damage: number,
+    source: DamageFeedbackSource = 'environment',
+    revealHealthBar = false
+  ): number {
+    if (damage <= 0) {
+      return 0;
+    }
+
+    const appliedDamage = Math.max(1, Math.round(damage));
+    enemy.hp -= appliedDamage;
+    this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.maxHp, enemy.definition.stats.radius, appliedDamage, source, revealHealthBar);
+    return appliedDamage;
   }
 
   private damageAsteroid(
@@ -4664,18 +6378,20 @@ export class GameScene extends Phaser.Scene {
     damage: number,
     source: DamageFeedbackSource = 'environment',
     revealHealthBar = false
-  ): void {
-    asteroid.hp -= damage;
+  ): number {
+    const appliedDamage = Math.max(0, Math.round(damage));
+    asteroid.hp -= appliedDamage;
     this.emitDamageFeedback(
       asteroid,
       asteroid.body,
       asteroid.hp,
       ASTEROID_TIER_CONFIG[asteroid.tier].hp,
       asteroid.hitRadius,
-      damage,
+      appliedDamage,
       source,
       revealHealthBar
     );
+    return appliedDamage;
   }
 
   private damageDebris(
@@ -4683,9 +6399,11 @@ export class GameScene extends Phaser.Scene {
     damage: number,
     source: DamageFeedbackSource = 'environment',
     revealHealthBar = false
-  ): void {
-    debris.hp -= damage;
-    this.emitDamageFeedback(debris, debris.body, debris.hp, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, damage, source, revealHealthBar);
+  ): number {
+    const appliedDamage = Math.max(0, Math.round(damage));
+    debris.hp -= appliedDamage;
+    this.emitDamageFeedback(debris, debris.body, debris.hp, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, appliedDamage, source, revealHealthBar);
+    return appliedDamage;
   }
 
   private getCombatFeedbackSnapshot(): CombatFeedbackSnapshot {
@@ -4718,70 +6436,35 @@ export class GameScene extends Phaser.Scene {
     this.combatFeedback.emitFloatingDamageNumber(x, y, damage, source);
   }
 
-  private resolveEnemyDestroyedByPhysicalImpact(enemy: BasicEnemy | ShooterEnemy | TankEnemy): void {
+  private resolveEnemyDestroyedByPhysicalImpact(enemy: AnyGameEnemy): void {
     if (enemy.hp > 0) {
       this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
       return;
     }
 
+    if (this.isLiveEnemy(enemy)) {
+      const liveIndex = this.liveEnemies.indexOf(enemy);
+      if (liveIndex >= 0) {
+        this.destroyLiveEnemyWithRewards(enemy, liveIndex);
+      }
+      return;
+    }
+
     const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
     if (basicIndex >= 0) {
-      this.spawnEnemyWreckageDebris(
-        'chaser',
-        enemy.body.x,
-        enemy.body.y,
-        (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
-      );
-      this.trySpawnScrapPickup(
-        'enemy',
-        enemy.stats.scrapValue,
-        enemy.body.x,
-        enemy.body.y,
-        this.getEnemyTotalVelocity(enemy),
-        enemy.stats.scrapDropChance
-      );
-      enemy.body.destroy(true);
-      enemy.wrapMirrorBody.destroy(true);
-      this.basicEnemies.splice(basicIndex, 1);
-      this.grantXp(enemy.stats.xpValue);
+      this.destroyEnemyWithRewards(enemy as BasicEnemy, this.basicEnemies, basicIndex, 'chaser');
       return;
     }
 
     const tankIndex = this.tankEnemies.indexOf(enemy as TankEnemy);
     if (tankIndex >= 0) {
-      const tank = enemy as TankEnemy;
-      this.spawnEnemyWreckageDebris('tank', tank.body.x, tank.body.y, this.getEnemyTotalVelocity(tank));
-      this.trySpawnScrapPickup(
-        'enemy',
-        tank.stats.scrapValue,
-        tank.body.x,
-        tank.body.y,
-        this.getEnemyTotalVelocity(tank),
-        tank.stats.scrapDropChance
-      );
-      tank.body.destroy(true);
-      tank.wrapMirrorBody.destroy(true);
-      this.tankEnemies.splice(tankIndex, 1);
-      this.grantXp(tank.stats.xpValue);
+      this.destroyEnemyWithRewards(enemy as TankEnemy, this.tankEnemies, tankIndex, 'tank');
       return;
     }
 
     const shooterIndex = this.shooterEnemies.indexOf(enemy as ShooterEnemy);
     if (shooterIndex >= 0) {
-      const shooter = enemy as ShooterEnemy;
-      this.spawnEnemyWreckageDebris('shooter', shooter.body.x, shooter.body.y, this.getEnemyTotalVelocity(shooter));
-      this.trySpawnScrapPickup(
-        'enemy',
-        shooter.stats.scrapValue,
-        shooter.body.x,
-        shooter.body.y,
-        this.getEnemyTotalVelocity(shooter),
-        shooter.stats.scrapDropChance
-      );
-      shooter.body.destroy(true);
-      shooter.wrapMirrorBody.destroy(true);
-      this.shooterEnemies.splice(shooterIndex, 1);
-      this.grantXp(shooter.stats.xpValue);
+      this.destroyEnemyWithRewards(enemy as ShooterEnemy, this.shooterEnemies, shooterIndex, 'shooter');
     }
   }
 
@@ -4800,6 +6483,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     damageRammingShield(this.rammingShieldState, this.getRammingShieldStats(), damage, time);
+    this.isPulseEmergencyCharged = this.getRunUpgradeLevelById('pulse_emergency_discharge') > 0;
     this.rammingShieldState.nextBlockDamageAt = time + this.getPlayerDamageInvulnerabilityMs();
     this.updateRammingShieldVisual(time);
     this.emitFloatingDamageNumber(impactX, impactY, damage, 'shield');
@@ -4853,8 +6537,9 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private damageRammedEnemy(enemy: BasicEnemy | ShooterEnemy | TankEnemy, time: number): void {
-    const damage = this.getRammingShieldDamage(this.getEnemyTotalVelocity(enemy), enemy.stats.mass, time);
+  private damageRammedEnemy(enemy: AnyGameEnemy, time: number): void {
+    const enemyMass = this.isLiveEnemy(enemy) ? enemy.definition.stats.mass ?? 1 : enemy.stats.mass;
+    const damage = this.getRammingShieldDamage(this.getEnemyTotalVelocity(enemy), enemyMass, time);
     if (damage <= 0) {
       return;
     }
@@ -4862,27 +6547,20 @@ export class GameScene extends Phaser.Scene {
     this.damageEnemy(enemy, damage, 'shield', true);
     this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
 
+    if (this.isLiveEnemy(enemy)) {
+      const liveIndex = this.liveEnemies.indexOf(enemy);
+      if (enemy.hp <= 0 && liveIndex >= 0) {
+        this.destroyLiveEnemyWithRewards(enemy, liveIndex);
+      } else {
+        this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+      }
+      return;
+    }
+
     const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
     if (basicIndex >= 0) {
       if (enemy.hp <= 0) {
-        this.spawnEnemyWreckageDebris(
-          'chaser',
-          enemy.body.x,
-          enemy.body.y,
-          (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity)
-        );
-        this.trySpawnScrapPickup(
-          'enemy',
-          enemy.stats.scrapValue,
-          enemy.body.x,
-          enemy.body.y,
-          (enemy as BasicEnemy).velocity.clone().add((enemy as BasicEnemy).knockbackVelocity).add((enemy as BasicEnemy).blackHoleVelocity),
-          enemy.stats.scrapDropChance
-        );
-        enemy.body.destroy(true);
-        enemy.wrapMirrorBody.destroy(true);
-        this.basicEnemies.splice(basicIndex, 1);
-        this.grantXp(enemy.stats.xpValue);
+        this.destroyEnemyWithRewards(enemy as BasicEnemy, this.basicEnemies, basicIndex, 'chaser');
       } else {
         this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
       }
@@ -4894,24 +6572,7 @@ export class GameScene extends Phaser.Scene {
     if (tankIndex >= 0) {
       const tank = enemy as TankEnemy;
       if (tank.hp <= 0) {
-        this.spawnEnemyWreckageDebris(
-          'tank',
-          tank.body.x,
-          tank.body.y,
-          tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity)
-        );
-        this.trySpawnScrapPickup(
-          'enemy',
-          tank.stats.scrapValue,
-          tank.body.x,
-          tank.body.y,
-          tank.velocity.clone().add(tank.knockbackVelocity).add(tank.blackHoleVelocity),
-          tank.stats.scrapDropChance
-        );
-        tank.body.destroy(true);
-        tank.wrapMirrorBody.destroy(true);
-        this.tankEnemies.splice(tankIndex, 1);
-        this.grantXp(tank.stats.xpValue);
+        this.destroyEnemyWithRewards(tank, this.tankEnemies, tankIndex, 'tank');
       } else {
         this.flashDamageSprites(tank.body, tank.wrapMirrorBody);
       }
@@ -4923,24 +6584,7 @@ export class GameScene extends Phaser.Scene {
     if (shooterIndex >= 0) {
       const shooter = enemy as ShooterEnemy;
       if (shooter.hp <= 0) {
-        this.spawnEnemyWreckageDebris(
-          'shooter',
-          shooter.body.x,
-          shooter.body.y,
-          shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity)
-        );
-        this.trySpawnScrapPickup(
-          'enemy',
-          shooter.stats.scrapValue,
-          shooter.body.x,
-          shooter.body.y,
-          shooter.velocity.clone().add(shooter.knockbackVelocity).add(shooter.blackHoleVelocity),
-          shooter.stats.scrapDropChance
-        );
-        shooter.body.destroy(true);
-        shooter.wrapMirrorBody.destroy(true);
-        this.shooterEnemies.splice(shooterIndex, 1);
-        this.grantXp(shooter.stats.xpValue);
+        this.destroyEnemyWithRewards(shooter, this.shooterEnemies, shooterIndex, 'shooter');
       } else {
         this.flashDamageSprites(shooter.body, shooter.wrapMirrorBody);
       }
@@ -4999,12 +6643,16 @@ export class GameScene extends Phaser.Scene {
     asteroid.velocity.limit(this.getGlobalMaxSpeed());
   }
 
-  private getEnemyContactVelocity(enemy: BasicEnemy | ShooterEnemy | TankEnemy): Phaser.Math.Vector2 {
+  private getEnemyContactVelocity(enemy: AnyGameEnemy): Phaser.Math.Vector2 {
     return enemy.velocity.clone().add(enemy.knockbackVelocity);
   }
 
-  private getEnemyTotalVelocity(enemy: BasicEnemy | ShooterEnemy | TankEnemy): Phaser.Math.Vector2 {
+  private getEnemyTotalVelocity(enemy: AnyGameEnemy): Phaser.Math.Vector2 {
     return this.getEnemyContactVelocity(enemy).add(enemy.blackHoleVelocity);
+  }
+
+  private getLiveEnemyTotalVelocity(enemy: LiveGameEnemy): Phaser.Math.Vector2 {
+    return enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity);
   }
 
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
@@ -5142,7 +6790,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const hullDamage = options.bypassDefense ? damage : Math.max(1, damage - this.getResolvedPlayerStats().defense);
+    const hullDamage = options.bypassDefense
+      ? Math.max(0, Math.round(damage))
+      : Math.max(1, Math.round(damage - this.getResolvedPlayerStats().defense));
     this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
     if (hullDamage <= 0) {
       this.updateGameplayHud(time);
@@ -5150,6 +6800,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerHull = Math.max(0, this.playerHull - hullDamage);
+    this.isPulseEmergencyCharged = this.getRunUpgradeLevelById('pulse_emergency_discharge') > 0;
     this.emitFloatingDamageNumber(impactX, impactY, hullDamage, options.source ?? 'enemy');
     this.emitPlayerDamageFeedback(impactX, impactY);
     this.updateGameplayHud(time);
@@ -5236,6 +6887,45 @@ export class GameScene extends Phaser.Scene {
     this.player.setVisible(Math.floor(time / 85) % 2 === 0);
   }
 
+  private emitPlayerDeathShards(): void {
+    const ship = this.getSelectedShipDefinition();
+    const position = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+    const flash = this.add.circle(position.x, position.y, 34, 0xfff2d2, 0.54);
+    const ring = this.add.circle(position.x, position.y, 42, 0xffc857, 0);
+
+    flash.setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
+    ring.setStrokeStyle(3, 0xffc857, 0.85);
+    ring.setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 2.2,
+      duration: 420,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    this.tweens.add({
+      targets: ring,
+      alpha: 0,
+      scale: 3.2,
+      duration: 760,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy()
+    });
+
+    this.emitDeathShards(
+      ship.textureKey,
+      this.player.x,
+      this.player.y,
+      ship.displaySize,
+      this.player.rotation + ship.visualRotation,
+      this.playerVelocity,
+      'player'
+    );
+  }
+
   private killPlayer(): void {
     if (!this.isGameplayWorldActive() || this.isPlayerDead) {
       return;
@@ -5247,13 +6937,14 @@ export class GameScene extends Phaser.Scene {
     this.lastRunScrapTotal = this.runScrapTotal;
     this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
     this.payRunCredits();
+    this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
-    this.player.setVisible(true);
+    this.player.setVisible(false);
     this.playerSprite.setTint(0xff5964);
     this.playerSprite.setAlpha(0.62);
     this.updateGameplayHud(this.time.now);
-    this.showResultsScreen();
+    this.autoRunDiagnostics.endRun('player-death');
   }
 
   private restorePlayerHull(): void {
@@ -5313,6 +7004,7 @@ export class GameScene extends Phaser.Scene {
       onMainMenu: () => this.showMainMenu(),
       onShop: () => this.showShop('results')
     });
+    this.updateResultsButton();
     if (!this.debugMenuHost?.isCreated()) {
       this.createDebugMenu();
     }
@@ -5335,6 +7027,131 @@ export class GameScene extends Phaser.Scene {
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
         this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius)
     });
+  }
+
+  private updateLiveEnemies(time: number, deltaSeconds: number): void {
+    updateLiveEnemyAiSystem({
+      scene: this,
+      arena: this.arena,
+      enemies: this.liveEnemies,
+      scrapPickups: this.getLiveEnemyScrapTargets(),
+      playerX: this.player.x,
+      playerY: this.player.y,
+      playerVelocity: this.playerVelocity,
+      time,
+      deltaSeconds,
+      isAiEnabled: !this.isPlayerDead,
+      telegraphsEnabled: true,
+      enemySpeedMultiplier: this.debugState.enemySpeedScale,
+      enemyFireRateMultiplier: 1,
+      enemyDeconflictionEnabled: true,
+      enemyDeconflictionStrength: 1,
+      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
+      applyWorldForcesToEnemy: (enemy, index, forceDeltaSeconds, forceTime) =>
+        this.applyBlackHoleToLiveEnemy(enemy, index, forceDeltaSeconds, forceTime),
+      fireEnemyProjectile: (request) => this.fireLiveEnemyProjectile(request),
+      explodeAt: (x, y, radius, damage, sourceId) => this.explodeLiveEnemyAt(x, y, radius, damage, sourceId),
+      spawnChild: (definitionId, x, y) => this.spawnLiveEnemy(definitionId, x, y, time),
+      emitLabBurst: (x, y, color, count) => this.emitLiveEnemyBurst(x, y, color, count)
+    });
+
+    this.removeDeadLiveEnemies();
+  }
+
+  private removeDeadLiveEnemies(): void {
+    for (let index = this.liveEnemies.length - 1; index >= 0; index -= 1) {
+      const enemy = this.liveEnemies[index];
+      if (enemy.hp <= 0) {
+        this.destroyLiveEnemyWithRewards(enemy, index);
+      }
+    }
+  }
+
+  private getLiveEnemyScrapTargets(): EnemyLabScrapTarget[] {
+    return this.scrapPickups.map((pickup) => ({
+      id: pickup.kind,
+      x: pickup.body.x,
+      y: pickup.body.y,
+      collected: false
+    }));
+  }
+
+  private fireLiveEnemyProjectile(request: EnemyLabProjectileRequest): void {
+    const direction = request.direction.clone().normalize();
+    const spawnX = wrapCoordinate(request.x, this.arena.width);
+    const spawnY = wrapCoordinate(request.y, this.arena.height);
+    const rotation = Math.atan2(direction.x, -direction.y);
+    const body = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, request.color, rotation);
+    const wrapMirrorBody = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, request.color, rotation);
+    wrapMirrorBody.setVisible(false);
+
+    this.enemyProjectiles.push({
+      body,
+      wrapMirrorBody,
+      velocity: direction.scale(request.speed),
+      speed: request.speed,
+      damage: request.damage,
+      hitRadius: request.radius,
+      expiresAt: this.time.now + (request.range / Math.max(1, request.speed)) * 1000,
+      distanceRemaining: request.range
+    });
+  }
+
+  private createLiveEnemyProjectileBody(
+    x: number,
+    y: number,
+    radius: number,
+    color: number,
+    rotation: number
+  ): Phaser.GameObjects.Container {
+    const glow = this.add.ellipse(0, 0, radius * 4.5, radius * 4.5, color, 0.24);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    const core = this.add.ellipse(0, 0, radius * 1.1, radius * 2.2, color, 0.94);
+    core.setStrokeStyle(1, 0xf2fbff, 0.75);
+    const projectile = this.add.container(x, y, [glow, core]);
+    projectile.setRotation(rotation);
+    projectile.setDepth(8);
+    return projectile;
+  }
+
+  private explodeLiveEnemyAt(x: number, y: number, radius: number, damage: number, sourceId: string): void {
+    this.emitShipCollisionImpactExplosion(x, y);
+
+    if (!this.isPlayerDead && this.getWrappedDirection(x, y, this.player.x, this.player.y).length() <= radius) {
+      this.damagePlayer(damage, this.time.now, x, y, { source: 'enemy' });
+    }
+
+    for (const enemy of this.liveEnemies) {
+      if (enemy.id === sourceId || enemy.hp <= 0) {
+        continue;
+      }
+
+      if (this.getWrappedDirection(x, y, enemy.body.x, enemy.body.y).length() <= radius) {
+        this.damageLiveEnemy(enemy, damage * 0.45, 'enemy', true);
+      }
+    }
+  }
+
+  private emitLiveEnemyBurst(x: number, y: number, color: number, count = 8): void {
+    const position = this.getNearestWrappedRenderPosition(x, y);
+    for (let i = 0; i < count; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(14, 46);
+      const particle = this.add.circle(position.x, position.y, Phaser.Math.FloatBetween(2, 5), color, 0.72);
+      particle.setDepth(12);
+      particle.setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: particle,
+        x: position.x + Math.cos(angle) * distance,
+        y: position.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.16,
+        duration: Phaser.Math.Between(170, 300),
+        ease: 'Quad.easeOut',
+        onComplete: () => particle.destroy()
+      });
+    }
   }
 
   private updateShooterEnemies(time: number, deltaSeconds: number): void {
@@ -5417,7 +7234,7 @@ export class GameScene extends Phaser.Scene {
       projectiles: this.enemyProjectiles,
       time,
       deltaSeconds,
-      isPlayerDead: this.isPlayerDead,
+      isPlayerDead: false,
       applyProjectileGravity: (projectile, gravityDeltaSeconds) =>
         this.applyProjectileGravity(projectile, gravityDeltaSeconds),
       updateCapturedProjectile: (projectile, capturedDeltaSeconds, mirrorViewRadius) =>
@@ -5444,7 +7261,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     const offset = this.getWrappedDirection(projectile.body.x, projectile.body.y, this.player.x, this.player.y);
-    const hitRadius = this.getPlayerHitRadius() + projectile.hitRadius;
+    const hitRadius = this.getPlayerCollisionRadius() + projectile.hitRadius;
 
     if (offset.lengthSq() > hitRadius * hitRadius) {
       return false;
@@ -5485,6 +7302,7 @@ export class GameScene extends Phaser.Scene {
       asteroidCollisionImpulseScale: this.debugState.asteroidCollisionImpulseScale,
       getCollisionNormal: (offset) => this.getCollisionNormal(offset),
       getAsteroidMass: (tier) => this.getAsteroidMass(tier),
+      getAsteroidCollisionRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
       getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
       nudgeWrappedObject: (object, normal, distance) => this.nudgeWrappedObject(object, normal, distance),
       updateAsteroidWrapMirror: (asteroid) => this.updateAsteroidWrapMirror(asteroid),
@@ -5549,6 +7367,9 @@ export class GameScene extends Phaser.Scene {
       debris: this.enemyWreckageDebris,
       time,
       getEnemyHitRadius: (enemy) => this.getEnemyHitRadius(enemy),
+      getEnemyCollisionScale: () => this.debugState.getCollisionShapeScale('enemy'),
+      getAsteroidCollisionRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
+      getDebrisCollisionRadius: (debris) => this.getDebrisCollisionRadius(debris),
       getEnemyTotalVelocity: (enemy) => this.getEnemyTotalVelocity(enemy),
       getAsteroidMass: (tier) => this.getAsteroidMass(tier),
       getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
@@ -5568,20 +7389,28 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private getAllEnemies(): Array<BasicEnemy | ShooterEnemy | TankEnemy> {
-    return [...this.basicEnemies, ...this.shooterEnemies, ...this.tankEnemies];
+  private getAllEnemies(): AnyGameEnemy[] {
+    return [...this.liveEnemies, ...this.basicEnemies, ...this.shooterEnemies, ...this.tankEnemies];
   }
 
-  private getEnemyHitRadius(enemy: BasicEnemy | ShooterEnemy | TankEnemy): number {
+  private getEnemyHitRadius(enemy: AnyGameEnemy): number {
+    if (this.isLiveEnemy(enemy)) {
+      return enemy.definition.stats.radius;
+    }
+
     if (this.tankEnemies.includes(enemy as TankEnemy)) {
-      return Math.max(tankEnemy.stats.hitHalfWidth, tankEnemy.stats.hitHalfLength);
+      return Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy));
     }
 
     if (this.shooterEnemies.includes(enemy as ShooterEnemy)) {
-      return Math.max(shooterEnemy.stats.hitHalfWidth, shooterEnemy.stats.hitHalfLength);
+      return Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy));
     }
 
-    return Math.max(basicEnemy.stats.hitHalfWidth, basicEnemy.stats.hitHalfLength);
+    return Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy));
+  }
+
+  private isLiveEnemy(enemy: AnyGameEnemy): enemy is LiveGameEnemy {
+    return this.liveEnemies.includes(enemy as LiveGameEnemy);
   }
 
   private resolveBodyImpactCollision(input: {
@@ -5602,6 +7431,9 @@ export class GameScene extends Phaser.Scene {
     time: number;
     damageFirst: (damage: number) => void;
     damageSecond: (damage: number) => void;
+    collisionNormal?: Phaser.Math.Vector2;
+    collisionPenetration?: number;
+    collisionOffset?: Phaser.Math.Vector2;
   }): void {
     resolveBodyImpactCollisionSystem({
       arena: this.arena,
@@ -5639,45 +7471,96 @@ export class GameScene extends Phaser.Scene {
     secondCooldowns.set(first, nextDamageAt);
   }
 
-  private getActiveMainWeaponDefinition(): WeaponRegistryEntry {
-    return getActiveMainWeaponDefinition(this.playerWeapons);
+  private getActiveAutoWeaponDefinition(): WeaponRegistryEntry {
+    return getActiveAutoWeaponDefinition(this.playerWeapons);
+  }
+
+  private getActivePrimaryWeaponDefinition(): WeaponRegistryEntry | undefined {
+    return getActivePrimaryWeaponDefinition(this.playerWeapons);
   }
 
   private getActiveSecondaryWeaponDefinition(): WeaponRegistryEntry | undefined {
     return getActiveSecondaryWeaponDefinition(this.playerWeapons);
   }
 
+  private getOwnedAutoWeaponDefinitions(): WeaponRegistryEntry[] {
+    return getOwnedAutoWeaponDefinitions(this.playerWeapons);
+  }
+
+  private getOwnedManualWeaponDefinitions(): WeaponRegistryEntry[] {
+    return getOwnedManualWeaponDefinitions(this.playerWeapons);
+  }
+
+  private assignWeaponHotbarSlot(slot: WeaponSlotType, weaponId: WeaponId): void {
+    const weapon = getWeaponDefinition(weaponId);
+    if (slot === 'auto') {
+      if (weapon.assignmentType !== 'auto' || !this.playerWeapons.ownedAutoWeaponIds.includes(weaponId)) {
+        return;
+      }
+
+      this.playerWeapons.activeAutoWeaponId = weaponId;
+      this.playerWeapons.nextAutoWeaponFireAt = 0;
+      this.updateGameplayHud(this.time.now);
+      return;
+    }
+
+    if (weapon.assignmentType !== 'manual' || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
+      return;
+    }
+
+    if (slot === 'primary') {
+      if (this.playerWeapons.activeSecondaryWeaponId === weaponId) {
+        this.playerWeapons.activeSecondaryWeaponId = this.playerWeapons.activePrimaryWeaponId;
+      }
+      this.playerWeapons.activePrimaryWeaponId = weaponId;
+      this.playerWeapons.nextPrimaryWeaponFireAt = 0;
+    } else if (slot === 'secondary') {
+      if (this.playerWeapons.activePrimaryWeaponId === weaponId) {
+        this.playerWeapons.activePrimaryWeaponId = this.playerWeapons.activeSecondaryWeaponId;
+      }
+      this.playerWeapons.activeSecondaryWeaponId = weaponId;
+      this.playerWeapons.nextSecondaryWeaponFireAt = 0;
+    }
+
+    this.ensureRammingShieldRuntime();
+    this.updateGameplayHud(this.time.now);
+  }
+
   private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
     return this.runUpgradeLevels;
   }
 
-  private getActiveMainWeaponDamageMultiplier(): number {
-    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState(), this.getActiveMainWeaponDefinition()) * this.getResolvedPlayerStats().damage;
+  private getActiveAutoWeaponDamageMultiplier(): number {
+    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState(), this.getActiveAutoWeaponDefinition()) * this.getResolvedPlayerStats().damage;
   }
 
-  private getActiveMainWeaponCooldownMs(): number {
-    const resolved = this.getResolvedWeaponStats(this.getActiveMainWeaponDefinition(), 'main');
+  private getActiveAutoWeaponCooldownMs(): number {
+    const resolved = this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto');
     return resolved.projectile?.cooldownMs ?? resolved.rammingShield?.contactCooldownMs ?? 0;
   }
 
-  private getActiveMainWeaponBaseCooldownMs(): number {
-    return this.getResolvedWeaponStats(this.getActiveMainWeaponDefinition(), 'main').projectile?.baseCooldownMs ?? 0;
+  private getActiveAutoWeaponBaseCooldownMs(): number {
+    return this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto').projectile?.baseCooldownMs ?? 0;
   }
 
-  private getActiveMainWeaponProjectileSpeed(): number {
-    return this.getResolvedWeaponStats(this.getActiveMainWeaponDefinition(), 'main').projectile?.projectileSpeed ?? 0;
+  private getActiveAutoWeaponProjectileSpeed(): number {
+    return this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto').projectile?.projectileSpeed ?? 0;
   }
 
-  private getActiveMainWeaponUpgradeHudSummary(): string {
+  private getActiveAutoWeaponUpgradeHudSummary(): string {
     const damageLevel = this.getRunUpgradeLevelById('pulse_damage');
+    const flatDamageLevel =
+      this.getRunUpgradeLevelById('pulse_flat_damage_common') +
+      this.getRunUpgradeLevelById('pulse_flat_damage_uncommon') +
+      this.getRunUpgradeLevelById('pulse_flat_damage_rare');
     const fireRateLevel = this.getRunUpgradeLevelById('pulse_fire_rate');
     const velocityLevel = this.getRunUpgradeLevelById('pulse_velocity');
 
-    if (damageLevel + fireRateLevel + velocityLevel === 0) {
+    if (damageLevel + flatDamageLevel + fireRateLevel + velocityLevel === 0) {
       return 'Weapon upgrades none';
     }
 
-    return `Weapon upgrades D${damageLevel} R${fireRateLevel} V${velocityLevel}`;
+    return `Weapon upgrades D${damageLevel} F${flatDamageLevel} R${fireRateLevel} V${velocityLevel}`;
   }
 
   private updateActiveMainWeapon(time: number): void {
@@ -5687,10 +7570,17 @@ export class GameScene extends Phaser.Scene {
 
     const pointer = this.input.activePointer;
     const isPointerBlockedByDebugMenu = this.debugMenuHost?.containsPointer(pointer) ?? false;
-    const isPrimaryFiring = this.fireKey.isDown || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
-    if (isPrimaryFiring && time >= this.playerWeapons.nextMainWeaponFireAt) {
-      const result = this.usePlayerWeapon(this.getActiveMainWeaponDefinition(), 'main', time);
-      this.playerWeapons.nextMainWeaponFireAt = time + result.cooldownMs;
+    const activeAutoWeapon = this.getActiveAutoWeaponDefinition();
+    if (time >= this.playerWeapons.nextAutoWeaponFireAt) {
+      const result = this.usePlayerWeapon(activeAutoWeapon, 'auto', time);
+      this.playerWeapons.nextAutoWeaponFireAt = time + result.cooldownMs;
+    }
+
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
+    const isPrimaryFiring = this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
+    if (primaryWeapon && isPrimaryFiring && time >= this.playerWeapons.nextPrimaryWeaponFireAt) {
+      const result = this.usePlayerWeapon(primaryWeapon, 'primary', time);
+      this.playerWeapons.nextPrimaryWeaponFireAt = time + result.cooldownMs;
     }
 
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
@@ -5705,7 +7595,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private usePlayerWeapon(weapon: WeaponRegistryEntry, slot: 'main' | 'secondary', time: number): { cooldownMs: number } {
+  private usePlayerWeapon(weapon: WeaponRegistryEntry, slot: 'auto' | 'primary' | 'secondary', time: number): { cooldownMs: number } {
     const resolved = this.getResolvedWeaponStats(weapon, slot);
     if (weapon.behaviorType === 'ramming-shield') {
       return { cooldownMs: this.useRammingShieldWeapon(resolved.rammingShield, time) ? (resolved.rammingShield?.contactCooldownMs ?? 0) : 0 };
@@ -5731,6 +7621,63 @@ export class GameScene extends Phaser.Scene {
   }
 
   private fireProjectileWeapon(resolved: ResolvedWeaponStats, time: number): { cooldownMs: number } {
+    const projectileStats = resolved.projectile;
+    const effects = projectileStats?.effects;
+    const isPulseCannon = resolved.weapon.id === 'pulse-cannon' && !!projectileStats;
+    const isOverloaded =
+      isPulseCannon && !!effects?.overloadEveryNShots && ++this.pulseVolleyCount % effects.overloadEveryNShots === 0;
+    const isEmergencyEmpowered =
+      isPulseCannon && this.isPulseEmergencyCharged && !!effects?.emergencyDamageMultiplier;
+    const damageMultiplier =
+      1 +
+      (isOverloaded ? effects?.overloadDamageMultiplier ?? 0 : 0) +
+      (isEmergencyEmpowered ? effects?.emergencyDamageMultiplier ?? 0 : 0);
+    const areaMultiplier =
+      1 +
+      (isOverloaded ? effects?.overloadSizeMultiplier ?? 0 : 0) +
+      (isEmergencyEmpowered ? effects?.emergencySizeMultiplier ?? 0 : 0);
+    const burstCount = projectileStats?.pattern.burstCount ?? 1;
+    const burstDelayMs = projectileStats?.pattern.burstDelayMs ?? 0;
+
+    if (isEmergencyEmpowered) {
+      this.isPulseEmergencyCharged = false;
+    }
+
+    const result = this.spawnProjectileVolley(resolved, time, {
+      damageMultiplier,
+      areaMultiplier,
+      isOverloaded,
+      isEmergencyEmpowered
+    });
+
+    for (let burstIndex = 1; burstIndex < burstCount; burstIndex += 1) {
+      this.time.delayedCall(burstDelayMs * burstIndex, () => {
+        if (this.isPlayerDead || this.isUpgradeOverlayOpen || this.isPauseMenuOpen) {
+          return;
+        }
+
+        this.spawnProjectileVolley(resolved, this.time.now, {
+          damageMultiplier,
+          areaMultiplier,
+          isOverloaded,
+          isEmergencyEmpowered
+        });
+      });
+    }
+
+    return { cooldownMs: result.cooldownMs };
+  }
+
+  private spawnProjectileVolley(
+    resolved: ResolvedWeaponStats,
+    time: number,
+    modifiers: {
+      damageMultiplier: number;
+      areaMultiplier: number;
+      isOverloaded: boolean;
+      isEmergencyEmpowered: boolean;
+    }
+  ): { cooldownMs: number } {
     const result = fireProjectileWeaponSystem({
       scene: this,
       resolved,
@@ -5738,7 +7685,8 @@ export class GameScene extends Phaser.Scene {
       playerX: this.player.x,
       playerY: this.player.y,
       playerRotation: this.player.rotation,
-      getForwardDirection: (rotation) => this.getForwardDirection(rotation)
+      getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      ...modifiers
     });
 
     this.playerProjectiles.push(...result.projectiles);
@@ -5752,14 +7700,16 @@ export class GameScene extends Phaser.Scene {
       projectiles: this.playerProjectiles,
       time,
       deltaSeconds,
-      isPlayerDead: this.isPlayerDead,
+      isPlayerDead: false,
       applyProjectileGravity: (projectile, gravityDeltaSeconds) =>
         this.applyProjectileGravity(projectile, gravityDeltaSeconds),
       updateCapturedProjectile: (projectile, capturedDeltaSeconds, mirrorViewRadius) =>
         this.updateCapturedProjectile(projectile, capturedDeltaSeconds, mirrorViewRadius),
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
         this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
+      steerProjectile: (projectile, homingDeltaSeconds) => this.steerPulseProjectile(projectile, homingDeltaSeconds),
       tryHitTarget: (projectile) =>
+        this.tryHitLiveEnemy(projectile) ||
         this.tryHitBasicEnemy(projectile) ||
         this.tryHitShooterEnemy(projectile) ||
         this.tryHitTankEnemy(projectile) ||
@@ -6017,40 +7967,437 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private emitAsteroidDeathShards(asteroid: BasicAsteroid, style: DeathShardStyle = 'asteroid'): void {
+    this.emitDeathShards(
+      asteroid.variant,
+      asteroid.body.x,
+      asteroid.body.y,
+      ASTEROID_TIER_CONFIG[asteroid.tier].displaySize,
+      asteroid.body.rotation,
+      asteroid.velocity,
+      style
+    );
+  }
+
+  private steerPulseProjectile(projectile: PlayerProjectile, deltaSeconds: number): void {
+    const { homingRange, homingStrength } = projectile.effects;
+    if (homingRange <= 0 || homingStrength <= 0 || projectile.capturedByBlackHole) {
+      return;
+    }
+
+    const target = this.findNearestPulseEnemyTarget(projectile.body.x, projectile.body.y, homingRange, projectile.piercedTargets);
+    if (!target) {
+      return;
+    }
+
+    const desiredDirection = this.getWrappedDirection(projectile.body.x, projectile.body.y, target.body.x, target.body.y).normalize();
+    const currentDirection = projectile.velocity.clone().normalize();
+    const turnAmount = Phaser.Math.Clamp(homingStrength * deltaSeconds, 0, 0.12);
+    const steeredDirection = currentDirection.lerp(desiredDirection, turnAmount).normalize();
+
+    projectile.velocity = steeredDirection.scale(projectile.speed);
+    projectile.body.setRotation(Math.atan2(steeredDirection.x, -steeredDirection.y));
+    projectile.wrapMirrorBody.setRotation(projectile.body.rotation);
+  }
+
+  private getPulseEnemyDamage(projectile: PlayerProjectile, enemy: AnyGameEnemy): number {
+    let multiplier = 1;
+    const ionizedUntil = this.pulseIonizedTargets.get(enemy.body) ?? 0;
+    const critical = this.pulseCriticalTargets.get(enemy.body);
+
+    if (this.time.now <= ionizedUntil) {
+      multiplier += projectile.effects.ionizeDamageMultiplier;
+    }
+
+    if (critical && this.time.now <= critical.expiresAt) {
+      multiplier += Math.min(projectile.effects.criticalMaxStacks, critical.stacks) * projectile.effects.criticalDamageBonusPerHit;
+    }
+
+    return projectile.damage * multiplier;
+  }
+
+  private applyPulseProjectileHitEffects(
+    projectile: PlayerProjectile,
+    targetKey: object,
+    hitX: number,
+    hitY: number,
+    appliedDamage: number,
+    killedTarget: boolean
+  ): void {
+    const effects = projectile.effects;
+
+    if (effects.lifestealPercent > 0 && effects.lifestealCapPerSecond > 0) {
+      this.restorePulseSapping(appliedDamage * effects.lifestealPercent, effects.lifestealCapPerSecond);
+    }
+
+    if (effects.ionizeDurationMs > 0) {
+      this.pulseIonizedTargets.set(targetKey, this.time.now + effects.ionizeDurationMs);
+    }
+
+    if (effects.criticalDamageBonusPerHit > 0 && effects.criticalMaxStacks > 0 && effects.criticalDurationMs > 0) {
+      const existing = this.pulseCriticalTargets.get(targetKey);
+      const existingStacks = existing && this.time.now <= existing.expiresAt ? existing.stacks : 0;
+      this.pulseCriticalTargets.set(targetKey, {
+        stacks: Math.min(effects.criticalMaxStacks, existingStacks + 1),
+        expiresAt: this.time.now + effects.criticalDurationMs
+      });
+    }
+
+    if (effects.chainCount > 0 && effects.chainRange > 0 && effects.chainDamageMultiplier > 0) {
+      this.applyPulseChainDischarge(projectile, targetKey, hitX, hitY);
+    }
+
+    if (effects.explosionRadius > 0 && effects.explosionDamageMultiplier > 0) {
+      this.applyPulseExplosion(projectile, targetKey, hitX, hitY);
+    }
+
+    if (killedTarget) {
+      this.applyPulseKillEffects(projectile);
+    }
+
+    if (projectile.pierceRemaining <= 0 && projectile.bouncesRemaining > 0) {
+      this.redirectPulseProjectile(projectile);
+    }
+  }
+
+  private restorePulseSapping(amount: number, capPerSecond: number): void {
+    if (amount <= 0 || this.isPlayerDead) {
+      return;
+    }
+
+    const time = this.time.now;
+    if (time - this.pulseLifestealWindowStartedAt >= 1000) {
+      this.pulseLifestealWindowStartedAt = time;
+      this.pulseLifestealRestoredThisWindow = 0;
+    }
+
+    const cappedAmount = Math.round(Math.min(amount, Math.max(0, capPerSecond - this.pulseLifestealRestoredThisWindow)));
+    if (cappedAmount <= 0) {
+      return;
+    }
+
+    let remaining = cappedAmount;
+    if (this.hasRammingShield()) {
+      const shieldMax = this.getRammingShieldMaxHp();
+      const shieldRestore = Math.min(remaining, Math.max(0, shieldMax - this.rammingShieldState.hp));
+      this.rammingShieldState.hp += shieldRestore;
+      remaining -= shieldRestore;
+      if (shieldRestore > 0) {
+        this.updateRammingShieldVisual(time);
+      }
+    }
+
+    if (remaining > 0) {
+      this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + remaining);
+    }
+
+    this.pulseLifestealRestoredThisWindow += cappedAmount - remaining + Math.max(0, remaining);
+    this.updateGameplayHud(time);
+  }
+
+  private applyPulseChainDischarge(projectile: PlayerProjectile, sourceKey: object, sourceX: number, sourceY: number): void {
+    let chainsRemaining = projectile.effects.chainCount;
+    const chained = new WeakSet<object>();
+    chained.add(sourceKey);
+
+    while (chainsRemaining > 0) {
+      const target = this.findNearestPulseEnemyTarget(sourceX, sourceY, projectile.effects.chainRange, chained);
+      if (!target) {
+        return;
+      }
+
+      chained.add(target.body);
+      const damage = this.rollPlayerDamage(projectile.damage * projectile.effects.chainDamageMultiplier);
+      this.damageEnemy(target, damage, 'player', true);
+      this.emitPulseChainEffect(sourceX, sourceY, target.body.x, target.body.y);
+
+      if (target.hp <= 0) {
+        this.applyPulseKillEffects(projectile);
+        this.destroyPulseEnemyTarget(target);
+      } else {
+        this.flashDamageSprites(target.body, target.wrapMirrorBody);
+      }
+
+      chainsRemaining -= 1;
+    }
+  }
+
+  private applyPulseExplosion(projectile: PlayerProjectile, sourceKey: object, x: number, y: number): void {
+    const radius = projectile.effects.explosionRadius;
+    const baseDamage = projectile.damage * projectile.effects.explosionDamageMultiplier;
+    const flash = this.add.circle(x, y, radius, 0x73f2ff, 0.16);
+
+    flash.setDepth(9);
+    flash.setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.35,
+      duration: 170,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    for (const enemy of this.getAllEnemies()) {
+      if (enemy.body === sourceKey || !enemy.body.scene || this.getWrappedDirection(x, y, enemy.body.x, enemy.body.y).lengthSq() > radius * radius) {
+        continue;
+      }
+
+      this.damageEnemy(enemy, this.rollPlayerDamage(baseDamage), 'player', true);
+      if (enemy.hp <= 0) {
+        this.applyPulseKillEffects(projectile);
+        this.destroyPulseEnemyTarget(enemy);
+      } else {
+        this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+      }
+    }
+
+    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
+      const asteroid = this.basicAsteroids[i];
+      if (asteroid.body === sourceKey || !asteroid.body.scene || this.getWrappedDirection(x, y, asteroid.body.x, asteroid.body.y).lengthSq() > radius * radius) {
+        continue;
+      }
+
+      this.damageAsteroid(asteroid, this.rollPlayerDamage(baseDamage), 'player', true);
+      if (asteroid.hp <= 0) {
+        this.destroyBasicAsteroid(i);
+      } else {
+        this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+      }
+    }
+
+    for (let i = this.enemyWreckageDebris.length - 1; i >= 0; i -= 1) {
+      const debris = this.enemyWreckageDebris[i];
+      if (debris.body === sourceKey || !debris.body.scene || this.getWrappedDirection(x, y, debris.body.x, debris.body.y).lengthSq() > radius * radius) {
+        continue;
+      }
+
+      this.damageDebris(debris, this.rollPlayerDamage(baseDamage), 'player', true);
+      if (debris.hp <= 0) {
+        this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
+        this.destroyEnemyWreckageDebris(debris, true);
+        this.enemyWreckageDebris.splice(i, 1);
+      } else {
+        this.flashDamageSprites(debris.body, debris.wrapMirrorBody);
+      }
+    }
+  }
+
+  private applyPulseKillEffects(projectile: PlayerProjectile): void {
+    const refundMultiplier = projectile.effects.feedbackCooldownRefundMultiplier;
+    if (refundMultiplier <= 0) {
+      return;
+    }
+
+    const refundMs = Math.min(
+      projectile.effects.feedbackCooldownRefundCapMs,
+      this.getActiveAutoWeaponBaseCooldownMs() * refundMultiplier
+    );
+    this.playerWeapons.nextAutoWeaponFireAt = Math.max(this.time.now, this.playerWeapons.nextAutoWeaponFireAt - refundMs);
+  }
+
+  private redirectPulseProjectile(projectile: PlayerProjectile): void {
+    const target = this.findNearestPulseEnemyTarget(projectile.body.x, projectile.body.y, 520, projectile.piercedTargets);
+    if (!target) {
+      return;
+    }
+
+    const direction = this.getWrappedDirection(projectile.body.x, projectile.body.y, target.body.x, target.body.y).normalize();
+    projectile.velocity = direction.scale(projectile.speed);
+    projectile.body.setRotation(Math.atan2(direction.x, -direction.y));
+    projectile.wrapMirrorBody.setRotation(projectile.body.rotation);
+  }
+
+  private findNearestPulseEnemyTarget(
+    x: number,
+    y: number,
+    range: number,
+    excluded: WeakSet<object>
+  ): AnyGameEnemy | undefined {
+    let nearest: AnyGameEnemy | undefined;
+    let nearestDistanceSq = range * range;
+
+    for (const enemy of this.getAllEnemies()) {
+      if (!enemy.body.scene || excluded.has(enemy.body)) {
+        continue;
+      }
+
+      const distanceSq = this.getWrappedDirection(x, y, enemy.body.x, enemy.body.y).lengthSq();
+      if (distanceSq <= nearestDistanceSq) {
+        nearest = enemy;
+        nearestDistanceSq = distanceSq;
+      }
+    }
+
+    return nearest;
+  }
+
+  private destroyPulseEnemyTarget(enemy: AnyGameEnemy): void {
+    if (this.isLiveEnemy(enemy)) {
+      this.destroyLivePulseEnemyTarget(enemy);
+      return;
+    }
+
+    const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
+    if (basicIndex >= 0) {
+      this.destroyEnemyWithRewards(enemy as BasicEnemy, this.basicEnemies, basicIndex, 'chaser');
+      return;
+    }
+
+    const shooterIndex = this.shooterEnemies.indexOf(enemy as ShooterEnemy);
+    if (shooterIndex >= 0) {
+      this.destroyEnemyWithRewards(enemy as ShooterEnemy, this.shooterEnemies, shooterIndex, 'shooter');
+      return;
+    }
+
+    const tankIndex = this.tankEnemies.indexOf(enemy as TankEnemy);
+    if (tankIndex >= 0) {
+      this.destroyEnemyWithRewards(enemy as TankEnemy, this.tankEnemies, tankIndex, 'tank');
+    }
+  }
+
+  private destroyLivePulseEnemyTarget(enemy: LiveGameEnemy): void {
+    const liveIndex = this.liveEnemies.indexOf(enemy);
+    if (liveIndex >= 0) {
+      this.destroyLiveEnemyWithRewards(enemy, liveIndex);
+    }
+  }
+
+  private emitPulseChainEffect(fromX: number, fromY: number, toX: number, toY: number): void {
+    const graphics = this.add.graphics().setDepth(10);
+    graphics.lineStyle(2, 0x73f2ff, 0.84);
+    graphics.beginPath();
+    graphics.moveTo(fromX, fromY);
+    graphics.lineTo(toX, toY);
+    graphics.strokePath();
+    graphics.setBlendMode(Phaser.BlendModes.ADD);
+
+    this.tweens.add({
+      targets: graphics,
+      alpha: 0,
+      duration: 120,
+      ease: 'Quad.easeOut',
+      onComplete: () => graphics.destroy()
+    });
+  }
+
   private tryHitBasicEnemy(projectile: PlayerProjectile): boolean {
     return tryHitEllipseTargets({
       arena: this.arena,
       projectile,
       targets: this.basicEnemies,
       getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      getTargetHitHalfWidth: (enemy) => this.getEnemyCollisionHalfWidth(enemy),
+      getTargetHitHalfLength: (enemy) => this.getEnemyCollisionHalfLength(enemy),
       onHit: (enemy, i) => {
-        this.damageEnemy(enemy, projectile.damage, 'player', true);
+        const appliedDamage = this.damageEnemy(enemy, this.rollPlayerDamage(this.getPulseEnemyDamage(projectile, enemy)), 'player', true);
+        const killedEnemy = enemy.hp <= 0;
+        this.applyPulseProjectileHitEffects(projectile, enemy.body, projectile.body.x, projectile.body.y, appliedDamage, killedEnemy);
 
-        if (enemy.hp <= 0) {
+        if (killedEnemy) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
-          this.spawnEnemyWreckageDebris(
-            'chaser',
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
-          );
-          this.trySpawnScrapPickup(
-            'enemy',
-            enemy.stats.scrapValue,
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity),
-            enemy.stats.scrapDropChance
-          );
-          enemy.body.destroy(true);
-          enemy.wrapMirrorBody.destroy(true);
-          this.basicEnemies.splice(i, 1);
-          this.grantXp(enemy.stats.xpValue);
+          this.destroyEnemyWithRewards(enemy, this.basicEnemies, i, 'chaser');
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
         }
       }
+    });
+  }
+
+  private tryHitLiveEnemy(projectile: PlayerProjectile): boolean {
+    for (let i = this.liveEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.liveEnemies[i];
+      if (projectile.piercedTargets.has(enemy.body)) {
+        continue;
+      }
+
+      const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
+      const hitRadius = enemy.definition.stats.radius + projectile.hitRadius;
+
+      if (offset.lengthSq() > hitRadius * hitRadius) {
+        continue;
+      }
+
+      if (this.tryReflectLiveProjectile(projectile, enemy)) {
+        return false;
+      }
+
+      projectile.piercedTargets.add(enemy.body);
+      const appliedDamage = this.damageEnemy(enemy, this.rollPlayerDamage(this.getPulseEnemyDamage(projectile, enemy)), 'player', true);
+      const killedEnemy = enemy.hp <= 0;
+      this.applyPulseProjectileHitEffects(projectile, enemy.body, projectile.body.x, projectile.body.y, appliedDamage, killedEnemy);
+
+      if (killedEnemy) {
+        this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+        this.destroyLiveEnemyWithRewards(enemy, i);
+      } else {
+        this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+        this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  private tryReflectLiveProjectile(projectile: PlayerProjectile, enemy: LiveGameEnemy): boolean {
+    if (enemy.definition.behavior.id !== 'reflectorPulse' || enemy.stateData.reflecting !== true) {
+      return false;
+    }
+
+    const frontArcDegrees = Number(enemy.definition.behavior.params?.frontArcDegrees ?? 92);
+    const toProjectile = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
+    if (toProjectile.lengthSq() <= 0) {
+      return false;
+    }
+
+    const forward = this.getForwardDirection(enemy.body.rotation);
+    if (forward.dot(toProjectile.normalize()) < Math.cos(Phaser.Math.DegToRad(frontArcDegrees * 0.5))) {
+      return false;
+    }
+
+    projectile.velocity.scale(-1);
+    projectile.body.rotation = Math.atan2(projectile.velocity.x, -projectile.velocity.y);
+    projectile.wrapMirrorBody.rotation = projectile.body.rotation;
+    this.emitLiveEnemyBurst(projectile.body.x, projectile.body.y, enemy.definition.visual.accentColor, 8);
+    return true;
+  }
+
+  private emitUpgradePickupFeedback(x: number, y: number, label: string, color: number): void {
+    const position = this.getNearestWrappedRenderPosition(x, y);
+    const flash = this.add.rectangle(position.x, position.y, 28, 28, color, 0.34);
+
+    flash.setDepth(14);
+    flash.setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 2.2,
+      duration: 220,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    const text = this.add
+      .text(position.x, position.y - 22, label, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#f2fbff',
+        stroke: '#02040a',
+        strokeThickness: 4
+      })
+      .setOrigin(0.5, 0.5)
+      .setDepth(22);
+
+    this.tweens.add({
+      targets: text,
+      y: position.y - 48,
+      alpha: 0,
+      duration: 620,
+      ease: 'Quad.easeOut',
+      onComplete: () => text.destroy()
     });
   }
 
@@ -6060,29 +8407,16 @@ export class GameScene extends Phaser.Scene {
       projectile,
       targets: this.shooterEnemies,
       getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      getTargetHitHalfWidth: (enemy) => this.getEnemyCollisionHalfWidth(enemy),
+      getTargetHitHalfLength: (enemy) => this.getEnemyCollisionHalfLength(enemy),
       onHit: (enemy, i) => {
-        this.damageEnemy(enemy, projectile.damage, 'player', true);
+        const appliedDamage = this.damageEnemy(enemy, this.rollPlayerDamage(this.getPulseEnemyDamage(projectile, enemy)), 'player', true);
+        const killedEnemy = enemy.hp <= 0;
+        this.applyPulseProjectileHitEffects(projectile, enemy.body, projectile.body.x, projectile.body.y, appliedDamage, killedEnemy);
 
-        if (enemy.hp <= 0) {
+        if (killedEnemy) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
-          this.spawnEnemyWreckageDebris(
-            'shooter',
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.blackHoleVelocity)
-          );
-          this.trySpawnScrapPickup(
-            'enemy',
-            enemy.stats.scrapValue,
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.blackHoleVelocity),
-            enemy.stats.scrapDropChance
-          );
-          enemy.body.destroy(true);
-          enemy.wrapMirrorBody.destroy(true);
-          this.shooterEnemies.splice(i, 1);
-          this.grantXp(enemy.stats.xpValue);
+          this.destroyEnemyWithRewards(enemy, this.shooterEnemies, i, 'shooter');
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -6097,29 +8431,16 @@ export class GameScene extends Phaser.Scene {
       projectile,
       targets: this.tankEnemies,
       getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      getTargetHitHalfWidth: (enemy) => this.getEnemyCollisionHalfWidth(enemy),
+      getTargetHitHalfLength: (enemy) => this.getEnemyCollisionHalfLength(enemy),
       onHit: (enemy, i) => {
-        this.damageEnemy(enemy, projectile.damage, 'player', true);
+        const appliedDamage = this.damageEnemy(enemy, this.rollPlayerDamage(this.getPulseEnemyDamage(projectile, enemy)), 'player', true);
+        const killedEnemy = enemy.hp <= 0;
+        this.applyPulseProjectileHitEffects(projectile, enemy.body, projectile.body.x, projectile.body.y, appliedDamage, killedEnemy);
 
-        if (enemy.hp <= 0) {
+        if (killedEnemy) {
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
-          this.spawnEnemyWreckageDebris(
-            'tank',
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity)
-          );
-          this.trySpawnScrapPickup(
-            'enemy',
-            enemy.stats.scrapValue,
-            enemy.body.x,
-            enemy.body.y,
-            enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity),
-            enemy.stats.scrapDropChance
-          );
-          enemy.body.destroy(true);
-          enemy.wrapMirrorBody.destroy(true);
-          this.tankEnemies.splice(i, 1);
-          this.grantXp(enemy.stats.xpValue);
+          this.destroyEnemyWithRewards(enemy, this.tankEnemies, i, 'tank');
         } else {
           this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
           this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
@@ -6133,10 +8454,13 @@ export class GameScene extends Phaser.Scene {
       arena: this.arena,
       projectile,
       targets: this.enemyWreckageDebris,
+      getTargetHitRadius: (debris) => this.getDebrisCollisionRadius(debris),
       onHit: (debris, i) => {
-        this.damageDebris(debris, projectile.damage, 'player', true);
+        const appliedDamage = this.damageDebris(debris, this.rollPlayerDamage(projectile.damage), 'player', true);
+        const destroyedDebris = debris.hp <= 0;
+        this.applyPulseProjectileHitEffects(projectile, debris.body, debris.body.x, debris.body.y, appliedDamage, destroyedDebris);
 
-        if (debris.hp <= 0) {
+        if (destroyedDebris) {
           this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
           this.destroyEnemyWreckageDebris(debris, true);
           this.enemyWreckageDebris.splice(i, 1);
@@ -6153,10 +8477,13 @@ export class GameScene extends Phaser.Scene {
       arena: this.arena,
       projectile,
       targets: this.basicAsteroids,
+      getTargetHitRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
       onHit: (asteroid, i) => {
-        this.damageAsteroid(asteroid, projectile.damage, 'player', true);
+        const appliedDamage = this.damageAsteroid(asteroid, this.rollPlayerDamage(projectile.damage), 'player', true);
+        const destroyedAsteroid = asteroid.hp <= 0;
+        this.applyPulseProjectileHitEffects(projectile, asteroid.body, asteroid.body.x, asteroid.body.y, appliedDamage, destroyedAsteroid);
 
-        if (asteroid.hp <= 0) {
+        if (destroyedAsteroid) {
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
           this.destroyBasicAsteroid(i);
         } else {
@@ -6177,7 +8504,7 @@ export class GameScene extends Phaser.Scene {
     asteroid.velocity.limit(this.getGlobalMaxSpeed());
   }
 
-  private destroyBasicAsteroid(index: number, grantReward = true): void {
+  private destroyBasicAsteroid(index: number, grantReward = true, shardStyle: DeathShardStyle = 'asteroid'): void {
     const asteroid = this.basicAsteroids[index];
     const x = asteroid.body.x;
     const y = asteroid.body.y;
@@ -6190,6 +8517,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
+    this.emitAsteroidDeathShards(asteroid, shardStyle);
     destroyAsteroidRenderObjects(asteroid);
     this.basicAsteroids.splice(index, 1);
 
@@ -6201,6 +8529,7 @@ export class GameScene extends Phaser.Scene {
   private consumeBasicAsteroid(index: number): void {
     const asteroid = this.basicAsteroids[index];
 
+    this.emitAsteroidDeathShards(asteroid, 'blackHoleAsteroid');
     destroyAsteroidRenderObjects(asteroid);
     this.basicAsteroids.splice(index, 1);
   }
@@ -6383,10 +8712,15 @@ export class GameScene extends Phaser.Scene {
       showBlackHoleRadii: this.debugState.showBlackHoleRadii,
       player: this.player,
       playerHitRadius: this.getPlayerHitRadius(),
+      playerCollisionRadius: this.getPlayerCollisionRadius(),
+      enemyCollisionScale: this.debugState.getCollisionShapeScale('enemy'),
+      asteroidCollisionScale: this.debugState.getCollisionShapeScale('asteroid'),
+      debrisCollisionScale: this.debugState.getCollisionShapeScale('debris'),
       shieldCollider: this.getRammingShieldCollider(),
       basicEnemies: this.basicEnemies,
       shooterEnemies: this.shooterEnemies,
       tankEnemies: this.tankEnemies,
+      liveEnemies: this.liveEnemies,
       basicAsteroids: this.basicAsteroids,
       enemyWreckageDebris: this.enemyWreckageDebris,
       scrapPickups: this.scrapPickups,
@@ -6413,6 +8747,7 @@ export class GameScene extends Phaser.Scene {
       basicEnemies: this.basicEnemies,
       shooterEnemies: this.shooterEnemies,
       tankEnemies: this.tankEnemies,
+      liveEnemies: this.liveEnemies,
       scrapPickups: this.scrapPickups,
       blackHole: this.blackHole
     };
@@ -6421,6 +8756,7 @@ export class GameScene extends Phaser.Scene {
   private updateGameplayHud(time: number): void {
     this.gameplayHud.update(this.getGameplayHudSnapshot(time));
     this.updateUpgradeButton();
+    this.updateResultsButton();
   }
 
   private getGameplayHudSnapshot(time: number): GameplayHudSnapshot {
@@ -6435,10 +8771,11 @@ export class GameScene extends Phaser.Scene {
     const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / maxHull;
-    const activeWeapon = this.getActiveMainWeaponDefinition();
+    const activeWeapon = this.getActiveAutoWeaponDefinition();
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
-    const weaponCooldownMs = this.getActiveMainWeaponCooldownMs();
-    const weaponRemainingMs = Math.max(0, this.playerWeapons.nextMainWeaponFireAt - time);
+    const weaponCooldownMs = this.getActiveAutoWeaponCooldownMs();
+    const weaponRemainingMs = Math.max(0, this.playerWeapons.nextAutoWeaponFireAt - time);
     const weaponProgress = weaponCooldownMs > 0 ? 1 - weaponRemainingMs / weaponCooldownMs : 1;
     const weaponStatus = weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(weaponRemainingMs / 1000)}s`;
 
@@ -6451,10 +8788,11 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       runScrapTotal: this.runScrapTotal,
       bankedUpgrades: this.bankedUpgrades,
-      activeWeaponName: activeWeapon.displayName,
+      autoWeaponName: activeWeapon.displayName,
+      primaryWeaponName: primaryWeapon ? primaryWeapon.displayName : 'Empty',
       weaponStatus,
       secondaryWeaponName: secondaryWeapon ? secondaryWeapon.displayName : 'Empty',
-      mainWeaponUpgradeSummary: this.getActiveMainWeaponUpgradeHudSummary(),
+      mainWeaponUpgradeSummary: this.getActiveAutoWeaponUpgradeHudSummary(),
       hullProgress,
       xpProgress,
       weaponProgress,
@@ -6463,8 +8801,153 @@ export class GameScene extends Phaser.Scene {
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
       rammingShieldDashCharges: this.rammingShieldState.dashCharges,
       rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
-      isRammingShieldEmpowered: time < this.rammingShieldState.empoweredUntil
+      isRammingShieldEmpowered: time < this.rammingShieldState.empoweredUntil,
+      weaponSlots: this.getWeaponHotbarSlots(time)
     };
+  }
+
+  private getWeaponHotbarSlots(time: number): WeaponHotbarSlotSnapshot[] {
+    const autoWeapon = this.getActiveAutoWeaponDefinition();
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+    const autoCooldownMs = this.getActiveAutoWeaponCooldownMs();
+    const autoRemainingMs = Math.max(0, this.playerWeapons.nextAutoWeaponFireAt - time);
+    const primaryCooldownMs = primaryWeapon ? this.getResolvedWeaponStats(primaryWeapon, 'primary').rammingShield?.contactCooldownMs ?? 0 : 0;
+    const primaryRemainingMs = Math.max(0, this.playerWeapons.nextPrimaryWeaponFireAt - time);
+    const secondaryCooldownMs = secondaryWeapon ? this.getResolvedWeaponStats(secondaryWeapon, 'secondary').rammingShield?.contactCooldownMs ?? 0 : 0;
+    const secondaryRemainingMs = Math.max(0, this.playerWeapons.nextSecondaryWeaponFireAt - time);
+
+    return [
+      this.createWeaponHotbarSlot('auto', autoWeapon, 'AUTO', autoCooldownMs, autoRemainingMs, this.getOwnedAutoWeaponDefinitions()),
+      this.createWeaponHotbarSlot('primary', primaryWeapon, 'LMB', primaryCooldownMs, primaryRemainingMs, this.getOwnedManualWeaponDefinitions()),
+      this.createWeaponHotbarSlot('secondary', secondaryWeapon, 'RMB', secondaryCooldownMs, secondaryRemainingMs, this.getOwnedManualWeaponDefinitions())
+    ];
+  }
+
+  private createWeaponHotbarSlot(
+    slot: 'auto' | 'primary' | 'secondary',
+    weapon: WeaponRegistryEntry | undefined,
+    controlLabel: string,
+    cooldownMs: number,
+    remainingMs: number,
+    choices: WeaponRegistryEntry[]
+  ): WeaponHotbarSlotSnapshot {
+    const title = weapon?.displayName ?? 'Empty';
+    const subtitle =
+      slot === 'auto'
+        ? 'Auto-fire weapon'
+        : slot === 'primary'
+          ? 'Primary weapon / left click'
+          : 'Secondary weapon / right click';
+
+    return {
+      slot,
+      weaponId: weapon?.id ?? null,
+      title,
+      subtitle,
+      controlLabel,
+      cooldownProgress: cooldownMs > 0 ? 1 - remainingMs / cooldownMs : 1,
+      choices: choices.map((choice) => ({
+        weaponId: choice.id,
+        name: choice.displayName.replace(' ', '\n')
+      })),
+      tooltipLines: this.getWeaponTooltipLines(slot, weapon)
+    };
+  }
+
+  private getWeaponTooltipLines(slot: 'auto' | 'primary' | 'secondary', weapon: WeaponRegistryEntry | undefined): string[] {
+    if (!weapon) {
+      return [
+        'Empty slot',
+        slot === 'auto' ? 'No alternate auto-fire weapons owned.' : 'Acquire manual weapons during the run to assign this slot.'
+      ];
+    }
+
+    const resolved = this.getResolvedWeaponStats(weapon, slot);
+    const lines = [
+      `Type: ${weapon.assignmentType === 'auto' ? 'Auto-fire' : 'Manual'}`,
+      `Control: ${slot === 'auto' ? 'Automatic' : slot === 'primary' ? 'Left click' : 'Right click'}`
+    ];
+
+    if (resolved.projectile) {
+      const projectile = resolved.projectile;
+      lines.push(
+        '',
+        'Offense',
+        `Damage: ${Math.round(projectile.damage * (1 - COMBAT_VARIANCE))}-${Math.round(projectile.damage * (1 + COMBAT_VARIANCE))}`,
+        `Cooldown: ${(projectile.cooldownMs / 1000).toFixed(2)}s`,
+        `DPS est.: ${Math.round(projectile.damage / Math.max(0.01, projectile.cooldownMs / 1000))}`,
+        `Projectiles: ${projectile.projectileCount}`,
+        `Pierce: ${projectile.pierce}`,
+        `Speed: ${Math.round(projectile.projectileSpeed)}`,
+        `Range: ${Math.round(projectile.projectileRange)}`
+      );
+
+      const effects = projectile.effects;
+      const activeEffects = [
+        effects.chainCount > 0 ? `Chain x${effects.chainCount}` : '',
+        effects.explosionRadius > 0 ? `Explosion ${Math.round(effects.explosionRadius)}` : '',
+        effects.lifestealPercent > 0 ? `Sapping ${Math.round(effects.lifestealPercent * 100)}%` : '',
+        effects.ionizeDamageMultiplier > 0 ? `Ionize +${Math.round(effects.ionizeDamageMultiplier * 100)}%` : '',
+        effects.bounceCount > 0 ? `Bounce x${effects.bounceCount}` : ''
+      ].filter(Boolean);
+      if (activeEffects.length > 0) {
+        lines.push('', 'Effects', ...activeEffects);
+      }
+    }
+
+    if (resolved.rammingShield) {
+      const shield = resolved.rammingShield;
+      lines.push(
+        '',
+        'Shield',
+        `HP: ${Math.round(this.rammingShieldState.hp)} / ${Math.round(shield.shieldMaxHp)}`,
+        `Regen: ${Math.round(shield.shieldRegenRatePerSecond)}/s`,
+        `Dash charges: ${this.rammingShieldState.dashCharges} / ${shield.dashMaxCharges}`,
+        `Recharge: ${shield.dashChargeRechargeSeconds.toFixed(1)}s`,
+        '',
+        'Impact',
+        `Damage: ${Math.round(shield.baseDamage)}-${Math.round(shield.maxDamage)}`,
+        `Dash multiplier: x${shield.dashRamDamageMultiplier.toFixed(1)}`,
+        `Cooldown: ${(shield.contactCooldownMs / 1000).toFixed(2)}s`
+      );
+    }
+
+    const upgradeLines = this.getWeaponUpgradeTooltipLines(weapon);
+    if (upgradeLines.length > 0) {
+      lines.push('', 'Upgrades', ...upgradeLines);
+    }
+
+    return lines;
+  }
+
+  private getWeaponUpgradeTooltipLines(weapon: WeaponRegistryEntry): string[] {
+    if (weapon.id === 'pulse-cannon') {
+      return [
+        `Flat damage: +${
+          this.getRunUpgradeLevelById('pulse_flat_damage_common') * 5 +
+          this.getRunUpgradeLevelById('pulse_flat_damage_uncommon') * 10 +
+          this.getRunUpgradeLevelById('pulse_flat_damage_rare') * 15
+        }`,
+        `Damage multiplier: x${this.getActiveAutoWeaponDamageMultiplier().toFixed(2)}`,
+        `Fire rate levels: ${this.getRunUpgradeLevelById('pulse_fire_rate')}`,
+        `Velocity levels: ${this.getRunUpgradeLevelById('pulse_velocity')}`,
+        `Size levels: ${this.getRunUpgradeLevelById('pulse_size')}`,
+        `Pierce levels: ${this.getRunUpgradeLevelById('pulse_pierce')}`
+      ];
+    }
+
+    if (weapon.id === 'ramming-shield') {
+      return [
+        `Ram damage levels: ${this.getRunUpgradeLevelById('ram_damage')}`,
+        `Shield capacity levels: ${this.getRunUpgradeLevelById('shield_capacity')}`,
+        `Shield recharge levels: ${this.getRunUpgradeLevelById('shield_recharge')}`,
+        `Impact radius levels: ${this.getRunUpgradeLevelById('impact_radius')}`,
+        `Dash recharge levels: ${this.getRunUpgradeLevelById('dash_recharge')}`
+      ];
+    }
+
+    return [];
   }
 
   private formatSurvivalTime(totalSeconds: number): string {
@@ -6477,8 +8960,19 @@ export class GameScene extends Phaser.Scene {
   private getSurvivalElapsedMs(time: number): number {
     const activePauseMs = this.isUpgradeOverlayOpen ? Math.max(0, time - this.upgradeOverlayOpenedAt) : 0;
     const activeDebugPauseMs = this.debugState.debugGamePaused ? Math.max(0, time - this.debugMenuOpenedAt) : 0;
+    const activePauseMenuMs = this.isPauseMenuOpen ? Math.max(0, time - this.pauseMenuOpenedAt) : 0;
 
-    return Math.max(0, time - this.runStartedAt - this.totalUpgradePauseMs - this.totalDebugPauseMs - activePauseMs - activeDebugPauseMs);
+    return Math.max(
+      0,
+      time -
+        this.runStartedAt -
+        this.totalUpgradePauseMs -
+        this.totalDebugPauseMs -
+        this.totalPauseMenuPauseMs -
+        activePauseMs -
+        activeDebugPauseMs -
+        activePauseMenuMs
+    );
   }
 
   private updateDebugText(time: number): void {
@@ -6495,11 +8989,13 @@ export class GameScene extends Phaser.Scene {
     const fps = Math.round(this.game.loop.actualFps);
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
+    const enemyScaling = this.getEnemyTimeScaling(time);
     const spawnDirectorLine = this.debugState.collisionDebugEnabled
-      ? `Spawn director: step ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n`
+      ? `Spawn director: minute ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s / swarm ${(Math.max(0, this.nextEnemySwarmAt - time) / 1000).toFixed(1)}s\n` +
+        `Enemy scaling: HP x${enemyScaling.hpMultiplier.toFixed(2)} / damage x${enemyScaling.damageMultiplier.toFixed(2)}\n`
       : '';
     const debugWeaponLine = this.debugState.collisionDebugEnabled
-      ? `Debug weapon: ${this.getActiveMainWeaponDefinition().displayName} dmg x${this.debugState.weaponDamageMultiplier.toFixed(1)} / fire x${this.debugState.weaponFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveMainWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
+      ? `Debug weapon: ${this.getActiveAutoWeaponDefinition().displayName} dmg x${this.debugState.weaponDamageMultiplier.toFixed(1)} / fire x${this.debugState.weaponFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveAutoWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
         `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
@@ -6514,7 +9010,11 @@ export class GameScene extends Phaser.Scene {
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
-        `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} R${this.getRunUpgradeLevelById('pulse_fire_rate')} V${this.getRunUpgradeLevelById('pulse_velocity')} H${this.getRunUpgradeLevelById('hull-plating')} E${this.getRunUpgradeLevelById('engine-tuning')} C${this.getRunUpgradeLevelById('damage-control')}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
+        `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} F${
+          this.getRunUpgradeLevelById('pulse_flat_damage_common') +
+          this.getRunUpgradeLevelById('pulse_flat_damage_uncommon') +
+          this.getRunUpgradeLevelById('pulse_flat_damage_rare')
+        } R${this.getRunUpgradeLevelById('pulse_fire_rate')} V${this.getRunUpgradeLevelById('pulse_velocity')} H${this.getRunUpgradeLevelById('hull-plating')} E${this.getRunUpgradeLevelById('engine-tuning')} C${this.getRunUpgradeLevelById('damage-control')}${this.isUpgradeOverlayOpen ? ' (open)' : ''}\n` +
         `Velocity: ${formatIntegerDisplayUnits(this.playerVelocity.x)}, ${formatIntegerDisplayUnits(this.playerVelocity.y)}\n` +
         `Player shots: ${this.playerProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
@@ -6546,7 +9046,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.gameFlowState === 'results') {
-      this.showResultsScreen();
+      if (this.resultsScreen) {
+        this.showResultsScreen();
+      } else {
+        this.updateResultsButton();
+      }
       return;
     }
 

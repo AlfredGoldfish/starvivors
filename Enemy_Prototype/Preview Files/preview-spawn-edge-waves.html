@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Edge Waves</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Edge Waves</h2><div class="tag">Spawn Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemy</div>
+      <div class="li"><span style="background:rgba(255,202,40,.4)"></span>Spawn edge</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Enemies appear in groups from the screen edges at regular intervals. Each wave spawns 5-10 enemies from one or more sides simultaneously. Between waves there's a brief lull. The rhythm is: swarm, survive, breathe, swarm. The classic arena survival spawn pattern.</div>
+    <div class="dr"><div class="dl">Rhythm</div><div class="dv">Timed groups with rest between waves</div></div>
+    <div class="dr"><div class="dl">Direction</div><div class="dv">From screen edges - one side or multiple</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Arena survivors, wave defense, horde games</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Survival</span><span class="ft">Horde</span>
+    <span class="fe">e.g. Vampire Survivors, Brotato, Crimsonland</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=15;
+let frame=0,px=W/2,py=H/2,pvx=0,pvy=0,wander=0;
+let enemies=[],parts=[],bullets=[],shootT=0,hitFlash=0;
+let waveNum=0,waveTimer=0,waveCooldown=0,spawning=false;
+let spawnEdge=-1,spawnFlash=0;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rng(.3,2);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rng(10,16),ml:16,col,sz:rng(1,2)})}}
+
+function spawnWave(){
+  waveNum++;spawnFlash=20;
+  const edge=Math.floor(Math.random()*4);spawnEdge=edge;
+  const count=5+Math.floor(Math.random()*6);
+  for(let i=0;i<count;i++){
+    let x,y;
+    if(edge===0){x=PAD;y=PAD+rng(10,H-PAD*2-10)} // left
+    else if(edge===1){x=W-PAD;y=PAD+rng(10,H-PAD*2-10)} // right
+    else if(edge===2){x=PAD+rng(10,W-PAD*2-10);y=PAD} // top
+    else{x=PAD+rng(10,W-PAD*2-10);y=H-PAD} // bottom
+    enemies.push({x,y,sz:6,spd:rng(0.5,0.9),hp:2,fl:0});
+  }
+}
+
+function update(){
+  frame++;waveTimer++;
+  if(hitFlash>0)hitFlash--;
+  if(spawnFlash>0)spawnFlash--;
+
+  // Wave timing
+  if(enemies.length===0){waveCooldown++;
+    if(waveCooldown>100){spawnWave();waveCooldown=0}
+  }
+
+  // Player AI
+  let ax=0,ay=0;
+  wander+=Math.sin(frame*0.013)*0.04+rng(-0.02,0.02);
+  ax+=Math.cos(wander)*0.08;ay+=Math.sin(wander)*0.08;
+  for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<40&&d>1){ax+=(px-e.x)/d*0.15;ay+=(py-e.y)/d*0.15}}
+  ax+=(W/2-px)*0.0004;ay+=(H/2-py)*0.0004;
+  if(px<PAD+25)ax+=0.15;if(px>W-PAD-25)ax-=0.15;if(py<PAD+25)ay+=0.15;if(py>H-PAD-25)ay-=0.15;
+  pvx=(pvx+ax)*0.92;pvy=(pvy+ay)*0.92;
+  const vm=Math.hypot(pvx,pvy);if(vm>1.4){pvx=pvx/vm*1.4;pvy=pvy/vm*1.4}
+  px+=pvx;py+=pvy;px=Math.max(PAD+8,Math.min(W-PAD-8,px));py=Math.max(PAD+8,Math.min(H-PAD-8,py));
+
+  // Shoot
+  shootT++;
+  if(shootT>=10&&enemies.length>0){
+    let nd=Infinity,ne=null;for(const e of enemies){const d=Math.hypot(px-e.x,py-e.y);if(d<nd){nd=d;ne=e}}
+    if(ne){const a=Math.atan2(ne.y-py,ne.x-px);bullets.push({x:px,y:py,vx:Math.cos(a)*6,vy:Math.sin(a)*6,life:40});shootT=0}
+  }
+
+  // Enemies chase
+  for(const e of enemies){if(e.fl>0)e.fl--;const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+    if(d>1){e.x+=dx/d*e.spd;e.y+=dy/d*e.spd}
+    e.x=Math.max(PAD+3,Math.min(W-PAD-3,e.x));e.y=Math.max(PAD+3,Math.min(H-PAD-3,e.y))}
+
+  // Bullets
+  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.x+=b.vx;b.y+=b.vy;b.life--;
+    if(b.life<=0||b.x<PAD||b.x>W-PAD||b.y<PAD||b.y>H-PAD){bullets.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(Math.hypot(b.x-enemies[j].x,b.y-enemies[j].y)<enemies[j].sz+3){
+      enemies[j].hp--;enemies[j].fl=4;spark(b.x,b.y,'#66bb6a',3);
+      if(enemies[j].hp<=0){spark(enemies[j].x,enemies[j].y,'#ef5350',6);enemies.splice(j,1)}
+      bullets.splice(i,1);break}}}
+
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.9;p.vy*=.9;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Spawn edge flash
+  if(spawnFlash>0){
+    const a=spawnFlash/20*0.4;
+    ctx.fillStyle=`rgba(255,202,40,${a})`;
+    if(spawnEdge===0)ctx.fillRect(PAD,PAD,6,H-PAD*2);
+    if(spawnEdge===1)ctx.fillRect(W-PAD-6,PAD,6,H-PAD*2);
+    if(spawnEdge===2)ctx.fillRect(PAD,PAD,W-PAD*2,6);
+    if(spawnEdge===3)ctx.fillRect(PAD,H-PAD-6,W-PAD*2,6);
+  }
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.fl>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.sz/2,e.y-e.sz/2,e.sz,e.sz)}
+  // Bullets
+  ctx.fillStyle='#66bb6a';for(const b of bullets){ctx.beginPath();ctx.arc(b.x,b.y,2.5,0,Math.PI*2);ctx.fill()}
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(239,83,80,.6)':'#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // HUD
+  ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.8)';
+  ctx.fillText(`WAVE ${waveNum}`,W/2,PAD+14);
+  ctx.font='600 7px "IBM Plex Mono"';ctx.fillStyle='rgba(239,83,80,.6)';
+  ctx.fillText(`ENEMIES: ${enemies.length}`,W/2,PAD+26);
+
+  // Cooldown bar between waves
+  if(enemies.length===0&&waveCooldown>0){
+    const bw=80,bh=4,bx=W/2-bw/2,by=H/2-20;
+    ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(bx,by,bw,bh);
+    ctx.fillStyle='rgba(255,202,40,.4)';ctx.fillRect(bx,by,bw*(waveCooldown/100),bh);
+    ctx.font='600 8px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.5)';
+    ctx.fillText('NEXT WAVE...',W/2,by-6);
+  }
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.65)';
+  ctx.fillText('EDGE WAVES',W/2,H-PAD-4);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Groups spawn from edges -> fight -> lull -> next wave',W/2,H-4);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

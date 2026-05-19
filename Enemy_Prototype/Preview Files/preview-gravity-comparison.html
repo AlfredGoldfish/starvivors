@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Gravity - Standard / Low / Heavy</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Gravity: Standard / Low / Heavy</h2><div class="tag">Gravity</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Three gravity settings that fundamentally change how a game feels. Heavy gravity means fast falls and low jumps - tight, grounded, precise. Standard is the baseline most players expect. Low gravity means floaty, high jumps and slow falls - spacey, aerial, forgiving. All three jump at the same time so you can see the difference.</div>
+    <div class="dr"><div class="dl">Heavy</div><div class="dv">Fast fall, low jump, tight and grounded</div></div>
+    <div class="dr"><div class="dl">Standard</div><div class="dv">Balanced fall/jump, expected baseline</div></div>
+    <div class="dr"><div class="dl">Low</div><div class="dv">Slow fall, high jump, floaty and aerial</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Platformer</span><span class="ft">Action</span><span class="ft">Runner</span>
+    <span class="fe">e.g. Celeste (tight), Mario (standard), Lunar Lander (low)</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+let frame=0;
+
+const FLOOR=H-50;
+const LANES=[
+  {label:'HEAVY',grav:0.55,jumpV:-8,color:'#ef5350',x:W*0.17,sub:'Fast fall - Low jump'},
+  {label:'STANDARD',grav:0.3,jumpV:-9.5,color:'#ffca28',x:W*0.5,sub:'Balanced'},
+  {label:'LOW',grav:0.1,jumpV:-8,color:'#4fc3f7',x:W*0.83,sub:'Slow fall - High jump'},
+];
+
+const chars=LANES.map(()=>({y:FLOOR,vy:0,onGround:true,trail:[],peakY:FLOOR}));
+let jumpTimer=0,jumped=false;
+
+function update(){
+  frame++;jumpTimer++;
+
+  // All jump simultaneously every ~3.5 seconds
+  if(jumpTimer>210){jumpTimer=0;jumped=true;
+    for(let i=0;i<chars.length;i++){
+      chars[i].vy=LANES[i].jumpV;chars[i].onGround=false;chars[i].peakY=FLOOR;
+    }
+  }
+  if(jumpTimer>10)jumped=false;
+
+  for(let i=0;i<chars.length;i++){
+    const c=chars[i],l=LANES[i];
+    if(!c.onGround){
+      c.vy+=l.grav;
+      c.y+=c.vy;
+      // Track peak
+      if(c.y<c.peakY)c.peakY=c.y;
+      // Trail
+      if(frame%2===0)c.trail.push({x:l.x,y:c.y,life:20});
+    }
+    // Floor
+    if(c.y>=FLOOR){c.y=FLOOR;c.vy=0;c.onGround=true}
+    // Trail decay
+    for(let j=c.trail.length-1;j>=0;j--){c.trail[j].life--;if(c.trail[j].life<=0)c.trail.splice(j,1)}
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+
+  // Lane dividers
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.lineWidth=1;ctx.setLineDash([4,6]);
+  ctx.beginPath();ctx.moveTo(W/3,25);ctx.lineTo(W/3,FLOOR+5);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(W*2/3,25);ctx.lineTo(W*2/3,FLOOR+5);ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Floor
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(10,FLOOR+7,W-20,2);
+
+  for(let i=0;i<LANES.length;i++){
+    const l=LANES[i],c=chars[i];
+
+    // Gravity arrow (top of lane)
+    const arrowLen=12+l.grav*35;
+    ctx.strokeStyle=`${l.color}50`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(l.x,28);ctx.lineTo(l.x,28+arrowLen);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(l.x,28+arrowLen);ctx.lineTo(l.x-4,28+arrowLen-6);ctx.moveTo(l.x,28+arrowLen);ctx.lineTo(l.x+4,28+arrowLen-6);ctx.stroke();
+    ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle=`${l.color}70`;
+    ctx.fillText(`${l.grav}x`,l.x,24);
+
+    // Trail
+    for(const t of c.trail){
+      ctx.globalAlpha=t.life/20*0.3;ctx.fillStyle=l.color;
+      ctx.beginPath();ctx.arc(t.x,t.y,3,0,Math.PI*2);ctx.fill();
+    }ctx.globalAlpha=1;
+
+    // Peak height line (when at or past peak)
+    if(!c.onGround&&c.peakY<FLOOR-5){
+      ctx.strokeStyle=`${l.color}20`;ctx.lineWidth=1;ctx.setLineDash([2,3]);
+      ctx.beginPath();ctx.moveTo(l.x-20,c.peakY);ctx.lineTo(l.x+20,c.peakY);ctx.stroke();ctx.setLineDash([]);
+    }
+    // Show peak height number when character is near peak
+    if(!c.onGround&&Math.abs(c.vy)<1){
+      ctx.font='600 7px "IBM Plex Mono"';ctx.fillStyle=`${l.color}70`;ctx.textAlign='center';
+      ctx.fillText(`${Math.round(FLOOR-c.peakY)}px`,l.x+28,c.peakY+3);
+    }
+
+    // Character shadow on floor
+    const shadowAlpha=Math.max(0.02,0.12-Math.abs(FLOOR-c.y)*0.0008);
+    ctx.fillStyle=`rgba(0,0,0,${shadowAlpha})`;
+    const shadowW=5+Math.max(0,(FLOOR-c.y)*0.02);
+    ctx.beginPath();ctx.ellipse(l.x,FLOOR+5,shadowW,2,0,0,Math.PI*2);ctx.fill();
+
+    // Character - stretch based on velocity
+    const stretch=Math.min(1.35,1+Math.abs(c.vy)*0.025);
+    const squish=1/stretch;
+    ctx.fillStyle=l.color;
+    ctx.save();ctx.translate(l.x,c.y);ctx.scale(squish,stretch);
+    ctx.fillRect(-7,-7,14,14);ctx.restore();
+
+    // Lane labels at bottom
+    ctx.font='700 11px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=`${l.color}CC`;
+    ctx.fillText(l.label,l.x,FLOOR+24);
+    ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle=`${l.color}60`;
+    ctx.fillText(l.sub,l.x,FLOOR+34);
+  }
+
+  // Jump flash
+  if(jumped){
+    ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.45)';
+    ctx.fillText('JUMP!',W/2,FLOOR-10);
+  }
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.5)';
+  ctx.fillText('GRAVITY COMPARISON',W/2,16);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText('Same jump input -> different gravity -> different feel',W/2,H-10);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

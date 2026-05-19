@@ -11,8 +11,9 @@ import type {
   TankEnemy
 } from '../scenes/gameTypes';
 import type { DebugState } from './debug/debugState';
+import type { EnemyLabInstance } from './enemyLabSpawner';
 
-type CombatEnemy = BasicEnemy | ShooterEnemy | TankEnemy;
+type CombatEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
 
 export interface CombatFeedbackSnapshot {
   player?: Phaser.GameObjects.Container;
@@ -217,7 +218,7 @@ export class CombatFeedbackSystem {
 
   private ensureAllCombatHealthBars(snapshot: CombatFeedbackSnapshot): void {
     for (const enemy of snapshot.enemies) {
-      this.ensureHealthBar(enemy, enemy.body, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), true);
+      this.ensureHealthBar(enemy, enemy.body, getCombatEnemyMaxHp(enemy), this.getEnemyHitRadius(enemy), true);
     }
 
     for (const asteroid of snapshot.asteroids) {
@@ -244,7 +245,7 @@ export class CombatFeedbackSystem {
   private updateHealthBarFromOwner(owner: object, snapshot: CombatFeedbackSnapshot): void {
     const enemy = snapshot.enemies.find((candidate) => candidate === owner);
     if (enemy) {
-      this.updateHealthBar(owner, enemy.hp, enemy.stats.maxHull);
+      this.updateHealthBar(owner, enemy.hp, getCombatEnemyMaxHp(enemy));
       return;
     }
 
@@ -282,4 +283,8 @@ export class CombatFeedbackSystem {
       }
     }
   }
+}
+
+function getCombatEnemyMaxHp(enemy: CombatEnemy): number {
+  return 'definition' in enemy ? enemy.maxHp : enemy.stats.maxHull;
 }

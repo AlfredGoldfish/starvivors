@@ -1,5 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
+import { COMBAT_NUMBER_SCALE } from './combatScale';
 import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
 import { pulseCannon, rammingShield, type RammingShieldStats, type WeaponId } from './weapons';
 
@@ -64,7 +65,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   hitRadius: number;
   movementNotes: string;
   startingWeaponNotes: string;
-  startingMainWeaponId: WeaponId;
+  startingPrimaryWeaponId: WeaponId | null;
   startingSecondaryWeaponId: WeaponId | null;
   defaultPrimaryWeaponBonuses?: Partial<Record<WeaponId, ShipWeaponBonusDefinition>>;
   speedRating: string;
@@ -129,7 +130,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
-      maxHull: 100,
+      maxHull: 40 * COMBAT_NUMBER_SCALE,
       mass: 3,
       moveSpeed: interceptorMovement.maxSpeed,
       thrust: interceptorMovement.thrustAcceleration,
@@ -138,8 +139,8 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     hitRadius: 32,
     movementNotes: 'Fast thrust, responsive strafing, light hull.',
-    startingWeaponNotes: `${pulseCannon.displayName} starter`,
-    startingMainWeaponId: pulseCannon.id,
+    startingWeaponNotes: `${pulseCannon.displayName} auto-fire starter`,
+    startingPrimaryWeaponId: null,
     startingSecondaryWeaponId: null,
     speedRating: 'Fast',
     handlingRating: 'Responsive',
@@ -188,7 +189,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
-      maxHull: 150,
+      maxHull: 60 * COMBAT_NUMBER_SCALE,
       mass: 5.5,
       moveSpeed: Math.round(interceptorMovement.maxSpeed * 0.85),
       thrust: Math.round(interceptorMovement.thrustAcceleration * 0.35),
@@ -197,8 +198,8 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
-    startingWeaponNotes: `${rammingShield.displayName} starter`,
-    startingMainWeaponId: rammingShield.id,
+    startingWeaponNotes: `${pulseCannon.displayName} auto-fire + ${rammingShield.displayName} primary`,
+    startingPrimaryWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
     defaultPrimaryWeaponBonuses: {
       'ramming-shield': {

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Side-View (Gravity)</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}
+.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}
+.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}
+.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}
+canvas{width:100%;height:100%;display:block}
+.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}
+.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}
+.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}
+.li span{width:6px;height:6px;border-radius:50%;display:inline-block}
+.body{padding:16px 18px}
+.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}
+.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}
+.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}
+.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}
+.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Side-View (Gravity)</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7"></span>Player</div>
+      <div class="li"><span style="background:#8d6e63"></span>Platforms</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:#ffca28"></span>Coins</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Horizontal view with gravity pulling the player down. Jump between platforms, dodge obstacles, and navigate left to right. The camera scrolls horizontally to follow the player. The core feel of every platformer.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Horizontal scroll following player, vertical follows jumps</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Platformers, runners, Metroidvanias, action side-scrollers</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Intuitive movement, satisfying jumps, tight level design</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Limited to horizontal traversal, vertical space is secondary</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Platform</span><span class="ft">Runner</span><span class="ft">Action</span>
+    <span class="fe">e.g. Mario, Celeste, Hollow Knight, Mega Man</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const GRAV=0.35,JUMP=-7,GROUND=H-40;
+// Platforms
+const plats=[
+  {x:0,y:GROUND,w:2000,h:40},
+  {x:180,y:260,w:80,h:12},{x:320,y:220,w:90,h:12},{x:500,y:250,w:70,h:12},
+  {x:620,y:190,w:100,h:12},{x:780,y:230,w:80,h:12},{x:900,y:170,w:90,h:12},
+  {x:1050,y:220,w:110,h:12},{x:1200,y:260,w:70,h:12},{x:1350,y:200,w:90,h:12},
+  {x:1500,y:240,w:80,h:12},{x:1650,y:180,w:100,h:12},{x:1800,y:250,w:80,h:12},
+];
+const coins=[];for(let i=0;i<20;i++)coins.push({x:150+i*100+Math.random()*60,y:160+Math.random()*80,got:false,pulse:Math.random()*6});
+const enemies=[];for(let i=0;i<6;i++){const p=plats[2+i];if(p)enemies.push({x:p.x+10,y:p.y-10,w:p.x,r:p.x+p.w,dir:1,s:8})}
+
+let px=60,py=GROUND-14,vx=0,vy=0,grounded=false,cam=0;
+let aiDir=1,aiJumpTimer=0,jumpHeld=0;
+
+function onPlat(fx,fy){for(const p of plats){if(fx+6>p.x&&fx-6<p.x+p.w&&fy+7>=p.y&&fy+7<=p.y+6&&vy>=0)return p}return null}
+
+function update(){
+  // AI: run right, jump when near platform edges or enemies
+  aiJumpTimer++;
+  vx=aiDir*2;
+  px+=vx;
+
+  // Check if about to fall off or should jump to platform
+  const ahead=onPlat(px+aiDir*30,py+20);
+  const current=onPlat(px,py+2);
+  if(current&&!ahead&&aiJumpTimer>30){vy=JUMP;grounded=false;aiJumpTimer=0}
+  // Jump if enemy nearby
+  for(const e of enemies){if(Math.abs(e.x-px)<50&&Math.abs(e.y-py)<30&&grounded){vy=JUMP*1.1;grounded=false;aiJumpTimer=0}}
+
+  // Physics
+  vy+=GRAV;py+=vy;
+  // Platform collision
+  const p=onPlat(px,py);
+  if(p&&vy>=0){py=p.y-7;vy=0;grounded=true}
+  // Reset if fell
+  if(py>H+50){px=cam+60;py=100;vy=0}
+  // Wrap world
+  if(px>1900)px=60;
+
+  // Camera
+  cam+=(px-W*0.35-cam)*0.08;
+  if(cam<0)cam=0;
+
+  // Enemies patrol
+  for(const e of enemies){e.x+=e.dir*0.8;if(e.x<e.w||e.x>e.r-e.s)e.dir*=-1}
+  // Coins
+  for(const co of coins){if(!co.got&&Math.abs(co.x-px)<12&&Math.abs(co.y-py)<12)co.got=true;co.pulse+=0.05}
+}
+function draw(){
+  ctx.fillStyle='#0f1420';ctx.fillRect(0,0,W,H);
+  // Parallax bg
+  ctx.fillStyle='rgba(255,255,255,.015)';
+  for(let i=0;i<15;i++){const bx=((i*130)-cam*0.2)%W;ctx.fillRect(bx,80+i*15,2,40+i*5)}
+
+  ctx.save();ctx.translate(-cam,0);
+  // Platforms
+  for(const p of plats){
+    if(p.x+p.w<cam-20||p.x>cam+W+20)continue;
+    ctx.fillStyle=p.h>20?'#2a2520':'#8d6e63';
+    ctx.fillRect(p.x,p.y,p.w,p.h);
+    if(p.h<=20){ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(p.x,p.y,p.w,2)}
+  }
+  // Coins
+  for(const co of coins){
+    if(co.got)continue;
+    ctx.fillStyle=`rgba(255,202,40,${.5+Math.sin(co.pulse)*.3})`;
+    ctx.beginPath();ctx.arc(co.x,co.y,4,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,202,40,.15)';ctx.beginPath();ctx.arc(co.x,co.y,8,0,Math.PI*2);ctx.fill();
+  }
+  // Enemies
+  ctx.fillStyle='#ef5350';for(const e of enemies)ctx.fillRect(e.x-e.s/2,e.y-e.s,e.s,e.s);
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.fillRect(px-5,py-12,10,14);
+  // Eyes
+  ctx.fillStyle='#fff';ctx.fillRect(px+(aiDir>0?1:-5),py-10,2,2);
+  // Jump squash/stretch
+  if(!grounded){ctx.fillStyle='rgba(79,195,247,.2)';ctx.fillRect(px-3,py+2,6,2)}
+  ctx.restore();
+  // Ground line indicator
+  ctx.strokeStyle='rgba(255,255,255,.05)';ctx.setLineDash([2,4]);ctx.beginPath();ctx.moveTo(0,GROUND);ctx.lineTo(W,GROUND);ctx.stroke();ctx.setLineDash([]);
+  // HUD
+  ctx.font='500 9px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.4)';ctx.textAlign='left';
+  const collected=coins.filter(c=>c.got).length;
+  ctx.fillText(`COINS ${collected}/${coins.length}`,10,16);
+  // Gravity arrow indicator
+  ctx.fillStyle='rgba(255,255,255,.15)';ctx.beginPath();ctx.moveTo(W-20,14);ctx.lineTo(W-16,22);ctx.lineTo(W-24,22);ctx.closePath();ctx.fill();
+  ctx.font='400 6px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillText('GRAVITY',W-20,30);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

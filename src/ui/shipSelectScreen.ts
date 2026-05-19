@@ -540,7 +540,7 @@ function formatHangarStatValue(value: number, decimals: number): string {
 }
 
 function getPrimaryWeaponDisplay(ship: ShipRegistryEntry): WeaponRegistryEntry {
-  return getWeaponDefinition(ship.startingMainWeaponId);
+  return ship.startingPrimaryWeaponId ? getWeaponDefinition(ship.startingPrimaryWeaponId) : getWeaponDefinition('pulse-cannon');
 }
 
 function getShipActionLabel(config: ShipSelectScreenConfig, ship: ShipRegistryEntry): string {

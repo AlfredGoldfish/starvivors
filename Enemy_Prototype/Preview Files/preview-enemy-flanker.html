@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Flanker</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Flanker</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ff9800"></span>Flanker</div>
+      <div class="li"><span style="background:rgba(255,152,0,.3)"></span>Flank path</div>
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%;border:1px solid rgba(79,195,247,.3)"></span>Facing</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">A cunning enemy that avoids direct confrontation. Instead of charging head-on, the flanker arcs wide to get behind the player before striking. Forces the player to constantly reposition and check their back. Especially dangerous when mixed with frontal threats like chargers.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Wide arc around player, approaches from behind</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">Quick melee strike from behind, then retreats</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Slow approach phase, predictable arc once spotted</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Punishes tunnel vision, deadly with other enemy types</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">Arena</span><span class="ft">Stealth</span>
+    <span class="fe">e.g. Hades, Doom Eternal, Left 4 Dead (Hunter)</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=20;
+
+let px=W/2,py=H/2,pSpeed=1.4;
+let pFacing=0; // angle player is "looking"
+let pTarget={x:W/2,y:H/2},pTimer=0;
+let particles=[];
+let hitFlash=0;
+
+// Flanker states: 'circling','approaching','striking','retreating'
+function makeFlanker(x,y,dir){
+  return{x,y,state:'circling',angle:Math.atan2(y-H/2,x-W/2),
+    circleDir:dir,speed:1.2,size:8,timer:0,
+    strikeX:0,strikeY:0,trail:[],opacity:1};
+}
+let enemies=[];
+function spawn(){
+  enemies=[];
+  enemies.push(makeFlanker(PAD+30,PAD+40,1));
+  enemies.push(makeFlanker(W-PAD-30,H-PAD-40,-1));
+  enemies.push(makeFlanker(W-PAD-40,PAD+60,1));
+  enemies.push(makeFlanker(PAD+50,H-PAD-50,-1));
+}
+spawn();
+
+let pVx=0,pVy=0,pWanderAngle=Math.random()*Math.PI*2;
+let dodging=false,dodgeTimer=0;
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=.5+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:15+Math.random()*10,ml:25,color:col,size:1.5})}}
+
+function update(){
+  pTimer++;
+
+  // Smooth player AI: wander with gentle curves, react to approaching flankers
+  let ax=0,ay=0;
+  dodging=false;
+
+  // Check for any flanker approaching or striking — dodge!
+  for(const e of enemies){
+    if(e.state==='approaching'||e.state==='striking'){
+      const d=Math.hypot(px-e.x,py-e.y);
+      if(d<100){
+        // Dodge perpendicular to the attacker's approach
+        const fromAngle=Math.atan2(py-e.y,px-e.x);
+        const perpAngle=fromAngle+(Math.random()>.5?Math.PI/2:-Math.PI/2);
+        ax+=Math.cos(perpAngle)*0.4;ay+=Math.sin(perpAngle)*0.4;
+        dodging=true;
+      }
+    }
+    // Gentle push away from any close enemy
+    const d=Math.hypot(px-e.x,py-e.y);
+    if(d<60&&d>1){ax+=(px-e.x)/d*0.08;ay+=(py-e.y)/d*0.08}
+  }
+
+  if(!dodging){
+    // Smooth wander — slowly shifting angle
+    pWanderAngle+=Math.sin(pTimer*0.013)*0.04+(Math.random()-.5)*0.06;
+    ax+=Math.cos(pWanderAngle)*0.12;ay+=Math.sin(pWanderAngle)*0.12;
+  }
+
+  // Pull toward center to avoid walls
+  const cx=W/2,cy=H/2;
+  ax+=(cx-px)*0.0004;ay+=(cy-py)*0.0004;
+
+  // Stronger wall repulsion
+  if(px<PAD+40)ax+=0.15;if(px>W-PAD-40)ax-=0.15;
+  if(py<PAD+40)ay+=0.15;if(py>H-PAD-40)ay-=0.15;
+
+  const spd=dodging?2.6:1.4;
+  pVx=(pVx+ax)*0.92;pVy=(pVy+ay)*0.92;
+  const vm=Math.hypot(pVx,pVy);
+  if(vm>spd){pVx=pVx/vm*spd;pVy=pVy/vm*spd}
+  px+=pVx;py+=pVy;
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));
+  py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Facing = direction of movement (smooth)
+  if(vm>0.3){
+    const targetFacing=Math.atan2(pVy,pVx);
+    let diff=targetFacing-pFacing;
+    while(diff>Math.PI)diff-=Math.PI*2;while(diff<-Math.PI)diff+=Math.PI*2;
+    pFacing+=diff*0.1;
+  }
+
+  if(hitFlash>0)hitFlash--;
+
+  // Behind the player = opposite of facing
+  const behindAngle=pFacing+Math.PI;
+
+  for(const e of enemies){
+    e.timer++;
+
+    if(e.state==='circling'){
+      // Arc around the player, aiming for behind
+      const distToPlayer=Math.hypot(e.x-px,e.y-py);
+      const orbitR=90;
+
+      // Move angle toward behind the player
+      e.angle+=e.circleDir*0.02;
+
+      // Target position on the orbit
+      const tx=px+Math.cos(e.angle)*orbitR;
+      const ty=py+Math.sin(e.angle)*orbitR;
+      const dx=tx-e.x,dy=ty-e.y,d=Math.hypot(dx,dy);
+      if(d>2){e.x+=dx/d*e.speed;e.y+=dy/d*e.speed}
+
+      e.trail.push({x:e.x,y:e.y,life:20});
+
+      // Check if we're roughly behind the player
+      const angleToPl=Math.atan2(e.y-py,e.x-px);
+      let angleDiff=Math.abs(angleToPl-behindAngle);
+      if(angleDiff>Math.PI)angleDiff=Math.PI*2-angleDiff;
+      if(angleDiff<0.5&&e.timer>80){
+        e.state='approaching';e.timer=0;e.speed=2.5;
+      }
+    }
+    else if(e.state==='approaching'){
+      // Rush toward player from behind
+      const dx=px-e.x,dy=py-e.y,d=Math.hypot(dx,dy);
+      if(d>12){e.x+=dx/d*e.speed;e.y+=dy/d*e.speed}
+      e.trail.push({x:e.x,y:e.y,life:10});
+
+      if(Math.hypot(e.x-px,e.y-py)<15){
+        e.state='striking';e.timer=0;
+        hitFlash=8;burst(px,py,'#ff9800',6);
+      }
+      if(e.timer>60)e.state='retreating';e.timer=0;
+    }
+    else if(e.state==='striking'){
+      // Brief pause at player position
+      if(e.timer>15){
+        e.state='retreating';e.timer=0;
+        // Pick retreat direction (away from player)
+        const a=Math.atan2(e.y-py,e.x-px);
+        e.strikeX=e.x+Math.cos(a)*100;
+        e.strikeY=e.y+Math.sin(a)*100;
+        e.strikeX=Math.max(PAD+10,Math.min(W-PAD-10,e.strikeX));
+        e.strikeY=Math.max(PAD+10,Math.min(H-PAD-10,e.strikeY));
+      }
+    }
+    else if(e.state==='retreating'){
+      const dx=e.strikeX-e.x,dy=e.strikeY-e.y,d=Math.hypot(dx,dy);
+      if(d>5){e.x+=dx/d*2.2;e.y+=dy/d*2.2}
+      if(e.timer>50){
+        e.state='circling';e.timer=0;e.speed=1.2;
+        e.angle=Math.atan2(e.y-py,e.x-px);
+      }
+    }
+
+    e.x=Math.max(PAD+5,Math.min(W-PAD-5,e.x));
+    e.y=Math.max(PAD+5,Math.min(H-PAD-5,e.y));
+
+    // Trail decay
+    for(let i=e.trail.length-1;i>=0;i--){e.trail[i].life--;if(e.trail[i].life<=0)e.trail.splice(i,1)}
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Player facing cone (shows where player is "looking")
+  ctx.fillStyle='rgba(79,195,247,.15)';
+  ctx.beginPath();ctx.moveTo(px,py);
+  ctx.arc(px,py,70,pFacing-.55,pFacing+.55);
+  ctx.closePath();ctx.fill();
+  // Facing cone border
+  ctx.strokeStyle='rgba(79,195,247,.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(px,py);ctx.arc(px,py,70,pFacing-.55,pFacing+.55);ctx.closePath();ctx.stroke();
+  // Facing arrow
+  ctx.strokeStyle='rgba(79,195,247,.4)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(px,py);
+  ctx.lineTo(px+Math.cos(pFacing)*40,py+Math.sin(pFacing)*40);ctx.stroke();
+
+  // "Behind" zone indicator — bright orange
+  const ba=pFacing+Math.PI;
+  ctx.fillStyle='rgba(255,152,0,.12)';
+  ctx.beginPath();ctx.moveTo(px,py);
+  ctx.arc(px,py,85,ba-.8,ba+.8);
+  ctx.closePath();ctx.fill();
+  ctx.strokeStyle='rgba(255,152,0,.25)';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(px,py);ctx.arc(px,py,85,ba-.8,ba+.8);ctx.closePath();ctx.stroke();
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.55)';
+  ctx.fillText('BLIND SPOT',px+Math.cos(ba)*58,py+Math.sin(ba)*58);
+
+  // Enemy trails
+  for(const e of enemies){
+    for(const t of e.trail){
+      ctx.globalAlpha=t.life/20*.45;
+      ctx.fillStyle='#ff9800';
+      ctx.beginPath();ctx.arc(t.x,t.y,2,0,Math.PI*2);ctx.fill();
+    }
+    ctx.globalAlpha=1;
+  }
+
+  // Enemies
+  for(const e of enemies){
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(e.x,e.y+e.size+2,e.size*.6,e.size*.25,0,0,Math.PI*2);ctx.fill();
+
+    const striking=e.state==='striking'||e.state==='approaching';
+    // Triangle shape pointing toward player
+    const a=Math.atan2(py-e.y,px-e.x);
+    ctx.save();ctx.translate(e.x,e.y);ctx.rotate(a);
+    ctx.fillStyle=striking?'#ffb74d':'#ff9800';
+    ctx.beginPath();ctx.moveTo(e.size,0);ctx.lineTo(-e.size*.6,-e.size*.6);ctx.lineTo(-e.size*.6,e.size*.6);ctx.closePath();ctx.fill();
+    ctx.restore();
+
+    // State label
+    ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+    const cols={circling:'rgba(255,152,0,.6)',approaching:'rgba(255,152,0,.85)',striking:'rgba(255,183,77,1)',retreating:'rgba(255,255,255,.4)'};
+    const lbls={circling:'FLANKING',approaching:'CLOSING IN',striking:'STRIKE!',retreating:'RETREATING'};
+    ctx.fillStyle=cols[e.state];
+    ctx.fillText(lbls[e.state],e.x,e.y+e.size+12);
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,152,0,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Ammo display
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-6);
+  ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(PAD+60,H-PAD-12,40,4);
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  // Labels
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,152,0,.65)';
+  ctx.fillText('FLANKER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Arc wide → get behind → strike → retreat → repeat',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

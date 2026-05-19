@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Directional & Gravity Zones</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Directional & Gravity Zones</h2><div class="tag">Gravity</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Different areas of the map have different gravity rules. Normal pulls down. Reverse pulls up — the ceiling becomes the floor. Sideways pushes horizontally. Zero-G lets you float freely. Each zone changes how the player moves, creating spatial puzzles and variety within a single level.</div>
+    <div class="dr"><div class="dl">Normal ↓</div><div class="dv">Standard downward gravity</div></div>
+    <div class="dr"><div class="dl">Reverse ↑</div><div class="dv">Upward pull — walk on ceiling</div></div>
+    <div class="dr"><div class="dl">Sideways →</div><div class="dv">Horizontal pull — walls become floors</div></div>
+    <div class="dr"><div class="dl">Zero-G</div><div class="dv">No gravity — free float</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Puzzle</span><span class="ft">Platformer</span><span class="ft">Exploration</span>
+    <span class="fe">e.g. VVVVVV, Super Mario Galaxy, Prey, Portal</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+let frame=0;
+
+// 2x2 grid of zones
+const GAP=6,PAD=12;
+const ZW=(W-PAD*2-GAP)/2,ZH=(H-PAD*2-GAP)/2;
+
+const ZONES=[
+  {label:'NORMAL ↓',sub:'Floor = ground',color:'#ffca28',
+    x:PAD,y:PAD,w:ZW,h:ZH,
+    gx:0,gy:0.3,surfaceDir:'bottom'},
+  {label:'REVERSE ↑',sub:'Ceiling = ground',color:'#ef5350',
+    x:PAD+ZW+GAP,y:PAD,w:ZW,h:ZH,
+    gx:0,gy:-0.3,surfaceDir:'top'},
+  {label:'ZERO-G',sub:'Free float',color:'#ab47bc',
+    x:PAD,y:PAD+ZH+GAP,w:ZW,h:ZH,
+    gx:0,gy:0,surfaceDir:'none'},
+  {label:'SIDEWAYS →',sub:'Right wall = ground',color:'#4fc3f7',
+    x:PAD+ZW+GAP,y:PAD+ZH+GAP,w:ZW,h:ZH,
+    gx:0.3,gy:0,surfaceDir:'right'},
+];
+
+// One character per zone
+const chars=ZONES.map((z,i)=>{
+  let cx,cy;
+  if(z.surfaceDir==='bottom'){cx=z.x+z.w/2;cy=z.y+z.h-12}
+  else if(z.surfaceDir==='top'){cx=z.x+z.w/2;cy=z.y+12}
+  else if(z.surfaceDir==='right'){cx=z.x+z.w-12;cy=z.y+z.h/2}
+  else{cx=z.x+z.w/2;cy=z.y+z.h/2}
+  return{x:cx,y:cy,vx:0,vy:0,jumpCD:Math.floor(Math.random()*60),trail:[]};
+});
+
+function update(){
+  frame++;
+
+  for(let i=0;i<ZONES.length;i++){
+    const z=ZONES[i],c=chars[i];
+    c.jumpCD++;
+
+    // Apply zone gravity
+    c.vx+=z.gx;c.vy+=z.gy;
+
+    // Zone-specific behavior
+    if(z.surfaceDir==='bottom'){
+      // Jump from floor
+      if(c.y>=z.y+z.h-12&&c.jumpCD>100){c.vy=-8;c.jumpCD=0;c.vx=(Math.random()-.5)*2}
+      // Floor
+      if(c.y>=z.y+z.h-12){c.y=z.y+z.h-12;c.vy=0;c.vx*=0.85}
+    }
+    else if(z.surfaceDir==='top'){
+      // Jump from ceiling (downward = "up" in reverse)
+      if(c.y<=z.y+12&&c.jumpCD>100){c.vy=8;c.jumpCD=0;c.vx=(Math.random()-.5)*2}
+      // Ceiling
+      if(c.y<=z.y+12){c.y=z.y+12;c.vy=0;c.vx*=0.85}
+    }
+    else if(z.surfaceDir==='right'){
+      // Jump from right wall (leftward = "up")
+      if(c.x>=z.x+z.w-12&&c.jumpCD>100){c.vx=-8;c.jumpCD=0;c.vy=(Math.random()-.5)*2}
+      // Right wall
+      if(c.x>=z.x+z.w-12){c.x=z.x+z.w-12;c.vx=0;c.vy*=0.85}
+    }
+    else{
+      // Zero-G: gentle drifting, bounce off walls
+      c.vx+=Math.sin(frame*0.015+i)*0.02;
+      c.vy+=Math.cos(frame*0.012+i)*0.02;
+      c.vx*=0.995;c.vy*=0.995;
+      // Gentle push to keep it moving
+      if(Math.hypot(c.vx,c.vy)<0.3){c.vx+=(Math.random()-.5)*0.2;c.vy+=(Math.random()-.5)*0.2}
+    }
+
+    c.x+=c.vx;c.y+=c.vy;
+
+    // Contain within zone
+    if(c.x<z.x+8){c.x=z.x+8;c.vx=Math.abs(c.vx)*0.5}
+    if(c.x>z.x+z.w-8){c.x=z.x+z.w-8;c.vx=-Math.abs(c.vx)*0.5}
+    if(c.y<z.y+8){c.y=z.y+8;c.vy=Math.abs(c.vy)*0.5}
+    if(c.y>z.y+z.h-8){c.y=z.y+z.h-8;c.vy=-Math.abs(c.vy)*0.5}
+
+    // Trail
+    if(frame%3===0)c.trail.push({x:c.x,y:c.y,life:18});
+    for(let j=c.trail.length-1;j>=0;j--){c.trail[j].life--;if(c.trail[j].life<=0)c.trail.splice(j,1)}
+  }
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+
+  for(let i=0;i<ZONES.length;i++){
+    const z=ZONES[i],c=chars[i];
+
+    // Zone background
+    ctx.fillStyle=`${z.color}08`;ctx.fillRect(z.x,z.y,z.w,z.h);
+    ctx.strokeStyle=`${z.color}30`;ctx.lineWidth=1.5;ctx.strokeRect(z.x,z.y,z.w,z.h);
+
+    // Surface highlight (the "floor" of this zone)
+    ctx.fillStyle=`${z.color}18`;
+    if(z.surfaceDir==='bottom')ctx.fillRect(z.x+5,z.y+z.h-5,z.w-10,3);
+    if(z.surfaceDir==='top')ctx.fillRect(z.x+5,z.y+3,z.w-10,3);
+    if(z.surfaceDir==='right')ctx.fillRect(z.x+z.w-5,z.y+5,3,z.h-10);
+
+    // Gravity arrows inside zone
+    const arrowCount=3;
+    if(z.gx!==0||z.gy!==0){
+      const angle=Math.atan2(z.gy,z.gx);
+      for(let a=0;a<arrowCount;a++){
+        let ax,ay;
+        if(Math.abs(z.gy)>0){ax=z.x+z.w*0.25+a*(z.w*0.25);ay=z.y+z.h*0.5}
+        else{ax=z.x+z.w*0.5;ay=z.y+z.h*0.25+a*(z.h*0.25)}
+        const len=14;
+        ctx.strokeStyle=`${z.color}20`;ctx.lineWidth=1.5;
+        ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(ax+Math.cos(angle)*len,ay+Math.sin(angle)*len);ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(ax+Math.cos(angle)*len,ay+Math.sin(angle)*len);
+        ctx.lineTo(ax+Math.cos(angle)*len+Math.cos(angle+2.5)*5,ay+Math.sin(angle)*len+Math.sin(angle+2.5)*5);
+        ctx.moveTo(ax+Math.cos(angle)*len,ay+Math.sin(angle)*len);
+        ctx.lineTo(ax+Math.cos(angle)*len+Math.cos(angle-2.5)*5,ay+Math.sin(angle)*len+Math.sin(angle-2.5)*5);
+        ctx.stroke();
+      }
+    }else{
+      // Zero-G: floating dots
+      for(let d=0;d<4;d++){
+        const dx=z.x+z.w*0.2+d*(z.w*0.2);
+        const dy=z.y+z.h*0.5+Math.sin(frame*0.02+d*1.5)*15;
+        ctx.fillStyle=`${z.color}20`;
+        ctx.beginPath();ctx.arc(dx,dy,2,0,Math.PI*2);ctx.fill();
+      }
+    }
+
+    // Trail
+    for(const t of c.trail){
+      ctx.globalAlpha=t.life/18*0.3;ctx.fillStyle=z.color;
+      ctx.beginPath();ctx.arc(t.x,t.y,2.5,0,Math.PI*2);ctx.fill();
+    }ctx.globalAlpha=1;
+
+    // Character
+    const spd=Math.hypot(c.vx,c.vy);
+    const stretch=Math.min(1.3,1+spd*0.04);
+    const moveAngle=spd>0.3?Math.atan2(c.vy,c.vx):0;
+    ctx.fillStyle=z.color;
+    ctx.save();ctx.translate(c.x,c.y);
+    if(spd>0.3){ctx.rotate(moveAngle);ctx.scale(stretch,1/stretch)}
+    ctx.fillRect(-6,-6,12,12);ctx.restore();
+
+    // Zone label
+    ctx.font='700 9px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=`${z.color}CC`;
+    ctx.fillText(z.label,z.x+z.w/2,z.y+16);
+    ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle=`${z.color}60`;
+    ctx.fillText(z.sub,z.x+z.w/2,z.y+26);
+  }
+
+  ctx.font='500 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,255,255,.3)';
+  ctx.fillText('Each zone has different gravity → physics change per area',W/2,H-4);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

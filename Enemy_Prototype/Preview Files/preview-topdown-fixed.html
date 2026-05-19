@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Preview: Top-Down Fixed</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400;500&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #f4ede4;
+    color: #2a2420;
+    font-family: 'Outfit', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    padding: 24px;
+  }
+
+  .preview-card {
+    background: #fffbf5;
+    border: 1px solid #d4c9b8;
+    border-radius: 6px;
+    max-width: 480px;
+    width: 100%;
+    overflow: hidden;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.06);
+  }
+
+  .preview-header {
+    padding: 14px 18px;
+    border-bottom: 1px solid #d4c9b8;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .preview-title {
+    font-family: 'Chakra Petch', sans-serif;
+    font-weight: 700;
+    font-size: 1rem;
+    color: #2a2420;
+  }
+
+  .preview-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #b8860b;
+    background: rgba(184,134,11,0.1);
+    padding: 3px 8px;
+    border-radius: 2px;
+  }
+
+  .preview-canvas-wrap {
+    position: relative;
+    background: #1a1a2e;
+    aspect-ratio: 4/3;
+  }
+
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  .preview-label {
+    position: absolute;
+    bottom: 8px;
+    left: 8px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.5rem;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .preview-legend {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.48rem;
+    color: rgba(255,255,255,0.5);
+  }
+
+  .legend-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+
+  .preview-body {
+    padding: 16px 18px;
+  }
+
+  .preview-desc {
+    font-size: 0.88rem;
+    color: #5c5347;
+    line-height: 1.65;
+    margin-bottom: 12px;
+    font-weight: 300;
+  }
+
+  .preview-details {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .detail-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .detail-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.58rem;
+    color: #8a7e70;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    min-width: 70px;
+    flex-shrink: 0;
+    padding-top: 1px;
+  }
+
+  .detail-value {
+    font-size: 0.78rem;
+    color: #2a2420;
+  }
+
+  .preview-footer {
+    padding: 10px 18px;
+    border-top: 1px solid #d4c9b8;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .use-tag {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.52rem;
+    color: #8a7e70;
+    background: #e8ddd0;
+    padding: 2px 8px;
+    border-radius: 2px;
+  }
+
+  .example-games {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.52rem;
+    color: #b8860b;
+    font-style: italic;
+    padding: 2px 8px;
+  }
+</style>
+</head>
+<body>
+
+<div class="preview-card">
+  <div class="preview-header">
+    <div class="preview-title">Top-Down Fixed</div>
+    <div class="preview-tag">Viewport</div>
+  </div>
+
+  <div class="preview-canvas-wrap">
+    <canvas id="demo" width="480" height="360"></canvas>
+    <div class="preview-label">Live Preview</div>
+    <div class="preview-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#4fc3f7"></div>Player</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ef5350"></div>Enemies</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffca28"></div>XP Gem</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#66bb6a"></div>Projectile</div>
+    </div>
+  </div>
+
+  <div class="preview-body">
+    <div class="preview-desc">
+      The entire arena is visible at once — no scrolling, no camera movement.
+      The player moves freely within a fixed rectangular boundary.
+      All enemies, items, and hazards are always on screen.
+      Great for wave-based survival and arena combat where spatial awareness matters.
+    </div>
+
+    <div class="preview-details">
+      <div class="detail-row">
+        <div class="detail-label">Camera</div>
+        <div class="detail-value">Static, shows full play area</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Movement</div>
+        <div class="detail-value">Free 2-axis (WASD) within bounds</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Best for</div>
+        <div class="detail-value">Arena shooters, wave survival, bullet hell, strategy</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Strength</div>
+        <div class="detail-value">Player always sees everything — pure skill, no surprises</div>
+      </div>
+      <div class="detail-row">
+        <div class="detail-label">Weakness</div>
+        <div class="detail-value">Limited world size — can't do exploration or large maps</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="preview-footer">
+    <span class="use-tag">Arena</span>
+    <span class="use-tag">Strategy</span>
+    <span class="use-tag">Survival</span>
+    <span class="use-tag">Bullet Hell</span>
+    <span class="example-games">e.g. Vampire Survivors, Hotline Miami, Geometry Wars</span>
+  </div>
+</div>
+
+<script>
+  const C = document.getElementById('demo');
+  const ctx = C.getContext('2d');
+  const W = 480, H = 360;
+
+  // Arena bounds
+  const PAD = 20;
+  const AX = PAD, AY = PAD, AW = W - PAD * 2, AH = H - PAD * 2;
+
+  // Player
+  let px = W / 2, py = H / 2, ps = 1.8, pAngle = 0;
+  let pTarget = { x: W / 2 + 80, y: H / 2 - 60 };
+
+  // Enemies
+  let enemies = [];
+  let spawnTimer = 0;
+
+  // Projectiles
+  let projectiles = [];
+  let shootTimer = 0;
+
+  // Particles
+  let particles = [];
+
+  // XP gems
+  let gems = [];
+
+  // Score
+  let score = 0;
+  let wave = 1;
+
+  function spawnEnemy() {
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    if (side === 0) { x = AX; y = AY + Math.random() * AH; }
+    else if (side === 1) { x = AX + AW; y = AY + Math.random() * AH; }
+    else if (side === 2) { x = AX + Math.random() * AW; y = AY; }
+    else { x = AX + Math.random() * AW; y = AY + AH; }
+    enemies.push({ x, y, hp: 2, size: 6 + Math.random() * 4, speed: 0.5 + Math.random() * 0.8, flash: 0 });
+  }
+
+  function dist(a, b) { return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); }
+
+  function burst(x, y, color, count) {
+    for (let i = 0; i < count; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const s = 1 + Math.random() * 2.5;
+      particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 30 + Math.random() * 20, maxLife: 50, color, size: 1.5 + Math.random() * 2 });
+    }
+  }
+
+  // AI: player moves toward target, picks new targets periodically
+  let targetTimer = 0;
+  function updatePlayerAI() {
+    targetTimer++;
+    if (targetTimer > 120 || dist({ x: px, y: py }, pTarget) < 15) {
+      pTarget = { x: AX + 40 + Math.random() * (AW - 80), y: AY + 40 + Math.random() * (AH - 80) };
+      targetTimer = 0;
+    }
+    const dx = pTarget.x - px, dy = pTarget.y - py;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > 2) {
+      px += (dx / d) * ps;
+      py += (dy / d) * ps;
+      pAngle = Math.atan2(dy, dx);
+    }
+    // Clamp
+    px = Math.max(AX + 8, Math.min(AX + AW - 8, px));
+    py = Math.max(AY + 8, Math.min(AY + AH - 8, py));
+  }
+
+  function update() {
+    // Spawn
+    spawnTimer++;
+    if (spawnTimer > Math.max(30, 90 - wave * 5)) {
+      spawnEnemy();
+      spawnTimer = 0;
+    }
+
+    // Player AI
+    updatePlayerAI();
+
+    // Auto-shoot nearest enemy
+    shootTimer++;
+    if (shootTimer > 12 && enemies.length > 0) {
+      let nearest = null, nd = Infinity;
+      for (const e of enemies) {
+        const d2 = dist({ x: px, y: py }, e);
+        if (d2 < nd) { nd = d2; nearest = e; }
+      }
+      if (nearest) {
+        const a = Math.atan2(nearest.y - py, nearest.x - px);
+        projectiles.push({ x: px, y: py, vx: Math.cos(a) * 5, vy: Math.sin(a) * 5, life: 60 });
+        shootTimer = 0;
+      }
+    }
+
+    // Projectiles
+    for (let i = projectiles.length - 1; i >= 0; i--) {
+      const p = projectiles[i];
+      p.x += p.vx; p.y += p.vy; p.life--;
+      if (p.life <= 0 || p.x < AX || p.x > AX + AW || p.y < AY || p.y > AY + AH) {
+        projectiles.splice(i, 1); continue;
+      }
+      // Hit enemy
+      for (let j = enemies.length - 1; j >= 0; j--) {
+        if (dist(p, enemies[j]) < enemies[j].size + 3) {
+          enemies[j].hp--;
+          enemies[j].flash = 6;
+          burst(p.x, p.y, '#66bb6a', 4);
+          projectiles.splice(i, 1);
+          if (enemies[j].hp <= 0) {
+            burst(enemies[j].x, enemies[j].y, '#ef5350', 8);
+            gems.push({ x: enemies[j].x, y: enemies[j].y, life: 200 });
+            enemies.splice(j, 1);
+            score += 10;
+            if (score % 100 === 0) wave++;
+          }
+          break;
+        }
+      }
+    }
+
+    // Enemies chase player
+    for (const e of enemies) {
+      const dx = px - e.x, dy = py - e.y;
+      const d = Math.sqrt(dx * dx + dy * dy);
+      if (d > 1) { e.x += (dx / d) * e.speed; e.y += (dy / d) * e.speed; }
+      if (e.flash > 0) e.flash--;
+    }
+
+    // Gem collection
+    for (let i = gems.length - 1; i >= 0; i--) {
+      const g = gems[i];
+      g.life--;
+      const gd = dist({ x: px, y: py }, g);
+      if (gd < 30) {
+        // Vacuum toward player
+        const dx = px - g.x, dy = py - g.y;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        g.x += (dx / d) * 3;
+        g.y += (dy / d) * 3;
+      }
+      if (gd < 10 || g.life <= 0) {
+        if (gd < 10) { burst(g.x, g.y, '#ffca28', 5); score += 5; }
+        gems.splice(i, 1);
+      }
+    }
+
+    // Particles
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx; p.y += p.vy;
+      p.vx *= 0.96; p.vy *= 0.96;
+      p.life--;
+      if (p.life <= 0) particles.splice(i, 1);
+    }
+  }
+
+  function draw() {
+    // Background
+    ctx.fillStyle = '#12131a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Arena border
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(AX, AY, AW, AH);
+
+    // Grid lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+    for (let x = AX; x < AX + AW; x += 40) {
+      ctx.beginPath(); ctx.moveTo(x, AY); ctx.lineTo(x, AY + AH); ctx.stroke();
+    }
+    for (let y = AY; y < AY + AH; y += 40) {
+      ctx.beginPath(); ctx.moveTo(AX, y); ctx.lineTo(AX + AW, y); ctx.stroke();
+    }
+
+    // Gems
+    for (const g of gems) {
+      const a = g.life / 200;
+      ctx.fillStyle = `rgba(255,202,40,${0.4 + Math.sin(Date.now() / 150 + g.x) * 0.3})`;
+      ctx.beginPath();
+      // Diamond shape
+      ctx.moveTo(g.x, g.y - 4);
+      ctx.lineTo(g.x + 3, g.y);
+      ctx.lineTo(g.x, g.y + 4);
+      ctx.lineTo(g.x - 3, g.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Enemies
+    for (const e of enemies) {
+      ctx.fillStyle = e.flash > 0 ? '#ffffff' : '#ef5350';
+      ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2, e.size, e.size);
+      // Tiny HP indicator
+      if (e.hp > 1) {
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(e.x - e.size / 2, e.y - e.size / 2 - 3, e.size * (e.hp / 2), 1.5);
+      }
+    }
+
+    // Projectiles
+    ctx.fillStyle = '#66bb6a';
+    for (const p of projectiles) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Player
+    ctx.fillStyle = '#4fc3f7';
+    ctx.beginPath();
+    ctx.arc(px, py, 7, 0, Math.PI * 2);
+    ctx.fill();
+    // Direction indicator
+    ctx.strokeStyle = 'rgba(79,195,247,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(px, py);
+    ctx.lineTo(px + Math.cos(pAngle) * 14, py + Math.sin(pAngle) * 14);
+    ctx.stroke();
+
+    // Player glow
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, 25);
+    grad.addColorStop(0, 'rgba(79,195,247,0.15)');
+    grad.addColorStop(1, 'rgba(79,195,247,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(px, py, 25, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Particles
+    for (const p of particles) {
+      const a = p.life / p.maxLife;
+      ctx.fillStyle = p.color + Math.floor(a * 255).toString(16).padStart(2, '0');
+      ctx.globalAlpha = a;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+      ctx.globalAlpha = 1;
+    }
+
+    // HUD mockup
+    // HP bar
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(AX + 4, AY + 4, 80, 8);
+    ctx.fillStyle = '#4fc3f7';
+    ctx.fillRect(AX + 5, AY + 5, 58, 6);
+
+    // Score
+    ctx.font = '500 9px "IBM Plex Mono", monospace';
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.textAlign = 'right';
+    ctx.fillText(`SCORE ${score}`, AX + AW - 6, AY + 12);
+
+    // Wave
+    ctx.textAlign = 'center';
+    ctx.fillText(`WAVE ${wave}`, W / 2, AY + 12);
+
+    ctx.textAlign = 'left';
+  }
+
+  function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+  }
+
+  loop();
+</script>
+
+</body>
+</html>

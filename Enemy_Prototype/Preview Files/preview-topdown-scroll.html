@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Top-Down Scroll</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}
+.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}
+.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}
+.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}
+canvas{width:100%;height:100%;display:block}
+.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}
+.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}
+.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}
+.li span{width:6px;height:6px;border-radius:50%;display:inline-block}
+.body{padding:16px 18px}
+.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}
+.dr{display:flex;gap:8px;margin-bottom:6px}
+.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px;flex-shrink:0}
+.dv{font-size:.78rem;color:#2a2420}
+.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}
+.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}
+.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Top-Down Scroll</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:#ffca28"></span>Items</div>
+      <div class="li"><span style="background:rgba(255,255,255,.15)"></span>World</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">The camera follows the player through a world larger than the screen. Only a portion of the map is visible at any time. Enemies and items exist beyond the visible area. Exploration and spatial memory matter.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Follows player, shows portion of larger world</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">RPGs, exploration, open-world, adventure</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Large worlds, discovery, hidden areas, sense of scale</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Off-screen threats, need minimap for awareness</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">RPG</span><span class="ft">Survival</span><span class="ft">Explorer</span>
+    <span class="fe">e.g. Zelda, Stardew Valley, Hyper Light Drifter</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),x=c.getContext('2d'),W=480,H=360;
+// World is 1200x900, camera shows 480x360 centered on player
+const WW=1200,WH=900;
+let px=WW/2,py=WH/2,pt={x:px+100,y:py},pTimer=0;
+let cam={x:0,y:0};
+// Scenery
+const trees=[];for(let i=0;i<40;i++)trees.push({x:Math.random()*WW,y:Math.random()*WH,s:8+Math.random()*12});
+const rocks=[];for(let i=0;i<25;i++)rocks.push({x:Math.random()*WW,y:Math.random()*WH,s:4+Math.random()*6});
+const items=[];for(let i=0;i<8;i++)items.push({x:200+Math.random()*(WW-400),y:200+Math.random()*(WH-400),pulse:Math.random()*6});
+const enemies=[];for(let i=0;i<10;i++)enemies.push({x:Math.random()*WW,y:Math.random()*WH,s:6+Math.random()*3,sx:Math.random()*WW,sy:Math.random()*WH,timer:0});
+
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+function update(){
+  pTimer++;
+  if(pTimer>180||dist({x:px,y:py},pt)<20){
+    pt={x:100+Math.random()*(WW-200),y:100+Math.random()*(WH-200)};pTimer=0;
+  }
+  const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);
+  if(d>2){px+=dx/d*1.8;py+=dy/d*1.8}
+  px=Math.max(10,Math.min(WW-10,px));py=Math.max(10,Math.min(WH-10,py));
+  // Camera follows with slight lag
+  cam.x+=(px-W/2-cam.x)*0.06;cam.y+=(py-H/2-cam.y)*0.06;
+  cam.x=Math.max(0,Math.min(WW-W,cam.x));cam.y=Math.max(0,Math.min(WH-H,cam.y));
+  // Enemy patrol
+  for(const e of enemies){
+    e.timer++;
+    if(e.timer>200){e.sx=Math.random()*WW;e.sy=Math.random()*WH;e.timer=0}
+    const dx2=e.sx-e.x,dy2=e.sy-e.y,d2=Math.sqrt(dx2*dx2+dy2*dy2);
+    if(d2>2){e.x+=dx2/d2*0.6;e.y+=dy2/d2*0.6}
+  }
+}
+function draw(){
+  x.fillStyle='#0f1118';x.fillRect(0,0,W,H);
+  x.save();x.translate(-cam.x,-cam.y);
+  // Grid
+  x.strokeStyle='rgba(255,255,255,.03)';x.lineWidth=1;
+  for(let gx=0;gx<WW;gx+=50){x.beginPath();x.moveTo(gx,0);x.lineTo(gx,WH);x.stroke()}
+  for(let gy=0;gy<WH;gy+=50){x.beginPath();x.moveTo(0,gy);x.lineTo(WW,gy);x.stroke()}
+  // World border
+  x.strokeStyle='rgba(255,255,255,.1)';x.strokeRect(0,0,WW,WH);
+  // Trees
+  for(const t of trees){x.fillStyle='rgba(46,125,50,.4)';x.beginPath();x.arc(t.x,t.y,t.s,0,Math.PI*2);x.fill();x.fillStyle='rgba(46,125,50,.6)';x.beginPath();x.arc(t.x,t.y,t.s*.6,0,Math.PI*2);x.fill()}
+  // Rocks
+  x.fillStyle='rgba(255,255,255,.08)';for(const r of rocks)x.fillRect(r.x-r.s/2,r.y-r.s/2,r.s,r.s);
+  // Items
+  for(const it of items){it.pulse+=.04;x.fillStyle=`rgba(255,202,40,${.4+Math.sin(it.pulse)*.3})`;x.beginPath();x.moveTo(it.x,it.y-5);x.lineTo(it.x+4,it.y);x.lineTo(it.x,it.y+5);x.lineTo(it.x-4,it.y);x.closePath();x.fill()}
+  // Enemies
+  x.fillStyle='#ef5350';for(const e of enemies)x.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s);
+  // Player
+  x.fillStyle='#4fc3f7';x.beginPath();x.arc(px,py,7,0,Math.PI*2);x.fill();
+  const gr=x.createRadialGradient(px,py,0,px,py,30);gr.addColorStop(0,'rgba(79,195,247,.15)');gr.addColorStop(1,'rgba(79,195,247,0)');x.fillStyle=gr;x.beginPath();x.arc(px,py,30,0,Math.PI*2);x.fill();
+  x.restore();
+  // Camera viewport indicator (shows you're seeing a portion)
+  x.strokeStyle='rgba(255,255,255,.12)';x.lineWidth=1;
+  // Mini world map in bottom-left
+  const mw=60,mh=45,mx=10,my=H-55;
+  x.fillStyle='rgba(0,0,0,.4)';x.fillRect(mx,my,mw,mh);
+  x.strokeStyle='rgba(255,255,255,.2)';x.strokeRect(mx,my,mw,mh);
+  // Viewport rect on minimap
+  const vx=mx+(cam.x/WW)*mw,vy=my+(cam.y/WH)*mh,vw=(W/WW)*mw,vh=(H/WH)*mh;
+  x.strokeStyle='rgba(79,195,247,.6)';x.strokeRect(vx,vy,vw,vh);
+  // Player dot on minimap
+  x.fillStyle='#4fc3f7';x.fillRect(mx+(px/WW)*mw-1,my+(py/WH)*mh-1,3,3);
+  // Enemy dots on minimap
+  x.fillStyle='rgba(239,83,80,.5)';for(const e of enemies)x.fillRect(mx+(e.x/WW)*mw-1,my+(e.y/WH)*mh-1,2,2);
+  // Label
+  x.font='500 7px "IBM Plex Mono"';x.fillStyle='rgba(255,255,255,.3)';x.textAlign='left';x.fillText('WORLD MAP',mx,my-3);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

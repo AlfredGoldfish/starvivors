@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Room-Based</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}
+.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}
+.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}
+.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}
+.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}
+.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}
+canvas{width:100%;height:100%;display:block}
+.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}
+.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}
+.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}
+.li span{width:6px;height:6px;display:inline-block}
+.body{padding:16px 18px}
+.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}
+.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}
+.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}
+.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}
+.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Room-Based</h2><div class="tag">Viewport</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemies</div>
+      <div class="li"><span style="background:#b8860b"></span>Doors (locked)</div>
+      <div class="li"><span style="background:#66bb6a"></span>Doors (open)</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">The game world is divided into discrete rooms. Enter a room, doors lock behind you. Clear all enemies to unlock exits. Walk through a door to transition to the next room. Each room is its own contained encounter.</div>
+    <div class="dr"><div class="dl">Camera</div><div class="dv">Static per room, transitions on door entry</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Dungeon crawlers, roguelikes, Zelda-style exploration</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Each room is a designed encounter, pacing is controlled</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Transitions interrupt flow, rooms can feel repetitive</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">RPG</span><span class="ft">Arena</span><span class="ft">Roguelike</span>
+    <span class="fe">e.g. Binding of Isaac, Zelda dungeons, Enter the Gungeon</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360;
+const PAD=30,RW=W-PAD*2,RH=H-PAD*2;
+
+// Room map (grid positions)
+const roomMap=[
+  {gx:0,gy:0,doors:['E','S'],enemies:3},
+  {gx:1,gy:0,doors:['W','S'],enemies:2},
+  {gx:0,gy:1,doors:['N','E'],enemies:4},
+  {gx:1,gy:1,doors:['W','N','E'],enemies:2},
+  {gx:2,gy:1,doors:['W'],enemies:3},
+];
+let currentRoom=0,visited=[0],roomCleared=false;
+let transitionAlpha=0,transitioning=false,transDir=null;
+
+let px=W/2,py=H/2,ps=2;let pt={x:px,y:py},pTimer=0;
+let enemies=[],particles=[];
+
+function spawnRoomEnemies(){
+  enemies=[];roomCleared=false;
+  const n=roomMap[currentRoom].enemies;
+  for(let i=0;i<n;i++){
+    enemies.push({x:PAD+60+Math.random()*(RW-120),y:PAD+60+Math.random()*(RH-120),s:7+Math.random()*4,hp:2,flash:0});
+  }
+}
+spawnRoomEnemies();
+
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*2;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:25,ml:25,color:col,size:2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+
+// Door positions
+function getDoorPos(dir){
+  if(dir==='N')return{x:W/2,y:PAD-4,w:30,h:8};
+  if(dir==='S')return{x:W/2,y:PAD+RH-4,w:30,h:8};
+  if(dir==='W')return{x:PAD-4,y:H/2,w:8,h:30};
+  if(dir==='E')return{x:PAD+RW-4,y:H/2,w:8,h:30};
+}
+function getNeighbor(dir){
+  const r=roomMap[currentRoom];
+  const nx=r.gx+(dir==='E'?1:dir==='W'?-1:0);
+  const ny=r.gy+(dir==='S'?1:dir==='N'?-1:0);
+  return roomMap.findIndex(rm=>rm.gx===nx&&rm.gy===ny);
+}
+function oppositeDir(d){return{N:'S',S:'N',E:'W',W:'E'}[d]}
+
+let shootTimer=0,projectiles=[];
+
+function update(){
+  if(transitioning){transitionAlpha+=0.04;if(transitionAlpha>=1){
+    const ni=getNeighbor(transDir);if(ni>=0){currentRoom=ni;if(!visited.includes(ni))visited.push(ni);spawnRoomEnemies();
+    const opp=oppositeDir(transDir);const dp=getDoorPos(opp);px=dp.x;py=dp.y+(opp==='N'?20:opp==='S'?-20:0);if(opp==='W')px+=20;if(opp==='E')px-=20;
+    }transitionAlpha=0;transitioning=false;transDir=null}return}
+
+  // Player AI
+  pTimer++;
+  if(enemies.length>0){
+    // Move toward nearest enemy but keep distance
+    let nearest=null,nd=Infinity;
+    for(const e of enemies){const d=dist({x:px,y:py},e);if(d<nd){nd=d;nearest=e}}
+    if(nearest){
+      if(nd>80){const dx=nearest.x-px,dy=nearest.y-py,d=Math.sqrt(dx*dx+dy*dy);px+=dx/d*ps;py+=dy/d*ps}
+      else if(nd<40){const dx=px-nearest.x,dy=py-nearest.y,d=Math.sqrt(dx*dx+dy*dy);px+=dx/d*ps;py+=dy/d*ps}
+    }
+  }else if(roomCleared){
+    // Move toward a door
+    const doors=roomMap[currentRoom].doors;
+    const targetDoor=doors[Math.floor(pTimer/120)%doors.length];
+    const dp=getDoorPos(targetDoor);
+    const dx=dp.x-px,dy=dp.y-py,d=Math.sqrt(dx*dx+dy*dy);
+    if(d>5){px+=dx/d*ps;py+=dy/d*ps}
+    if(d<12){transitioning=true;transDir=targetDoor}
+  }
+  px=Math.max(PAD+8,Math.min(PAD+RW-8,px));py=Math.max(PAD+8,Math.min(PAD+RH-8,py));
+
+  // Auto-shoot
+  shootTimer++;
+  if(shootTimer>15&&enemies.length>0){
+    let nearest=null,nd=Infinity;for(const e of enemies){const d=dist({x:px,y:py},e);if(d<nd){nd=d;nearest=e}}
+    if(nearest){const a=Math.atan2(nearest.y-py,nearest.x-px);projectiles.push({x:px,y:py,vx:Math.cos(a)*5,vy:Math.sin(a)*5,life:40});shootTimer=0}
+  }
+
+  // Projectiles
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<PAD||p.x>PAD+RW||p.y<PAD||p.y>PAD+RH){projectiles.splice(i,1);continue}
+    for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projectiles.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,'#ef5350',8);enemies.splice(j,1);if(enemies.length===0)roomCleared=true}break}}
+  }
+
+  // Enemy chase
+  for(const e of enemies){const dx=px-e.x,dy=py-e.y,d=Math.sqrt(dx*dx+dy*dy);if(d>1){e.x+=dx/d*0.7;e.y+=dy/d*0.7}if(e.flash>0)e.flash--}
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.95;p.vy*=.95;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0f1118';ctx.fillRect(0,0,W,H);
+  // Room walls
+  ctx.strokeStyle='rgba(255,255,255,.12)';ctx.lineWidth=2;ctx.strokeRect(PAD,PAD,RW,RH);
+  // Floor grid
+  ctx.strokeStyle='rgba(255,255,255,.03)';ctx.lineWidth=1;
+  for(let gx=PAD;gx<PAD+RW;gx+=35){ctx.beginPath();ctx.moveTo(gx,PAD);ctx.lineTo(gx,PAD+RH);ctx.stroke()}
+  for(let gy=PAD;gy<PAD+RH;gy+=35){ctx.beginPath();ctx.moveTo(PAD,gy);ctx.lineTo(PAD+RW,gy);ctx.stroke()}
+
+  // Doors
+  const rm=roomMap[currentRoom];
+  for(const d of rm.doors){
+    const dp=getDoorPos(d);
+    const open=roomCleared;
+    ctx.fillStyle=open?'#66bb6a':'#b8860b';
+    ctx.fillRect(dp.x-dp.w/2,dp.y-dp.h/2,dp.w,dp.h);
+    if(open){ctx.fillStyle='rgba(102,187,106,.2)';ctx.fillRect(dp.x-dp.w/2-4,dp.y-dp.h/2-4,dp.w+8,dp.h+8)}
+  }
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+  // Projectiles
+  ctx.fillStyle='#66bb6a';for(const p of projectiles){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill()}
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,20);gr.addColorStop(0,'rgba(79,195,247,.12)');gr.addColorStop(1,'rgba(79,195,247,0)');ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,20,0,Math.PI*2);ctx.fill();
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // Room status
+  ctx.font='600 10px "IBM Plex Mono"';ctx.fillStyle=roomCleared?'rgba(102,187,106,.6)':'rgba(239,83,80,.5)';ctx.textAlign='center';
+  ctx.fillText(roomCleared?'CLEARED — DOORS OPEN':`${enemies.length} ENEMIES REMAINING`,W/2,PAD-10);
+
+  // Minimap
+  const ms=12,mx=W-90,my=10;
+  for(let i=0;i<roomMap.length;i++){
+    const rm2=roomMap[i];const rx=mx+rm2.gx*(ms+4),ry=my+rm2.gy*(ms+4);
+    ctx.fillStyle=i===currentRoom?'rgba(79,195,247,.6)':visited.includes(i)?'rgba(255,255,255,.15)':'rgba(255,255,255,.05)';
+    ctx.fillRect(rx,ry,ms,ms);
+    if(i===currentRoom){ctx.strokeStyle='#4fc3f7';ctx.lineWidth=1;ctx.strokeRect(rx-1,ry-1,ms+2,ms+2)}
+    // Connection lines
+    for(const d of rm2.doors){const ni=getNeighbor.call?undefined:0;
+      const ox=d==='E'?ms+2:d==='W'?-4:ms/2-1;const oy=d==='S'?ms+2:d==='N'?-4:ms/2-1;
+      ctx.fillStyle='rgba(255,255,255,.1)';ctx.fillRect(rx+ox,ry+oy,d==='E'||d==='W'?4:2,d==='N'||d==='S'?4:2);
+    }
+  }
+  ctx.font='400 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.textAlign='left';ctx.fillText('ROOMS',mx,my+40);
+
+  // Transition overlay
+  if(transitioning){ctx.fillStyle=`rgba(0,0,0,${transitionAlpha})`;ctx.fillRect(0,0,W,H)}
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

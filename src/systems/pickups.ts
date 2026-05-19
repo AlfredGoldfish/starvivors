@@ -10,19 +10,26 @@ import {
   SCRAP_PICKUP_MIN_SPEED,
   SCRAP_PICKUP_RADIUS
 } from '../scenes/gameConstants';
-import type { ScrapPickup, ScrapSourceType } from '../scenes/gameTypes';
+import type { PlayerPickupKind, ScrapPickup, ScrapSourceType } from '../scenes/gameTypes';
+
+const PICKUP_VACUUM_MIN_SPEED = 420;
+const PICKUP_VACUUM_DISTANCE_SPEED = 2.4;
+const PICKUP_VACUUM_MAX_SPEED = 1280;
+const PICKUP_VACUUM_RESPONSE = 10;
 
 export interface SpawnScrapPickupInput {
   arena: ArenaSize;
   pickups: ScrapPickup[];
   source: ScrapSourceType;
+  kind?: PlayerPickupKind;
   value: number;
   x: number;
   y: number;
   inheritedVelocity: Phaser.Math.Vector2;
   pickupRadius: number;
+  magnetRadius: number;
   time: number;
-  createPickupBody: (x: number, y: number) => Phaser.GameObjects.Container;
+  createPickupBody: (x: number, y: number, kind: PlayerPickupKind) => Phaser.GameObjects.Container;
 }
 
 export interface UpdateScrapPickupsInput {
@@ -43,7 +50,8 @@ export interface UpdateScrapPickupsInput {
 }
 
 export function spawnScrapPickup(input: SpawnScrapPickupInput): ScrapPickup[] {
-  if (input.value <= 0) {
+  const kind = input.kind ?? 'scrap';
+  if (kind === 'scrap' && input.value <= 0) {
     return input.pickups;
   }
 
@@ -58,8 +66,8 @@ export function spawnScrapPickup(input: SpawnScrapPickupInput): ScrapPickup[] {
   const spread = Phaser.Math.FloatBetween(0, SCRAP_PICKUP_RADIUS * 1.6);
   const spawnX = wrapCoordinate(input.x + Math.cos(angle) * spread, input.arena.width);
   const spawnY = wrapCoordinate(input.y + Math.sin(angle) * spread, input.arena.height);
-  const body = input.createPickupBody(spawnX, spawnY);
-  const wrapMirrorBody = input.createPickupBody(spawnX, spawnY);
+  const body = input.createPickupBody(spawnX, spawnY, kind);
+  const wrapMirrorBody = input.createPickupBody(spawnX, spawnY, kind);
   wrapMirrorBody.setVisible(false);
 
   pickups.push({
@@ -69,10 +77,13 @@ export function spawnScrapPickup(input: SpawnScrapPickupInput): ScrapPickup[] {
       input.inheritedVelocity.x * SCRAP_PICKUP_INHERITED_VELOCITY + Math.cos(angle) * speed,
       input.inheritedVelocity.y * SCRAP_PICKUP_INHERITED_VELOCITY + Math.sin(angle) * speed
     ).limit(GAMEPLAY_MAX_VELOCITY),
+    kind,
     value: input.value,
     mass: SCRAP_PICKUP_MASS,
     source: input.source,
     pickupRadius: input.pickupRadius,
+    magnetRadius: input.magnetRadius,
+    isMagnetized: false,
     expiresAt: input.time + SCRAP_PICKUP_LIFETIME_MS,
     rotationSpeed: Phaser.Math.FloatBetween(0.9, 2.2) * (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
     bobPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
@@ -82,10 +93,6 @@ export function spawnScrapPickup(input: SpawnScrapPickupInput): ScrapPickup[] {
 }
 
 export function updateScrapPickups(input: UpdateScrapPickupsInput): ScrapPickup[] {
-  if (input.isPlayerDead) {
-    return input.pickups;
-  }
-
   const pickups = [...input.pickups];
 
   for (let i = pickups.length - 1; i >= 0; i -= 1) {
@@ -96,10 +103,15 @@ export function updateScrapPickups(input: UpdateScrapPickupsInput): ScrapPickup[
       continue;
     }
 
-    if (input.time >= pickup.expiresAt) {
+    if (!pickup.isMagnetized && input.time >= pickup.expiresAt) {
       destroyScrapPickup(pickup);
       pickups.splice(i, 1);
       continue;
+    }
+
+    if (!input.isPlayerDead) {
+      const offsetToPlayer = getWrappedDirection(input.arena, pickup.body.x, pickup.body.y, input.playerX, input.playerY);
+      applyPickupVacuum(pickup, offsetToPlayer, input.deltaSeconds);
     }
 
     pickup.body.x = wrapCoordinate(pickup.body.x + pickup.velocity.x * input.deltaSeconds, input.arena.width);
@@ -108,15 +120,41 @@ export function updateScrapPickups(input: UpdateScrapPickupsInput): ScrapPickup[
     pickup.body.setScale(1 + Math.sin(input.time * 0.005 + pickup.bobPhase) * 0.08);
     input.updateToroidalRenderMirror(pickup.body, pickup.wrapMirrorBody, SCRAP_PICKUP_RADIUS);
 
-    const offsetToPlayer = getWrappedDirection(input.arena, pickup.body.x, pickup.body.y, input.playerX, input.playerY);
-
-    if (offsetToPlayer.lengthSq() <= pickup.pickupRadius * pickup.pickupRadius) {
+    const collectionOffset = getWrappedDirection(input.arena, pickup.body.x, pickup.body.y, input.playerX, input.playerY);
+    if (!input.isPlayerDead && collectionOffset.lengthSq() <= pickup.pickupRadius * pickup.pickupRadius) {
       input.collectPickup(pickup);
       pickups.splice(i, 1);
     }
   }
 
   return pickups;
+}
+
+function applyPickupVacuum(pickup: ScrapPickup, offsetToPlayer: Phaser.Math.Vector2, deltaSeconds: number): void {
+  const distance = offsetToPlayer.length();
+  if (distance <= 0) {
+    return;
+  }
+
+  if (!pickup.isMagnetized) {
+    if (distance > pickup.magnetRadius) {
+      return;
+    }
+
+    pickup.isMagnetized = true;
+  }
+
+  const direction = offsetToPlayer.scale(1 / distance);
+  const targetSpeed = Phaser.Math.Clamp(
+    PICKUP_VACUUM_MIN_SPEED + distance * PICKUP_VACUUM_DISTANCE_SPEED,
+    PICKUP_VACUUM_MIN_SPEED,
+    PICKUP_VACUUM_MAX_SPEED
+  );
+  const response = 1 - Math.exp(-PICKUP_VACUUM_RESPONSE * deltaSeconds);
+
+  pickup.velocity.x = Phaser.Math.Linear(pickup.velocity.x, direction.x * targetSpeed, response);
+  pickup.velocity.y = Phaser.Math.Linear(pickup.velocity.y, direction.y * targetSpeed, response);
+  pickup.velocity.limit(PICKUP_VACUUM_MAX_SPEED);
 }
 
 export function destroyScrapPickup(pickup: ScrapPickup | undefined): void {

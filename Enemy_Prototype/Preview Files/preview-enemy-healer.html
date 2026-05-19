@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Tank + Healer + Shield Bearer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Tank + Healer + Shield Bearer</h2><div class="tag">Enemy Combo</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#78909c"></span>Tank (high HP)</div>
+      <div class="li"><span style="background:#66bb6a"></span>Healer</div>
+      <div class="li"><span style="background:#42a5f5"></span>Shield Bearer</div>
+      <div class="li"><span style="background:#66bb6a;border-radius:50%"></span>Projectile</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Three enemy roles that protect each other. The tank soaks damage with massive HP. The healer stands behind it, restoring the tank's health. The shield bearer blocks the path to the healer. The player must learn target priority: break the shield → kill the healer → finish the tank. Attacking the tank first is a trap.</div>
+    <div class="dr"><div class="dl">Tank</div><div class="dv">Huge HP, no shield, just raw durability</div></div>
+    <div class="dr"><div class="dl">Healer</div><div class="dv">Restores nearby ally HP, squishy, high priority target</div></div>
+    <div class="dr"><div class="dl">Shield</div><div class="dv">Blocks shots to healer, shield breaks after enough hits</div></div>
+    <div class="dr"><div class="dl">Lesson</div><div class="dv">Target priority: shield → healer → tank</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">RPG</span><span class="ft">Strategy</span><span class="ft">Tactics</span><span class="ft">MMO</span>
+    <span class="fe">e.g. WoW (kill the healer), XCOM, Fire Emblem, Hades</span>
+  </div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d'),W=480,H=360,PAD=20;
+const PX=W/2,PY=H-PAD-35; // Player is stationary near bottom
+
+let projectiles=[],particles=[],floats=[];
+let shootTimer=0,timer=0;
+
+// Positions
+const TANK_X=W/2,TANK_Y=120;
+const HEALER_X=W/2+60,HEALER_Y=95;
+const SHIELD_X=W/2+60,SHIELD_Y=145; // In front of healer (between healer and player)
+
+// Enemies
+let tank={x:TANK_X,y:TANK_Y,hp:60,maxHp:60,size:18,hitFlash:0,dead:false};
+let healer={x:HEALER_X,y:HEALER_Y,hp:8,maxHp:8,size:10,hitFlash:0,dead:false,healTimer:0,healCD:50,healing:false,healPulse:0};
+let shield={x:SHIELD_X,y:SHIELD_Y,hp:15,maxHp:15,shieldHp:20,maxShield:20,size:10,hitFlash:0,dead:false,shieldBroken:false,blockFlash:0};
+
+// AI phases
+// Phase 0: Shoot tank (wrong approach — healer heals it back)
+// Phase 1: Redirect to healer (blocked by shield bearer)
+// Phase 2: Break shield bearer's shield, kill shield bearer
+// Phase 3: Kill healer
+// Phase 4: Kill tank (no more healing)
+// Phase 5: All dead, wait then reset
+let phase=0,phaseTimer=0,target=null;
+let lessonText='',lessonColor='',lessonAlpha=0;
+
+function setLesson(t,col){lessonText=t;lessonColor=col;lessonAlpha=1.2}
+function burst(bx,by,col,n,sm){sm=sm||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=(.4+Math.random()*2)*sm;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:14+Math.random()*10,ml:24,color:col,size:1.2+Math.random()})}}
+function addFloat(x,y,text,color,big){floats.push({x,y,text,color,life:45,ml:45,big:!!big})}
+
+function resetAll(){
+  tank={x:TANK_X,y:TANK_Y,hp:60,maxHp:60,size:18,hitFlash:0,dead:false};
+  healer={x:HEALER_X,y:HEALER_Y,hp:8,maxHp:8,size:10,hitFlash:0,dead:false,healTimer:0,healCD:50,healing:false,healPulse:0};
+  shield={x:SHIELD_X,y:SHIELD_Y,hp:15,maxHp:15,shieldHp:20,maxShield:20,size:10,hitFlash:0,dead:false,shieldBroken:false,blockFlash:0};
+  phase=0;phaseTimer=0;projectiles=[];floats=[];
+  setLesson('','');
+}
+
+function getTarget(){
+  if(phase===0)return tank;
+  if(phase===1||phase===2)return shield.dead?healer:shield;
+  if(phase===3)return healer;
+  if(phase===4)return tank;
+  return null;
+}
+
+function update(){
+  timer++;phaseTimer++;
+  if(tank.hitFlash>0)tank.hitFlash--;
+  if(healer.hitFlash>0)healer.hitFlash--;
+  if(shield.hitFlash>0)shield.hitFlash--;
+  if(shield.blockFlash>0)shield.blockFlash--;
+  if(lessonAlpha>0)lessonAlpha-=0.006;
+
+  // Phase logic
+  if(phase===0){
+    // Shoot tank. After ~4 seconds, realize it's being healed, switch target
+    if(phaseTimer===1)setLesson('TARGETING: TANK','rgba(120,144,156,.7)');
+    if(phaseTimer>240){phase=1;phaseTimer=0;setLesson('TANK WON\'T DIE... TARGET THE HEALER','rgba(255,202,40,.8)')}
+  }
+  else if(phase===1){
+    // Shoot at healer but shield blocks. After ~2 seconds, switch to shield
+    if(phaseTimer>120){phase=2;phaseTimer=0;setLesson('HEALER IS PROTECTED — BREAK THE SHIELD','rgba(66,165,245,.8)')}
+  }
+  else if(phase===2){
+    // Shooting shield bearer. When shield breaks, kill it, move to phase 3
+    if(shield.dead&&phaseTimer>30){phase=3;phaseTimer=0;setLesson('SHIELD DOWN — KILL THE HEALER','rgba(102,187,106,.8)')}
+  }
+  else if(phase===3){
+    if(healer.dead&&phaseTimer>30){phase=4;phaseTimer=0;setLesson('HEALER DOWN — FINISH THE TANK','rgba(239,83,80,.8)')}
+  }
+  else if(phase===4){
+    if(tank.dead){phase=5;phaseTimer=0;setLesson('TARGET PRIORITY: SHIELD → HEALER → TANK','rgba(255,202,40,.9)')}
+  }
+  else if(phase===5){
+    if(phaseTimer>90)resetAll();
+  }
+
+  // Healer AI: heal tank if alive and tank is damaged
+  if(!healer.dead&&!tank.dead&&tank.hp<tank.maxHp){
+    healer.healTimer++;
+    if(healer.healTimer>=healer.healCD){
+      healer.healTimer=0;healer.healing=true;healer.healPulse=0;
+      const heal=Math.min(5,tank.maxHp-tank.hp);
+      tank.hp+=heal;
+      addFloat(tank.x,tank.y-tank.size-5,'+'+heal,'#66bb6a',false);
+    }
+  }
+  if(healer.healing){
+    healer.healPulse+=0.04;
+    if(healer.healPulse>=1)healer.healing=false;
+  }
+
+  // Player shoots at current target
+  target=getTarget();
+  if(target&&!target.dead){
+    shootTimer++;
+    if(shootTimer>=12){
+      shootTimer=0;
+      const a=Math.atan2(target.y-PY,target.x-PX);
+      projectiles.push({x:PX,y:PY,vx:Math.cos(a)*5.5,vy:Math.sin(a)*5.5,life:55});
+    }
+  }
+
+  // Projectile collision
+  for(let i=projectiles.length-1;i>=0;i--){
+    const p=projectiles[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<PAD||p.x>W-PAD||p.y<PAD||p.y>H-PAD){projectiles.splice(i,1);continue}
+
+    // Check shield bearer intercept (blocks shots aimed at healer if shield is up)
+    if(!shield.dead&&!shield.shieldBroken&&(phase===1)){
+      // Shield blocks shots passing near it that are heading toward healer
+      if(Math.hypot(p.x-shield.x,p.y-shield.y)<shield.size+8){
+        shield.shieldHp--;shield.blockFlash=6;
+        burst(p.x,p.y,'#42a5f5',4,0.7);
+        addFloat(p.x,p.y-8,'BLOCKED','#42a5f5',false);
+        projectiles.splice(i,1);
+        if(shield.shieldHp<=0){shield.shieldBroken=true;burst(shield.x,shield.y,'#90caf9',10,1);
+          addFloat(shield.x,shield.y-15,'SHIELD BROKEN!','#ffca28',true)}
+        continue;
+      }
+    }
+
+    // Hit shield bearer directly (when targeting it in phase 2)
+    if(!shield.dead&&phase===2&&Math.hypot(p.x-shield.x,p.y-shield.y)<shield.size+5){
+      if(!shield.shieldBroken){
+        shield.shieldHp--;shield.blockFlash=6;
+        burst(p.x,p.y,'#42a5f5',3,0.6);
+        addFloat(p.x,p.y-8,'SHIELD','#42a5f5',false);
+        if(shield.shieldHp<=0){shield.shieldBroken=true;burst(shield.x,shield.y,'#90caf9',10,1);
+          addFloat(shield.x,shield.y-15,'SHIELD BROKEN!','#ffca28',true)}
+      }else{
+        shield.hp--;shield.hitFlash=6;burst(p.x,p.y,'#66bb6a',4);
+        if(shield.hp<=0){shield.dead=true;burst(shield.x,shield.y,'#42a5f5',15,1.2)}
+      }
+      projectiles.splice(i,1);continue;
+    }
+
+    // Hit healer
+    if(!healer.dead&&phase===3&&Math.hypot(p.x-healer.x,p.y-healer.y)<healer.size+4){
+      healer.hp--;healer.hitFlash=6;burst(p.x,p.y,'#66bb6a',5);
+      addFloat(p.x,p.y-8,'HIT!','#ef5350',false);
+      if(healer.hp<=0){healer.dead=true;burst(healer.x,healer.y,'#66bb6a',15,1.2);
+        addFloat(healer.x,healer.y-15,'HEALER DOWN!','#ef5350',true)}
+      projectiles.splice(i,1);continue;
+    }
+
+    // Hit tank
+    if(!tank.dead&&(phase===0||phase===4)&&Math.hypot(p.x-tank.x,p.y-tank.y)<tank.size+4){
+      tank.hp--;tank.hitFlash=6;burst(p.x,p.y,phase===4?'#ef5350':'#66bb6a',4);
+      if(phase===0)addFloat(p.x,p.y-8,'-1','#ef5350',false);
+      else addFloat(p.x,p.y-8,'HIT!','#ef5350',false);
+      if(tank.hp<=0){tank.dead=true;burst(tank.x,tank.y,'#78909c',20,1.5);
+        addFloat(tank.x,tank.y-20,'DESTROYED','#ffca28',true)}
+      projectiles.splice(i,1);continue;
+    }
+  }
+
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.9;p.vy*=.9;p.life--;if(p.life<=0)particles.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.4;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function drawHPBar(x,y,w,h,hp,max,col){
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(x-1,y-1,w+2,h+2);
+  ctx.fillStyle='rgba(255,255,255,.08)';ctx.fillRect(x,y,w,h);
+  ctx.fillStyle=col;ctx.fillRect(x,y,w*(hp/max),h);
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Heal beam from healer to tank
+  if(healer.healing&&!healer.dead&&!tank.dead){
+    const p=healer.healPulse;
+    ctx.strokeStyle=`rgba(102,187,106,${(1-p)*0.5})`;ctx.lineWidth=2;
+    ctx.beginPath();ctx.moveTo(healer.x,healer.y);ctx.lineTo(tank.x,tank.y);ctx.stroke();
+    // Traveling pulse along beam
+    const bx=healer.x+(tank.x-healer.x)*p;
+    const by=healer.y+(tank.y-healer.y)*p;
+    ctx.fillStyle=`rgba(102,187,106,${(1-p)*0.8})`;
+    ctx.beginPath();ctx.arc(bx,by,4,0,Math.PI*2);ctx.fill();
+  }
+  // Passive heal link (faint)
+  if(!healer.dead&&!tank.dead){
+    ctx.strokeStyle='rgba(102,187,106,.08)';ctx.lineWidth=1;ctx.setLineDash([3,5]);
+    ctx.beginPath();ctx.moveTo(healer.x,healer.y);ctx.lineTo(tank.x,tank.y);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // === TANK ===
+  if(!tank.dead){
+    const S=tank.size;
+    ctx.fillStyle='rgba(0,0,0,.18)';ctx.beginPath();ctx.ellipse(tank.x,tank.y+S+3,S*.9,S*.25,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle=tank.hitFlash>0?'#b0bec5':'#78909c';
+    // Chunky rounded body
+    ctx.beginPath();
+    ctx.moveTo(tank.x-S,tank.y-S*.8);ctx.lineTo(tank.x+S,tank.y-S*.8);
+    ctx.lineTo(tank.x+S*.9,tank.y+S*.7);ctx.lineTo(tank.x-S*.9,tank.y+S*.7);
+    ctx.closePath();ctx.fill();
+    // Armor plates
+    ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(tank.x-S*.6,tank.y-S*.8);ctx.lineTo(tank.x-S*.6,tank.y+S*.7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tank.x+S*.6,tank.y-S*.8);ctx.lineTo(tank.x+S*.6,tank.y+S*.7);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(tank.x-S,tank.y);ctx.lineTo(tank.x+S,tank.y);ctx.stroke();
+    // Label
+    ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(120,144,156,.7)';
+    ctx.fillText('TANK',tank.x,tank.y+tank.size+16);
+    // HP bar
+    drawHPBar(tank.x-28,tank.y-S-14,56,5,tank.hp,tank.maxHp,'#78909c');
+    ctx.font='600 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.5)';
+    ctx.fillText(`${tank.hp}/${tank.maxHp}`,tank.x,tank.y-S-18);
+    // Target indicator
+    if(target===tank){
+      ctx.strokeStyle='rgba(79,195,247,.4)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(tank.x,tank.y,S+6,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+
+  // === HEALER ===
+  if(!healer.dead){
+    const S=healer.size;
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(healer.x,healer.y+S+2,S*.6,S*.2,0,0,Math.PI*2);ctx.fill();
+    // Heal aura
+    const auraPulse=Math.sin(timer*0.04)*.15+.85;
+    ctx.fillStyle=`rgba(102,187,106,${auraPulse*0.08})`;
+    ctx.beginPath();ctx.arc(healer.x,healer.y,S+12,0,Math.PI*2);ctx.fill();
+    // Body — diamond
+    ctx.fillStyle=healer.hitFlash>0?'#a5d6a7':'#66bb6a';
+    ctx.beginPath();ctx.moveTo(healer.x,healer.y-S);ctx.lineTo(healer.x+S*.7,healer.y);
+    ctx.lineTo(healer.x,healer.y+S*.7);ctx.lineTo(healer.x-S*.7,healer.y);ctx.closePath();ctx.fill();
+    // Cross symbol
+    ctx.fillStyle='rgba(255,255,255,.4)';
+    ctx.fillRect(healer.x-1.5,healer.y-4,3,8);ctx.fillRect(healer.x-4,healer.y-1.5,8,3);
+    // Label
+    ctx.font='700 8px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(102,187,106,.7)';
+    ctx.fillText('HEALER',healer.x,healer.y+S+14);
+    // HP bar
+    drawHPBar(healer.x-18,healer.y-S-12,36,4,healer.hp,healer.maxHp,'#66bb6a');
+    if(target===healer){
+      ctx.strokeStyle='rgba(79,195,247,.4)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(healer.x,healer.y,S+6,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+
+  // === SHIELD BEARER ===
+  if(!shield.dead){
+    const S=shield.size;
+    ctx.fillStyle='rgba(0,0,0,.12)';ctx.beginPath();ctx.ellipse(shield.x,shield.y+S+2,S*.6,S*.2,0,0,Math.PI*2);ctx.fill();
+    // Body
+    ctx.fillStyle=shield.hitFlash>0?'#90caf9':'#42a5f5';
+    ctx.fillRect(shield.x-S*.5,shield.y-S*.5,S,S);
+    // Shield bar (front facing — toward player, i.e. below the body)
+    if(!shield.shieldBroken){
+      const shieldW=S*1.8,shieldH=5;
+      ctx.fillStyle=shield.blockFlash>0?'#bbdefb':'#64b5f6';
+      ctx.fillRect(shield.x-shieldW/2,shield.y+S*.5+3,shieldW,shieldH);
+      ctx.fillStyle='rgba(255,255,255,.2)';
+      ctx.fillRect(shield.x-shieldW/2,shield.y+S*.5+3,1.5,shieldH);
+      if(shield.blockFlash>0){
+        ctx.fillStyle=`rgba(187,222,251,${shield.blockFlash/6*0.3})`;
+        ctx.fillRect(shield.x-shieldW/2-2,shield.y+S*.5+1,shieldW+4,shieldH+4);
+      }
+    }
+    // Label
+    ctx.font='700 8px "IBM Plex Mono"';ctx.textAlign='center';
+    ctx.fillStyle='rgba(66,165,245,.7)';
+    ctx.fillText('SHIELD',shield.x,shield.y+S+22);
+    // Shield HP bar
+    if(!shield.shieldBroken){
+      drawHPBar(shield.x-18,shield.y-S-16,36,3,shield.shieldHp,shield.maxShield,'#64b5f6');
+      ctx.font='500 6px "IBM Plex Mono"';ctx.fillStyle='rgba(100,181,246,.5)';
+      ctx.fillText('SHIELD',shield.x,shield.y-S-19);
+    }
+    // Body HP bar (shows after shield breaks)
+    if(shield.shieldBroken){
+      drawHPBar(shield.x-18,shield.y-S-12,36,4,shield.hp,shield.maxHp,'#42a5f5');
+    }
+    if(target===shield){
+      ctx.strokeStyle='rgba(79,195,247,.4)';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.arc(shield.x,shield.y,S+6,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    }
+  }
+
+  // Aim line from player to target
+  if(target&&!target.dead){
+    ctx.strokeStyle='rgba(102,187,106,.15)';ctx.lineWidth=1;ctx.setLineDash([3,5]);
+    ctx.beginPath();ctx.moveTo(PX,PY);ctx.lineTo(target.x,target.y);ctx.stroke();ctx.setLineDash([]);
+  }
+
+  // Projectiles
+  ctx.fillStyle='#66bb6a';
+  for(const p of projectiles){
+    ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='rgba(102,187,106,.25)';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x-p.vx*2.5,p.y-p.vy*2.5);ctx.stroke();
+  }
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(PX,PY,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(PX,PY,0,PX,PY,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(PX,PY,16,0,Math.PI*2);ctx.fill();
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  // Floats
+  for(const fl of floats){
+    ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);
+    ctx.font=fl.big?'700 12px "Chakra Petch"':'700 9px "IBM Plex Mono"';
+    ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);ctx.globalAlpha=1;
+  }
+
+  // Lesson text (top center, persistent)
+  if(lessonAlpha>0){
+    ctx.globalAlpha=Math.min(1,lessonAlpha);
+    ctx.font='700 10px "Chakra Petch"';ctx.textAlign='center';ctx.fillStyle=lessonColor;
+    ctx.fillText(lessonText,W/2,PAD+14);
+    ctx.globalAlpha=1;
+  }
+
+  // Bottom labels
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.6)';
+  ctx.fillText('TARGET PRIORITY',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

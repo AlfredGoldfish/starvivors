@@ -8,7 +8,7 @@ import {
   PLAYER_PROJECTILE_TRAIL_OFFSET
 } from '../scenes/gameConstants';
 import type { PlayerProjectile } from '../scenes/gameTypes';
-import type { ResolvedWeaponStats } from './weaponStats';
+import type { ResolvedProjectilePatternStats, ResolvedWeaponStats } from './weaponStats';
 import { isProjectileWeapon } from '../data/weapons';
 
 export interface FireProjectileWeaponInput {
@@ -19,6 +19,10 @@ export interface FireProjectileWeaponInput {
   playerY: number;
   playerRotation: number;
   getForwardDirection: (rotation: number) => Phaser.Math.Vector2;
+  damageMultiplier?: number;
+  areaMultiplier?: number;
+  isOverloaded?: boolean;
+  isEmergencyEmpowered?: boolean;
 }
 
 export interface FireProjectileWeaponResult {
@@ -40,6 +44,7 @@ export interface UpdatePlayerProjectilesInput {
     wrapMirrorBody: Phaser.GameObjects.Container,
     viewRadius: number
   ) => void;
+  steerProjectile?: (projectile: PlayerProjectile, deltaSeconds: number) => void;
   tryHitTarget: (projectile: PlayerProjectile) => boolean;
 }
 
@@ -59,18 +64,21 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
   const spawnY = input.playerY + direction.y * PLAYER_PROJECTILE_MUZZLE_OFFSET;
   const projectiles: PlayerProjectile[] = [];
 
-  for (let index = 0; index < projectileConfig.projectileCount; index += 1) {
-    const spreadOffset = index - (projectileConfig.projectileCount - 1) / 2;
-    const projectileRotation = input.playerRotation + spreadOffset * 0.08;
+  const damageMultiplier = input.damageMultiplier ?? 1;
+  const areaMultiplier = input.areaMultiplier ?? 1;
+  const projectileAreaScale = projectileConfig.projectileAreaScale * areaMultiplier;
+  const projectileRotations = getProjectilePatternRotations(input.playerRotation, projectileConfig.projectileCount, projectileConfig.pattern);
+
+  for (const projectileRotation of projectileRotations) {
     const projectileDirection = input.getForwardDirection(projectileRotation);
-    const body = createPlayerProjectileBody(input.scene, spawnX, spawnY, projectileRotation, input.resolved, projectileConfig.projectileAreaScale);
+    const body = createPlayerProjectileBody(input.scene, spawnX, spawnY, projectileRotation, input.resolved, projectileAreaScale);
     const wrapMirrorBody = createPlayerProjectileBody(
       input.scene,
       spawnX,
       spawnY,
       projectileRotation,
       input.resolved,
-      projectileConfig.projectileAreaScale
+      projectileAreaScale
     );
     wrapMirrorBody.setVisible(false);
 
@@ -79,14 +87,18 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
       wrapMirrorBody,
       velocity: projectileDirection.scale(projectileConfig.projectileSpeed),
       speed: projectileConfig.projectileSpeed,
-      damage: projectileConfig.damage,
-      hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileConfig.projectileAreaScale,
+      damage: projectileConfig.damage * damageMultiplier,
+      hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileAreaScale,
       pierceRemaining: projectileConfig.pierce,
+      bouncesRemaining: projectileConfig.effects.bounceCount,
       piercedTargets: new WeakSet<object>(),
       expiresAt: input.time + projectileConfig.projectileLifetimeMs,
       distanceRemaining: projectileConfig.projectileRange,
       nextTrailAt: input.time,
-      trailColor: weapon.projectileVisual.trailColor
+      trailColor: weapon.projectileVisual.trailColor,
+      effects: projectileConfig.effects,
+      isOverloaded: input.isOverloaded ?? false,
+      isEmergencyEmpowered: input.isEmergencyEmpowered ?? false
     });
   }
 
@@ -102,6 +114,7 @@ export function updatePlayerProjectiles(input: UpdatePlayerProjectilesInput): Pl
 
   for (let i = projectiles.length - 1; i >= 0; i -= 1) {
     const projectile = projectiles[i];
+    input.steerProjectile?.(projectile, input.deltaSeconds);
     input.applyProjectileGravity(projectile, input.deltaSeconds);
     const travelDistance = projectile.speed * input.deltaSeconds;
 
@@ -151,11 +164,46 @@ export function clearPlayerProjectiles(projectiles: PlayerProjectile[]): PlayerP
 
 function shouldDestroyProjectileAfterHit(projectile: PlayerProjectile): boolean {
   if (projectile.pierceRemaining <= 0) {
-    return true;
+    if (projectile.bouncesRemaining <= 0) {
+      return true;
+    }
+
+    projectile.bouncesRemaining -= 1;
+    return false;
   }
 
   projectile.pierceRemaining -= 1;
   return false;
+}
+
+function getProjectilePatternRotations(
+  baseRotation: number,
+  projectileCount: number,
+  pattern: ResolvedProjectilePatternStats
+): number[] {
+  const rotations: number[] = [];
+  const forwardCount = projectileCount + pattern.forwardExtraCount;
+  appendSpreadRotations(rotations, baseRotation, forwardCount, pattern.forwardExtraCount > 0 ? pattern.spreadRadians : 0.08);
+
+  const rearCount = pattern.rearCount + (pattern.crossfire ? 1 : 0);
+  if (rearCount > 0) {
+    appendSpreadRotations(rotations, baseRotation + Math.PI, rearCount, 0.08);
+  }
+
+  const sideCount = pattern.sideCount + (pattern.crossfire ? 1 : 0);
+  if (sideCount > 0) {
+    appendSpreadRotations(rotations, baseRotation - Math.PI / 2, sideCount, 0.08);
+    appendSpreadRotations(rotations, baseRotation + Math.PI / 2, sideCount, 0.08);
+  }
+
+  return rotations;
+}
+
+function appendSpreadRotations(rotations: number[], centerRotation: number, count: number, spreadRadians: number): void {
+  for (let index = 0; index < count; index += 1) {
+    const spreadOffset = index - (count - 1) / 2;
+    rotations.push(centerRotation + spreadOffset * spreadRadians);
+  }
 }
 
 function emitPlayerProjectileTrail(scene: Phaser.Scene, projectile: PlayerProjectile): void {

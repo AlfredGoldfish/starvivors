@@ -1,5 +1,24 @@
 import Phaser from 'phaser';
 import { HUD_BAR_HEIGHT, HUD_BAR_WIDTH, HUD_MARGIN, HUD_RIGHT_BAR_Y } from '../scenes/gameConstants';
+import type { WeaponId, WeaponSlotType } from '../data/weapons';
+
+export type WeaponHotbarSlotType = 'auto' | 'primary' | 'secondary';
+
+export interface WeaponHotbarChoiceSnapshot {
+  weaponId: WeaponId;
+  name: string;
+}
+
+export interface WeaponHotbarSlotSnapshot {
+  slot: WeaponHotbarSlotType;
+  weaponId: WeaponId | null;
+  title: string;
+  subtitle: string;
+  controlLabel: string;
+  cooldownProgress: number;
+  choices: WeaponHotbarChoiceSnapshot[];
+  tooltipLines: string[];
+}
 
 export interface GameplayHudSnapshot {
   timeSeconds: number;
@@ -10,7 +29,8 @@ export interface GameplayHudSnapshot {
   nextXpThreshold: number;
   runScrapTotal: number;
   bankedUpgrades: number;
-  activeWeaponName: string;
+  autoWeaponName: string;
+  primaryWeaponName: string;
   weaponStatus: string;
   secondaryWeaponName: string;
   mainWeaponUpgradeSummary: string;
@@ -23,15 +43,33 @@ export interface GameplayHudSnapshot {
   rammingShieldDashCharges: number;
   rammingShieldDashMaxCharges: number;
   isRammingShieldEmpowered: boolean;
+  weaponSlots: WeaponHotbarSlotSnapshot[];
+}
+
+export interface GameplayHudCallbacks {
+  assignWeaponSlot: (slot: WeaponSlotType, weaponId: WeaponId) => void;
 }
 
 export class GameplayHudSystem {
   private readonly scene: Phaser.Scene;
+  private readonly callbacks: GameplayHudCallbacks;
   private hudGraphics?: Phaser.GameObjects.Graphics;
   private hudText?: Phaser.GameObjects.Text;
+  private hotbarGraphics?: Phaser.GameObjects.Graphics;
+  private hotbarTexts: Partial<Record<WeaponHotbarSlotType, Phaser.GameObjects.Text>> = {};
+  private hotbarZones: Partial<Record<WeaponHotbarSlotType, Phaser.GameObjects.Zone>> = {};
+  private pickerGraphics?: Phaser.GameObjects.Graphics;
+  private pickerTexts: Phaser.GameObjects.Text[] = [];
+  private pickerZones: Phaser.GameObjects.Zone[] = [];
+  private tooltipGraphics?: Phaser.GameObjects.Graphics;
+  private tooltipText?: Phaser.GameObjects.Text;
+  private latestSnapshot?: GameplayHudSnapshot;
+  private openPickerSlot: WeaponHotbarSlotType | null = null;
+  private hoveredSlot: WeaponHotbarSlotType | null = null;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: Phaser.Scene, callbacks: GameplayHudCallbacks) {
     this.scene = scene;
+    this.callbacks = callbacks;
   }
 
   create(): void {
@@ -47,6 +85,51 @@ export class GameplayHudSystem {
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(1000);
+    this.hotbarGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1002);
+    this.pickerGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1003);
+    this.tooltipGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1005).setVisible(false);
+    this.tooltipText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#f2fbff',
+        lineSpacing: 3,
+        wordWrap: { width: 300 }
+      })
+      .setScrollFactor(0)
+      .setDepth(1006)
+      .setVisible(false);
+
+    for (const slot of ['auto', 'primary', 'secondary'] as WeaponHotbarSlotType[]) {
+      const text = this.scene.add
+        .text(0, 0, '', {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '11px',
+          color: '#f2fbff',
+          align: 'center',
+          fixedWidth: 92
+        })
+        .setOrigin(0.5, 0.5)
+        .setScrollFactor(0)
+        .setDepth(1004);
+      const zone = this.scene.add.zone(0, 0, 96, 52).setScrollFactor(0).setDepth(1007).setInteractive({ useHandCursor: true });
+
+      zone.on('pointerover', () => {
+        this.hoveredSlot = slot;
+        this.updateTooltip();
+      });
+      zone.on('pointerout', () => {
+        this.hoveredSlot = null;
+        this.updateTooltip();
+      });
+      zone.on('pointerdown', () => {
+        this.openPickerSlot = this.openPickerSlot === slot ? null : slot;
+        this.drawHotbar();
+      });
+
+      this.hotbarTexts[slot] = text;
+      this.hotbarZones[slot] = zone;
+    }
   }
 
   update(snapshot: GameplayHudSnapshot): void {
@@ -54,10 +137,11 @@ export class GameplayHudSystem {
       return;
     }
 
+    this.latestSnapshot = snapshot;
     const upgradeStatus =
       snapshot.bankedUpgrades > 0 ? `Upgrade available x${snapshot.bankedUpgrades}  Press U` : 'No upgrade banked';
     const shieldStatus = snapshot.hasRammingShield
-      ? `Shield ${Math.ceil(snapshot.rammingShieldHp)} / ${snapshot.rammingShieldMaxHp}${snapshot.rammingShieldHp <= 0 ? '  BROKEN' : ''}\n` +
+      ? `Shield ${Math.ceil(snapshot.rammingShieldHp)} / ${Math.round(snapshot.rammingShieldMaxHp)}${snapshot.rammingShieldHp <= 0 ? '  BROKEN' : ''}\n` +
         `Shield dash ${snapshot.rammingShieldDashCharges} / ${snapshot.rammingShieldDashMaxCharges}${snapshot.isRammingShieldEmpowered ? '  EMPOWERED' : ''}\n`
       : '';
 
@@ -65,18 +149,20 @@ export class GameplayHudSystem {
       .setPosition(this.scene.scale.width - HUD_MARGIN, HUD_MARGIN)
       .setText(
         `Time ${this.formatSurvivalTime(snapshot.timeSeconds)}\n` +
-          `Hull ${snapshot.playerHull} / ${snapshot.maxHull}  ${snapshot.status}\n` +
+          `Hull ${Math.round(snapshot.playerHull)} / ${Math.round(snapshot.maxHull)}  ${snapshot.status}\n` +
           shieldStatus +
           `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
           `Scrap ${snapshot.runScrapTotal}\n` +
           `Banked upgrades ${snapshot.bankedUpgrades}\n` +
           `${upgradeStatus}\n` +
-          `Primary ${snapshot.activeWeaponName} ${snapshot.weaponStatus}\n` +
+          `Auto ${snapshot.autoWeaponName} ${snapshot.weaponStatus}\n` +
+          `Primary ${snapshot.primaryWeaponName}\n` +
           `Secondary ${snapshot.secondaryWeaponName}\n` +
           `${snapshot.mainWeaponUpgradeSummary}`
       );
 
     this.drawBars(snapshot);
+    this.drawHotbar();
   }
 
   private drawBars(snapshot: GameplayHudSnapshot): void {
@@ -116,6 +202,144 @@ export class GameplayHudSystem {
     this.hudGraphics.fillRect(x, y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT);
     this.hudGraphics.fillStyle(color, 0.88);
     this.hudGraphics.fillRect(x, y, HUD_BAR_WIDTH * progress, HUD_BAR_HEIGHT);
+  }
+
+  private drawHotbar(): void {
+    if (!this.hotbarGraphics || !this.latestSnapshot) {
+      return;
+    }
+
+    const slots = this.latestSnapshot.weaponSlots;
+    const positions = this.getHotbarPositions();
+
+    this.hotbarGraphics.clear();
+
+    for (const slotSnapshot of slots) {
+      const position = positions[slotSnapshot.slot];
+      const text = this.hotbarTexts[slotSnapshot.slot];
+      const zone = this.hotbarZones[slotSnapshot.slot];
+      if (!text || !zone) {
+        continue;
+      }
+
+      const isOpen = this.openPickerSlot === slotSnapshot.slot;
+      const fillColor = slotSnapshot.weaponId ? 0x071018 : 0x111a24;
+      const strokeColor = slotSnapshot.slot === 'auto' ? 0x42f5d7 : slotSnapshot.slot === 'primary' ? 0xffc857 : 0xa8c7ff;
+
+      this.hotbarGraphics.fillStyle(fillColor, 0.9);
+      this.hotbarGraphics.fillRoundedRect(position.x - 48, position.y - 26, 96, 52, 7);
+      this.hotbarGraphics.lineStyle(isOpen ? 3 : 2, strokeColor, isOpen ? 1 : 0.78);
+      this.hotbarGraphics.strokeRoundedRect(position.x - 48, position.y - 26, 96, 52, 7);
+      this.hotbarGraphics.fillStyle(strokeColor, 0.7);
+      this.hotbarGraphics.fillRect(position.x - 46, position.y + 22, 92 * Phaser.Math.Clamp(slotSnapshot.cooldownProgress, 0, 1), 2);
+
+      text.setPosition(position.x, position.y).setText(`${slotSnapshot.controlLabel}\n${slotSnapshot.title}`);
+      zone.setPosition(position.x, position.y);
+    }
+
+    this.drawPicker();
+    this.updateTooltip();
+  }
+
+  private drawPicker(): void {
+    if (!this.pickerGraphics || !this.latestSnapshot) {
+      return;
+    }
+
+    for (const text of this.pickerTexts) {
+      text.destroy();
+    }
+    for (const zone of this.pickerZones) {
+      zone.destroy();
+    }
+    this.pickerTexts = [];
+    this.pickerZones = [];
+    this.pickerGraphics.clear();
+
+    if (!this.openPickerSlot) {
+      return;
+    }
+
+    const slot = this.latestSnapshot.weaponSlots.find((candidate) => candidate.slot === this.openPickerSlot);
+    if (!slot || slot.choices.length <= 0) {
+      return;
+    }
+
+    const base = this.getHotbarPositions()[slot.slot];
+    const isAuto = slot.slot === 'auto';
+    const startX = isAuto ? base.x : base.x - (slot.choices.length - 1) * 46;
+    const startY = isAuto ? base.y - 86 : base.y - 68;
+
+    slot.choices.forEach((choice, index) => {
+      const x = isAuto ? startX : startX + index * 92;
+      const y = isAuto ? startY - index * 58 : startY;
+      this.pickerGraphics?.fillStyle(0x02040a, 0.94);
+      this.pickerGraphics?.fillRoundedRect(x - 42, y - 20, 84, 40, 6);
+      this.pickerGraphics?.lineStyle(1, 0x6f89b7, 0.9);
+      this.pickerGraphics?.strokeRoundedRect(x - 42, y - 20, 84, 40, 6);
+
+      const text = this.scene.add
+        .text(x, y, choice.name, {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '10px',
+          color: '#f2fbff',
+          align: 'center',
+          fixedWidth: 76,
+          wordWrap: { width: 76 }
+        })
+        .setOrigin(0.5, 0.5)
+        .setScrollFactor(0)
+        .setDepth(1004);
+      const zone = this.scene.add.zone(x, y, 84, 40).setScrollFactor(0).setDepth(1008).setInteractive({ useHandCursor: true });
+      zone.on('pointerdown', () => {
+        this.callbacks.assignWeaponSlot(slot.slot, choice.weaponId);
+        this.openPickerSlot = null;
+      });
+      this.pickerTexts.push(text);
+      this.pickerZones.push(zone);
+    });
+  }
+
+  private updateTooltip(): void {
+    if (!this.tooltipGraphics || !this.tooltipText || !this.latestSnapshot || !this.hoveredSlot) {
+      this.tooltipGraphics?.setVisible(false);
+      this.tooltipText?.setVisible(false);
+      return;
+    }
+
+    const slot = this.latestSnapshot.weaponSlots.find((candidate) => candidate.slot === this.hoveredSlot);
+    if (!slot) {
+      this.tooltipGraphics.setVisible(false);
+      this.tooltipText.setVisible(false);
+      return;
+    }
+
+    const text = [`${slot.title}`, slot.subtitle, '', ...slot.tooltipLines].join('\n');
+    const position = this.getHotbarPositions()[slot.slot];
+    const width = 320;
+    this.tooltipText.setText(text).setWordWrapWidth(width - 20, true);
+    const height = Math.min(360, this.tooltipText.height + 18);
+    const x = Phaser.Math.Clamp(position.x - width / 2, 12, this.scene.scale.width - width - 12);
+    const y = Phaser.Math.Clamp(position.y - height - 40, 12, this.scene.scale.height - height - 12);
+
+    this.tooltipGraphics.clear();
+    this.tooltipGraphics.fillStyle(0x02040a, 0.98);
+    this.tooltipGraphics.fillRoundedRect(x, y, width, height, 6);
+    this.tooltipGraphics.lineStyle(1, 0x42f5d7, 0.9);
+    this.tooltipGraphics.strokeRoundedRect(x, y, width, height, 6);
+    this.tooltipGraphics.setVisible(true);
+    this.tooltipText.setPosition(x + 10, y + 9).setVisible(true);
+  }
+
+  private getHotbarPositions(): Record<WeaponHotbarSlotType, { x: number; y: number }> {
+    const centerX = this.scene.scale.width / 2;
+    const baseY = this.scene.scale.height - 54;
+
+    return {
+      auto: { x: centerX, y: baseY - 62 },
+      primary: { x: centerX - 58, y: baseY },
+      secondary: { x: centerX + 58, y: baseY }
+    };
   }
 
   private formatSurvivalTime(totalSeconds: number): string {

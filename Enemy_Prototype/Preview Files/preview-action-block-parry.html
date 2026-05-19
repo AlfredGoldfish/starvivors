@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Block and Parry</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Block & Parry</h2><div class="tag">Core Action</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:rgba(120,144,156,.5)"></span>Block</div>
+      <div class="li"><span style="background:#ffca28"></span>Parry!</div>
+      <div class="li"><span style="background:#ef5350"></span>Enemy</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Defensive action with two levels. Block absorbs damage but drains stamina and slows you. Parry is a precise timing window at the start of a block - if an attack lands during the parry window, it's deflected perfectly with a counterattack bonus. Rewards mastery of enemy attack timings.</div>
+    <div class="dr"><div class="dl">Block</div><div class="dv">Hold to absorb hits, drains stamina</div></div>
+    <div class="dr"><div class="dl">Parry</div><div class="dv">First frames of block - perfect deflect + stun enemy</div></div>
+    <div class="dr"><div class="dl">Reward</div><div class="dv">Parry stuns attacker, opens counter window</div></div>
+    <div class="dr"><div class="dl">Risk</div><div class="dv">Mistimed block wastes stamina, can't attack while blocking</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Action</span><span class="ft">Souls-like</span><span class="ft">Fighting</span>
+    <span class="fe">e.g. Dark Souls, Sekiro, Hades, Dead Cells</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0;
+let parts=[],floats=[],rings=[];
+let shakeT=0,freezeT=0; // freeze = brief pause on parry
+let stamina=100,maxStamina=100;
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n,s){s=s||1;for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,sp=rng(.5,3)*s;parts.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:rng(12,22),ml:22,col,sz:rng(1.5,3)})}}
+function addFloat(x,y,t,col,big){floats.push({x,y,text:t,color:col,life:50,ml:50,big:big||false})}
+function addRing(x,y,col,maxR,w){rings.push({x,y,col,r:5,maxR,w:w||2,life:20,ml:20})}
+
+// Player - stays centered, slight bob
+const px=W/2,py=H*0.62;
+let pFacing=-Math.PI/2;
+// Player state: idle, blocking
+let blocking=false,blockStart=0;
+const PARRY_WINDOW=10;
+
+// Enemy - simple infinite loop state machine
+// States: APPROACH -> TELEGRAPH -> LUNGE -> RESULT_PAUSE -> RETREAT -> WAIT -> APPROACH
+const E={x:W/2,y:H*0.2,sz:14,spd:0,state:'APPROACH',timer:0,
+  stunned:false,stunTimer:0,fl:0,knockX:0,knockY:0};
+const E_HOME={x:W/2,y:H*0.18};
+
+// Track results for display
+let lastResult='',resultTimer=0,parryCount=0,blockCount=0;
+
+function transitionEnemy(newState){E.state=newState;E.timer=0}
+
+function update(){
+  frame++;
+  if(freezeT>0){freezeT--;return} // hitstop
+  if(shakeT>0)shakeT--;
+  if(E.fl>0)E.fl--;
+  if(resultTimer>0)resultTimer--;
+
+  // Stamina regen when not blocking
+  if(!blocking&&frame%2===0&&stamina<maxStamina)stamina=Math.min(maxStamina,stamina+1);
+
+  pFacing=Math.atan2(E.y-py,E.x-px);
+
+  // Enemy state machine - completely deterministic, no HP, infinite loop
+  E.timer++;
+
+  if(E.stunned){
+    E.stunTimer--;
+    E.x+=rng(-1.5,1.5);E.y+=rng(-1,1);
+    if(E.stunTimer<=0){E.stunned=false;transitionEnemy('RETREAT')}
+    return;
+  }
+
+  if(E.state==='APPROACH'){
+    const dx=px-E.x,dy=py-E.y,d=Math.hypot(dx,dy);
+    const spd=0.8+E.timer*0.005;
+    if(d>50){E.x+=dx/d*spd;E.y+=dy/d*spd}
+    else{transitionEnemy('TELEGRAPH')}
+  }
+  else if(E.state==='TELEGRAPH'){
+    // Wind up - pull back slightly
+    const dx=px-E.x,dy=py-E.y,d=Math.hypot(dx,dy);
+    if(E.timer<30){E.x-=dx/d*0.4;E.y-=dy/d*0.4}
+    if(E.timer>=45){transitionEnemy('LUNGE')}
+  }
+  else if(E.state==='LUNGE'){
+    const dx=px-E.x,dy=py-E.y,d=Math.hypot(dx,dy);
+    E.x+=dx/d*5;E.y+=dy/d*5;
+    // Check hit at close range
+    if(d<28){
+      if(blocking&&(frame-blockStart)<=PARRY_WINDOW){
+        // PARRY
+        lastResult='PARRY';resultTimer=60;parryCount++;
+        addFloat(px,py-30,'PERFECT PARRY!','#ffca28',true);
+        spark(px+Math.cos(pFacing)*14,py+Math.sin(pFacing)*14,'#ffca28',20,1.8);
+        spark(px,py,'rgba(255,255,255,0.7)',8,1);
+        addRing(px,py,'#ffca28',60,4);
+        addRing(px,py,'rgba(255,255,255,0.5)',40,2);
+        shakeT=8;freezeT=8; // hitstop!
+        E.stunned=true;E.stunTimer=70;E.fl=12;
+        // Knock enemy back hard
+        const ka=Math.atan2(E.y-py,E.x-px);
+        E.x+=Math.cos(ka)*30;E.y+=Math.sin(ka)*30;
+        blocking=false;
+      }else if(blocking){
+        // BLOCK
+        lastResult='BLOCK';resultTimer=45;blockCount++;
+        addFloat(px,py-25,'BLOCKED','#78909c',false);
+        spark(px+Math.cos(pFacing)*12,py+Math.sin(pFacing)*12,'#78909c',8,1);
+        addRing(px,py,'rgba(120,144,156,0.5)',30,2);
+        shakeT=4;
+        stamina=Math.max(0,stamina-25);
+        const ka=Math.atan2(E.y-py,E.x-px);
+        E.x+=Math.cos(ka)*10;E.y+=Math.sin(ka)*10;
+        transitionEnemy('RESULT_PAUSE');
+      }else{
+        // HIT - unblocked
+        lastResult='HIT';resultTimer=40;
+        addFloat(px,py-25,'HIT!','#ef5350',false);
+        spark(px,py,'#ef5350',10,1);
+        addRing(px,py,'rgba(239,83,80,0.4)',25,2);
+        shakeT=6;
+        transitionEnemy('RESULT_PAUSE');
+      }
+    }
+    if(E.timer>20)transitionEnemy('RESULT_PAUSE'); // missed
+  }
+  else if(E.state==='RESULT_PAUSE'){
+    if(E.timer>=30)transitionEnemy('RETREAT');
+  }
+  else if(E.state==='RETREAT'){
+    const dx=E_HOME.x-E.x,dy=E_HOME.y-E.y,d=Math.hypot(dx,dy);
+    if(d>5){E.x+=dx/d*1.5;E.y+=dy/d*1.5}
+    else{transitionEnemy('WAIT')}
+  }
+  else if(E.state==='WAIT'){
+    if(E.timer>=50){transitionEnemy('APPROACH');blocking=false}
+  }
+
+  E.x=Math.max(PAD+10,Math.min(W-PAD-10,E.x));
+  E.y=Math.max(PAD+10,Math.min(H-PAD-10,E.y));
+
+  // Player AI: raise block during telegraph
+  if(E.state==='TELEGRAPH'&&E.timer>20&&!blocking){
+    blocking=true;blockStart=frame;
+    // Sometimes delay to miss parry window (40% chance)
+    if(rng(0,1)<0.4)blockStart=frame-PARRY_WINDOW-5;
+  }
+  if(E.state==='WAIT'||E.state==='APPROACH')blocking=false;
+
+  // Rings
+  for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.r+=(r.maxR-r.r)*0.15;r.life--;if(r.life<=0)rings.splice(i,1)}
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.88;p.vy*=.88;p.life--;if(p.life<=0)parts.splice(i,1)}
+  for(let i=floats.length-1;i>=0;i--){floats[i].y-=0.6;floats[i].life--;if(floats[i].life<=0)floats.splice(i,1)}
+}
+
+function draw(){
+  const sx=shakeT>0?rng(-4,4):0,sy=shakeT>0?rng(-4,4):0;
+  ctx.save();ctx.translate(sx,sy);
+  ctx.fillStyle='#0c0e18';ctx.fillRect(-5,-5,W+10,H+10);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Rings (impact effects)
+  for(const r of rings){
+    ctx.globalAlpha=r.life/r.ml;ctx.strokeStyle=r.col;ctx.lineWidth=r.w;
+    ctx.beginPath();ctx.arc(r.x,r.y,r.r,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1;
+  }
+
+  // Enemy
+  const toP=Math.atan2(py-E.y,px-E.x);
+  ctx.fillStyle='rgba(0,0,0,.15)';ctx.beginPath();ctx.ellipse(E.x,E.y+E.sz+3,E.sz*.7,E.sz*.2,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle=E.fl>0?'#fff':E.stunned?'rgba(255,202,40,.4)':'#ef5350';
+  ctx.fillRect(E.x-E.sz/2,E.y-E.sz/2,E.sz,E.sz);
+  // Eyes
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath();ctx.arc(E.x+Math.cos(toP)*3-2,E.y+Math.sin(toP)*2,2,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(E.x+Math.cos(toP)*3+2,E.y+Math.sin(toP)*2,2,0,Math.PI*2);ctx.fill();
+
+  // Telegraph
+  if(E.state==='TELEGRAPH'){
+    const p=Math.min(1,E.timer/45);
+    // Growing danger indicator
+    ctx.strokeStyle=`rgba(239,83,80,${p*0.7})`;ctx.lineWidth=2+p*2;
+    ctx.beginPath();ctx.moveTo(E.x+Math.cos(toP)*E.sz,E.y+Math.sin(toP)*E.sz);
+    ctx.lineTo(E.x+Math.cos(toP)*(E.sz+p*30),E.y+Math.sin(toP)*(E.sz+p*30));ctx.stroke();
+    // Exclamation
+    ctx.font=`700 ${14+p*10}px "Chakra Petch"`;ctx.textAlign='center';
+    ctx.fillStyle=`rgba(239,83,80,${p})`;ctx.fillText('!',E.x,E.y-E.sz-10-p*8);
+    // Shaking body
+    E.x+=rng(-p*2,p*2);E.y+=rng(-p,p);
+  }
+
+  // Stunned stars
+  if(E.stunned){
+    ctx.font='700 7px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.8)';
+    ctx.fillText('STUNNED',E.x,E.y+E.sz+16);
+    for(let i=0;i<4;i++){
+      const a=frame*0.06+i*Math.PI/2;
+      ctx.fillStyle='rgba(255,202,40,.6)';ctx.font='10px sans-serif';
+      ctx.fillText('*',E.x+Math.cos(a)*16,E.y-E.sz-2+Math.sin(a)*5);
+    }
+    // "COUNTER WINDOW" text
+    ctx.font='700 8px "IBM Plex Mono"';ctx.fillStyle='rgba(255,202,40,.5)';
+    ctx.fillText('COUNTER WINDOW',E.x,E.y+E.sz+26);
+  }
+
+  // Player shield
+  if(blocking){
+    const isParry=(frame-blockStart)<=PARRY_WINDOW;
+    if(isParry){
+      // Golden parry shield - big and bright
+      ctx.strokeStyle='rgba(255,202,40,.8)';ctx.lineWidth=5;
+      ctx.beginPath();ctx.arc(px,py,16,pFacing-0.9,pFacing+0.9);ctx.stroke();
+      ctx.fillStyle='rgba(255,202,40,.08)';ctx.beginPath();ctx.arc(px,py,22,0,Math.PI*2);ctx.fill();
+      // Sparkles
+      for(let i=0;i<3;i++){
+        const sa=pFacing+rng(-0.8,0.8);const sr=14+rng(0,8);
+        ctx.fillStyle='rgba(255,202,40,.5)';ctx.beginPath();
+        ctx.arc(px+Math.cos(sa)*sr,py+Math.sin(sa)*sr,1.5,0,Math.PI*2);ctx.fill();
+      }
+      ctx.font='700 7px "IBM Plex Mono"';ctx.textAlign='center';
+      ctx.fillStyle='rgba(255,202,40,.9)';ctx.fillText('PARRY WINDOW',px,py+28);
+    }else{
+      // Grey block shield
+      ctx.strokeStyle='rgba(120,144,156,.6)';ctx.lineWidth=4;
+      ctx.beginPath();ctx.arc(px,py,15,pFacing-0.8,pFacing+0.8);ctx.stroke();
+      ctx.font='600 6px "IBM Plex Mono"';ctx.textAlign='center';
+      ctx.fillStyle='rgba(120,144,156,.5)';ctx.fillText('BLOCKING',px,py+26);
+    }
+  }
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,8,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(79,195,247,.15)';ctx.beginPath();ctx.arc(px,py,14,0,Math.PI*2);ctx.fill();
+
+  // Stamina bar
+  const sbW=60,sbH=5,sbX=px-sbW/2,sbY=py+35;
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(sbX-1,sbY-1,sbW+2,sbH+2);
+  ctx.fillStyle='rgba(255,255,255,.06)';ctx.fillRect(sbX,sbY,sbW,sbH);
+  ctx.fillStyle=stamina>30?'#78909c':'#ef5350';
+  ctx.fillRect(sbX,sbY,sbW*(stamina/maxStamina),sbH);
+  ctx.font='500 6px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(120,144,156,.6)';
+  ctx.fillText('STAMINA',px,sbY+sbH+8);
+
+  // Particles
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+  // Floats
+  for(const fl of floats){
+    ctx.globalAlpha=Math.min(1,fl.life/fl.ml*1.5);
+    ctx.font=fl.big?'700 16px "Chakra Petch"':'700 11px "Chakra Petch"';
+    ctx.textAlign='center';ctx.fillStyle=fl.color;ctx.fillText(fl.text,fl.x,fl.y);
+    ctx.globalAlpha=1;
+  }
+
+  // Score
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,202,40,.55)';
+  ctx.fillText(`PARRIES: ${parryCount}`,PAD+4,H-PAD-4);
+  ctx.textAlign='right';ctx.fillStyle='rgba(120,144,156,.45)';
+  ctx.fillText(`BLOCKS: ${blockCount}`,W-PAD-4,H-PAD-4);
+
+  ctx.restore();
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,202,40,.65)';
+  ctx.fillText('BLOCK & PARRY',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Enemy telegraphs -> block absorbs -> parry deflects + stuns + counter',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

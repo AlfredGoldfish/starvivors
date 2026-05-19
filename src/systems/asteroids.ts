@@ -48,6 +48,7 @@ export interface ResolveAsteroidCollisionsInput {
   asteroidCollisionImpulseScale: number;
   getCollisionNormal: (offset: Phaser.Math.Vector2) => Phaser.Math.Vector2;
   getAsteroidMass: (tier: AsteroidTier) => number;
+  getAsteroidCollisionRadius: (asteroid: BasicAsteroid) => number;
   getGlobalMaxSpeed: () => number;
   nudgeWrappedObject: (object: Phaser.GameObjects.Container, normal: Phaser.Math.Vector2, distance: number) => void;
   updateAsteroidWrapMirror: (asteroid: BasicAsteroid) => void;
@@ -104,7 +105,7 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
       }
 
       const offset = getWrappedDirection(input.arena, second.body.x, second.body.y, first.body.x, first.body.y);
-      const hitRadius = first.hitRadius + second.hitRadius;
+      const hitRadius = input.getAsteroidCollisionRadius(first) + input.getAsteroidCollisionRadius(second);
       const distance = offset.length();
 
       if (distance > hitRadius) {

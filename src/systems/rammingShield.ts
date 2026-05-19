@@ -1,5 +1,7 @@
+import Phaser from 'phaser';
 import type { PlayerStats } from '../data/stats';
 import type { RammingShieldStats } from '../data/weapons';
+import { getCapsuleCircleCollision } from './collisionShapes';
 
 export interface RammingShieldRuntimeState {
   hp: number;
@@ -36,11 +38,16 @@ export interface RammingShieldCollider {
 
 export interface RammingShieldCircleCollisionInput {
   collider: RammingShieldCollider;
+  arenaWidth: number;
+  arenaHeight: number;
+  targetX: number;
+  targetY: number;
   targetRadius: number;
-  offsetFromShield: { x: number; y: number };
 }
 
 export interface RammingShieldCircleCollision {
+  normalX: number;
+  normalY: number;
   penetration: number;
 }
 
@@ -165,17 +172,34 @@ export function getRammingShieldCollider(input: RammingShieldColliderInput, stat
 }
 
 export function getRammingShieldCircleCollision(input: RammingShieldCircleCollisionInput): RammingShieldCircleCollision | undefined {
-  const localX = input.offsetFromShield.x * input.collider.rightX + input.offsetFromShield.y * input.collider.rightY;
-  const localY = input.offsetFromShield.x * input.collider.forwardX + input.offsetFromShield.y * input.collider.forwardY;
-  const overlapX = input.collider.halfWidth + input.targetRadius - Math.abs(localX);
-  const overlapY = input.collider.halfDepth + input.targetRadius - Math.abs(localY);
+  const collision = getCapsuleCircleCollision(
+    {
+      width: input.arenaWidth,
+      height: input.arenaHeight
+    },
+    {
+      x: input.collider.centerX,
+      y: input.collider.centerY,
+      right: new Phaser.Math.Vector2(input.collider.rightX, input.collider.rightY),
+      forward: new Phaser.Math.Vector2(input.collider.forwardX, input.collider.forwardY),
+      halfWidth: input.collider.halfDepth,
+      halfLength: input.collider.halfWidth
+    },
+    {
+      x: input.targetX,
+      y: input.targetY,
+      radius: input.targetRadius
+    }
+  );
 
-  if (overlapX <= 0 || overlapY <= 0) {
+  if (!collision) {
     return undefined;
   }
 
   return {
-    penetration: Math.min(overlapX, overlapY)
+    normalX: collision.normal.x,
+    normalY: collision.normal.y,
+    penetration: collision.penetration
   };
 }
 

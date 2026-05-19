@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Orbiter</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.legend{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:4px}.li{display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;font-size:.48rem;color:rgba(255,255,255,.5)}.li span{width:6px;height:6px;display:inline-block}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Orbiter</h2><div class="tag">Enemy</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+    <div class="legend">
+      <div class="li"><span style="background:#4fc3f7;border-radius:50%"></span>Player</div>
+      <div class="li"><span style="background:#ffab40;border-radius:50%"></span>Orbiter</div>
+      <div class="li"><span style="background:rgba(255,171,64,.15)"></span>Orbit path</div>
+    </div>
+  </div>
+  <div class="body">
+    <div class="desc">Circles the player at a fixed distance, forming a spinning ring of threats. Even a single orbiter restricts movement — multiple orbiters create a cage. The orbit slowly tightens, shrinking the safe zone. Hard to hit because they move perpendicular to your aim.</div>
+    <div class="dr"><div class="dl">Movement</div><div class="dv">Circular orbit around player, slowly tightening</div></div>
+    <div class="dr"><div class="dl">Attack</div><div class="dv">Contact damage, constricts player's movement space</div></div>
+    <div class="dr"><div class="dl">Weakness</div><div class="dv">Predictable circular path, AOE clears them easily</div></div>
+    <div class="dr"><div class="dl">Danger</div><div class="dv">Cage effect, hard to aim at, shrinking safe zone</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">Bullet Hell</span><span class="ft">Survival</span>
+    <span class="fe">e.g. Geometry Wars, Vampire Survivors, Ikaruga</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360,PAD=20;
+let frame=0,px=W/2,py=H/2,pvx=0,pvy=0,wander=0,hitFlash=0;
+let parts=[];
+
+function rng(a,b){return a+Math.random()*(b-a)}
+function spark(x,y,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=rng(.3,2);parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:rng(10,18),ml:18,col,sz:rng(1,2)})}}
+
+// Phase system: 'single' then 'multi'
+let phase='single',phaseTimer=0;
+const SINGLE_DUR=360,MULTI_DUR=420; // ~6s single, ~7s multi
+
+let orbiters=[];
+function setupSingle(){
+  orbiters=[{angle:0,dir:1,radius:90,targetR:90,speed:0.025,sz:8,trail:[]}];
+}
+function setupMulti(){
+  orbiters=[];
+  const count=6;
+  for(let i=0;i<count;i++){
+    orbiters.push({angle:Math.PI*2*i/count,dir:i%2===0?1:-1,
+      radius:105,targetR:105,speed:0.016+rng(-0.003,0.003),sz:6,trail:[]});
+  }
+}
+setupSingle();
+
+function update(){
+  frame++;phaseTimer++;
+  if(hitFlash>0)hitFlash--;
+
+  // Phase switching
+  if(phase==='single'&&phaseTimer>SINGLE_DUR){
+    phase='multi';phaseTimer=0;setupMulti();spark(px,py,'#ffab40',10);
+  }
+  if(phase==='multi'&&phaseTimer>MULTI_DUR){
+    phase='single';phaseTimer=0;setupSingle();spark(px,py,'#ffab40',8);
+  }
+
+  // Shrink orbits over time
+  if(phaseTimer%4===0){
+    for(const o of orbiters)o.targetR=Math.max(18,o.targetR-0.2);
+  }
+
+  // Player AI
+  wander+=Math.sin(frame*0.01)*0.03+rng(-0.015,0.015);
+  let ax=Math.cos(wander)*0.06,ay=Math.sin(wander)*0.06;
+  ax+=(W/2-px)*0.001;ay+=(H/2-py)*0.001;
+  if(px<PAD+40)ax+=0.12;if(px>W-PAD-40)ax-=0.12;
+  if(py<PAD+40)ay+=0.12;if(py>H-PAD-40)ay-=0.12;
+  pvx=(pvx+ax)*0.94;pvy=(pvy+ay)*0.94;
+  const vm=Math.hypot(pvx,pvy);if(vm>0.8){pvx=pvx/vm*0.8;pvy=pvy/vm*0.8}
+  px+=pvx;py+=pvy;
+  px=Math.max(PAD+10,Math.min(W-PAD-10,px));py=Math.max(PAD+10,Math.min(H-PAD-10,py));
+
+  // Orbiters
+  for(const o of orbiters){
+    o.angle+=o.speed*o.dir;
+    o.radius+=(o.targetR-o.radius)*0.02;
+    const ox=px+Math.cos(o.angle)*o.radius,oy=py+Math.sin(o.angle)*o.radius;
+    o.trail.push({x:ox,y:oy,life:15});
+    if(o.trail.length>25)o.trail.shift();
+    if(Math.hypot(ox-px,oy-py)<o.sz+7)hitFlash=5;
+  }
+  for(const o of orbiters){for(let i=o.trail.length-1;i>=0;i--){o.trail[i].life--;if(o.trail[i].life<=0)o.trail.splice(i,1)}}
+  for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.91;p.vy*=.91;p.life--;if(p.life<=0)parts.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle='#0c0e18';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.08)';ctx.lineWidth=1.5;ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+  ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=1;
+  for(let x=PAD;x<W-PAD;x+=40){ctx.beginPath();ctx.moveTo(x,PAD);ctx.lineTo(x,H-PAD);ctx.stroke()}
+  for(let y=PAD;y<H-PAD;y+=40){ctx.beginPath();ctx.moveTo(PAD,y);ctx.lineTo(W-PAD,y);ctx.stroke()}
+
+  // Orbit path
+  if(orbiters.length>0){
+    const avgR=orbiters.reduce((s,o)=>s+o.radius,0)/orbiters.length;
+    ctx.strokeStyle='rgba(255,171,64,.08)';ctx.lineWidth=1;ctx.setLineDash([4,6]);
+    ctx.beginPath();ctx.arc(px,py,avgR,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.font='500 6px "IBM Plex Mono"';ctx.textAlign='center';
+    ctx.fillStyle='rgba(255,171,64,.35)';ctx.fillText(`RADIUS: ${Math.round(avgR)}px`,px,py-avgR-8);
+  }
+
+  // Trails
+  for(const o of orbiters){for(const t of o.trail){
+    ctx.globalAlpha=t.life/15*0.3;ctx.fillStyle='#ffab40';
+    ctx.beginPath();ctx.arc(t.x,t.y,2,0,Math.PI*2);ctx.fill();
+  }ctx.globalAlpha=1}
+
+  // Orbiters
+  for(const o of orbiters){
+    const ox=px+Math.cos(o.angle)*o.radius,oy=py+Math.sin(o.angle)*o.radius;
+    ctx.fillStyle='rgba(0,0,0,.1)';ctx.beginPath();ctx.ellipse(ox,oy+o.sz+1,o.sz*.5,o.sz*.15,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#ffab40';ctx.beginPath();ctx.arc(ox,oy,o.sz,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(255,171,64,.1)';ctx.beginPath();ctx.arc(ox,oy,o.sz+4,0,Math.PI*2);ctx.fill();
+  }
+
+  // Player
+  ctx.fillStyle=hitFlash>0?'rgba(255,171,64,.6)':'#4fc3f7';
+  ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+  const gr=ctx.createRadialGradient(px,py,0,px,py,16);
+  gr.addColorStop(0,'rgba(79,195,247,.08)');gr.addColorStop(1,'rgba(79,195,247,0)');
+  ctx.fillStyle=gr;ctx.beginPath();ctx.arc(px,py,16,0,Math.PI*2);ctx.fill();
+
+  // Phase label
+  ctx.font='700 8px "IBM Plex Mono"';ctx.textAlign='center';
+  ctx.fillStyle='rgba(255,171,64,.55)';
+  ctx.fillText(phase==='single'?'SINGLE ORBITER':'MULTIPLE ORBITERS — CAGE',W/2,H-PAD-8);
+
+  ctx.font='600 7px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.45)';
+  ctx.fillText('AMMO 0/30',PAD+4,H-PAD-22);
+
+  for(const p of parts){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.col;ctx.beginPath();ctx.arc(p.x,p.y,p.sz,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1}
+
+  ctx.font='700 9px "IBM Plex Mono"';ctx.textAlign='center';ctx.fillStyle='rgba(255,171,64,.65)';
+  ctx.fillText('ORBITER',W/2,PAD-6);
+  ctx.font='500 7px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.35)';
+  ctx.fillText('Circles player → orbit tightens → single or group = cage effect',W/2,H-PAD+14);
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

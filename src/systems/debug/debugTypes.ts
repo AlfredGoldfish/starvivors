@@ -1,7 +1,14 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 import type { ShipId } from '../../data/ships';
 import type { WeaponId } from '../../data/weapons';
-import type { DebugImpactSourceType, DebugPhysicsTuningKey, DebugShipStatKey, DebugWeaponStatKey } from './debugState';
+import type {
+  DebugCollisionShapeScaleKey,
+  DebugImpactSourceType,
+  DebugPhysicsTuningKey,
+  DebugShipStatKey,
+  DebugWeaponStatKey
+} from './debugState';
+import type { DeathShardStyle, DeathShardTuningKey } from '../deathEffects';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
@@ -46,6 +53,12 @@ export interface DebugMenuValues {
   blackHoleAddPngTextureKey: BlackHolePngTextureKey;
   blackHoleAddPngTextureLabel: string;
   debugGamePaused: boolean;
+  performanceProfilerEnabled: boolean;
+  performanceProfilerManualActive: boolean;
+  performanceProfilerSummary: string;
+  autoDiagnosticsEnabled: boolean;
+  autoDiagnosticsActive: boolean;
+  autoDiagnosticsSummary: string;
   activeEnemies: number;
   activeAsteroids: number;
   activeDebris: number;
@@ -98,18 +111,34 @@ export interface DebugMenuValues {
   damageNumberScalePop: number;
   damageNumberFadeStart: number;
   damageNumberAlpha: number;
+  collisionShapeTuningSummary: string;
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
   rammingShieldDashCharges: number;
   rammingShieldDashMaxCharges: number;
   shipTuningSummaries: Record<ShipId, string>;
   weaponTuningSummaries: Record<WeaponId, string>;
+  deathShardTuningSummaries: Record<DeathShardStyle, string>;
   spawnDirectorSummary: string;
 }
 
 export interface DebugMenuCallbacks {
   close: () => void;
+  saveDebugPreset: () => void;
+  loadDebugPreset: () => void;
+  resetDebugTuning: () => void;
   toggleDebugPause: () => void;
+  togglePerformanceProfiler: () => void;
+  startPerformanceCapture: () => void;
+  stopPerformanceCapture: () => void;
+  exportPerformanceReport: () => void;
+  clearPerformanceProfiler: () => void;
+  openReportsFolder: () => void;
+  openDataFolder: () => void;
+  toggleAutoDiagnostics: () => void;
+  writeAutoDiagnosticReportNow: () => void;
+  openCurrentRunDiagnosticsFolder: () => void;
+  openRunsFolder: () => void;
   toggleEnemySpawning: () => void;
   spawnEnemy: (type: DebugEnemyType) => void;
   clearEnemies: () => void;
@@ -160,6 +189,13 @@ export interface DebugMenuCallbacks {
   adjustDamageNumberFadeStart: (delta: number) => void;
   adjustDamageNumberAlpha: (delta: number) => void;
   resetCombatFeedbackTuning: () => void;
+  adjustCollisionShapeScale: (key: DebugCollisionShapeScaleKey, delta: number) => void;
+  setCollisionShapeScale: (key: DebugCollisionShapeScaleKey, value: number) => void;
+  resetCollisionShapeTuning: () => void;
+  adjustDeathShardTuning: (style: DeathShardStyle, key: DeathShardTuningKey, delta: number) => void;
+  setDeathShardTuning: (style: DeathShardStyle, key: DeathShardTuningKey, value: number) => void;
+  resetDeathShardTuning: () => void;
+  testDeathShardEffect: (style: DeathShardStyle) => void;
   adjustWeaponDamage: (delta: number) => void;
   adjustWeaponFireRate: (delta: number) => void;
   adjustWeaponCooldownSeconds: (deltaSeconds: number) => void;

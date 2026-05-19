@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Preview: Boss Every N Waves</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@700&family=IBM+Plex+Mono:wght@400;500&family=Outfit:wght@300;400&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}body{background:#f4ede4;font-family:'Outfit',sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:24px}.card{background:#fffbf5;border:1px solid #d4c9b8;border-radius:6px;max-width:480px;width:100%;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.06)}.hdr{padding:14px 18px;border-bottom:1px solid #d4c9b8;display:flex;justify-content:space-between;align-items:center}.hdr h2{font-family:'Chakra Petch',sans-serif;font-size:1rem;color:#2a2420}.tag{font-family:'IBM Plex Mono',monospace;font-size:.55rem;letter-spacing:2px;color:#b8860b;background:rgba(184,134,11,.1);padding:3px 8px;border-radius:2px}.cwrap{position:relative;background:#1a1a2e;aspect-ratio:4/3}canvas{width:100%;height:100%;display:block}.lbl{position:absolute;bottom:8px;left:8px;font-family:'IBM Plex Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.3);letter-spacing:2px}.body{padding:16px 18px}.desc{font-size:.88rem;color:#5c5347;line-height:1.65;margin-bottom:12px;font-weight:300}.dr{display:flex;gap:8px;margin-bottom:6px}.dl{font-family:'IBM Plex Mono',monospace;font-size:.58rem;color:#8a7e70;letter-spacing:1px;min-width:70px}.dv{font-size:.78rem;color:#2a2420}.foot{padding:10px 18px;border-top:1px solid #d4c9b8;display:flex;gap:6px;flex-wrap:wrap}.ft{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#8a7e70;background:#e8ddd0;padding:2px 8px;border-radius:2px}.fe{font-family:'IBM Plex Mono',monospace;font-size:.52rem;color:#b8860b;font-style:italic;padding:2px 8px}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="hdr"><h2>Boss Every N Waves</h2><div class="tag">Pattern</div></div>
+  <div class="cwrap">
+    <canvas id="c" width="480" height="360"></canvas>
+    <div class="lbl">Live Preview</div>
+  </div>
+  <div class="body">
+    <div class="desc">Normal waves alternate with boss encounters at set intervals (every 3, 5, or 10 waves). Boss waves feature a single large enemy with a top-screen HP bar, a name, multiple attack patterns, and phase transitions at HP thresholds. Defeating the boss yields big rewards and a full heal. Bosses are milestone moments that punctuate the run.</div>
+    <div class="dr"><div class="dl">Rhythm</div><div class="dv">Wave 1-4: normal → Wave 5: BOSS → repeat harder</div></div>
+    <div class="dr"><div class="dl">Best for</div><div class="dv">Arena shooters, RPGs, action games with progression</div></div>
+    <div class="dr"><div class="dl">Strength</div><div class="dv">Epic milestone moments, tests player skill/build</div></div>
+    <div class="dr"><div class="dl">Feel</div><div class="dv">Anticipation building → intense fight → triumph and reward</div></div>
+  </div>
+  <div class="foot">
+    <span class="ft">Arena</span><span class="ft">RPG</span><span class="ft">Action</span>
+    <span class="fe">e.g. Hades, Gungeon, Risk of Rain, every Zelda</span>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),W=480,H=360;
+const PAD=15;
+let wave=1,isBoss=false,timer=0;
+let px=W/2,py=H/2,pt={x:W/2,y:H/2},pTimer=0;
+let enemies=[],projs=[],particles=[];
+let boss=null,bossPhase=0;
+let state="fight",stateTimer=0;
+let shootTimer=0;
+
+const BOSS_NAMES=["GORECLAW","VOIDMAW","DREADLORD"];
+function spawnNormal(n){for(let i=0;i<n;i++){const side=Math.floor(Math.random()*4);let x,y;if(side===0){x=PAD;y=PAD+Math.random()*(H-PAD*2)}else if(side===1){x=W-PAD;y=PAD+Math.random()*(H-PAD*2)}else if(side===2){x=PAD+Math.random()*(W-PAD*2);y=PAD}else{x=PAD+Math.random()*(W-PAD*2);y=H-PAD}enemies.push({x,y,s:6,hp:1,speed:.8,flash:0})}}
+function spawnBoss(){
+  const name=BOSS_NAMES[Math.floor(Math.random()*BOSS_NAMES.length)];
+  boss={x:W/2,y:100,s:30,hp:40,maxHp:40,speed:0.5,name,flash:0,attackTimer:0,pattern:0,phase:1,projTimer:0};
+  bossPhase=1;
+}
+function burst(bx,by,col,n){for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,s=1+Math.random()*3;particles.push({x:bx,y:by,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:20,ml:20,color:col,size:2})}}
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2)}
+
+function startWave(){
+  isBoss=wave%3===0;enemies=[];projs=[];boss=null;
+  if(isBoss)spawnBoss();else spawnNormal(3+wave);
+  state="fight";stateTimer=0;timer=0;
+}
+startWave();
+
+function update(){
+  timer++;stateTimer++;
+
+  if(state==="announce"){
+    if(stateTimer>60){startWave()}
+    return;
+  }
+
+  if(state==="victory"){
+    if(stateTimer>70){wave++;state="announce";stateTimer=0}
+    return;
+  }
+
+  // Player AI
+  pTimer++;if(pTimer>60||dist({x:px,y:py},pt)<15){pt={x:PAD+40+Math.random()*(W-PAD*2-80),y:PAD+80+Math.random()*(H-PAD*2-120)};pTimer=0}
+  const dx=pt.x-px,dy=pt.y-py,d=Math.sqrt(dx*dx+dy*dy);if(d>2){px+=dx/d*2.2;py+=dy/d*2.2}
+  px=Math.max(PAD+6,Math.min(W-PAD-6,px));py=Math.max(PAD+40,Math.min(H-PAD-6,py));
+
+  // Shoot at boss or enemies
+  shootTimer++;
+  const target=boss||(enemies.length>0?enemies.reduce((a,b)=>dist({x:px,y:py},a)<dist({x:px,y:py},b)?a:b):null);
+  if(shootTimer>8&&target){const a=Math.atan2(target.y-py,target.x-px);projs.push({x:px,y:py,vx:Math.cos(a)*6,vy:Math.sin(a)*6,life:50,friendly:true});shootTimer=0}
+
+  // Projs
+  for(let i=projs.length-1;i>=0;i--){const p=projs[i];p.x+=p.vx;p.y+=p.vy;p.life--;
+    if(p.life<=0||p.x<0||p.x>W||p.y<0||p.y>H){projs.splice(i,1);continue}
+    if(p.friendly){
+      // Hit enemies
+      for(let j=enemies.length-1;j>=0;j--){if(dist(p,enemies[j])<enemies[j].s+3){enemies[j].hp--;enemies[j].flash=5;burst(p.x,p.y,'#66bb6a',3);projs.splice(i,1);if(enemies[j].hp<=0){burst(enemies[j].x,enemies[j].y,'#ef5350',6);enemies.splice(j,1)}break}}
+      // Hit boss
+      if(boss&&dist(p,boss)<boss.s+3){boss.hp--;boss.flash=4;burst(p.x,p.y,'#66bb6a',2);projs.splice(i,1);
+        if(boss.hp<=0){burst(boss.x,boss.y,'#ffca28',25);boss=null;state="victory";stateTimer=0}
+        else if(boss.hp<boss.maxHp*0.5&&bossPhase===1){bossPhase=2;boss.phase=2;boss.speed=1;burst(boss.x,boss.y,'#ff5722',15)}
+      }
+    }
+  }
+
+  // Normal enemies
+  for(const e of enemies){const edx=px-e.x,edy=py-e.y,ed=Math.sqrt(edx*edx+edy*edy);if(ed>1){e.x+=edx/ed*e.speed;e.y+=edy/ed*e.speed}if(e.flash>0)e.flash--}
+  if(!isBoss&&enemies.length===0&&state==="fight"){state="victory";stateTimer=0}
+
+  // Boss AI
+  if(boss){
+    boss.attackTimer++;
+    // Movement: circle around center
+    const bAngle=timer*0.015*boss.phase;
+    const bRadius=60+Math.sin(timer*0.008)*30;
+    boss.x+=(W/2+Math.cos(bAngle)*bRadius-boss.x)*0.03;
+    boss.y+=(90+Math.sin(bAngle*0.7)*40-boss.y)*0.03;
+    if(boss.flash>0)boss.flash--;
+    // Boss attacks
+    boss.projTimer++;
+    const rate=boss.phase===1?40:20;
+    if(boss.projTimer>=rate){
+      if(boss.phase===1){
+        // Single aimed shot
+        const a=Math.atan2(py-boss.y,px-boss.x);
+        projs.push({x:boss.x,y:boss.y,vx:Math.cos(a)*3,vy:Math.sin(a)*3,life:80,friendly:false});
+      }else{
+        // Burst pattern
+        for(let i=0;i<6;i++){const a=(Math.PI*2/6)*i+timer*0.05;projs.push({x:boss.x,y:boss.y,vx:Math.cos(a)*2.5,vy:Math.sin(a)*2.5,life:60,friendly:false})}
+      }
+      boss.projTimer=0;
+    }
+  }
+
+  // Particles
+  for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx;p.y+=p.vy;p.vx*=.93;p.vy*=.93;p.life--;if(p.life<=0)particles.splice(i,1)}
+}
+
+function draw(){
+  ctx.fillStyle=isBoss?'#120a0a':'#0f1118';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='rgba(255,255,255,.04)';ctx.strokeRect(PAD,PAD,W-PAD*2,H-PAD*2);
+
+  // Enemies
+  for(const e of enemies){ctx.fillStyle=e.flash>0?'#fff':'#ef5350';ctx.fillRect(e.x-e.s/2,e.y-e.s/2,e.s,e.s)}
+
+  // Boss
+  if(boss){
+    // Boss glow
+    const bg=ctx.createRadialGradient(boss.x,boss.y,0,boss.x,boss.y,boss.s*2);
+    bg.addColorStop(0,boss.phase===2?'rgba(255,87,34,.1)':'rgba(239,83,80,.08)');bg.addColorStop(1,'transparent');
+    ctx.fillStyle=bg;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.s*2,0,Math.PI*2);ctx.fill();
+    // Boss body
+    ctx.fillStyle=boss.flash>0?'#fff':boss.phase===2?'#ff5722':'#d32f2f';
+    ctx.fillRect(boss.x-boss.s/2,boss.y-boss.s/2,boss.s,boss.s);
+    // Boss eyes
+    ctx.fillStyle='#ffca28';ctx.fillRect(boss.x-8,boss.y-5,4,4);ctx.fillRect(boss.x+4,boss.y-5,4,4);
+    // Phase indicator
+    if(boss.phase===2){ctx.strokeStyle='rgba(255,87,34,.4)';ctx.lineWidth=2;ctx.beginPath();ctx.arc(boss.x,boss.y,boss.s/2+5+Math.sin(timer*.1)*3,0,Math.PI*2);ctx.stroke()}
+
+    // Top HP bar
+    ctx.fillStyle='rgba(0,0,0,.6)';ctx.fillRect(60,8,W-120,12);
+    ctx.fillStyle=boss.hp>boss.maxHp*.5?'#d32f2f':'#ff5722';
+    ctx.fillRect(61,9,(W-122)*(boss.hp/boss.maxHp),10);
+    ctx.strokeStyle='rgba(255,255,255,.15)';ctx.strokeRect(60,8,W-120,12);
+    ctx.font='700 8px "Chakra Petch"';ctx.fillStyle='#fff';ctx.textAlign='center';ctx.fillText(boss.name,W/2,17);
+    // Phase label
+    ctx.font='500 6px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText(`PHASE ${boss.phase}`,W/2,28);
+  }
+
+  // Projs
+  for(const p of projs){ctx.fillStyle=p.friendly?'#66bb6a':'#ef5350';ctx.beginPath();ctx.arc(p.x,p.y,p.friendly?2.5:3.5,0,Math.PI*2);ctx.fill();
+    if(!p.friendly){ctx.fillStyle='rgba(239,83,80,.15)';ctx.beginPath();ctx.arc(p.x,p.y,6,0,Math.PI*2);ctx.fill()}}
+
+  // Player
+  ctx.fillStyle='#4fc3f7';ctx.beginPath();ctx.arc(px,py,7,0,Math.PI*2);ctx.fill();
+
+  // Particles
+  for(const p of particles){ctx.globalAlpha=p.life/p.ml;ctx.fillStyle=p.color;ctx.fillRect(p.x-p.size/2,p.y-p.size/2,p.size,p.size);ctx.globalAlpha=1}
+
+  // Wave indicator
+  if(!isBoss){
+    ctx.font='600 9px "IBM Plex Mono"';ctx.textAlign='left';ctx.fillStyle='rgba(255,255,255,.4)';ctx.fillText(`WAVE ${wave}`,PAD+4,H-8);
+    // Boss countdown
+    const untilBoss=3-(wave%3);
+    ctx.textAlign='right';ctx.fillStyle='rgba(239,83,80,.3)';ctx.fillText(untilBoss===0?'BOSS NEXT!':untilBoss===3?'BOSS NEXT!':`BOSS IN ${untilBoss}`,W-PAD-4,H-8);
+    // Mini circles showing wave rhythm
+    for(let i=0;i<3;i++){const wi=wave%3;ctx.fillStyle=i<wi?'rgba(255,255,255,.15)':i===wi?'rgba(79,195,247,.4)':'rgba(255,255,255,.05)';ctx.beginPath();ctx.arc(W/2-12+i*12,H-8,3,0,Math.PI*2);ctx.fill()}
+    ctx.fillStyle='rgba(239,83,80,.3)';ctx.beginPath();ctx.arc(W/2+24,H-8,4,0,Math.PI*2);ctx.fill();
+    ctx.font='400 5px "IBM Plex Mono"';ctx.fillStyle='rgba(255,255,255,.15)';ctx.textAlign='center';ctx.fillText('BOSS',W/2+24,H-14);
+  }
+
+  // Announce
+  if(state==="announce"){
+    ctx.fillStyle=`rgba(0,0,0,${Math.min(.7,stateTimer/30)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 22px "Chakra Petch"';ctx.textAlign='center';
+    const nextBoss=wave%3===0;
+    ctx.fillStyle=nextBoss?'#ff5722':'rgba(255,255,255,.5)';
+    ctx.fillText(nextBoss?'⚠ BOSS WAVE ⚠':`WAVE ${wave}`,W/2,H/2-5);
+    if(nextBoss){ctx.font='400 10px "Outfit"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('A powerful enemy approaches...',W/2,H/2+18)}
+  }
+
+  // Victory
+  if(state==="victory"){
+    ctx.fillStyle=`rgba(0,0,0,${Math.min(.5,stateTimer/30)})`;ctx.fillRect(0,0,W,H);
+    ctx.font='700 18px "Chakra Petch"';ctx.fillStyle=isBoss?'#ffca28':'#66bb6a';ctx.textAlign='center';
+    ctx.fillText(isBoss?'BOSS DEFEATED!':'WAVE CLEARED',W/2,H/2-5);
+    if(isBoss){ctx.font='400 9px "Outfit"';ctx.fillStyle='rgba(255,255,255,.3)';ctx.fillText('Rare reward + Full heal!',W/2,H/2+15)}
+  }
+}
+function loop(){update();draw();requestAnimationFrame(loop)}loop();
+</script>
+</body>
+</html>

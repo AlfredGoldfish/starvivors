@@ -1,5 +1,8 @@
 *.zip
 node_modules/
 dist/
+dist-electron/
+release/
+runtime-data/
 .vite-dev-server.pid
 vite-dev*.log

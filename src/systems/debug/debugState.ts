@@ -1,8 +1,17 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
+import { COMBAT_NUMBER_SCALE } from '../../data/combatScale';
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
 import type { RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import type { DebugMenuValues } from './debugTypes';
 import { formatDisplayUnits, formatIntegerDisplayUnits } from '../statUnits';
+import {
+  DEATH_SHARD_STYLES,
+  DEFAULT_DEATH_SHARD_TUNING,
+  type DeathShardStyle,
+  type DeathShardStyleTuning,
+  type DeathShardTuningKey,
+  type DeathShardTuningMap
+} from '../deathEffects';
 
 const DEBUG_WEAPON_DAMAGE_MULTIPLIER_MIN = 1;
 const DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN = 0.1;
@@ -22,11 +31,11 @@ const DEFAULT_ENEMY_MASS_EXPONENT = 0.38;
 const DEFAULT_ASTEROID_COLLISION_DAMAGE_SCALE = 1;
 const DEFAULT_ASTEROID_COLLISION_IMPULSE_SCALE = 1;
 const DEFAULT_GLOBAL_MAX_SPEED = 500;
-const DEFAULT_GLOBAL_IMPACT_DAMAGE_CAP = 600;
+const DEFAULT_GLOBAL_IMPACT_DAMAGE_CAP = 600 * COMBAT_NUMBER_SCALE;
 const DEBUG_GLOBAL_MAX_SPEED_MIN = 1;
 const DEBUG_GLOBAL_MAX_SPEED_MAX = 10000;
 const DEBUG_IMPACT_CAP_MIN = 0;
-const DEBUG_IMPACT_CAP_MAX = 10000;
+const DEBUG_IMPACT_CAP_MAX = 10000 * COMBAT_NUMBER_SCALE;
 const DEBUG_IMPACT_SCALE_MIN = 0;
 const DEBUG_IMPACT_SCALE_MAX = 10;
 const DEFAULT_HEALTH_BAR_WIDTH_SCALE = 1;
@@ -40,8 +49,19 @@ const DEFAULT_DAMAGE_NUMBER_DRIFT = 18;
 const DEFAULT_DAMAGE_NUMBER_SCALE_POP = 1.22;
 const DEFAULT_DAMAGE_NUMBER_FADE_START = 0.45;
 const DEFAULT_DAMAGE_NUMBER_ALPHA = 1;
+const DEFAULT_COLLISION_SHAPE_SCALES: DebugCollisionShapeScales = {
+  global: 0.9,
+  player: 0.75,
+  enemy: 0.82,
+  asteroid: 0.88,
+  debris: 0.85
+};
+const DEBUG_COLLISION_SHAPE_SCALE_MIN = 0.35;
+const DEBUG_COLLISION_SHAPE_SCALE_MAX = 1.25;
 
 export type DebugImpactSourceType = 'player' | 'enemy' | 'asteroid' | 'debris';
+export type DebugCollisionShapeScaleKey = 'global' | 'player' | 'enemy' | 'asteroid' | 'debris';
+export type DebugCollisionShapeScales = Record<DebugCollisionShapeScaleKey, number>;
 export type DebugPhysicsTuningKey =
   | 'globalMaxSpeed'
   | 'globalImpactDamageCap'
@@ -90,6 +110,7 @@ export type DebugWeaponStatKey =
 
 export type DebugShipOverrides = Partial<Record<DebugShipStatKey, number>>;
 export type DebugWeaponOverrides = Partial<Record<DebugWeaponStatKey, number>>;
+export type DebugPresetState = ReturnType<DebugState['createDebugPresetState']>;
 
 const SHIP_STAT_MIN: Record<DebugShipStatKey, number> = {
   maxHull: 1,
@@ -177,6 +198,8 @@ export class DebugState {
   damageNumberScalePop = DEFAULT_DAMAGE_NUMBER_SCALE_POP;
   damageNumberFadeStart = DEFAULT_DAMAGE_NUMBER_FADE_START;
   damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
+  collisionShapeScales: DebugCollisionShapeScales = { ...DEFAULT_COLLISION_SHAPE_SCALES };
+  deathShardTuning: DeathShardTuningMap = structuredClone(DEFAULT_DEATH_SHARD_TUNING);
   readonly shipOverrides: Partial<Record<ShipId, DebugShipOverrides>> = {};
   readonly weaponOverrides: Partial<Record<WeaponId, DebugWeaponOverrides>> = {};
 
@@ -429,6 +452,62 @@ export class DebugState {
     this.damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
   }
 
+  adjustCollisionShapeScale(key: DebugCollisionShapeScaleKey, delta: number): void {
+    this.setCollisionShapeScale(key, this.collisionShapeScales[key] + delta);
+  }
+
+  setCollisionShapeScale(key: DebugCollisionShapeScaleKey, value: number): void {
+    this.collisionShapeScales[key] = this.clampCollisionShapeScale(value);
+  }
+
+  getCollisionShapeScale(key: Exclude<DebugCollisionShapeScaleKey, 'global'>): number {
+    return Number((this.collisionShapeScales.global * this.collisionShapeScales[key]).toFixed(4));
+  }
+
+  resetCollisionShapeTuning(): void {
+    this.collisionShapeScales = { ...DEFAULT_COLLISION_SHAPE_SCALES };
+  }
+
+  getCollisionShapeTuningSummary(): string {
+    return `Global x${this.collisionShapeScales.global.toFixed(2)}\nPlayer x${this.collisionShapeScales.player.toFixed(2)}  Enemy x${this.collisionShapeScales.enemy.toFixed(2)}\nAsteroid x${this.collisionShapeScales.asteroid.toFixed(2)}  Debris x${this.collisionShapeScales.debris.toFixed(2)}`;
+  }
+
+  adjustDeathShardTuning(style: DeathShardStyle, key: DeathShardTuningKey, delta: number): void {
+    this.setDeathShardTuning(style, key, this.deathShardTuning[style][key] + delta);
+  }
+
+  setDeathShardTuning(style: DeathShardStyle, key: DeathShardTuningKey, value: number): void {
+    this.deathShardTuning[style] = {
+      ...this.deathShardTuning[style],
+      [key]: this.clampDeathShardTuning(key, value)
+    };
+  }
+
+  resetDeathShardTuning(): void {
+    this.deathShardTuning = structuredClone(DEFAULT_DEATH_SHARD_TUNING);
+  }
+
+  getDeathShardTuningSummary(style: DeathShardStyle): string {
+    const tuning = this.deathShardTuning[style];
+
+    return `${this.getDeathShardStyleLabel(style)}\nCount x${tuning.countScale.toFixed(2)}  Life x${tuning.lifetimeScale.toFixed(2)}  Size x${tuning.sizeScale.toFixed(2)}\nInherit x${tuning.inheritedVelocityScale.toFixed(2)}  Burst x${tuning.burstSpeedScale.toFixed(2)}\nAlpha x${tuning.alphaScale.toFixed(2)}  Dissolve ${(tuning.dissolveStart * 100).toFixed(0)}%`;
+  }
+
+  getDeathShardStyleLabel(style: DeathShardStyle): string {
+    switch (style) {
+      case 'player':
+        return 'Player death';
+      case 'asteroid':
+        return 'Asteroid death';
+      case 'blackHoleShip':
+        return 'Black hole ship';
+      case 'blackHoleAsteroid':
+        return 'Black hole asteroid';
+      default:
+        return 'Enemy ship';
+    }
+  }
+
   adjustShipStat(ship: ShipRegistryEntry, key: DebugShipStatKey, delta: number): void {
     const overrides = this.shipOverrides[ship.id] ?? {};
     const current = overrides[key] ?? this.getBaseShipStat(ship, key);
@@ -566,6 +645,12 @@ export class DebugState {
     blackHoleAddPngTextureKey: BlackHolePngTextureKey;
     blackHoleAddPngTextureLabel: string;
     debugGamePaused: boolean;
+    performanceProfilerEnabled: boolean;
+    performanceProfilerManualActive: boolean;
+    performanceProfilerSummary: string;
+    autoDiagnosticsEnabled: boolean;
+    autoDiagnosticsActive: boolean;
+    autoDiagnosticsSummary: string;
     activeEnemies: number;
     activeAsteroids: number;
     activeDebris: number;
@@ -630,6 +715,12 @@ export class DebugState {
       blackHoleAddPngTextureKey: snapshot.blackHoleAddPngTextureKey,
       blackHoleAddPngTextureLabel: snapshot.blackHoleAddPngTextureLabel,
       debugGamePaused: snapshot.debugGamePaused,
+      performanceProfilerEnabled: snapshot.performanceProfilerEnabled,
+      performanceProfilerManualActive: snapshot.performanceProfilerManualActive,
+      performanceProfilerSummary: snapshot.performanceProfilerSummary,
+      autoDiagnosticsEnabled: snapshot.autoDiagnosticsEnabled,
+      autoDiagnosticsActive: snapshot.autoDiagnosticsActive,
+      autoDiagnosticsSummary: snapshot.autoDiagnosticsSummary,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,
       activeDebris: snapshot.activeDebris,
@@ -682,14 +773,165 @@ export class DebugState {
       damageNumberScalePop: this.damageNumberScalePop,
       damageNumberFadeStart: this.damageNumberFadeStart,
       damageNumberAlpha: this.damageNumberAlpha,
+      collisionShapeTuningSummary: this.getCollisionShapeTuningSummary(),
       rammingShieldHp: snapshot.rammingShieldHp,
       rammingShieldMaxHp: snapshot.rammingShieldMaxHp,
       rammingShieldDashCharges: snapshot.rammingShieldDashCharges,
       rammingShieldDashMaxCharges: snapshot.rammingShieldDashMaxCharges,
       shipTuningSummaries: snapshot.shipTuningSummaries,
       weaponTuningSummaries: snapshot.weaponTuningSummaries,
+      deathShardTuningSummaries: {
+        ship: this.getDeathShardTuningSummary('ship'),
+        player: this.getDeathShardTuningSummary('player'),
+        asteroid: this.getDeathShardTuningSummary('asteroid'),
+        blackHoleShip: this.getDeathShardTuningSummary('blackHoleShip'),
+        blackHoleAsteroid: this.getDeathShardTuningSummary('blackHoleAsteroid')
+      },
       spawnDirectorSummary: `Spawner ${this.enemySpawningEnabled ? 'on' : 'off'} / next ${snapshot.nextEnemySpawnSeconds.toFixed(1)}s`
     };
+  }
+
+  createDebugPresetState() {
+    return {
+      schemaVersion: 1,
+      toggles: {
+        collisionDebugEnabled: this.collisionDebugEnabled,
+        enemySpawningEnabled: this.enemySpawningEnabled,
+        asteroidSpawningEnabled: this.asteroidSpawningEnabled,
+        playerInvulnerable: this.playerInvulnerable,
+        showBlackHoleRadii: this.showBlackHoleRadii,
+        blackHoleFieldDamageEnabled: this.blackHoleFieldDamageEnabled
+      },
+      weaponMultipliers: {
+        weaponDamageMultiplier: this.weaponDamageMultiplier,
+        weaponFireRateMultiplier: this.weaponFireRateMultiplier
+      },
+      physics: {
+        playerThrustScale: this.playerThrustScale,
+        playerBrakeScale: this.playerBrakeScale,
+        playerStrafeScale: this.playerStrafeScale,
+        playerInertiaScale: this.playerInertiaScale,
+        playerControlMassExponent: this.playerControlMassExponent,
+        enemySpeedScale: this.enemySpeedScale,
+        enemyResponseScale: this.enemyResponseScale,
+        enemyMassExponent: this.enemyMassExponent,
+        asteroidCollisionDamageScale: this.asteroidCollisionDamageScale,
+        asteroidCollisionImpulseScale: this.asteroidCollisionImpulseScale,
+        globalMaxSpeed: this.globalMaxSpeed,
+        globalImpactDamageCap: this.globalImpactDamageCap,
+        impactDamageCaps: { ...this.impactDamageCaps },
+        impactDamageScales: { ...this.impactDamageScales }
+      },
+      combatFeedback: {
+        healthBarsEnabled: this.healthBarsEnabled,
+        playerHealthBarEnabled: this.playerHealthBarEnabled,
+        healthBarRevealOnPlayerDamage: this.healthBarRevealOnPlayerDamage,
+        healthBarWidthScale: this.healthBarWidthScale,
+        healthBarHeight: this.healthBarHeight,
+        healthBarVerticalOffset: this.healthBarVerticalOffset,
+        healthBarAlpha: this.healthBarAlpha,
+        damageNumbersEnabled: this.damageNumbersEnabled,
+        damageNumberSourceColorsEnabled: this.damageNumberSourceColorsEnabled,
+        damageNumberFontSize: this.damageNumberFontSize,
+        damageNumberLifetimeMs: this.damageNumberLifetimeMs,
+        damageNumberRiseDistance: this.damageNumberRiseDistance,
+        damageNumberDrift: this.damageNumberDrift,
+        damageNumberScalePop: this.damageNumberScalePop,
+        damageNumberFadeStart: this.damageNumberFadeStart,
+        damageNumberAlpha: this.damageNumberAlpha
+      },
+      collisionShapes: { ...this.collisionShapeScales },
+      deathShardTuning: structuredClone(this.deathShardTuning),
+      shipOverrides: structuredClone(this.shipOverrides),
+      weaponOverrides: structuredClone(this.weaponOverrides)
+    };
+  }
+
+  applyDebugPresetState(state: unknown): void {
+    if (!state || typeof state !== 'object') {
+      return;
+    }
+
+    const preset = state as Record<string, unknown>;
+    const toggles = this.getRecord(preset.toggles);
+    this.collisionDebugEnabled = this.getBoolean(toggles.collisionDebugEnabled, this.collisionDebugEnabled);
+    this.enemySpawningEnabled = this.getBoolean(toggles.enemySpawningEnabled, this.enemySpawningEnabled);
+    this.asteroidSpawningEnabled = this.getBoolean(toggles.asteroidSpawningEnabled, this.asteroidSpawningEnabled);
+    this.playerInvulnerable = this.getBoolean(toggles.playerInvulnerable, this.playerInvulnerable);
+    this.showBlackHoleRadii = this.getBoolean(toggles.showBlackHoleRadii, this.showBlackHoleRadii);
+    this.blackHoleFieldDamageEnabled = this.getBoolean(toggles.blackHoleFieldDamageEnabled, this.blackHoleFieldDamageEnabled);
+
+    const weaponMultipliers = this.getRecord(preset.weaponMultipliers);
+    this.weaponDamageMultiplier = Number(Math.max(DEBUG_WEAPON_DAMAGE_MULTIPLIER_MIN, this.getNumber(weaponMultipliers.weaponDamageMultiplier, this.weaponDamageMultiplier)).toFixed(1));
+    this.weaponFireRateMultiplier = Number(Math.max(DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN, this.getNumber(weaponMultipliers.weaponFireRateMultiplier, this.weaponFireRateMultiplier)).toFixed(1));
+
+    const physics = this.getRecord(preset.physics);
+    for (const key of [
+      'playerThrustScale',
+      'playerBrakeScale',
+      'playerStrafeScale',
+      'playerInertiaScale',
+      'playerControlMassExponent',
+      'enemySpeedScale',
+      'enemyResponseScale',
+      'enemyMassExponent',
+      'asteroidCollisionDamageScale',
+      'asteroidCollisionImpulseScale',
+      'globalMaxSpeed',
+      'globalImpactDamageCap'
+    ] as const) {
+      this.setPhysicsTuning(key, this.getNumber(physics[key], this[key]));
+    }
+
+    const impactDamageCaps = this.getRecord(physics.impactDamageCaps);
+    const impactDamageScales = this.getRecord(physics.impactDamageScales);
+    for (const source of ['player', 'enemy', 'asteroid', 'debris'] as const) {
+      this.setImpactDamageCap(source, this.getNumber(impactDamageCaps[source], this.impactDamageCaps[source]));
+      this.setImpactDamageScale(source, this.getNumber(impactDamageScales[source], this.impactDamageScales[source]));
+    }
+
+    const combatFeedback = this.getRecord(preset.combatFeedback);
+    this.healthBarsEnabled = this.getBoolean(combatFeedback.healthBarsEnabled, this.healthBarsEnabled);
+    this.playerHealthBarEnabled = this.getBoolean(combatFeedback.playerHealthBarEnabled, this.playerHealthBarEnabled);
+    this.healthBarRevealOnPlayerDamage = this.getBoolean(combatFeedback.healthBarRevealOnPlayerDamage, this.healthBarRevealOnPlayerDamage);
+    this.healthBarWidthScale = Number(this.clampNumber(this.getNumber(combatFeedback.healthBarWidthScale, this.healthBarWidthScale), 0.5, 2).toFixed(2));
+    this.healthBarHeight = Math.round(this.clampNumber(this.getNumber(combatFeedback.healthBarHeight, this.healthBarHeight), 2, 12));
+    this.healthBarVerticalOffset = Math.round(this.clampNumber(this.getNumber(combatFeedback.healthBarVerticalOffset, this.healthBarVerticalOffset), 12, 80));
+    this.healthBarAlpha = Number(this.clampNumber(this.getNumber(combatFeedback.healthBarAlpha, this.healthBarAlpha), 0.25, 1).toFixed(2));
+    this.damageNumbersEnabled = this.getBoolean(combatFeedback.damageNumbersEnabled, this.damageNumbersEnabled);
+    this.damageNumberSourceColorsEnabled = this.getBoolean(combatFeedback.damageNumberSourceColorsEnabled, this.damageNumberSourceColorsEnabled);
+    this.damageNumberFontSize = Math.round(this.clampNumber(this.getNumber(combatFeedback.damageNumberFontSize, this.damageNumberFontSize), 8, 34));
+    this.damageNumberLifetimeMs = Math.round(this.clampNumber(this.getNumber(combatFeedback.damageNumberLifetimeMs, this.damageNumberLifetimeMs), 250, 2200));
+    this.damageNumberRiseDistance = Math.round(this.clampNumber(this.getNumber(combatFeedback.damageNumberRiseDistance, this.damageNumberRiseDistance), 8, 120));
+    this.damageNumberDrift = Math.round(this.clampNumber(this.getNumber(combatFeedback.damageNumberDrift, this.damageNumberDrift), 0, 80));
+    this.damageNumberScalePop = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberScalePop, this.damageNumberScalePop), 1, 2).toFixed(2));
+    this.damageNumberFadeStart = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberFadeStart, this.damageNumberFadeStart), 0, 0.9).toFixed(2));
+    this.damageNumberAlpha = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberAlpha, this.damageNumberAlpha), 0.25, 1).toFixed(2));
+
+    this.applyDeathShardPreset(preset.deathShardTuning);
+    this.applyCollisionShapePreset(preset.collisionShapes);
+    this.applyShipOverridePreset(preset.shipOverrides);
+    this.applyWeaponOverridePreset(preset.weaponOverrides);
+  }
+
+  resetAllDebugTuning(): void {
+    this.collisionDebugEnabled = false;
+    this.enemySpawningEnabled = true;
+    this.asteroidSpawningEnabled = false;
+    this.playerInvulnerable = false;
+    this.showBlackHoleRadii = false;
+    this.blackHoleFieldDamageEnabled = true;
+    this.resetWeaponTuning();
+    this.resetPhysicsTuning();
+    this.resetCombatFeedbackTuning();
+    this.resetCollisionShapeTuning();
+    this.resetDeathShardTuning();
+    for (const key of Object.keys(this.shipOverrides)) {
+      delete this.shipOverrides[key as ShipId];
+    }
+    for (const key of Object.keys(this.weaponOverrides)) {
+      delete this.weaponOverrides[key as WeaponId];
+    }
   }
 
   private getBaseShipStat(ship: ShipRegistryEntry, key: DebugShipStatKey): number {
@@ -762,7 +1004,79 @@ export class DebugState {
     return Number(Math.min(DEBUG_IMPACT_SCALE_MAX, Math.max(DEBUG_IMPACT_SCALE_MIN, value)).toFixed(3));
   }
 
+  private clampCollisionShapeScale(value: number): number {
+    return Number(Math.min(DEBUG_COLLISION_SHAPE_SCALE_MAX, Math.max(DEBUG_COLLISION_SHAPE_SCALE_MIN, value)).toFixed(2));
+  }
+
   private clampNumber(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
+  }
+
+  private clampDeathShardTuning(key: DeathShardTuningKey, value: number): number {
+    const [min, max] = key === 'dissolveStart' ? [0, 0.9] : key === 'alphaScale' ? [0.1, 1.4] : [0.1, 4];
+    return Number(this.clampNumber(value, min, max).toFixed(2));
+  }
+
+  private applyDeathShardPreset(raw: unknown): void {
+    const record = this.getRecord(raw);
+    for (const style of DEATH_SHARD_STYLES) {
+      const rawStyle = this.getRecord(record[style]);
+      for (const key of Object.keys(DEFAULT_DEATH_SHARD_TUNING[style]) as DeathShardTuningKey[]) {
+        this.setDeathShardTuning(style, key, this.getNumber(rawStyle[key], this.deathShardTuning[style][key]));
+      }
+    }
+  }
+
+  private applyCollisionShapePreset(raw: unknown): void {
+    const record = this.getRecord(raw);
+    for (const key of Object.keys(DEFAULT_COLLISION_SHAPE_SCALES) as DebugCollisionShapeScaleKey[]) {
+      this.setCollisionShapeScale(key, this.getNumber(record[key], this.collisionShapeScales[key]));
+    }
+  }
+
+  private applyShipOverridePreset(raw: unknown): void {
+    const record = this.getRecord(raw);
+    for (const key of Object.keys(this.shipOverrides)) {
+      delete this.shipOverrides[key as ShipId];
+    }
+    for (const [shipId, rawOverrides] of Object.entries(record)) {
+      const overrides = this.getRecord(rawOverrides);
+      const next: DebugShipOverrides = {};
+      for (const stat of ['maxHull', 'mass', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'] as DebugShipStatKey[]) {
+        if (typeof overrides[stat] === 'number' && Number.isFinite(overrides[stat])) {
+          next[stat] = this.clampShipStat(stat, overrides[stat]);
+        }
+      }
+      this.shipOverrides[shipId as ShipId] = next;
+    }
+  }
+
+  private applyWeaponOverridePreset(raw: unknown): void {
+    const record = this.getRecord(raw);
+    for (const key of Object.keys(this.weaponOverrides)) {
+      delete this.weaponOverrides[key as WeaponId];
+    }
+    for (const [weaponId, rawOverrides] of Object.entries(record)) {
+      const overrides = this.getRecord(rawOverrides);
+      const next: DebugWeaponOverrides = {};
+      for (const stat of Object.keys(WEAPON_STAT_MIN) as DebugWeaponStatKey[]) {
+        if (typeof overrides[stat] === 'number' && Number.isFinite(overrides[stat])) {
+          next[stat] = this.clampWeaponStat(stat, overrides[stat]);
+        }
+      }
+      this.weaponOverrides[weaponId as WeaponId] = next;
+    }
+  }
+
+  private getRecord(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+  }
+
+  private getNumber(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  }
+
+  private getBoolean(value: unknown, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback;
   }
 }
