@@ -68,10 +68,10 @@ export const pulseCannon: WeaponRegistryEntry = {
   inputBehavior: 'hold',
   autoFire: false,
   assignmentType: 'manual',
-  slotCompatibility: ['auto', 'primary'],
+  slotCompatibility: ['primary'],
   slotBehavior: {
     primary: 'Hold left click or fire key to shoot toward the mouse.',
-    secondary: 'Auto-fire weapons cannot be assigned to mouse buttons.'
+    secondary: 'Pulse Cannon is a primary weapon and cannot be assigned to the secondary slot.'
   },
   startingShipId: 'interceptor',
   eligibleAsSecondary: false,

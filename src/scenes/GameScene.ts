@@ -1974,7 +1974,7 @@ export class GameScene extends Phaser.Scene {
     }
     const shotsAfter = this.playerProjectiles.length;
     const pass =
-      interceptorRestarted.autoWeaponId === 'pulse-cannon' &&
+      interceptorRestarted.autoWeaponId === null &&
       interceptorRestarted.primaryWeaponId === 'pulse-cannon' &&
       interceptorChoices.includes('ramming-shield') &&
       interceptorRamming.primaryWeaponId === 'pulse-cannon' &&
@@ -1985,10 +1985,10 @@ export class GameScene extends Phaser.Scene {
       interceptorRestarted.rammingShieldMaxHp === 0 &&
       interceptorRestartChoices.includes('ramming-shield') &&
       bulwarkChoices.length === 0 &&
-      this.playerWeapons.activeAutoWeaponId === 'pulse-cannon' &&
+      this.playerWeapons.activeAutoWeaponId === null &&
       this.playerWeapons.activePrimaryWeaponId === 'ramming-shield' &&
       this.playerWeapons.activeSecondaryWeaponId === null &&
-      bulwarkPulseUpgradeAvailable &&
+      !bulwarkPulseUpgradeAvailable &&
       bulwarkRammingUpgradeAvailable &&
       shotsAfter === shotsBefore;
 
@@ -2039,11 +2039,11 @@ export class GameScene extends Phaser.Scene {
       acquired.primaryWeaponId === 'pulse-cannon' &&
       acquired.secondaryWeaponId === 'ramming-shield' &&
       acquired.ownedManualWeaponIds.includes('ramming-shield') &&
-      blockedAutoAssign.autoWeaponId === 'pulse-cannon' &&
+      blockedAutoAssign.autoWeaponId === null &&
       movedToSecondary.primaryWeaponId === 'pulse-cannon' &&
       movedToSecondary.secondaryWeaponId === 'ramming-shield' &&
       movedToPrimary.primaryWeaponId === 'ramming-shield' &&
-      movedToPrimary.secondaryWeaponId === 'pulse-cannon' &&
+      movedToPrimary.secondaryWeaponId === null &&
       reassignedPulsePrimary.primaryWeaponId === 'pulse-cannon' &&
       reassignedPulsePrimary.secondaryWeaponId === 'ramming-shield' &&
       slots.length === 3 &&
@@ -7508,13 +7508,13 @@ export class GameScene extends Phaser.Scene {
     secondCooldowns.set(first, nextDamageAt);
   }
 
-  private getActiveAutoWeaponDefinition(): WeaponRegistryEntry {
+  private getActiveAutoWeaponDefinition(): WeaponRegistryEntry | undefined {
     return getActiveAutoWeaponDefinition(this.playerWeapons);
   }
 
   private getEffectiveAutoWeaponDefinition(): WeaponRegistryEntry | undefined {
     const weapon = this.getActiveAutoWeaponDefinition();
-    return weapon.autoFire !== false && weapon.id !== this.playerWeapons.activePrimaryWeaponId ? weapon : undefined;
+    return weapon && weapon.autoFire !== false ? weapon : undefined;
   }
 
   private getActivePrimaryWeaponDefinition(): WeaponRegistryEntry | undefined {
@@ -7546,19 +7546,29 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (!weapon.slotCompatibility.includes(slot) || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
+    if (!this.canAssignManualWeaponToSlot(weaponId, slot)) {
       return;
     }
 
     if (slot === 'primary') {
+      const previousPrimaryWeaponId = this.playerWeapons.activePrimaryWeaponId;
       if (this.playerWeapons.activeSecondaryWeaponId === weaponId) {
-        this.playerWeapons.activeSecondaryWeaponId = this.playerWeapons.activePrimaryWeaponId;
+        this.playerWeapons.activeSecondaryWeaponId = this.canAssignManualWeaponToSlot(previousPrimaryWeaponId, 'secondary')
+          ? previousPrimaryWeaponId
+          : null;
+      } else if (!this.playerWeapons.activeSecondaryWeaponId && this.canAssignManualWeaponToSlot(previousPrimaryWeaponId, 'secondary')) {
+        this.playerWeapons.activeSecondaryWeaponId = previousPrimaryWeaponId;
       }
       this.playerWeapons.activePrimaryWeaponId = weaponId;
       this.playerWeapons.nextPrimaryWeaponFireAt = 0;
     } else if (slot === 'secondary') {
+      const previousSecondaryWeaponId = this.playerWeapons.activeSecondaryWeaponId;
       if (this.playerWeapons.activePrimaryWeaponId === weaponId) {
-        this.playerWeapons.activePrimaryWeaponId = this.playerWeapons.activeSecondaryWeaponId;
+        this.playerWeapons.activePrimaryWeaponId = this.canAssignManualWeaponToSlot(previousSecondaryWeaponId, 'primary')
+          ? previousSecondaryWeaponId
+          : null;
+      } else if (!this.playerWeapons.activePrimaryWeaponId && this.canAssignManualWeaponToSlot(previousSecondaryWeaponId, 'primary')) {
+        this.playerWeapons.activePrimaryWeaponId = previousSecondaryWeaponId;
       }
       this.playerWeapons.activeSecondaryWeaponId = weaponId;
       this.playerWeapons.nextSecondaryWeaponFireAt = 0;
@@ -7566,6 +7576,14 @@ export class GameScene extends Phaser.Scene {
 
     this.ensureRammingShieldRuntime();
     this.updateGameplayHud(this.time.now);
+  }
+
+  private canAssignManualWeaponToSlot(weaponId: WeaponId | null, slot: Exclude<WeaponSlotType, 'auto'>): weaponId is WeaponId {
+    if (!weaponId || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
+      return false;
+    }
+
+    return getWeaponDefinition(weaponId).slotCompatibility.includes(slot);
   }
 
   private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
@@ -8910,7 +8928,7 @@ export class GameScene extends Phaser.Scene {
       subtitle,
       controlLabel,
       cooldownProgress: cooldownMs > 0 ? 1 - remainingMs / cooldownMs : 1,
-      choices: choices.map((choice) => ({
+      choices: choices.filter((choice) => choice.slotCompatibility.includes(slot)).map((choice) => ({
         weaponId: choice.id,
         name: choice.displayName.replace(' ', '\n')
       })),

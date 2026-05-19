@@ -198,7 +198,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     hitRadius: 35,
     movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
-    startingWeaponNotes: `${pulseCannon.displayName} auto-fire + ${rammingShield.displayName} primary`,
+    startingWeaponNotes: `${rammingShield.displayName} primary starter`,
     startingPrimaryWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
     defaultPrimaryWeaponBonuses: {

@@ -1,10 +1,9 @@
-import { pulseCannon } from '../data/weapons';
 import type { ShipRegistryEntry } from '../data/ships';
 import { getWeaponDefinition, type WeaponRegistryEntry } from '../data/weapons';
 import type { RunUpgradeLevels } from './runUpgrades';
 
 export interface PlayerWeaponRuntimeState {
-  activeAutoWeaponId: WeaponRegistryEntry['id'];
+  activeAutoWeaponId: WeaponRegistryEntry['id'] | null;
   activePrimaryWeaponId: WeaponRegistryEntry['id'] | null;
   activeSecondaryWeaponId: WeaponRegistryEntry['id'] | null;
   ownedAutoWeaponIds: WeaponRegistryEntry['id'][];
@@ -25,10 +24,10 @@ export function createPlayerWeaponRuntimeState(ship: ShipRegistryEntry): PlayerW
   const startingPrimaryWeaponId = ship.startingPrimaryWeaponId;
 
   return {
-    activeAutoWeaponId: pulseCannon.id,
+    activeAutoWeaponId: null,
     activePrimaryWeaponId: startingPrimaryWeaponId,
     activeSecondaryWeaponId: null,
-    ownedAutoWeaponIds: [pulseCannon.id],
+    ownedAutoWeaponIds: [],
     ownedManualWeaponIds: startingPrimaryWeaponId ? [startingPrimaryWeaponId] : [],
     nextAutoWeaponFireAt: 0,
     nextPrimaryWeaponFireAt: 0,
@@ -36,8 +35,8 @@ export function createPlayerWeaponRuntimeState(ship: ShipRegistryEntry): PlayerW
   };
 }
 
-export function getActiveAutoWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry {
-  return getWeaponDefinition(state.activeAutoWeaponId);
+export function getActiveAutoWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry | undefined {
+  return state.activeAutoWeaponId ? getWeaponDefinition(state.activeAutoWeaponId) : undefined;
 }
 
 export function getActivePrimaryWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry | undefined {
