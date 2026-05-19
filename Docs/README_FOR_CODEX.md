@@ -2,7 +2,11 @@
 
 This repository is the STARVIVORS project.
 
-Use these documents as the working MVP source of truth for future Codex tasks. Some older documents still describe the original scaffold phase; prefer the current source tree when they conflict. The completed refactor tracker is archived at `Docs/Old_Documents/REFACTOR_PLAN.md`.
+For Starvivors 2.0 conversion work, use `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md` as the current roadmap and operating guide. It is the source of truth for the open-sector direction, fuel-limited runs, living enemy squads, mission mode, SVG/vector asset pipeline, and phase-by-phase build process.
+
+Older MVP documents remain useful reference for visual identity, HUD layout, game feel, audio direction, content boundaries, and architecture patterns. When those documents conflict with the 2.0 GDD, follow the 2.0 GDD for product direction and follow the current source tree for implemented behavior. The completed refactor tracker is archived at `Docs/Old_Documents/REFACTOR_PLAN.md`.
+
+Treat the 2.0 phase order as the default path. Split phases into stable subphases when needed, but do not skip ahead into later gameplay systems unless the prompt explicitly changes scope or the current phase requires a small compatibility bridge.
 
 ## Current Task Boundary
 
