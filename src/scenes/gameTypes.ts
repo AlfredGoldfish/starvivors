@@ -97,6 +97,8 @@ export interface StarvivorsTestHarnessState {
   nextXpThreshold: number;
   bankedUpgrades: number;
   isUpgradeOverlayOpen: boolean;
+  isResultsScreenOpen: boolean;
+  isResultsButtonVisible: boolean;
   autoWeaponId: WeaponId | null;
   primaryWeaponId: WeaponId | null;
   secondaryWeaponId: WeaponId | null;

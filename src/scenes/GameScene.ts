@@ -1452,6 +1452,8 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
+      isResultsScreenOpen: Boolean(this.resultsScreen),
+      isResultsButtonVisible: Boolean(this.resultsButtonContainer?.visible),
       autoWeaponId: this.playerWeapons.activeAutoWeaponId,
       primaryWeaponId: this.playerWeapons.activePrimaryWeaponId,
       secondaryWeaponId: this.playerWeapons.activeSecondaryWeaponId,
@@ -1650,6 +1652,8 @@ export class GameScene extends Phaser.Scene {
       !minimapOff.isMinimapVisible &&
       minimapOn.isMinimapVisible &&
       dead.isPlayerDead &&
+      dead.isResultsScreenOpen &&
+      !dead.isResultsButtonVisible &&
       afterDeadXp.playerXp === damageControlUpgrade.playerXp &&
       afterDeadXp.bankedUpgrades === damageControlUpgrade.bankedUpgrades &&
       restarted.hull === PLAYER_MAX_HULL &&
@@ -6980,7 +6984,14 @@ export class GameScene extends Phaser.Scene {
     this.player.setVisible(false);
     this.playerSprite.setTint(0xff5964);
     this.playerSprite.setAlpha(0.62);
+    if (this.isUpgradeOverlayOpen) {
+      this.closeUpgradeOverlay(this.time.now);
+    }
+    if (this.isPauseMenuOpen) {
+      this.closePauseMenu(this.time.now);
+    }
     this.updateGameplayHud(this.time.now);
+    this.showResultsScreen();
     this.autoRunDiagnostics.endRun('player-death');
   }
 
