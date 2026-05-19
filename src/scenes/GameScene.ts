@@ -1414,6 +1414,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessWeaponHotbar();
     }
 
+    if (query.get('testHarness') === 'worldImpactCleanup') {
+      this.runTestHarnessWorldImpactCleanup();
+    }
+
     if (query.get('testHarness') === 'velocityLimiter') {
       this.runTestHarnessVelocityLimiter();
     }
@@ -2067,6 +2071,82 @@ export class GameScene extends Phaser.Scene {
         movedToPrimary,
         reassignedPulsePrimary,
         slots
+      })
+    );
+  }
+
+  private runTestHarnessWorldImpactCleanup(): void {
+    const staleBody = this.add.container(0, 0);
+    const staleWrapMirrorBody = this.add.container(0, 0);
+    const debrisBody = this.add.container(0, 0);
+    const debrisWrapMirrorBody = this.add.container(0, 0);
+    const staleEnemy = {
+      body: staleBody,
+      wrapMirrorBody: staleWrapMirrorBody,
+      stats: basicEnemy.stats,
+      velocity: new Phaser.Math.Vector2(),
+      knockbackVelocity: new Phaser.Math.Vector2(),
+      blackHoleVelocity: new Phaser.Math.Vector2(),
+      hp: 0,
+      nextBlackHoleDamageAt: 0
+    } as BasicEnemy;
+    const debris = {
+      body: debrisBody,
+      wrapMirrorBody: debrisWrapMirrorBody,
+      velocity: new Phaser.Math.Vector2(),
+      mass: 1,
+      hp: 1,
+      damage: 0,
+      hitRadius: 8,
+      rotationSpeed: 0,
+      expiresAt: Number.MAX_SAFE_INTEGER
+    } as EnemyWreckageDebris;
+    let staleEnemyHitRadiusChecks = 0;
+    let pass = false;
+    let errorMessage = '';
+
+    staleBody.destroy(true);
+    staleWrapMirrorBody.destroy(true);
+
+    try {
+      resolveWorldImpactCollisionsSystem({
+        arena: this.arena,
+        enemies: [staleEnemy],
+        asteroids: [],
+        debris: [debris],
+        time: this.time.now,
+        getEnemyHitRadius: () => {
+          staleEnemyHitRadiusChecks += 1;
+          throw new Error('Stale enemy should be skipped before collision radius checks.');
+        },
+        getEnemyCollisionScale: () => 1,
+        getAsteroidCollisionRadius: () => 0,
+        getDebrisCollisionRadius: (candidate) => candidate.hitRadius,
+        getEnemyTotalVelocity: () => new Phaser.Math.Vector2(),
+        getAsteroidMass: () => 1,
+        getGlobalMaxSpeed: () => 1,
+        resolveBodyImpactCollision: () => undefined,
+        damageEnemyFromAsteroid: () => undefined,
+        damageEnemyFromDebris: () => undefined,
+        damageAsteroidFromEnemy: () => undefined,
+        damageAsteroidFromDebris: () => undefined,
+        damageDebrisFromEnemy: () => undefined,
+        damageDebrisFromAsteroid: () => undefined
+      });
+      pass = staleEnemyHitRadiusChecks === 0;
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    } finally {
+      debrisBody.destroy(true);
+      debrisWrapMirrorBody.destroy(true);
+    }
+
+    document.body.setAttribute('data-starvivors-world-impact-cleanup-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-world-impact-cleanup-harness-details',
+      JSON.stringify({
+        staleEnemyHitRadiusChecks,
+        errorMessage
       })
     );
   }

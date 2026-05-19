@@ -187,7 +187,15 @@ export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInpu
 
 function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
   for (const enemy of input.enemies) {
+    if (!isActiveWorldEnemy(enemy)) {
+      continue;
+    }
+
     for (const asteroid of [...input.asteroids]) {
+      if (!isActiveWorldEnemy(enemy)) {
+        break;
+      }
+
       const enemyHitRadius = input.getEnemyHitRadius(enemy);
       const asteroidRadius = input.getAsteroidCollisionRadius(asteroid);
       const collision = getEnemyCircleCollision(input, enemy, asteroid.body.x, asteroid.body.y, asteroidRadius);
@@ -226,7 +234,15 @@ function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollision
 
 function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
   for (const enemy of input.enemies) {
+    if (!isActiveWorldEnemy(enemy)) {
+      continue;
+    }
+
     for (const debris of [...input.debris]) {
+      if (!isActiveWorldEnemy(enemy)) {
+        break;
+      }
+
       const enemyHitRadius = input.getEnemyHitRadius(enemy);
       const debrisRadius = input.getDebrisCollisionRadius(debris);
       const collision = getEnemyCircleCollision(input, enemy, debris.body.x, debris.body.y, debrisRadius);
@@ -358,4 +374,8 @@ function getEnemyMass(enemy: WorldEnemy): number {
 
 function isLiveEnemy(enemy: WorldEnemy): enemy is EnemyLabInstance {
   return 'definition' in enemy;
+}
+
+function isActiveWorldEnemy(enemy: WorldEnemy): boolean {
+  return Boolean(enemy.body.scene && enemy.wrapMirrorBody.scene);
 }
