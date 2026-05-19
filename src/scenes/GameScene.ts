@@ -1129,7 +1129,7 @@ export class GameScene extends Phaser.Scene {
       bankedUpgrades: this.bankedUpgrades,
       runScrapTotal: this.runScrapTotal,
       totalCredits: this.totalCredits,
-      activeWeaponName: this.getActiveAutoWeaponDefinition().displayName,
+      activeWeaponName: this.getActivePrimaryWeaponDefinition()?.displayName ?? this.getEffectiveAutoWeaponDefinition()?.displayName ?? 'None',
       mainWeaponUpgradeSummary: this.getActiveAutoWeaponUpgradeHudSummary(),
       counts: this.getPerformanceProfilerCounts()
     };
@@ -1468,7 +1468,7 @@ export class GameScene extends Phaser.Scene {
       playerVelocityLimit: this.getPlayerVelocityLimit(),
       playerSpeed: this.playerVelocity.length(),
       weaponDamageMultiplier: this.getActiveAutoWeaponDamageMultiplier(),
-      pulseCooldownMs: this.getActiveAutoWeaponCooldownMs(),
+      pulseCooldownMs: this.getPulseCannonCooldownMs(),
       pulseProjectileSpeed: this.getActiveAutoWeaponProjectileSpeed(),
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
@@ -1487,12 +1487,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private runTestHarnessCombatScale(): void {
-    const basePulseDamage = this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'auto').projectile?.damage ?? 0;
+    const pulseWeapon = getWeaponDefinition('pulse-cannon');
+    const expectedBasePulseDamage = pulseWeapon.damage ?? 0;
+    const basePulseDamage = this.getResolvedWeaponStats(pulseWeapon, 'primary').projectile?.damage ?? 0;
     this.runUpgradeLevels = {
       ...this.runUpgradeLevels,
       pulse_flat_damage_common: 1
     };
-    const flatPulseDamage = this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'auto').projectile?.damage ?? 0;
+    const flatPulseDamage = this.getResolvedWeaponStats(pulseWeapon, 'primary').projectile?.damage ?? 0;
     const baselineChaser = this.createScaledEnemyStats('chaser', this.runStartedAt, { applyVariance: false });
     const varianceSamples = Array.from({ length: 24 }, () =>
       this.createScaledEnemyStats('chaser', this.runStartedAt, { applyVariance: true })
@@ -1513,8 +1515,8 @@ export class GameScene extends Phaser.Scene {
       Number.isInteger(this.getPlayerMaxHull());
 
     const pass =
-      basePulseDamage === 1 * COMBAT_NUMBER_SCALE &&
-      flatPulseDamage === 1 * COMBAT_NUMBER_SCALE + 5 &&
+      basePulseDamage === expectedBasePulseDamage &&
+      flatPulseDamage === expectedBasePulseDamage + 5 &&
       baselineChaser.maxHull === 4 * COMBAT_NUMBER_SCALE &&
       this.getPlayerMaxHull() === 40 * COMBAT_NUMBER_SCALE &&
       varianceWithinRange &&
@@ -1528,6 +1530,7 @@ export class GameScene extends Phaser.Scene {
       JSON.stringify({
         basePulseDamage,
         flatPulseDamage,
+        expectedBasePulseDamage,
         baselineChaser,
         playerMaxHull: this.getPlayerMaxHull(),
         minVarianceHp,
@@ -1568,6 +1571,13 @@ export class GameScene extends Phaser.Scene {
     };
 
     const initial = harness.getState();
+    const primaryShotsBefore = this.playerProjectiles.length;
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
+    if (primaryWeapon) {
+      this.usePlayerWeapon(primaryWeapon, 'primary', this.time.now);
+      this.playerWeapons.nextPrimaryWeaponFireAt = this.time.now + this.getWeaponSlotCooldownMs(primaryWeapon, 'primary');
+    }
+    const primaryShot = harness.getState();
     const enemyXp = harness.destroyFirstEnemy();
     const enemyRewardXp = Math.max(0, enemyXp.playerXp - initial.playerXp);
     const rolloverGrant = Math.max(0, INITIAL_XP_THRESHOLD - enemyXp.playerXp + 5);
@@ -1593,11 +1603,13 @@ export class GameScene extends Phaser.Scene {
       initial.playerXp === 0 &&
       initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       initial.bankedUpgrades === 0 &&
+      initial.primaryWeaponId === 'pulse-cannon' &&
       initial.liveEnemies === BASIC_ENEMY_COUNT &&
       initial.activeEnemies === BASIC_ENEMY_COUNT &&
       initial.shooterEnemies === SHOOTER_ENEMY_COUNT &&
       initial.tankEnemies === TANK_ENEMY_COUNT &&
       initial.enemyProjectiles === 0 &&
+      primaryShot.projectiles === primaryShotsBefore + 1 &&
       enemyRewardXp > 0 &&
       enemyXp.activeEnemies === initial.activeEnemies - 1 &&
       rollover.playerXp === 5 &&
@@ -1615,11 +1627,11 @@ export class GameScene extends Phaser.Scene {
       fireRateUpgrade.bankedUpgrades === 0 &&
       !fireRateUpgrade.isUpgradeOverlayOpen &&
       fireRateUpgrade.pulseFireRateLevel === 1 &&
-      fireRateUpgrade.pulseCooldownMs === 748 &&
+      fireRateUpgrade.pulseCooldownMs < damageUpgrade.pulseCooldownMs &&
       rebanked.bankedUpgrades === 1 &&
       velocityUpgrade.bankedUpgrades === 0 &&
       velocityUpgrade.pulseVelocityLevel === 1 &&
-      velocityUpgrade.pulseProjectileSpeed === 1176 &&
+      velocityUpgrade.pulseProjectileSpeed > fireRateUpgrade.pulseProjectileSpeed &&
       passiveBank.bankedUpgrades === 3 &&
       hullUpgrade.bankedUpgrades === 2 &&
       hullUpgrade.isUpgradeOverlayOpen &&
@@ -1645,6 +1657,7 @@ export class GameScene extends Phaser.Scene {
       restarted.playerXp === 0 &&
       restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       restarted.bankedUpgrades === 0 &&
+      restarted.primaryWeaponId === 'pulse-cannon' &&
       restarted.liveEnemies === BASIC_ENEMY_COUNT &&
       restarted.activeEnemies === BASIC_ENEMY_COUNT &&
       restarted.shooterEnemies === SHOOTER_ENEMY_COUNT &&
@@ -1663,6 +1676,8 @@ export class GameScene extends Phaser.Scene {
       'data-starvivors-harness-details',
       JSON.stringify({
         initial,
+        primaryShotsBefore,
+        primaryShot,
         enemyXp,
         enemyRewardXp,
         rolloverGrant,
@@ -1953,14 +1968,17 @@ export class GameScene extends Phaser.Scene {
       this.getEquippedWeaponDefinitions()
     ).some((upgrade) => upgrade.id === 'ram_damage');
     const shotsBefore = this.playerProjectiles.length;
-    this.usePlayerWeapon(this.getActiveAutoWeaponDefinition(), 'auto', this.time.now + 1000);
+    const effectiveAutoWeapon = this.getEffectiveAutoWeaponDefinition();
+    if (effectiveAutoWeapon) {
+      this.usePlayerWeapon(effectiveAutoWeapon, 'auto', this.time.now + 1000);
+    }
     const shotsAfter = this.playerProjectiles.length;
     const pass =
       interceptorRestarted.autoWeaponId === 'pulse-cannon' &&
-      interceptorRestarted.primaryWeaponId === null &&
+      interceptorRestarted.primaryWeaponId === 'pulse-cannon' &&
       interceptorChoices.includes('ramming-shield') &&
-      interceptorRamming.primaryWeaponId === 'ramming-shield' &&
-      interceptorRamming.secondaryWeaponId === null &&
+      interceptorRamming.primaryWeaponId === 'pulse-cannon' &&
+      interceptorRamming.secondaryWeaponId === 'ramming-shield' &&
       interceptorRamming.rammingShieldMaxHp === this.getRammingShieldStats().shieldMaxHp &&
       interceptorRamming.rammingShieldDashMaxCharges === 3 &&
       interceptorLaterChoices.length === 0 &&
@@ -1972,7 +1990,7 @@ export class GameScene extends Phaser.Scene {
       this.playerWeapons.activeSecondaryWeaponId === null &&
       bulwarkPulseUpgradeAvailable &&
       bulwarkRammingUpgradeAvailable &&
-      shotsAfter === shotsBefore + 1;
+      shotsAfter === shotsBefore;
 
     document.body.setAttribute('data-starvivors-secondary-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -1986,6 +2004,7 @@ export class GameScene extends Phaser.Scene {
         bulwarkChoices,
         bulwarkPulseUpgradeAvailable,
         bulwarkRammingUpgradeAvailable,
+        effectiveAutoWeaponId: effectiveAutoWeapon?.id ?? null,
         bulwarkWeaponState: this.playerWeapons,
         shotsBefore,
         shotsAfter
@@ -2011,23 +2030,28 @@ export class GameScene extends Phaser.Scene {
     const blockedAutoAssign = harness.assignWeaponSlot('auto', 'ramming-shield');
     const movedToSecondary = harness.assignWeaponSlot('secondary', 'ramming-shield');
     const movedToPrimary = harness.assignWeaponSlot('primary', 'ramming-shield');
-    const blockedManualAssign = harness.assignWeaponSlot('primary', 'pulse-cannon');
+    const reassignedPulsePrimary = harness.assignWeaponSlot('primary', 'pulse-cannon');
     const slots = this.getWeaponHotbarSlots(this.time.now);
     const autoTooltip = slots.find((slot) => slot.slot === 'auto')?.tooltipLines ?? [];
     const primaryTooltip = slots.find((slot) => slot.slot === 'primary')?.tooltipLines ?? [];
+    const secondaryTooltip = slots.find((slot) => slot.slot === 'secondary')?.tooltipLines ?? [];
     const pass =
-      acquired.primaryWeaponId === 'ramming-shield' &&
+      acquired.primaryWeaponId === 'pulse-cannon' &&
+      acquired.secondaryWeaponId === 'ramming-shield' &&
       acquired.ownedManualWeaponIds.includes('ramming-shield') &&
       blockedAutoAssign.autoWeaponId === 'pulse-cannon' &&
-      movedToSecondary.primaryWeaponId === null &&
+      movedToSecondary.primaryWeaponId === 'pulse-cannon' &&
       movedToSecondary.secondaryWeaponId === 'ramming-shield' &&
       movedToPrimary.primaryWeaponId === 'ramming-shield' &&
-      movedToPrimary.secondaryWeaponId === null &&
-      blockedManualAssign.primaryWeaponId === 'ramming-shield' &&
+      movedToPrimary.secondaryWeaponId === 'pulse-cannon' &&
+      reassignedPulsePrimary.primaryWeaponId === 'pulse-cannon' &&
+      reassignedPulsePrimary.secondaryWeaponId === 'ramming-shield' &&
       slots.length === 3 &&
-      autoTooltip.some((line) => line.includes('Damage:')) &&
-      primaryTooltip.some((line) => line.includes('Shield')) &&
-      primaryTooltip.some((line) => line.includes('Ram damage levels'));
+      autoTooltip.some((line) => line.includes('Empty slot')) &&
+      primaryTooltip.some((line) => line.includes('Damage:')) &&
+      primaryTooltip.some((line) => line.includes('Left click')) &&
+      secondaryTooltip.some((line) => line.includes('Shield')) &&
+      secondaryTooltip.some((line) => line.includes('Ram damage levels'));
 
     document.body.setAttribute('data-starvivors-hotbar-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -2037,7 +2061,7 @@ export class GameScene extends Phaser.Scene {
         blockedAutoAssign,
         movedToSecondary,
         movedToPrimary,
-        blockedManualAssign,
+        reassignedPulsePrimary,
         slots
       })
     );
@@ -5464,13 +5488,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refreshUpgradeOverlayText(): void {
-    const activeWeapon = this.getActiveAutoWeaponDefinition();
+    const activeWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');
     const damageMultiplier = this.getActiveAutoWeaponDamageMultiplier();
-    const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, 'auto');
+    const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, activeWeapon.id === this.playerWeapons.activePrimaryWeaponId ? 'primary' : 'auto');
     const activeDamage = Math.round(
       resolvedActiveWeapon.projectile?.damage ?? resolvedActiveWeapon.rammingShield?.baseDamage ?? 0
     );
-    const cooldownSeconds = this.getActiveAutoWeaponCooldownMs() / 1000;
+    const cooldownSeconds = this.getPulseCannonCooldownMs() / 1000;
     const speed = Math.round(this.getActiveAutoWeaponProjectileSpeed());
     const choices = this.getUpgradeOverlayChoices();
     const choicePrompt =
@@ -7488,6 +7512,11 @@ export class GameScene extends Phaser.Scene {
     return getActiveAutoWeaponDefinition(this.playerWeapons);
   }
 
+  private getEffectiveAutoWeaponDefinition(): WeaponRegistryEntry | undefined {
+    const weapon = this.getActiveAutoWeaponDefinition();
+    return weapon.autoFire !== false && weapon.id !== this.playerWeapons.activePrimaryWeaponId ? weapon : undefined;
+  }
+
   private getActivePrimaryWeaponDefinition(): WeaponRegistryEntry | undefined {
     return getActivePrimaryWeaponDefinition(this.playerWeapons);
   }
@@ -7507,7 +7536,7 @@ export class GameScene extends Phaser.Scene {
   private assignWeaponHotbarSlot(slot: WeaponSlotType, weaponId: WeaponId): void {
     const weapon = getWeaponDefinition(weaponId);
     if (slot === 'auto') {
-      if (weapon.assignmentType !== 'auto' || !this.playerWeapons.ownedAutoWeaponIds.includes(weaponId)) {
+      if (!weapon.slotCompatibility.includes('auto') || !this.playerWeapons.ownedAutoWeaponIds.includes(weaponId)) {
         return;
       }
 
@@ -7517,7 +7546,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (weapon.assignmentType !== 'manual' || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
+    if (!weapon.slotCompatibility.includes(slot) || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
       return;
     }
 
@@ -7544,20 +7573,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveAutoWeaponDamageMultiplier(): number {
-    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState(), this.getActiveAutoWeaponDefinition()) * this.getResolvedPlayerStats().damage;
+    return getWeaponDamageMultiplier(this.getPlayerWeaponUpgradeState(), getWeaponDefinition('pulse-cannon')) * this.getResolvedPlayerStats().damage;
   }
 
   private getActiveAutoWeaponCooldownMs(): number {
-    const resolved = this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto');
+    const weapon = this.getEffectiveAutoWeaponDefinition();
+    if (!weapon) {
+      return 0;
+    }
+
+    const resolved = this.getResolvedWeaponStats(weapon, 'auto');
     return resolved.projectile?.cooldownMs ?? resolved.rammingShield?.contactCooldownMs ?? 0;
   }
 
+  private getPulseCannonCooldownMs(): number {
+    return this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'primary').projectile?.cooldownMs ?? 0;
+  }
+
   private getActiveAutoWeaponBaseCooldownMs(): number {
-    return this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto').projectile?.baseCooldownMs ?? 0;
+    return this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'primary').projectile?.baseCooldownMs ?? 0;
   }
 
   private getActiveAutoWeaponProjectileSpeed(): number {
-    return this.getResolvedWeaponStats(this.getActiveAutoWeaponDefinition(), 'auto').projectile?.projectileSpeed ?? 0;
+    return this.getResolvedWeaponStats(getWeaponDefinition('pulse-cannon'), 'primary').projectile?.projectileSpeed ?? 0;
   }
 
   private getActiveAutoWeaponUpgradeHudSummary(): string {
@@ -7583,8 +7621,8 @@ export class GameScene extends Phaser.Scene {
 
     const pointer = this.input.activePointer;
     const isPointerBlockedByDebugMenu = this.debugMenuHost?.containsPointer(pointer) ?? false;
-    const activeAutoWeapon = this.getActiveAutoWeaponDefinition();
-    if (time >= this.playerWeapons.nextAutoWeaponFireAt) {
+    const activeAutoWeapon = this.getEffectiveAutoWeaponDefinition();
+    if (activeAutoWeapon && time >= this.playerWeapons.nextAutoWeaponFireAt) {
       const result = this.usePlayerWeapon(activeAutoWeapon, 'auto', time);
       this.playerWeapons.nextAutoWeaponFireAt = time + result.cooldownMs;
     }
@@ -8784,7 +8822,7 @@ export class GameScene extends Phaser.Scene {
     const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
     const hullProgress = this.playerHull / maxHull;
-    const activeWeapon = this.getActiveAutoWeaponDefinition();
+    const activeWeapon = this.getEffectiveAutoWeaponDefinition();
     const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const weaponCooldownMs = this.getActiveAutoWeaponCooldownMs();
@@ -8801,7 +8839,7 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       runScrapTotal: this.runScrapTotal,
       bankedUpgrades: this.bankedUpgrades,
-      autoWeaponName: activeWeapon.displayName,
+      autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',
       primaryWeaponName: primaryWeapon ? primaryWeapon.displayName : 'Empty',
       weaponStatus,
       secondaryWeaponName: secondaryWeapon ? secondaryWeapon.displayName : 'Empty',
@@ -8820,14 +8858,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getWeaponHotbarSlots(time: number): WeaponHotbarSlotSnapshot[] {
-    const autoWeapon = this.getActiveAutoWeaponDefinition();
+    const autoWeapon = this.getEffectiveAutoWeaponDefinition();
     const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const autoCooldownMs = this.getActiveAutoWeaponCooldownMs();
     const autoRemainingMs = Math.max(0, this.playerWeapons.nextAutoWeaponFireAt - time);
-    const primaryCooldownMs = primaryWeapon ? this.getResolvedWeaponStats(primaryWeapon, 'primary').rammingShield?.contactCooldownMs ?? 0 : 0;
+    const primaryCooldownMs = this.getWeaponSlotCooldownMs(primaryWeapon, 'primary');
     const primaryRemainingMs = Math.max(0, this.playerWeapons.nextPrimaryWeaponFireAt - time);
-    const secondaryCooldownMs = secondaryWeapon ? this.getResolvedWeaponStats(secondaryWeapon, 'secondary').rammingShield?.contactCooldownMs ?? 0 : 0;
+    const secondaryCooldownMs = this.getWeaponSlotCooldownMs(secondaryWeapon, 'secondary');
     const secondaryRemainingMs = Math.max(0, this.playerWeapons.nextSecondaryWeaponFireAt - time);
 
     return [
@@ -8835,6 +8873,18 @@ export class GameScene extends Phaser.Scene {
       this.createWeaponHotbarSlot('primary', primaryWeapon, 'LMB', primaryCooldownMs, primaryRemainingMs, this.getOwnedManualWeaponDefinitions()),
       this.createWeaponHotbarSlot('secondary', secondaryWeapon, 'RMB', secondaryCooldownMs, secondaryRemainingMs, this.getOwnedManualWeaponDefinitions())
     ];
+  }
+
+  private getWeaponSlotCooldownMs(
+    weapon: WeaponRegistryEntry | undefined,
+    slot: 'auto' | 'primary' | 'secondary'
+  ): number {
+    if (!weapon) {
+      return 0;
+    }
+
+    const resolved = this.getResolvedWeaponStats(weapon, slot);
+    return resolved.projectile?.cooldownMs ?? resolved.rammingShield?.contactCooldownMs ?? 0;
   }
 
   private createWeaponHotbarSlot(
@@ -8878,7 +8928,7 @@ export class GameScene extends Phaser.Scene {
 
     const resolved = this.getResolvedWeaponStats(weapon, slot);
     const lines = [
-      `Type: ${weapon.assignmentType === 'auto' ? 'Auto-fire' : 'Manual'}`,
+      `Type: ${slot === 'auto' ? 'Auto-fire' : 'Manual'}`,
       `Control: ${slot === 'auto' ? 'Automatic' : slot === 'primary' ? 'Left click' : 'Right click'}`
     ];
 
@@ -9007,8 +9057,9 @@ export class GameScene extends Phaser.Scene {
       ? `Spawn director: minute ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s / swarm ${(Math.max(0, this.nextEnemySwarmAt - time) / 1000).toFixed(1)}s\n` +
         `Enemy scaling: HP x${enemyScaling.hpMultiplier.toFixed(2)} / damage x${enemyScaling.damageMultiplier.toFixed(2)}\n`
       : '';
+    const debugWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');
     const debugWeaponLine = this.debugState.collisionDebugEnabled
-      ? `Debug weapon: ${this.getActiveAutoWeaponDefinition().displayName} dmg x${this.debugState.weaponDamageMultiplier.toFixed(1)} / fire x${this.debugState.weaponFireRateMultiplier.toFixed(1)} / cooldown ${(this.getActiveAutoWeaponCooldownMs() / 1000).toFixed(2)}s\n` +
+      ? `Debug weapon: ${debugWeapon.displayName} dmg x${this.debugState.weaponDamageMultiplier.toFixed(1)} / fire x${this.debugState.weaponFireRateMultiplier.toFixed(1)} / cooldown ${(this.getWeaponSlotCooldownMs(debugWeapon, debugWeapon.id === this.playerWeapons.activePrimaryWeaponId ? 'primary' : 'auto') / 1000).toFixed(2)}s\n` +
         `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled

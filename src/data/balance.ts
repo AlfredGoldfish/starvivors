@@ -12,11 +12,11 @@ export const interceptorMovement = {
 };
 
 export const pulseCannonBalance = {
-  damage: 1 * COMBAT_NUMBER_SCALE,
-  cooldownSeconds: 0.85,
-  projectileSpeed: 980,
+  damage: 9,
+  cooldownSeconds: 0.18,
+  projectileSpeed: 900,
   projectileLifetimeSeconds: 1.4,
-  projectileRange: 1300
+  projectileRange: 1100
 };
 
 export const rammingShieldBalance = {
