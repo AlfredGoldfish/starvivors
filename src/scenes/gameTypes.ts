@@ -122,6 +122,8 @@ export interface StarvivorsTestHarnessState {
   enemies: number;
   shooterEnemies: number;
   tankEnemies: number;
+  liveEnemies: number;
+  activeEnemies: number;
   asteroids: number;
   scrapPickups: number;
   projectiles: number;

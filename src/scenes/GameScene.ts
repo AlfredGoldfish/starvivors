@@ -1326,6 +1326,8 @@ export class GameScene extends Phaser.Scene {
 
         if (enemy && !this.isPlayerDead) {
           this.destroyEnemyWithRewards(enemy, this.basicEnemies, 0, 'chaser');
+        } else if (this.liveEnemies[0] && !this.isPlayerDead) {
+          this.destroyLiveEnemyWithRewards(this.liveEnemies[0], 0);
         }
 
         return this.getTestHarnessState();
@@ -1475,6 +1477,8 @@ export class GameScene extends Phaser.Scene {
       enemies: this.basicEnemies.length,
       shooterEnemies: this.shooterEnemies.length,
       tankEnemies: this.tankEnemies.length,
+      liveEnemies: this.liveEnemies.length,
+      activeEnemies: this.getActiveEnemyCount(),
       asteroids: this.basicAsteroids.length,
       scrapPickups: this.scrapPickups.length,
       projectiles: this.playerProjectiles.length,
@@ -1565,7 +1569,9 @@ export class GameScene extends Phaser.Scene {
 
     const initial = harness.getState();
     const enemyXp = harness.destroyFirstEnemy();
-    const rollover = harness.grantXp(95);
+    const enemyRewardXp = Math.max(0, enemyXp.playerXp - initial.playerXp);
+    const rolloverGrant = Math.max(0, INITIAL_XP_THRESHOLD - enemyXp.playerXp + 5);
+    const rollover = harness.grantXp(rolloverGrant);
     const multi = harness.grantXp(250);
     const buttonOpened = harness.clickUpgradeButton();
     harness.closeUpgradeOverlay();
@@ -1587,10 +1593,13 @@ export class GameScene extends Phaser.Scene {
       initial.playerXp === 0 &&
       initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       initial.bankedUpgrades === 0 &&
+      initial.liveEnemies === BASIC_ENEMY_COUNT &&
+      initial.activeEnemies === BASIC_ENEMY_COUNT &&
       initial.shooterEnemies === SHOOTER_ENEMY_COUNT &&
       initial.tankEnemies === TANK_ENEMY_COUNT &&
       initial.enemyProjectiles === 0 &&
-      enemyXp.playerXp === BASIC_ENEMY_XP_REWARD &&
+      enemyRewardXp > 0 &&
+      enemyXp.activeEnemies === initial.activeEnemies - 1 &&
       rollover.playerXp === 5 &&
       rollover.nextXpThreshold === 120 &&
       rollover.bankedUpgrades === 1 &&
@@ -1636,6 +1645,8 @@ export class GameScene extends Phaser.Scene {
       restarted.playerXp === 0 &&
       restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
       restarted.bankedUpgrades === 0 &&
+      restarted.liveEnemies === BASIC_ENEMY_COUNT &&
+      restarted.activeEnemies === BASIC_ENEMY_COUNT &&
       restarted.shooterEnemies === SHOOTER_ENEMY_COUNT &&
       restarted.tankEnemies === TANK_ENEMY_COUNT &&
       restarted.enemyProjectiles === 0 &&
@@ -1653,6 +1664,8 @@ export class GameScene extends Phaser.Scene {
       JSON.stringify({
         initial,
         enemyXp,
+        enemyRewardXp,
+        rolloverGrant,
         rollover,
         multi,
         buttonOpened,
