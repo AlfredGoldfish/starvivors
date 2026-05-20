@@ -454,16 +454,23 @@ Target weapon categories:
 
 - Primary: manual left-click weapon.
 - Auto: survivor-style passive weapon.
-- Secondary: right-click burst or utility weapon.
+- Secondary: compatible manual right-click weapon.
 - Contact: ramming/shield/body weapon.
+
+Current implementation note:
+
+- Manual weapons declare slot compatibility individually.
+- Pulse Cannon can be equipped as either primary or secondary.
+- Ramming Shield can be equipped as either primary or secondary.
 
 ### 9.2 Pulse Cannon
 
-Pulse Cannon should become the baseline primary and should feel like the Enemy Lab weapon.
+Pulse Cannon should become the baseline direct-fire cannon and should feel like the Enemy Lab weapon. It starts as the Interceptor primary, but can also be acquired as a secondary weapon by ships that start with another compatible primary, such as Bulwark.
 
 Target behavior:
 
 - Hold left click to fire.
+- Hold right click to fire when equipped as a secondary.
 - Aim by mouse/ship facing.
 - Fast projectile.
 - Short cooldown.

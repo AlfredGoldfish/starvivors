@@ -61,20 +61,20 @@ export const pulseCannon: WeaponRegistryEntry = {
   id: 'pulse-cannon',
   displayName: 'Pulse Cannon',
   status: 'Implemented',
-  description: 'Mouse-aimed primary cannon tuned for steady held fire.',
+  description: 'Mouse-aimed cannon tuned for steady held fire.',
   sourceShipId: 'interceptor',
   behaviorType: 'projectile',
   tags: ['projectile', 'pulse'],
   inputBehavior: 'hold',
   autoFire: false,
   assignmentType: 'manual',
-  slotCompatibility: ['primary'],
+  slotCompatibility: ['primary', 'secondary'],
   slotBehavior: {
     primary: 'Hold left click or fire key to shoot toward the mouse.',
-    secondary: 'Pulse Cannon is a primary weapon and cannot be assigned to the secondary slot.'
+    secondary: 'Hold right click to shoot toward the mouse when equipped as a secondary weapon.'
   },
   startingShipId: 'interceptor',
-  eligibleAsSecondary: false,
+  eligibleAsSecondary: true,
   scaling: {
     broadStats: ['damage', 'attackSpeed', 'projectileSpeed', 'area', 'duration', 'amount', 'pierce'],
     weaponSpecificStats: ['damage', 'cooldownSeconds', 'projectileSpeed', 'projectileLifetimeSeconds', 'projectileRange']

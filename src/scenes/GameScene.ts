@@ -1983,10 +1983,16 @@ export class GameScene extends Phaser.Scene {
       this.runUpgradeLevels,
       this.getEquippedWeaponDefinitions()
     ).some((upgrade) => upgrade.id === 'ram_damage');
+    const bulwarkPulse = harness.selectPulseUpgrade(1);
+    const bulwarkLaterChoices = this.getSecondaryWeaponChoices().map((choice) => choice.weaponId);
+    const bulwarkPulseUpgradeAvailableAfterEquip = getAvailableRunUpgrades(
+      this.runUpgradeLevels,
+      this.getEquippedWeaponDefinitions()
+    ).some((upgrade) => upgrade.id === 'pulse_damage');
     const shotsBefore = this.playerProjectiles.length;
-    const effectiveAutoWeapon = this.getEffectiveAutoWeaponDefinition();
-    if (effectiveAutoWeapon) {
-      this.usePlayerWeapon(effectiveAutoWeapon, 'auto', this.time.now + 1000);
+    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+    if (secondaryWeapon) {
+      this.usePlayerWeapon(secondaryWeapon, 'secondary', this.time.now + 1000);
     }
     const shotsAfter = this.playerProjectiles.length;
     const pass =
@@ -2000,13 +2006,15 @@ export class GameScene extends Phaser.Scene {
       interceptorLaterChoices.length === 0 &&
       interceptorRestarted.rammingShieldMaxHp === 0 &&
       interceptorRestartChoices.includes('ramming-shield') &&
-      bulwarkChoices.length === 0 &&
+      bulwarkChoices.includes('pulse-cannon') &&
+      bulwarkLaterChoices.length === 0 &&
       this.playerWeapons.activeAutoWeaponId === null &&
       this.playerWeapons.activePrimaryWeaponId === 'ramming-shield' &&
-      this.playerWeapons.activeSecondaryWeaponId === null &&
+      this.playerWeapons.activeSecondaryWeaponId === 'pulse-cannon' &&
       !bulwarkPulseUpgradeAvailable &&
+      bulwarkPulseUpgradeAvailableAfterEquip &&
       bulwarkRammingUpgradeAvailable &&
-      shotsAfter === shotsBefore;
+      shotsAfter === shotsBefore + 1;
 
     document.body.setAttribute('data-starvivors-secondary-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -2018,9 +2026,12 @@ export class GameScene extends Phaser.Scene {
         interceptorRestarted,
         interceptorRestartChoices,
         bulwarkChoices,
+        bulwarkPulse,
+        bulwarkLaterChoices,
         bulwarkPulseUpgradeAvailable,
+        bulwarkPulseUpgradeAvailableAfterEquip,
         bulwarkRammingUpgradeAvailable,
-        effectiveAutoWeaponId: effectiveAutoWeapon?.id ?? null,
+        secondaryWeaponId: secondaryWeapon?.id ?? null,
         bulwarkWeaponState: this.playerWeapons,
         shotsBefore,
         shotsAfter
@@ -2059,7 +2070,7 @@ export class GameScene extends Phaser.Scene {
       movedToSecondary.primaryWeaponId === 'pulse-cannon' &&
       movedToSecondary.secondaryWeaponId === 'ramming-shield' &&
       movedToPrimary.primaryWeaponId === 'ramming-shield' &&
-      movedToPrimary.secondaryWeaponId === null &&
+      movedToPrimary.secondaryWeaponId === 'pulse-cannon' &&
       reassignedPulsePrimary.primaryWeaponId === 'pulse-cannon' &&
       reassignedPulsePrimary.secondaryWeaponId === 'ramming-shield' &&
       slots.length === 3 &&
@@ -4700,6 +4711,8 @@ export class GameScene extends Phaser.Scene {
     if (
       this.bankedUpgrades <= 0 ||
       weapon.assignmentType !== 'manual' ||
+      !weapon.eligibleAsSecondary ||
+      !weapon.slotCompatibility.includes('secondary') ||
       this.playerWeapons.ownedManualWeaponIds.includes(weaponId) ||
       this.playerWeapons.ownedManualWeaponIds.length >= 3
     ) {
