@@ -342,8 +342,9 @@ import {
   BLACK_HOLE_TANK_WHIRLPOOL_TUNING,
   BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS,
   BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO,
-  CAMERA_LOOK_AHEAD_DISTANCE,
-  CAMERA_LOOK_AHEAD_LERP,
+  CAMERA_LEAD_LERP,
+  CAMERA_LEAD_MAX_DISTANCE,
+  CAMERA_LEAD_MIN_SPEED,
   CONTACT_IMPACT_MASS_DAMAGE_SCALE,
   CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER,
   CONTACT_IMPACT_MIN_DAMAGE_SPEED,
@@ -511,7 +512,7 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
-  private cameraLookAhead = new Phaser.Math.Vector2(0, 0);
+  private cameraLead = new Phaser.Math.Vector2(0, 0);
   private fuel = RUN_FUEL_MAX;
   private extractionPosition = new Phaser.Math.Vector2(0, 0);
   private extractionBeacon?: Phaser.GameObjects.Container;
@@ -777,7 +778,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('world-impacts', () => this.resolveWorldImpactCollisions(time));
       if (!this.isPlayerDead) {
         this.profileStep('player-wrap', () => this.wrapPlayer());
-        this.profileStep('camera-follow', () => this.updateCameraFollow());
+        this.profileStep('camera-lead', () => this.updateCameraLead());
         this.profileStep('extraction', () => this.updateExtraction(time));
       }
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
@@ -1504,8 +1505,8 @@ export class GameScene extends Phaser.Scene {
       sectorScale: this.sectorScale,
       arenaWidth: this.arena.width,
       arenaHeight: this.arena.height,
-      cameraFollowOffsetX: -this.cameraLookAhead.x,
-      cameraFollowOffsetY: -this.cameraLookAhead.y,
+      cameraFollowOffsetX: -this.cameraLead.x,
+      cameraFollowOffsetY: -this.cameraLead.y,
       fuel: this.fuel,
       maxFuel: RUN_FUEL_MAX,
       extractionDistance: this.getExtractionDistance(),
@@ -2237,12 +2238,12 @@ export class GameScene extends Phaser.Scene {
 
     this.playerVelocity.set(720, 0);
     for (let index = 0; index < 24; index += 1) {
-      this.updateCameraFollow();
+      this.updateCameraLead();
     }
     const cameraAhead = harness.getState();
     this.playerVelocity.set(0, 0);
     for (let index = 0; index < 24; index += 1) {
-      this.updateCameraFollow();
+      this.updateCameraLead();
     }
     const cameraSettled = harness.getState();
 
@@ -2256,7 +2257,8 @@ export class GameScene extends Phaser.Scene {
         sample.arena.height === Math.round(viewport.height * 9 * sample.scale)
     );
     const cameraPass =
-      cameraAhead.cameraFollowOffsetX < -120 &&
+      cameraAhead.cameraFollowOffsetX < -18 &&
+      cameraAhead.cameraFollowOffsetX > -42 &&
       Math.abs(cameraAhead.cameraFollowOffsetY) < 1 &&
       Math.abs(cameraSettled.cameraFollowOffsetX) < Math.abs(cameraAhead.cameraFollowOffsetX);
     const minimapPass = minimapBefore.isMinimapVisible && !minimapOff.isMinimapVisible && minimapOn.isMinimapVisible;
@@ -2466,7 +2468,7 @@ export class GameScene extends Phaser.Scene {
       this.hasRammingShield() ? this.getRammingShieldStats() : undefined
     );
     this.playerVelocity.set(0, 0);
-    this.cameraLookAhead.set(0, 0);
+    this.cameraLead.set(0, 0);
     this.fuel = RUN_FUEL_MAX;
     this.extractionPosition.set(0, 0);
     this.extractionBeacon = undefined;
@@ -6222,15 +6224,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private updateCameraFollow(): void {
+  private updateCameraLead(): void {
     const speed = this.playerVelocity.length();
-    const targetLookAhead =
-      speed > 1
-        ? this.playerVelocity.clone().normalize().scale(CAMERA_LOOK_AHEAD_DISTANCE)
+    const maxSpeed = Math.max(CAMERA_LEAD_MIN_SPEED + 1, this.getPlayerMaxSpeed());
+    const leadProgress = Phaser.Math.Clamp((speed - CAMERA_LEAD_MIN_SPEED) / (maxSpeed - CAMERA_LEAD_MIN_SPEED), 0, 1);
+    const targetLead =
+      speed > CAMERA_LEAD_MIN_SPEED && leadProgress > 0
+        ? this.playerVelocity.clone().normalize().scale(CAMERA_LEAD_MAX_DISTANCE * leadProgress)
         : new Phaser.Math.Vector2(0, 0);
 
-    this.cameraLookAhead.lerp(targetLookAhead, CAMERA_LOOK_AHEAD_LERP);
-    this.cameras.main.setFollowOffset(-this.cameraLookAhead.x, -this.cameraLookAhead.y);
+    this.cameraLead.lerp(targetLead, CAMERA_LEAD_LERP);
+    this.cameras.main.setFollowOffset(-this.cameraLead.x, -this.cameraLead.y);
   }
 
   private startRammingShieldDashBurst(direction: Phaser.Math.Vector2, impulse: number): void {
