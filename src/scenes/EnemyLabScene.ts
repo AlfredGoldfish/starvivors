@@ -33,8 +33,7 @@ import { createEnemyLabVisualTextures } from '../systems/enemyVisuals';
 import {
   getWrappedDirection,
   updateEnemyLabAi,
-  type EnemyLabProjectileRequest,
-  type EnemyLabScrapTarget
+  type EnemyLabProjectileRequest
 } from '../systems/enemyLabAi';
 import {
   clearEnemyLabEnemies,
@@ -81,11 +80,6 @@ interface EnemyLabProjectile {
   rangeRemaining: number;
 }
 
-interface EnemyLabScrapPickup extends EnemyLabScrapTarget {
-  body: Phaser.GameObjects.Arc;
-  wrapMirrorBody: Phaser.GameObjects.Arc;
-}
-
 interface EnemyLabDiagnosticsContext {
   frameId: number;
   timeMs: number;
@@ -105,7 +99,6 @@ interface EnemyLabDiagnosticsFrame {
   counts: {
     enemies: number;
     projectiles: number;
-    scrap: number;
     collisionDebugCircles: number;
   };
   resizeCount: number;
@@ -197,7 +190,6 @@ export class EnemyLabScene extends Phaser.Scene {
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private enemies: EnemyLabInstance[] = [];
   private projectiles: EnemyLabProjectile[] = [];
-  private scrapPickups: EnemyLabScrapPickup[] = [];
   private overlay?: EnemyLabOverlayRefs;
   private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
   private selectedEnemyIndex = 0;
@@ -225,7 +217,6 @@ export class EnemyLabScene extends Phaser.Scene {
   private nextLeftStrafeThrusterAt = 0;
   private nextRightStrafeThrusterAt = 0;
   private nextProjectileId = 1;
-  private nextScrapId = 1;
   private nextOverlayStatusUpdateAt = 0;
   private lastOverlayStatusText = '';
   private nextFpsMeterUpdateAt = 0;
@@ -309,7 +300,7 @@ export class EnemyLabScene extends Phaser.Scene {
           scene: this,
           arena: this.arena,
           enemies: this.enemies,
-          scrapPickups: this.scrapPickups,
+          scrapPickups: [],
           playerX: this.player.x,
           playerY: this.player.y,
           playerVelocity: this.playerVelocity,
@@ -331,7 +322,6 @@ export class EnemyLabScene extends Phaser.Scene {
       );
 
       this.measureDiagnosticsPhase(diagnostics, 'enemy-contacts', () => this.updateEnemyContacts(time));
-      this.measureDiagnosticsPhase(diagnostics, 'scrap-cleanup', () => this.removeCollectedScrap());
       this.measureDiagnosticsPhase(diagnostics, 'enemy-cleanup', () => this.removeDeadEnemies());
       this.measureDiagnosticsPhase(diagnostics, 'collision-debug', () => this.updateEnemyCollisionDebug());
       this.measureDiagnosticsPhase(diagnostics, 'starfield', () => this.updateBackgroundTiles(time));
@@ -703,7 +693,6 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private handleEnemyDeath(enemy: EnemyLabInstance): void {
     this.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.glowColor, 14);
-    this.spawnScrap(enemy.body.x, enemy.body.y, Math.max(1, enemy.definition.rewards?.scrap ?? 1));
 
     if (enemy.definition.behavior.id === 'splitterChase') {
       const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
@@ -789,7 +778,6 @@ export class EnemyLabScene extends Phaser.Scene {
       projectile.wrapMirrorBody.destroy(true);
     }
     this.projectiles = [];
-    this.clearScrap();
   }
 
   private getSpawnPositionAroundPlayer(distance: number): Phaser.Math.Vector2 {
@@ -798,68 +786,6 @@ export class EnemyLabScene extends Phaser.Scene {
       wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width),
       wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height)
     );
-  }
-
-  private spawnScrap(x: number, y: number, count: number): void {
-    for (let i = 0; i < count; i += 1) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const spread = Phaser.Math.FloatBetween(0, 34);
-      const pickupX = wrapCoordinate(x + Math.cos(angle) * spread, this.arena.width);
-      const pickupY = wrapCoordinate(y + Math.sin(angle) * spread, this.arena.height);
-      const body = this.add.circle(pickupX, pickupY, 7, 0xffc857, 0.8).setDepth(6);
-      body.setStrokeStyle(1, 0xf2fbff, 0.7);
-      const wrapMirrorBody = this.add.circle(pickupX, pickupY, 7, 0xffc857, 0.8).setDepth(6);
-      wrapMirrorBody.setStrokeStyle(1, 0xf2fbff, 0.7);
-      wrapMirrorBody.setVisible(false);
-      this.scrapPickups.push({
-        id: `lab-scrap-${this.nextScrapId++}`,
-        x: pickupX,
-        y: pickupY,
-        body,
-        wrapMirrorBody,
-        collected: false
-      });
-    }
-  }
-
-  private spawnTestScrap(): void {
-    for (let i = 0; i < 8; i += 1) {
-      const position = this.getSpawnPositionAroundPlayer(240 + i * 22);
-      this.spawnScrap(position.x, position.y, 1);
-    }
-  }
-
-  private clearScrap(): void {
-    for (const scrap of this.scrapPickups) {
-      scrap.body.destroy();
-      scrap.wrapMirrorBody.destroy();
-    }
-    this.scrapPickups = [];
-  }
-
-  private removeCollectedScrap(): void {
-    for (let i = this.scrapPickups.length - 1; i >= 0; i -= 1) {
-      const scrap = this.scrapPickups[i];
-      scrap.x = scrap.body.x;
-      scrap.y = scrap.body.y;
-      this.updateScrapMirror(scrap);
-      if (scrap.collected) {
-        scrap.body.destroy();
-        scrap.wrapMirrorBody.destroy();
-        this.scrapPickups.splice(i, 1);
-      }
-    }
-  }
-
-  private updateScrapMirror(scrap: EnemyLabScrapPickup): void {
-    const camera = this.cameras.main;
-    const cameraCenterX = camera.scrollX + camera.width / 2;
-    const cameraCenterY = camera.scrollY + camera.height / 2;
-    const mirrorX = this.getNearestWrappedRenderCoordinate(scrap.body.x, cameraCenterX, this.arena.width);
-    const mirrorY = this.getNearestWrappedRenderCoordinate(scrap.body.y, cameraCenterY, this.arena.height);
-    const visible = (mirrorX !== scrap.body.x || mirrorY !== scrap.body.y) && this.isCircleInCameraView(mirrorX, mirrorY, 20);
-    scrap.wrapMirrorBody.setPosition(mirrorX, mirrorY);
-    scrap.wrapMirrorBody.setVisible(visible);
   }
 
   private updateEnemyCollisionDebug(): void {
@@ -1039,8 +965,6 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="spawn">Spawn</button>
           <button data-action="squad">Squad</button>
           <button data-action="clear">Clear</button>
-          <button data-action="spawnScrap">Spawn Scrap</button>
-          <button data-action="clearScrap">Clear Drops</button>
           <button data-action="ai">AI</button>
           <button data-action="invuln">Invuln</button>
           <button data-action="labels">Labels</button>
@@ -1255,8 +1179,6 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'toggleOverlay') this.setOverlayCollapsed(!this.isOverlayCollapsed);
       if (action === 'squad') this.spawnSelectedSquad();
       if (action === 'clear') this.clearEnemies();
-      if (action === 'spawnScrap') this.spawnTestScrap();
-      if (action === 'clearScrap') this.clearScrap();
       if (action === 'newVariant') this.createVariantForSelectedEnemy();
       if (action === 'saveVariant') this.persistVariantFromControls(true);
       if (action === 'resetVariant') this.resetSelectedVariant();
@@ -2060,7 +1982,6 @@ export class EnemyLabScene extends Phaser.Scene {
       counts: {
         enemies: this.enemies.length,
         projectiles: this.projectiles.length,
-        scrap: this.scrapPickups.length,
         collisionDebugCircles: this.collisionDebugCircles.size
       },
       resizeCount: this.resizeEventCount,
@@ -2197,7 +2118,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const customSquad = this.getSelectedCustomSquad();
     const statusText =
       `${variant?.displayName ?? selected.displayName} | custom squad ${customSquad?.displayName ?? 'none'} | ` +
-      `enemies ${this.enemies.length} | shots ${this.projectiles.length} | scrap ${this.scrapPickups.length} | ` +
+      `enemies ${this.enemies.length} | shots ${this.projectiles.length} | ` +
       `AI ${this.isAiEnabled ? 'on' : 'off'} | invuln ${this.isPlayerInvulnerable ? 'on' : 'off'} | ` +
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
