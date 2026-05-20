@@ -32,12 +32,38 @@ canvas {
 }
 
 .enemy-lab-title {
-  margin-bottom: 8px;
   color: #73f2ff;
   font-size: 13px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.enemy-lab-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.enemy-lab-overlay.is-collapsed {
+  bottom: auto;
+  width: auto;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px;
+  background: #02040a;
+  box-shadow: none;
+}
+
+.enemy-lab-overlay.is-collapsed .enemy-lab-panel,
+.enemy-lab-overlay.is-collapsed .enemy-lab-help,
+.enemy-lab-overlay.is-collapsed .enemy-lab-status {
+  display: none;
+}
+
+.enemy-lab-overlay.is-collapsed .enemy-lab-header {
+  margin-bottom: 6px;
 }
 
 .enemy-lab-overlay label {

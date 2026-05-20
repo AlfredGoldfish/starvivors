@@ -77,6 +77,7 @@ interface EnemyLabScrapPickup extends EnemyLabScrapTarget {
 
 interface EnemyLabOverlayRefs {
   root: HTMLDivElement;
+  toggleOverlayButton: HTMLButtonElement;
   enemySelect: HTMLSelectElement;
   variantSelect: HTMLSelectElement;
   variantName: HTMLInputElement;
@@ -146,6 +147,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private isPlayerInvulnerable = true;
   private showDebugLabels = true;
   private showTelegraphs = true;
+  private isOverlayCollapsed = false;
   private isSimulationPaused = false;
   private playerHull = PLAYER_LAB_HULL;
   private nextPlayerFireAt = 0;
@@ -274,6 +276,7 @@ export class EnemyLabScene extends Phaser.Scene {
       labels: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.L),
       telegraphs: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.T),
       pause: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.P),
+      overlay: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.U),
       prev: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.OPEN_BRACKET),
       next: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.CLOSED_BRACKET)
     };
@@ -874,13 +877,19 @@ export class EnemyLabScene extends Phaser.Scene {
       this.isSimulationPaused = !this.isSimulationPaused;
       this.syncOverlayFromState();
     }
+    if (Phaser.Input.Keyboard.JustDown(this.keys.overlay)) {
+      this.setOverlayCollapsed(!this.isOverlayCollapsed);
+    }
   }
 
   private createOverlay(): void {
     const root = document.createElement('div');
     root.className = 'enemy-lab-overlay';
     root.innerHTML = `
-      <div class="enemy-lab-title">Enemy Lab</div>
+      <div class="enemy-lab-header">
+        <div class="enemy-lab-title">Enemy Lab</div>
+        <button data-action="toggleOverlay">Hide UI</button>
+      </div>
       <section class="enemy-lab-panel">
         <label>Enemy <select data-field="enemy"></select></label>
         <label>Variant <select data-field="variant"></select></label>
@@ -958,12 +967,13 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="pause">Pause</button>
         </div>
       </section>
-      <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause. Hold mouse to fire.</div>
+      <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause, U hide UI. Hold mouse to fire.</div>
       <div class="enemy-lab-fps" data-field="fps">FPS -- | avg --ms | worst --ms</div>
       <div class="enemy-lab-status" data-field="status"></div>
     `;
     document.body.appendChild(root);
 
+    const toggleOverlayButton = root.querySelector<HTMLButtonElement>('[data-action="toggleOverlay"]');
     const enemySelect = root.querySelector<HTMLSelectElement>('[data-field="enemy"]');
     const variantSelect = root.querySelector<HTMLSelectElement>('[data-field="variant"]');
     const variantName = root.querySelector<HTMLInputElement>('[data-field="variantName"]');
@@ -997,6 +1007,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     if (
       !enemySelect ||
+      !toggleOverlayButton ||
       !variantSelect ||
       !variantName ||
       !variantStatus ||
@@ -1043,6 +1054,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     this.overlay = {
       root,
+      toggleOverlayButton,
       enemySelect,
       variantSelect,
       variantName,
@@ -1137,6 +1149,7 @@ export class EnemyLabScene extends Phaser.Scene {
       }
 
       if (action === 'spawn') this.spawnSelectedEnemy();
+      if (action === 'toggleOverlay') this.setOverlayCollapsed(!this.isOverlayCollapsed);
       if (action === 'squad') this.spawnSelectedSquad();
       if (action === 'clear') this.clearEnemies();
       if (action === 'spawnScrap') this.spawnTestScrap();
@@ -1715,6 +1728,16 @@ export class EnemyLabScene extends Phaser.Scene {
   private readNumberInput(input: HTMLInputElement, fallback: number): number {
     const value = Number(input.value);
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  private setOverlayCollapsed(collapsed: boolean): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    this.isOverlayCollapsed = collapsed;
+    this.overlay.root.classList.toggle('is-collapsed', collapsed);
+    this.overlay.toggleOverlayButton.textContent = collapsed ? 'Show UI' : 'Hide UI';
   }
 
   private updateFpsMeter(time: number, delta: number): void {
