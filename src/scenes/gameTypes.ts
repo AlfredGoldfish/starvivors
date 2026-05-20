@@ -166,6 +166,7 @@ export interface StarvivorsTestHarness {
   placeAsteroidOnPlayer: (tier?: AsteroidTier) => StarvivorsTestHarnessState;
   destroyFirstEnemy: () => StarvivorsTestHarnessState;
   destroyFirstAsteroid: () => StarvivorsTestHarnessState;
+  collectAllScrap: () => StarvivorsTestHarnessState;
   killPlayer: () => StarvivorsTestHarnessState;
   restartRun: () => StarvivorsTestHarnessState;
   openUpgradeOverlay: () => StarvivorsTestHarnessState;
@@ -296,6 +297,8 @@ export interface ScrapPickup {
   pickupRadius: number;
   magnetRadius: number;
   isMagnetized: boolean;
+  visualScale: number;
+  offscreenSince: number | null;
   expiresAt: number;
   rotationSpeed: number;
   bobPhase: number;

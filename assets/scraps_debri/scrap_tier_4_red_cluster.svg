@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <radialGradient id="glow" cx="50%" cy="50%" r="48%">
+      <stop offset="0%" stop-color="#ffe1c5" stop-opacity="0.64"/>
+      <stop offset="60%" stop-color="#ff6f3c" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ff3e35" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="metalA" x1="54" y1="42" x2="198" y2="215">
+      <stop offset="0%" stop-color="#fff2df"/>
+      <stop offset="42%" stop-color="#ff8f4f"/>
+      <stop offset="100%" stop-color="#672331"/>
+    </linearGradient>
+    <linearGradient id="metalB" x1="201" y1="38" x2="58" y2="215">
+      <stop offset="0%" stop-color="#ffc08f"/>
+      <stop offset="50%" stop-color="#d13f32"/>
+      <stop offset="100%" stop-color="#34141f"/>
+    </linearGradient>
+  </defs>
+  <circle cx="128" cy="130" r="110" fill="url(#glow)"/>
+  <path d="M91 42 164 64 143 151 61 128Z" fill="#35131b" opacity="0.72"/>
+  <path d="M93 34 171 59 146 154 58 130Z" fill="url(#metalA)" stroke="#ffd7b6" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M169 83 212 143 159 222 114 146Z" fill="#35131b" opacity="0.72"/>
+  <path d="M174 76 218 142 160 224 111 145Z" fill="url(#metalB)" stroke="#ffc6a4" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M76 151 142 131 176 198 95 218Z" fill="#35131b" opacity="0.65"/>
+  <path d="M72 148 143 125 182 199 94 224Z" fill="url(#metalA)" stroke="#ffdec7" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M103 70 137 80M138 161 166 196M95 176 136 164" fill="none" stroke="#fff3df" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+</svg>

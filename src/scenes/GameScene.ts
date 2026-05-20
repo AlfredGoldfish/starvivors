@@ -12,7 +12,10 @@ import blackHoleFullLinesUrl from '../../assets/blackhole/blackhole_full3.png';
 import blackHoleFullLines4Url from '../../assets/blackhole/blackhole_full4.png';
 import blackHoleFullLines5Url from '../../assets/blackhole/blackhole_full5.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
-import scrapPickupUrl from '../../assets/scraps_debri/scrap.png';
+import scrapTier1CyanShardUrl from '../../assets/scraps_debri/scrap_tier_1_cyan_shard.png';
+import scrapTier2GreenClusterUrl from '../../assets/scraps_debri/scrap_tier_2_green_cluster.png';
+import scrapTier3GoldClusterUrl from '../../assets/scraps_debri/scrap_tier_3_gold_cluster.png';
+import scrapTier4RedClusterUrl from '../../assets/scraps_debri/scrap_tier_4_red_cluster.png';
 import upgradeCratePickupUrl from '../../assets/upgrade_create.png';
 import bulwarkShipUrl from '../../assets/ships/bulwark.png';
 import rammingShieldUrl from '../../assets/ships/ramming shield.png';
@@ -334,7 +337,6 @@ import {
   ASTEROID_MIN_ROTATION_SPEED,
   ASTEROID_SAFE_SPAWN_RADIUS,
   ASTEROID_TIER_CONFIG,
-  ASTEROID_XP_REWARD_BY_TIER,
   BACKGROUND_TILE_SIZE,
   BASIC_ASTEROID_COUNT,
   BASIC_ENEMY_COUNT,
@@ -465,8 +467,13 @@ import {
   SCRAP_PICKUP_MASS,
   SCRAP_PICKUP_RADIUS,
   SCRAP_PICKUP_TEXTURE_KEY,
+  SCRAP_PICKUP_TIER_1_TEXTURE_KEY,
+  SCRAP_PICKUP_TIER_2_TEXTURE_KEY,
+  SCRAP_PICKUP_TIER_3_TEXTURE_KEY,
+  SCRAP_PICKUP_TIER_4_TEXTURE_KEY,
   SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER,
   SCRAP_PICKUP_VALUE_FROM_DEBRIS,
+  SCRAP_XP_VALUE_MULTIPLIER,
   SCRAP_TO_CREDIT_RATE,
   SECONDARY_THRUSTER_INTERVAL_MS,
   SHOOTER_ENEMY_COUNT,
@@ -524,6 +531,14 @@ const WORLD_SQUAD_DISENGAGE_RANGE = 2550;
 const WORLD_SQUAD_INACTIVE_UPDATE_MS = 850;
 const WORLD_SQUAD_ROAM_SPEED = 34;
 const WORLD_SQUAD_PATROL_SPEED = 46;
+const SCRAP_ROLLUP_SOFT_LIMIT = 110;
+const SCRAP_ROLLUP_HARD_LIMIT = 155;
+const SCRAP_ROLLUP_TARGET_LIMIT = 92;
+const SCRAP_ROLLUP_INTERVAL_MS = 750;
+const SCRAP_ROLLUP_NORMAL_OFFSCREEN_MS = 5000;
+const SCRAP_ROLLUP_EMERGENCY_OFFSCREEN_MS = 1500;
+const SCRAP_ROLLUP_NEAR_RADIUS = 180;
+const SCRAP_ROLLUP_FALLBACK_RADIUS = 620;
 
 interface EnemyTimeScaling {
   elapsedMinutes: number;
@@ -602,6 +617,7 @@ export class GameScene extends Phaser.Scene {
   private sectorScrapIds = new WeakMap<ScrapPickup, string>();
   private sectorSignalBeacons: SectorSignalBeacon[] = [];
   private worldSquads: WorldSquadInstance[] = [];
+  private nextScrapRollupAt = 0;
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
@@ -746,7 +762,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.load.image(ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY, enemyWreckageDebrisUrl);
-    this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapPickupUrl);
+    this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapTier1CyanShardUrl);
+    this.load.image(SCRAP_PICKUP_TIER_1_TEXTURE_KEY, scrapTier1CyanShardUrl);
+    this.load.image(SCRAP_PICKUP_TIER_2_TEXTURE_KEY, scrapTier2GreenClusterUrl);
+    this.load.image(SCRAP_PICKUP_TIER_3_TEXTURE_KEY, scrapTier3GoldClusterUrl);
+    this.load.image(SCRAP_PICKUP_TIER_4_TEXTURE_KEY, scrapTier4RedClusterUrl);
     this.load.image(UPGRADE_CRATE_PICKUP_TEXTURE_KEY, upgradeCratePickupUrl);
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
     this.load.image('player-ship-bulwark', bulwarkShipUrl);
@@ -1478,6 +1498,21 @@ export class GameScene extends Phaser.Scene {
 
         return this.getTestHarnessState();
       },
+      collectAllScrap: () => {
+        for (const scrap of [...this.scrapPickups]) {
+          if (scrap.kind !== 'scrap') {
+            continue;
+          }
+
+          this.collectScrapPickup(scrap);
+          const index = this.scrapPickups.indexOf(scrap);
+          if (index >= 0) {
+            this.scrapPickups.splice(index, 1);
+          }
+        }
+
+        return this.getTestHarnessState();
+      },
       killPlayer: () => {
         this.damagePlayer(this.getPlayerMaxHull(), this.time.now, this.player.x, this.player.y, {
           bypassShield: true,
@@ -1567,6 +1602,10 @@ export class GameScene extends Phaser.Scene {
 
     if (query.get('testHarness') === 'phase10') {
       this.runTestHarnessPhase10();
+    }
+
+    if (query.get('testHarness') === 'phase10_5') {
+      this.runTestHarnessPhase10_5();
     }
 
     if (query.get('testHarness') === 'enemyContactBalance') {
@@ -1763,7 +1802,9 @@ export class GameScene extends Phaser.Scene {
       this.playerWeapons.nextPrimaryWeaponFireAt = this.time.now + this.getWeaponSlotCooldownMs(primaryWeapon, 'primary');
     }
     const primaryShot = harness.getState();
-    const enemyXp = harness.destroyFirstEnemy();
+    const enemyAfterKill = harness.destroyFirstEnemy();
+    this.spawnScrapPickup('enemy', 5, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
+    const enemyXp = harness.collectAllScrap();
     const enemyRewardXp = Math.max(0, enemyXp.playerXp - initial.playerXp);
     const rolloverGrant = Math.max(0, INITIAL_XP_THRESHOLD - enemyXp.playerXp + 5);
     const rollover = harness.grantXp(rolloverGrant);
@@ -1865,6 +1906,7 @@ export class GameScene extends Phaser.Scene {
         initial,
         primaryShotsBefore,
         primaryShot,
+        enemyAfterKill,
         enemyXp,
         enemyRewardXp,
         rolloverGrant,
@@ -2603,6 +2645,62 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase10_5(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase10-5-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase10-5-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const initial = harness.getState();
+    this.spawnScrapPickup('enemy', 5, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
+    const collected = harness.collectAllScrap();
+    const xpFromScrapPass = collected.runScrapTotal === initial.runScrapTotal + 5 && collected.playerXp === initial.playerXp + 15;
+
+    this.clearScrapPickups();
+    const rollupX = wrapCoordinate(this.player.x + this.arena.width * 0.34, this.arena.width);
+    const rollupY = wrapCoordinate(this.player.y + this.arena.height * 0.34, this.arena.height);
+    for (let i = 0; i < 130; i += 1) {
+      this.spawnScrapPickup('enemy', 1, rollupX + (i % 13) * 7, rollupY + Math.floor(i / 13) * 7, new Phaser.Math.Vector2(0, 0));
+    }
+
+    const beforeRollupCount = this.scrapPickups.length;
+    const beforeRollupValue = this.scrapPickups.reduce((sum, pickup) => sum + (pickup.kind === 'scrap' ? pickup.value : 0), 0);
+    for (const pickup of this.scrapPickups) {
+      pickup.offscreenSince = this.time.now - SCRAP_ROLLUP_NORMAL_OFFSCREEN_MS - 100;
+    }
+    this.nextScrapRollupAt = 0;
+    this.rollupOffscreenScrap(this.time.now + SCRAP_ROLLUP_INTERVAL_MS + 1);
+    const afterRollupCount = this.scrapPickups.length;
+    const afterRollupValue = this.scrapPickups.reduce((sum, pickup) => sum + (pickup.kind === 'scrap' ? pickup.value : 0), 0);
+    const tierTwoOrBetterCount = this.scrapPickups.filter((pickup) => pickup.kind === 'scrap' && pickup.value >= 5).length;
+    const rollupPass =
+      beforeRollupCount > SCRAP_ROLLUP_SOFT_LIMIT &&
+      afterRollupCount < beforeRollupCount &&
+      afterRollupValue === beforeRollupValue &&
+      tierTwoOrBetterCount > 0;
+    const pass = xpFromScrapPass && rollupPass;
+
+    document.body.setAttribute('data-starvivors-phase10-5-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase10-5-harness-details',
+      JSON.stringify({
+        initial,
+        collected,
+        xpFromScrapPass,
+        beforeRollupCount,
+        afterRollupCount,
+        beforeRollupValue,
+        afterRollupValue,
+        tierTwoOrBetterCount,
+        rollupPass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2807,6 +2905,7 @@ export class GameScene extends Phaser.Scene {
     this.sectorScrapIds = new WeakMap<ScrapPickup, string>();
     this.sectorSignalBeacons = [];
     this.worldSquads = [];
+    this.nextScrapRollupAt = 0;
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -4306,11 +4405,14 @@ export class GameScene extends Phaser.Scene {
       pickupRadius: SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet,
       magnetRadius: SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet * PICKUP_MAGNET_RADIUS_MULTIPLIER,
       isMagnetized: false,
+      visualScale: this.getScrapPickupVisualScale(spawn.value),
+      offscreenSince: null,
       expiresAt: Number.POSITIVE_INFINITY,
       rotationSpeed: 0.65,
       bobPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
     };
 
+    this.updatePickupVisualTier(pickup);
     this.scrapPickups.push(pickup);
     this.activeSectorScrapPickups.set(spawn.id, pickup);
     this.sectorScrapIds.set(pickup, spawn.id);
@@ -4869,7 +4971,6 @@ export class GameScene extends Phaser.Scene {
     enemy.body.destroy(true);
     enemy.wrapMirrorBody.destroy(true);
     enemies.splice(index, 1);
-    this.grantXp(enemy.stats.xpValue);
   }
 
   private destroyLiveEnemyWithRewards(enemy: LiveGameEnemy, index: number, inheritedVelocity = this.getLiveEnemyTotalVelocity(enemy)): void {
@@ -4888,7 +4989,6 @@ export class GameScene extends Phaser.Scene {
     );
     destroyLiveEnemySystem(enemy);
     this.liveEnemies.splice(index, 1);
-    this.grantXp(enemy.definition.rewards?.xp ?? this.getLiveEnemyFallbackXpValue(enemy));
 
     if (enemy.definition.behavior.id === 'splitterChase') {
       const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
@@ -5117,12 +5217,8 @@ export class GameScene extends Phaser.Scene {
 
     if (roll < specialDropChance && this.getSpecialUpgradeDropChoices().length > 0) {
       this.spawnRewardPickup('special-upgrade', 'enemy', 0, x, y, inheritedVelocity);
-      return;
-    }
-
-    if (roll < specialDropChance + normalDropChance) {
+    } else if (roll < specialDropChance + normalDropChance) {
       this.spawnRewardPickup('banked-upgrade', 'enemy', 0, x, y, inheritedVelocity);
-      return;
     }
 
     this.trySpawnScrapPickup('enemy', scrapValue, x, y, inheritedVelocity, baseDropChance);
@@ -5147,6 +5243,7 @@ export class GameScene extends Phaser.Scene {
     inheritedVelocity: Phaser.Math.Vector2
   ): void {
     const collectRadius = SCRAP_PICKUP_COLLECT_RADIUS * this.getResolvedPlayerStats().magnet;
+    const previousPickups = this.scrapPickups;
     this.scrapPickups = spawnScrapPickupSystem({
       arena: this.arena,
       pickups: this.scrapPickups,
@@ -5161,34 +5258,98 @@ export class GameScene extends Phaser.Scene {
       time: this.time.now,
       createPickupBody: (spawnX, spawnY, pickupKind) => this.createPickupBody(spawnX, spawnY, pickupKind)
     });
+
+    for (const pickup of this.scrapPickups) {
+      if (!previousPickups.includes(pickup)) {
+        pickup.visualScale = this.getScrapPickupVisualScale(pickup.value);
+        this.updatePickupVisualTier(pickup);
+      }
+    }
   }
 
   private createPickupBody(x: number, y: number, kind: PlayerPickupKind): Phaser.GameObjects.Container {
     const isSpecialUpgrade = kind === 'special-upgrade';
     const isUpgradePickup = kind === 'banked-upgrade' || isSpecialUpgrade;
-    const glowColor = isSpecialUpgrade ? 0xffc857 : isUpgradePickup ? 0x73f2ff : 0x73f2ff;
-    const glowAlpha = isSpecialUpgrade ? 0.42 : isUpgradePickup ? 0.24 : 0.18;
-    const glowScale = isSpecialUpgrade ? 2.2 : 1.65;
-    const glow = this.add.ellipse(
-      0,
-      0,
-      SCRAP_PICKUP_DISPLAY_SIZE * glowScale,
-      SCRAP_PICKUP_DISPLAY_SIZE * glowScale,
-      glowColor,
-      glowAlpha
-    );
-    const visual = this.add.image(0, 0, isUpgradePickup ? UPGRADE_CRATE_PICKUP_TEXTURE_KEY : SCRAP_PICKUP_TEXTURE_KEY);
+    const children: Phaser.GameObjects.GameObject[] = [];
+    if (isUpgradePickup) {
+      const glow = this.add.ellipse(
+        0,
+        0,
+        SCRAP_PICKUP_DISPLAY_SIZE * (isSpecialUpgrade ? 2.2 : 1.65),
+        SCRAP_PICKUP_DISPLAY_SIZE * (isSpecialUpgrade ? 2.2 : 1.65),
+        isSpecialUpgrade ? 0xffc857 : 0x73f2ff,
+        isSpecialUpgrade ? 0.42 : 0.24
+      );
+      children.push(glow);
+    }
+
+    const visual = this.add.image(0, 0, isUpgradePickup ? UPGRADE_CRATE_PICKUP_TEXTURE_KEY : SCRAP_PICKUP_TIER_1_TEXTURE_KEY);
 
     visual.setOrigin(0.5, 0.5);
     visual.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
-    visual.setTint(isSpecialUpgrade ? 0xfff0a8 : 0xdaf8ff);
+    visual.setTint(isSpecialUpgrade ? 0xfff0a8 : 0xffffff);
+    children.push(visual);
 
-    const body = this.add.container(x, y, [glow, visual]);
+    const body = this.add.container(x, y, children);
     body.setSize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
     body.setDepth(7);
     body.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
 
     return body;
+  }
+
+  private getScrapPickupTextureKey(value: number): string {
+    if (value >= 76) {
+      return SCRAP_PICKUP_TIER_4_TEXTURE_KEY;
+    }
+
+    if (value >= 26) {
+      return SCRAP_PICKUP_TIER_3_TEXTURE_KEY;
+    }
+
+    if (value >= 5) {
+      return SCRAP_PICKUP_TIER_2_TEXTURE_KEY;
+    }
+
+    return SCRAP_PICKUP_TIER_1_TEXTURE_KEY;
+  }
+
+  private getScrapPickupVisualScale(value: number): number {
+    if (value >= 76) {
+      return 1.22;
+    }
+
+    if (value >= 26) {
+      return 1.14;
+    }
+
+    if (value >= 5) {
+      return 1.06;
+    }
+
+    return 1;
+  }
+
+  private updatePickupVisualTier(pickup: ScrapPickup): void {
+    if (pickup.kind !== 'scrap') {
+      return;
+    }
+
+    const textureKey = this.getScrapPickupTextureKey(pickup.value);
+    pickup.visualScale = this.getScrapPickupVisualScale(pickup.value);
+    this.setPickupBodyTexture(pickup.body, textureKey);
+    this.setPickupBodyTexture(pickup.wrapMirrorBody, textureKey);
+  }
+
+  private setPickupBodyTexture(body: Phaser.GameObjects.Container, textureKey: string): void {
+    const visual = body.list.find((child): child is Phaser.GameObjects.Image => child instanceof Phaser.GameObjects.Image);
+    if (!visual) {
+      return;
+    }
+
+    visual.setTexture(textureKey);
+    visual.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
+    visual.setTint(0xffffff);
   }
 
   private updateScrapPickups(time: number, deltaSeconds: number): void {
@@ -5206,6 +5367,126 @@ export class GameScene extends Phaser.Scene {
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
         this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius)
     });
+    this.updateScrapOffscreenAges(time);
+    this.rollupOffscreenScrap(time);
+  }
+
+  private updateScrapOffscreenAges(time: number): void {
+    for (const pickup of this.scrapPickups) {
+      if (pickup.kind !== 'scrap' || this.sectorScrapIds.has(pickup)) {
+        pickup.offscreenSince = null;
+        continue;
+      }
+
+      if (pickup.isMagnetized || this.isScrapPickupInCameraView(pickup)) {
+        pickup.offscreenSince = null;
+        continue;
+      }
+
+      pickup.offscreenSince ??= time;
+    }
+  }
+
+  private rollupOffscreenScrap(time: number): void {
+    if (time < this.nextScrapRollupAt || this.scrapPickups.length <= SCRAP_ROLLUP_SOFT_LIMIT) {
+      return;
+    }
+
+    this.nextScrapRollupAt = time + SCRAP_ROLLUP_INTERVAL_MS;
+
+    const emergency = this.scrapPickups.length >= SCRAP_ROLLUP_HARD_LIMIT;
+    const minimumOffscreenMs = emergency ? SCRAP_ROLLUP_EMERGENCY_OFFSCREEN_MS : SCRAP_ROLLUP_NORMAL_OFFSCREEN_MS;
+    const targetLimit = emergency ? SCRAP_ROLLUP_TARGET_LIMIT : SCRAP_ROLLUP_SOFT_LIMIT;
+    const candidates = this.scrapPickups
+      .filter((pickup) => this.canRollupScrapPickup(pickup, time, minimumOffscreenMs))
+      .sort((first, second) => {
+        const firstAge = first.offscreenSince === null ? 0 : time - first.offscreenSince;
+        const secondAge = second.offscreenSince === null ? 0 : time - second.offscreenSince;
+        return secondAge - firstAge || first.value - second.value;
+      });
+
+    for (const source of candidates) {
+      if (this.scrapPickups.length <= targetLimit || !this.scrapPickups.includes(source)) {
+        continue;
+      }
+
+      const target = this.findScrapRollupTarget(source, emergency);
+      if (!target) {
+        continue;
+      }
+
+      this.mergeScrapPickupInto(source, target);
+    }
+  }
+
+  private canRollupScrapPickup(pickup: ScrapPickup, time: number, minimumOffscreenMs: number): boolean {
+    return (
+      pickup.kind === 'scrap' &&
+      !pickup.isMagnetized &&
+      !this.sectorScrapIds.has(pickup) &&
+      pickup.offscreenSince !== null &&
+      time - pickup.offscreenSince >= minimumOffscreenMs
+    );
+  }
+
+  private findScrapRollupTarget(source: ScrapPickup, emergency: boolean): ScrapPickup | undefined {
+    const offscreenTargets = this.scrapPickups.filter(
+      (candidate) =>
+        candidate !== source &&
+        candidate.kind === 'scrap' &&
+        !candidate.isMagnetized &&
+        !this.sectorScrapIds.has(candidate) &&
+        candidate.offscreenSince !== null
+    );
+
+    const nearbyTarget = this.findNearestScrapRollupTarget(source, offscreenTargets, SCRAP_ROLLUP_NEAR_RADIUS);
+    if (nearbyTarget || !emergency) {
+      return nearbyTarget;
+    }
+
+    return (
+      this.findNearestScrapRollupTarget(source, offscreenTargets, SCRAP_ROLLUP_FALLBACK_RADIUS) ??
+      this.findNearestScrapRollupTarget(source, offscreenTargets, Number.POSITIVE_INFINITY)
+    );
+  }
+
+  private findNearestScrapRollupTarget(source: ScrapPickup, targets: ScrapPickup[], radius: number): ScrapPickup | undefined {
+    let bestTarget: ScrapPickup | undefined;
+    let bestDistanceSq = radius * radius;
+
+    for (const target of targets) {
+      const distanceSq = this.getWrappedDirection(source.body.x, source.body.y, target.body.x, target.body.y).lengthSq();
+      if (distanceSq >= bestDistanceSq) {
+        continue;
+      }
+
+      bestDistanceSq = distanceSq;
+      bestTarget = target;
+    }
+
+    return bestTarget;
+  }
+
+  private mergeScrapPickupInto(source: ScrapPickup, target: ScrapPickup): void {
+    const sourceIndex = this.scrapPickups.indexOf(source);
+    if (sourceIndex < 0) {
+      return;
+    }
+
+    target.value += source.value;
+    target.velocity.x = Phaser.Math.Linear(target.velocity.x, source.velocity.x, 0.18);
+    target.velocity.y = Phaser.Math.Linear(target.velocity.y, source.velocity.y, 0.18);
+    target.expiresAt = Math.max(target.expiresAt, source.expiresAt);
+    target.offscreenSince = source.offscreenSince ?? target.offscreenSince;
+    this.updatePickupVisualTier(target);
+
+    this.scrapPickups.splice(sourceIndex, 1);
+    destroyScrapPickupSystem(source);
+  }
+
+  private isScrapPickupInCameraView(pickup: ScrapPickup): boolean {
+    const position = this.getNearestWrappedRenderPosition(pickup.body.x, pickup.body.y);
+    return this.isCircleInCameraView(position.x, position.y, SCRAP_PICKUP_RADIUS * pickup.visualScale);
   }
 
   private applyBlackHoleToScrap(scrap: ScrapPickup, deltaSeconds: number): boolean {
@@ -5252,8 +5533,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.addRunScrap(scrap.value);
+    this.grantXp(this.getScrapXpValue(scrap.value));
     this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrap.value);
     this.destroyScrapPickup(scrap);
+  }
+
+  private getScrapXpValue(scrapValue: number): number {
+    return Math.max(1, Math.ceil(scrapValue * SCRAP_XP_VALUE_MULTIPLIER));
   }
 
   private addRunScrap(amount: number): void {
@@ -9941,7 +10227,6 @@ export class GameScene extends Phaser.Scene {
     const fragmentTiers = createAsteroidFragmentTiersSystem(asteroid.tier, asteroid.breakupProfile);
 
     if (grantReward) {
-      this.grantXp(ASTEROID_XP_REWARD_BY_TIER[asteroid.tier]);
       this.spawnScrapPickup('asteroid', SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER[asteroid.tier], x, y, velocity);
     }
 

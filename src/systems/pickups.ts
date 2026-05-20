@@ -84,6 +84,8 @@ export function spawnScrapPickup(input: SpawnScrapPickupInput): ScrapPickup[] {
     pickupRadius: input.pickupRadius,
     magnetRadius: input.magnetRadius,
     isMagnetized: false,
+    visualScale: 1,
+    offscreenSince: null,
     expiresAt: input.time + SCRAP_PICKUP_LIFETIME_MS,
     rotationSpeed: Phaser.Math.FloatBetween(0.9, 2.2) * (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
     bobPhase: Phaser.Math.FloatBetween(0, Math.PI * 2)
@@ -117,7 +119,7 @@ export function updateScrapPickups(input: UpdateScrapPickupsInput): ScrapPickup[
     pickup.body.x = wrapCoordinate(pickup.body.x + pickup.velocity.x * input.deltaSeconds, input.arena.width);
     pickup.body.y = wrapCoordinate(pickup.body.y + pickup.velocity.y * input.deltaSeconds, input.arena.height);
     pickup.body.rotation += pickup.rotationSpeed * input.deltaSeconds;
-    pickup.body.setScale(1 + Math.sin(input.time * 0.005 + pickup.bobPhase) * 0.08);
+    pickup.body.setScale(pickup.visualScale * (1 + Math.sin(input.time * 0.005 + pickup.bobPhase) * 0.08));
     input.updateToroidalRenderMirror(pickup.body, pickup.wrapMirrorBody, SCRAP_PICKUP_RADIUS);
 
     const collectionOffset = getWrappedDirection(input.arena, pickup.body.x, pickup.body.y, input.playerX, input.playerY);

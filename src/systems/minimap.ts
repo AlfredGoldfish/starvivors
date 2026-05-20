@@ -178,9 +178,11 @@ export class MinimapSystem {
 
     for (const scrap of snapshot.scrapPickups) {
       const position = this.getPosition(scrap.body.x, scrap.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      const color = scrap.value >= 76 ? 0xff6f3c : scrap.value >= 26 ? 0xffc857 : scrap.value >= 5 ? 0x52ff9a : 0x73f2ff;
+      const radius = scrap.value >= 26 ? 2.4 : scrap.value >= 5 ? 2.1 : 1.8;
 
-      this.graphics.fillStyle(0x73f2ff, 0.86);
-      this.graphics.fillCircle(position.x, position.y, 1.8);
+      this.graphics.fillStyle(color, 0.86);
+      this.graphics.fillCircle(position.x, position.y, radius);
     }
 
     if (snapshot.blackHole) {

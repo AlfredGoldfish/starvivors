@@ -1211,6 +1211,43 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
+### Phase 10.5: Scrap Rollup and Loot Performance
+
+Goal:
+
+- Keep scrap plentiful and valuable while reducing pickup, debris, and visual-object lag during large kill chains.
+
+Design dialogue before coding:
+
+- Scrap should remain a resource and should also become the source of XP.
+- Enemy kills and destroyed hazards should create scrap, and collecting that scrap should grant XP.
+- Scrap should visibly burst from kills, then combine only after it has been off screen for a while.
+- If pickup counts hit a hard cap, off-screen scrap can combine faster to protect performance.
+- Higher-value scrap should be readable through color and cluster shape, not by removing reward value.
+
+Tasks:
+
+- Add tiered scrap visuals.
+- Add delayed off-screen scrap rollup that conserves total scrap value.
+- Move XP gain from direct kills and asteroid destruction onto scrap collection.
+- Keep upgrade crates and rare pickups separate from scrap rollup.
+- Document remaining debris, death-shard, pooling, and data-only off-screen pickup work.
+
+Do not:
+
+- Silently delete scrap value as a performance fix.
+- Merge on-screen scrap during normal play.
+- Solve every debris and particle performance issue in this first pass.
+
+Acceptance:
+
+- Scrap collection grants both resource scrap and XP.
+- Enemy and hazard destruction rewards flow through scrap pickup collection.
+- Tier 2 scrap covers values 5-25.
+- Off-screen scrap can roll up into higher-value pickups after a delay.
+- Build passes.
+- Commit and push.
+
 ### Phase 11: Mission Framework
 
 Goal:
