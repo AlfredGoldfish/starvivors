@@ -1091,7 +1091,8 @@ Tasks:
 - Drain fuel over time.
 - Add only light extra fuel drain for active thrust/strafe/brake so movement still feels good.
 - Display fuel in HUD.
-- Use a first fuel-empty behavior, preferably an emergency thrust state rather than instant death.
+- Use a first fuel-empty behavior: emergency thrust state rather than instant death.
+- When fuel is empty, all player thruster power drops by 90%, leaving 10% emergency mobility so the player can still drift, fight, and reach powerups, scrap, or future fuel cells.
 - Add simple extraction condition or placeholder beacon.
 
 Do not:
@@ -1596,6 +1597,7 @@ Use this section for expansion ideas that should not interrupt the current phase
 
 - Fuel Tank upgrades: increase maximum fuel for longer routes.
 - Efficient Thrusters: reduce active-thrust fuel drain.
+- Emergency Thruster upgrades: improve fuel-empty emergency thrust above the baseline 10% power without restoring full mobility.
 - Emergency Reserve: grants a one-time fuel buffer when the tank hits zero.
 - Fuel Siphon: recover small fuel amounts from elite enemies, wreckage, or specific objectives.
 - Extraction Discount: lowers the fuel threshold or travel pressure needed to extract safely.

@@ -2246,6 +2246,8 @@ export class GameScene extends Phaser.Scene {
     const interceptorDampedSpeed = this.playerVelocity.length();
     this.updateFuel(10, true);
     const afterFuelDrain = harness.getState();
+    this.fuel = 0;
+    const emergencyThrustMultiplier = this.getFuelThrustMultiplier();
     this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
     this.updateExtraction(this.time.now);
     const extracted = harness.getState();
@@ -2261,6 +2263,7 @@ export class GameScene extends Phaser.Scene {
     const pass =
       initial.fuel === RUN_FUEL_MAX &&
       afterFuelDrain.fuel < initial.fuel &&
+      Math.abs(emergencyThrustMultiplier - RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER) < 0.001 &&
       interceptorDampedSpeed > 275 &&
       interceptorDampedSpeed < 380 &&
       bulwarkDampedSpeed > interceptorDampedSpeed &&
@@ -2274,6 +2277,7 @@ export class GameScene extends Phaser.Scene {
       JSON.stringify({
         initial,
         afterFuelDrain,
+        emergencyThrustMultiplier,
         extracted,
         interceptorDampedSpeed,
         bulwarkDampedSpeed
