@@ -1,11 +1,23 @@
 import Phaser from 'phaser';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
-import { interceptorMovement } from '../data/balance';
+import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
+import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
 import { ENEMY_LAB_DEFINITIONS } from '../data/enemyLabDefinitions';
-import { PLAYER_SHIP_TEXTURE_KEY } from './gameConstants';
+import {
+  CAMERA_LEAD_LERP,
+  CAMERA_LEAD_MAX_DISTANCE,
+  CAMERA_LEAD_MIN_SPEED,
+  FORWARD_THRUSTER_INTERVAL_MS,
+  PLAYER_MASS,
+  PLAYER_SHIP_DISPLAY_SIZE,
+  PLAYER_SHIP_TEXTURE_KEY,
+  PLAYER_SHIP_VISUAL_ROTATION,
+  SECONDARY_THRUSTER_INTERVAL_MS,
+  THRUSTER_FADE_MS
+} from './gameConstants';
 import { StarfieldSystem } from '../systems/starfield';
-import { applyAccelerationWithMass } from '../systems/physics';
+import { applyAccelerationWithMass, dampVelocityChannel } from '../systems/physics';
 import { createEnemyLabVisualTextures } from '../systems/enemyVisuals';
 import {
   getWrappedDirection,
@@ -98,11 +110,11 @@ interface EnemyLabOverlayRefs {
 
 const PLAYER_LAB_HULL = 100;
 const PLAYER_LAB_HIT_RADIUS = 32;
-const PLAYER_LAB_MASS = 3;
 const PLAYER_PROJECTILE_COOLDOWN_MS = 150;
 const PLAYER_PROJECTILE_SPEED = 900;
 const PLAYER_PROJECTILE_RANGE = 1100;
 const PLAYER_PROJECTILE_DAMAGE = 18;
+const LAB_PLAYER_SHIP = getShipDefinition(DEFAULT_SHIP_ID);
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -110,6 +122,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private cameraLead = new Phaser.Math.Vector2(0, 0);
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private enemies: EnemyLabInstance[] = [];
   private projectiles: EnemyLabProjectile[] = [];
@@ -135,6 +148,10 @@ export class EnemyLabScene extends Phaser.Scene {
   private isSimulationPaused = false;
   private playerHull = PLAYER_LAB_HULL;
   private nextPlayerFireAt = 0;
+  private nextForwardThrusterAt = 0;
+  private nextReverseThrusterAt = 0;
+  private nextLeftStrafeThrusterAt = 0;
+  private nextRightStrafeThrusterAt = 0;
   private nextProjectileId = 1;
   private nextScrapId = 1;
   private nextOverlayStatusUpdateAt = 0;
@@ -163,9 +180,10 @@ export class EnemyLabScene extends Phaser.Scene {
     createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
 
     this.player = this.createPlayerShip(center.x, center.y);
-    this.starfield.resetPlayerTracking(this.player);
     this.cameras.main.startFollow(this.player, true, 1, 1);
+    this.cameras.main.setFollowOffset(0, 0);
     this.cameras.main.centerOn(center.x, center.y);
+    this.resetBackgroundPlayerTracking();
 
     this.presetState = loadEnemyLabStorageState();
     this.createInput();
@@ -190,7 +208,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     this.updatePlayerMovement(time, deltaSeconds);
     this.wrapPlayer();
-    this.starfield.update(time, this.player);
+    this.updateCameraLead();
     this.updatePlayerFiring(time);
     this.updateProjectiles(time, deltaSeconds);
 
@@ -222,6 +240,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.removeCollectedScrap();
     this.removeDeadEnemies();
     this.updateEnemyCollisionDebug();
+    this.updateBackgroundTiles(time);
   }
 
   private createInput(): void {
@@ -261,9 +280,9 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
     const sprite = this.add.image(0, 0, PLAYER_SHIP_TEXTURE_KEY);
-    sprite.setOrigin(0.5);
-    sprite.setDisplaySize(118, 118);
-    sprite.setRotation(Math.PI);
+    sprite.setOrigin(0.5, 0.5);
+    sprite.setDisplaySize(LAB_PLAYER_SHIP.displaySize ?? PLAYER_SHIP_DISPLAY_SIZE, LAB_PLAYER_SHIP.displaySize ?? PLAYER_SHIP_DISPLAY_SIZE);
+    sprite.setRotation(LAB_PLAYER_SHIP.visualRotation ?? PLAYER_SHIP_VISUAL_ROTATION);
     this.playerSprite = sprite;
 
     const ship = this.add.container(x, y, [sprite]);
@@ -274,48 +293,104 @@ export class EnemyLabScene extends Phaser.Scene {
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
     this.updatePlayerFacing();
 
-    const thrustForward = this.keys.up.isDown || this.keys.upAlt.isDown;
-    const thrustReverse = this.keys.down.isDown || this.keys.downAlt.isDown;
     const strafeLeft = this.keys.left.isDown || this.keys.leftAlt.isDown;
     const strafeRight = this.keys.right.isDown || this.keys.rightAlt.isDown;
-    const forward = this.getForwardDirection(this.player.rotation);
-    const right = new Phaser.Math.Vector2(-forward.y, forward.x);
-    const acceleration = new Phaser.Math.Vector2(0, 0);
+    const thrustForward = this.keys.up.isDown || this.keys.upAlt.isDown;
+    const thrustReverse = this.keys.down.isDown || this.keys.downAlt.isDown;
+    const isThrusting = thrustForward || thrustReverse || strafeLeft || strafeRight;
+    const shipForward = this.getForwardDirection(this.player.rotation);
+    const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
+    const playerAcceleration = new Phaser.Math.Vector2(0, 0);
 
-    // Lab-only copy of GameScene-style Interceptor thrust so enemy behavior can be tested without refactoring the live scene.
     if (thrustForward) {
-      acceleration.x += forward.x * interceptorMovement.thrustAcceleration;
-      acceleration.y += forward.y * interceptorMovement.thrustAcceleration;
-    }
-    if (thrustReverse) {
-      acceleration.x -= forward.x * interceptorMovement.reverseThrustAcceleration;
-      acceleration.y -= forward.y * interceptorMovement.reverseThrustAcceleration;
-    }
-    if (strafeLeft) {
-      acceleration.x -= right.x * interceptorMovement.strafeThrustAcceleration;
-      acceleration.y -= right.y * interceptorMovement.strafeThrustAcceleration;
-    }
-    if (strafeRight) {
-      acceleration.x += right.x * interceptorMovement.strafeThrustAcceleration;
-      acceleration.y += right.y * interceptorMovement.strafeThrustAcceleration;
+      playerAcceleration.x += shipForward.x * this.getPlayerThrustAcceleration();
+      playerAcceleration.y += shipForward.y * this.getPlayerThrustAcceleration();
     }
 
-    if (acceleration.lengthSq() > 0) {
+    if (thrustReverse) {
+      playerAcceleration.x -= shipForward.x * this.getPlayerReverseThrustAcceleration();
+      playerAcceleration.y -= shipForward.y * this.getPlayerReverseThrustAcceleration();
+    }
+
+    if (strafeLeft) {
+      playerAcceleration.x -= shipRight.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y -= shipRight.y * this.getPlayerStrafeThrustAcceleration();
+    }
+
+    if (strafeRight) {
+      playerAcceleration.x += shipRight.x * this.getPlayerStrafeThrustAcceleration();
+      playerAcceleration.y += shipRight.y * this.getPlayerStrafeThrustAcceleration();
+    }
+
+    if (playerAcceleration.lengthSq() > 0) {
       applyAccelerationWithMass({
         velocity: this.playerVelocity,
-        acceleration,
-        mass: PLAYER_LAB_MASS,
-        referenceMass: PLAYER_LAB_MASS,
+        acceleration: playerAcceleration,
+        mass: this.getPlayerMass(),
         deltaSeconds,
-        maxSpeed: interceptorMovement.maxSpeed
+        referenceMass: PLAYER_MASS
       });
-      this.emitPlayerThruster(time, forward);
-    } else {
-      this.playerVelocity.scale(Math.pow(interceptorMovement.lowFrictionDamping, deltaSeconds * 60));
     }
+
+    this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
+
+    if (!isThrusting) {
+      this.applyPlayerCoastDamping(deltaSeconds);
+    }
+    this.applyPlayerOverspeedDamping(deltaSeconds);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
+  }
+
+  private getPlayerMass(): number {
+    return LAB_PLAYER_SHIP.baseStats.mass;
+  }
+
+  private getPlayerThrustAcceleration(): number {
+    return LAB_PLAYER_SHIP.baseStats.thrust;
+  }
+
+  private getPlayerReverseThrustAcceleration(): number {
+    return LAB_PLAYER_SHIP.baseStats.brake;
+  }
+
+  private getPlayerStrafeThrustAcceleration(): number {
+    return LAB_PLAYER_SHIP.baseStats.strafe;
+  }
+
+  private getPlayerMaxSpeed(): number {
+    return LAB_PLAYER_SHIP.baseStats.moveSpeed;
+  }
+
+  private getPlayerVelocityLimit(): number {
+    return VELOCITY_LIMITER_BASE_SPEED;
+  }
+
+  private getPlayerOverspeedDamping(): number {
+    const massScale = Math.sqrt(PLAYER_MASS / Math.max(0.001, this.getPlayerMass()));
+    return Math.max(0, LAB_PLAYER_SHIP.movement.overspeedDamping * massScale);
+  }
+
+  private applyPlayerCoastDamping(deltaSeconds: number): void {
+    if (deltaSeconds <= 0 || this.playerVelocity.lengthSq() <= 0.0001) {
+      return;
+    }
+
+    dampVelocityChannel(this.playerVelocity, LAB_PLAYER_SHIP.movement.lowFrictionDamping, deltaSeconds);
+  }
+
+  private applyPlayerOverspeedDamping(deltaSeconds: number): void {
+    const speed = this.playerVelocity.length();
+    const velocityLimit = this.getPlayerVelocityLimit();
+
+    if (speed <= velocityLimit || speed <= 0.0001 || deltaSeconds <= 0) {
+      return;
+    }
+
+    const excessSpeed = speed - velocityLimit;
+    const dampedExcessSpeed = excessSpeed * Math.exp(-this.getPlayerOverspeedDamping() * deltaSeconds);
+    this.playerVelocity.setLength(velocityLimit + dampedExcessSpeed);
   }
 
   private updatePlayerFacing(): void {
@@ -1674,22 +1749,66 @@ export class EnemyLabScene extends Phaser.Scene {
     this.nextOverlayStatusUpdateAt = time + 250;
   }
 
-  private emitPlayerThruster(time: number, forward: Phaser.Math.Vector2): void {
-    if (time % 24 > 16) {
-      return;
+  private updateThrusterEffects(
+    time: number,
+    thrustForward: boolean,
+    thrustReverse: boolean,
+    strafeLeft: boolean,
+    strafeRight: boolean
+  ): void {
+    const shipForward = this.getForwardDirection(this.player.rotation);
+    const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
+
+    if (thrustForward && time >= this.nextForwardThrusterAt) {
+      this.emitThrusterParticle({ x: -13, y: 42 }, shipForward.clone().negate(), 1.45, shipForward, shipRight);
+      this.emitThrusterParticle({ x: 13, y: 42 }, shipForward.clone().negate(), 1.45, shipForward, shipRight);
+      this.nextForwardThrusterAt = time + FORWARD_THRUSTER_INTERVAL_MS;
     }
 
-    const exhaust = forward.clone().negate();
-    const particle = this.add.circle(this.player.x + exhaust.x * 38, this.player.y + exhaust.y * 38, 4, 0x73f2ff, 0.8);
+    if (thrustReverse && time >= this.nextReverseThrusterAt) {
+      this.emitThrusterParticle({ x: -11, y: -37 }, shipForward, 0.95, shipForward, shipRight);
+      this.emitThrusterParticle({ x: 11, y: -37 }, shipForward, 0.95, shipForward, shipRight);
+      this.nextReverseThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+
+    if (strafeLeft && time >= this.nextLeftStrafeThrusterAt) {
+      this.emitThrusterParticle({ x: 38, y: 2 }, shipRight, 0.8, shipForward, shipRight);
+      this.nextLeftStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+
+    if (strafeRight && time >= this.nextRightStrafeThrusterAt) {
+      this.emitThrusterParticle({ x: -38, y: 2 }, shipRight.clone().negate(), 0.8, shipForward, shipRight);
+      this.nextRightStrafeThrusterAt = time + SECONDARY_THRUSTER_INTERVAL_MS;
+    }
+  }
+
+  private emitThrusterParticle(
+    localOffset: { x: number; y: number },
+    exhaustDirection: Phaser.Math.Vector2,
+    intensity: number,
+    forward: Phaser.Math.Vector2,
+    right: Phaser.Math.Vector2
+  ): void {
+    const offset = this.getShipLocalOffset(localOffset.x, localOffset.y, forward, right);
+    const jitter = Phaser.Math.FloatBetween(-4.4, 4.4) * intensity;
+    const startX = this.player.x + offset.x + right.x * jitter;
+    const startY = this.player.y + offset.y + right.y * jitter;
+    const color = Phaser.Math.Between(0, 4) === 0 ? 0xf2fbff : Phaser.Math.Between(0, 1) === 0 ? 0x73f2ff : 0x42f5d7;
+    const particle = this.add.circle(startX, startY, Phaser.Math.FloatBetween(3.6, 7.4) * intensity, color, 0.86);
+    const spread = right.clone().scale(Phaser.Math.FloatBetween(-6, 6) * intensity);
+    const travel = Phaser.Math.FloatBetween(24, 44) * intensity;
+
     particle.setDepth(7);
     particle.setBlendMode(Phaser.BlendModes.ADD);
+
     this.tweens.add({
       targets: particle,
-      x: particle.x + exhaust.x * 34,
-      y: particle.y + exhaust.y * 34,
+      x: startX + exhaustDirection.x * travel + spread.x,
+      y: startY + exhaustDirection.y * travel + spread.y,
       alpha: 0,
-      scale: 0.18,
-      duration: 180,
+      scale: 0.14,
+      duration: THRUSTER_FADE_MS + Phaser.Math.Between(45, 95),
+      ease: 'Quad.easeOut',
       onComplete: () => particle.destroy()
     });
   }
@@ -1743,8 +1862,21 @@ export class EnemyLabScene extends Phaser.Scene {
     this.player.setPosition(wrappedX, wrappedY);
     if (didWrap) {
       this.cameras.main.centerOn(wrappedX, wrappedY);
-      this.starfield.resetPlayerTracking(this.player);
+      this.resetBackgroundPlayerTracking();
     }
+  }
+
+  private updateCameraLead(): void {
+    const speed = this.playerVelocity.length();
+    const maxSpeed = Math.max(CAMERA_LEAD_MIN_SPEED + 1, this.getPlayerMaxSpeed());
+    const leadProgress = Phaser.Math.Clamp((speed - CAMERA_LEAD_MIN_SPEED) / (maxSpeed - CAMERA_LEAD_MIN_SPEED), 0, 1);
+    const targetLead =
+      speed > CAMERA_LEAD_MIN_SPEED && leadProgress > 0
+        ? this.playerVelocity.clone().normalize().scale(CAMERA_LEAD_MAX_DISTANCE * leadProgress)
+        : new Phaser.Math.Vector2(0, 0);
+
+    this.cameraLead.lerp(targetLead, CAMERA_LEAD_LERP);
+    this.cameras.main.setFollowOffset(-this.cameraLead.x, -this.cameraLead.y);
   }
 
   private updateToroidalRenderMirror(
@@ -1787,5 +1919,22 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private getForwardDirection(rotation: number): Phaser.Math.Vector2 {
     return new Phaser.Math.Vector2(Math.sin(rotation), -Math.cos(rotation));
+  }
+
+  private getShipLocalOffset(
+    localX: number,
+    localY: number,
+    forward: Phaser.Math.Vector2,
+    right: Phaser.Math.Vector2
+  ): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(right.x * localX - forward.x * localY, right.y * localX - forward.y * localY);
+  }
+
+  private resetBackgroundPlayerTracking(): void {
+    this.starfield.resetPlayerTracking(this.player);
+  }
+
+  private updateBackgroundTiles(time: number): void {
+    this.starfield.update(time, this.player);
   }
 }
