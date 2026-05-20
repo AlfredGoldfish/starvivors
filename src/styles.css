@@ -173,12 +173,17 @@ canvas {
 }
 
 .enemy-lab-help,
+.enemy-lab-fps,
 .enemy-lab-status {
   margin-top: 9px;
   color: rgba(242, 251, 255, 0.62);
   font-family: Consolas, 'Courier New', monospace;
   font-size: 11px;
   line-height: 1.45;
+}
+
+.enemy-lab-fps {
+  color: rgba(255, 200, 87, 0.9);
 }
 
 .enemy-lab-status {

@@ -105,6 +105,7 @@ interface EnemyLabOverlayRefs {
   hpMultiplier: HTMLInputElement;
   fireRateMultiplier: HTMLInputElement;
   deconflictionStrength: HTMLInputElement;
+  fps: HTMLDivElement;
   status: HTMLDivElement;
 }
 
@@ -156,6 +157,11 @@ export class EnemyLabScene extends Phaser.Scene {
   private nextScrapId = 1;
   private nextOverlayStatusUpdateAt = 0;
   private lastOverlayStatusText = '';
+  private nextFpsMeterUpdateAt = 0;
+  private fpsFrameCount = 0;
+  private fpsDeltaTotal = 0;
+  private fpsWorstDelta = 0;
+  private fpsSampleStartedAt = 0;
   private collisionDebugCircles = new Map<string, Phaser.GameObjects.Arc>();
 
   constructor() {
@@ -200,6 +206,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const deltaSeconds = Math.min(delta / 1000, 0.05);
 
     this.handleShortcuts();
+    this.updateFpsMeter(time, delta);
     this.updateOverlayStatus(time);
 
     if (this.isSimulationPaused) {
@@ -952,6 +959,7 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
       </section>
       <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause. Hold mouse to fire.</div>
+      <div class="enemy-lab-fps" data-field="fps">FPS -- | avg --ms | worst --ms</div>
       <div class="enemy-lab-status" data-field="status"></div>
     `;
     document.body.appendChild(root);
@@ -984,6 +992,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const hpMultiplier = root.querySelector<HTMLInputElement>('[data-field="hp"]');
     const fireRateMultiplier = root.querySelector<HTMLInputElement>('[data-field="fireRate"]');
     const deconflictionStrength = root.querySelector<HTMLInputElement>('[data-field="deconflict"]');
+    const fps = root.querySelector<HTMLDivElement>('[data-field="fps"]');
     const status = root.querySelector<HTMLDivElement>('[data-field="status"]');
 
     if (
@@ -1015,6 +1024,7 @@ export class EnemyLabScene extends Phaser.Scene {
       !hpMultiplier ||
       !fireRateMultiplier ||
       !deconflictionStrength ||
+      !fps ||
       !status
     ) {
       throw new Error('Enemy lab overlay failed to initialize.');
@@ -1061,6 +1071,7 @@ export class EnemyLabScene extends Phaser.Scene {
       hpMultiplier,
       fireRateMultiplier,
       deconflictionStrength,
+      fps,
       status
     };
 
@@ -1704,6 +1715,34 @@ export class EnemyLabScene extends Phaser.Scene {
   private readNumberInput(input: HTMLInputElement, fallback: number): number {
     const value = Number(input.value);
     return Number.isFinite(value) ? value : fallback;
+  }
+
+  private updateFpsMeter(time: number, delta: number): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    if (this.fpsSampleStartedAt <= 0) {
+      this.fpsSampleStartedAt = time;
+    }
+
+    this.fpsFrameCount += 1;
+    this.fpsDeltaTotal += delta;
+    this.fpsWorstDelta = Math.max(this.fpsWorstDelta, delta);
+
+    if (time < this.nextFpsMeterUpdateAt) {
+      return;
+    }
+
+    const elapsed = Math.max(1, time - this.fpsSampleStartedAt);
+    const fps = (this.fpsFrameCount * 1000) / elapsed;
+    const averageFrameMs = this.fpsDeltaTotal / Math.max(1, this.fpsFrameCount);
+    this.overlay.fps.textContent = `FPS ${fps.toFixed(0)} | avg ${averageFrameMs.toFixed(1)}ms | worst ${this.fpsWorstDelta.toFixed(1)}ms`;
+    this.nextFpsMeterUpdateAt = time + 500;
+    this.fpsSampleStartedAt = time;
+    this.fpsFrameCount = 0;
+    this.fpsDeltaTotal = 0;
+    this.fpsWorstDelta = 0;
   }
 
   private syncOverlayFromState(): void {
