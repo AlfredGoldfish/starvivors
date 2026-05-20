@@ -35,7 +35,7 @@ import {
   spawnEnemyLabEnemy,
   type EnemyLabInstance
 } from '../systems/enemyLabSpawner';
-import { downloadTextFile, loadMarkdownFile } from '../systems/debug/debugPersistence';
+import { downloadTextFile, getTimestampSlug, loadMarkdownFile } from '../systems/debug/debugPersistence';
 import {
   ENEMY_LAB_ASSET_STATUSES,
   ENEMY_LAB_QUICK_TAGS,
@@ -74,6 +74,63 @@ interface EnemyLabProjectile {
 interface EnemyLabScrapPickup extends EnemyLabScrapTarget {
   body: Phaser.GameObjects.Arc;
   wrapMirrorBody: Phaser.GameObjects.Arc;
+}
+
+interface EnemyLabDiagnosticsContext {
+  frameId: number;
+  timeMs: number;
+  deltaMs: number;
+  actualFps: number;
+  startedAt: number;
+  phases: Record<string, number>;
+}
+
+interface EnemyLabDiagnosticsFrame {
+  frameId: number;
+  timeMs: number;
+  deltaMs: number;
+  actualFps: number;
+  totalMs: number;
+  phases: Record<string, number>;
+  counts: {
+    enemies: number;
+    projectiles: number;
+    scrap: number;
+    collisionDebugCircles: number;
+  };
+  resizeCount: number;
+  lastResizeAgoMs: number | null;
+  overlayCollapsed: boolean;
+  simulationPaused: boolean;
+  documentVisible: boolean;
+  documentHasFocus: boolean;
+  viewport: {
+    scaleWidth: number;
+    scaleHeight: number;
+    windowWidth: number;
+    windowHeight: number;
+    canvasWidth: number;
+    canvasHeight: number;
+    devicePixelRatio: number;
+  };
+  player: {
+    x: number;
+    y: number;
+    velocityX: number;
+    velocityY: number;
+    speed: number;
+  };
+  camera: {
+    scrollX: number;
+    scrollY: number;
+    width: number;
+    height: number;
+    followOffsetX: number;
+    followOffsetY: number;
+  };
+  starfield: ReturnType<StarfieldSystem['getDiagnosticsSnapshot']>;
+  selectedEnemy?: string;
+  selectedVariant?: string;
 }
 
 interface EnemyLabOverlayRefs {
@@ -118,6 +175,7 @@ const PLAYER_PROJECTILE_SPEED = 900;
 const PLAYER_PROJECTILE_RANGE = 1100;
 const PLAYER_PROJECTILE_DAMAGE = 18;
 const LAB_PLAYER_SHIP = getShipDefinition(DEFAULT_SHIP_ID);
+const LAB_DIAGNOSTICS_FRAME_LIMIT = 900;
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -165,6 +223,11 @@ export class EnemyLabScene extends Phaser.Scene {
   private fpsDeltaTotal = 0;
   private fpsWorstDelta = 0;
   private fpsSampleStartedAt = 0;
+  private diagnosticsFrameId = 1;
+  private diagnosticsFrames: EnemyLabDiagnosticsFrame[] = [];
+  private resizeEventCount = 0;
+  private lastResizeAt = 0;
+  private lastDiagnosticsExportPath = '';
   private collisionDebugCircles = new Map<string, Phaser.GameObjects.Arc>();
 
   constructor() {
@@ -208,51 +271,58 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   update(time: number, delta: number): void {
+    const diagnostics = this.beginDiagnosticsFrame(time, delta);
     const deltaSeconds = Math.min(delta / 1000, 0.05);
 
-    this.handleShortcuts();
-    this.updateFpsMeter(time, delta);
-    this.updateOverlayStatus(time);
+    try {
+      this.measureDiagnosticsPhase(diagnostics, 'shortcuts', () => this.handleShortcuts());
+      this.measureDiagnosticsPhase(diagnostics, 'fps-meter', () => this.updateFpsMeter(time, delta));
+      this.measureDiagnosticsPhase(diagnostics, 'overlay-status', () => this.updateOverlayStatus(time));
 
-    if (this.isSimulationPaused) {
-      return;
+      if (this.isSimulationPaused) {
+        return;
+      }
+
+      this.measureDiagnosticsPhase(diagnostics, 'player-movement', () => this.updatePlayerMovement(time, deltaSeconds));
+      this.measureDiagnosticsPhase(diagnostics, 'player-wrap', () => this.wrapPlayer());
+      this.measureDiagnosticsPhase(diagnostics, 'camera-lead', () => this.updateCameraLead());
+      this.measureDiagnosticsPhase(diagnostics, 'player-firing', () => this.updatePlayerFiring(time));
+      this.measureDiagnosticsPhase(diagnostics, 'projectiles', () => this.updateProjectiles(time, deltaSeconds));
+
+      this.measureDiagnosticsPhase(diagnostics, 'enemy-ai', () =>
+        updateEnemyLabAi({
+          scene: this,
+          arena: this.arena,
+          enemies: this.enemies,
+          scrapPickups: this.scrapPickups,
+          playerX: this.player.x,
+          playerY: this.player.y,
+          playerVelocity: this.playerVelocity,
+          time,
+          deltaSeconds,
+          isAiEnabled: this.isAiEnabled,
+          telegraphsEnabled: this.showTelegraphs,
+          enemySpeedMultiplier: this.enemySpeedMultiplier,
+          enemyFireRateMultiplier: this.enemyFireRateMultiplier,
+          enemyDeconflictionEnabled: this.enemyDeconflictionEnabled,
+          enemyDeconflictionStrength: this.enemyDeconflictionStrength,
+          updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
+            this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
+          fireEnemyProjectile: (request) => this.fireEnemyProjectile(request),
+          explodeAt: (x, y, radius, damage, sourceId) => this.explodeAt(x, y, radius, damage, sourceId),
+          spawnChild: (definitionId, x, y) => this.spawnEnemy(definitionId, x, y),
+          emitLabBurst: (x, y, color, count) => this.emitLabBurst(x, y, color, count)
+        })
+      );
+
+      this.measureDiagnosticsPhase(diagnostics, 'enemy-contacts', () => this.updateEnemyContacts(time));
+      this.measureDiagnosticsPhase(diagnostics, 'scrap-cleanup', () => this.removeCollectedScrap());
+      this.measureDiagnosticsPhase(diagnostics, 'enemy-cleanup', () => this.removeDeadEnemies());
+      this.measureDiagnosticsPhase(diagnostics, 'collision-debug', () => this.updateEnemyCollisionDebug());
+      this.measureDiagnosticsPhase(diagnostics, 'starfield', () => this.updateBackgroundTiles(time));
+    } finally {
+      this.endDiagnosticsFrame(diagnostics);
     }
-
-    this.updatePlayerMovement(time, deltaSeconds);
-    this.wrapPlayer();
-    this.updateCameraLead();
-    this.updatePlayerFiring(time);
-    this.updateProjectiles(time, deltaSeconds);
-
-    updateEnemyLabAi({
-      scene: this,
-      arena: this.arena,
-      enemies: this.enemies,
-      scrapPickups: this.scrapPickups,
-      playerX: this.player.x,
-      playerY: this.player.y,
-      playerVelocity: this.playerVelocity,
-      time,
-      deltaSeconds,
-      isAiEnabled: this.isAiEnabled,
-      telegraphsEnabled: this.showTelegraphs,
-      enemySpeedMultiplier: this.enemySpeedMultiplier,
-      enemyFireRateMultiplier: this.enemyFireRateMultiplier,
-      enemyDeconflictionEnabled: this.enemyDeconflictionEnabled,
-      enemyDeconflictionStrength: this.enemyDeconflictionStrength,
-      updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
-        this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
-      fireEnemyProjectile: (request) => this.fireEnemyProjectile(request),
-      explodeAt: (x, y, radius, damage, sourceId) => this.explodeAt(x, y, radius, damage, sourceId),
-      spawnChild: (definitionId, x, y) => this.spawnEnemy(definitionId, x, y),
-      emitLabBurst: (x, y, color, count) => this.emitLabBurst(x, y, color, count)
-    });
-
-    this.updateEnemyContacts(time);
-    this.removeCollectedScrap();
-    this.removeDeadEnemies();
-    this.updateEnemyCollisionDebug();
-    this.updateBackgroundTiles(time);
   }
 
   private createInput(): void {
@@ -968,6 +1038,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="deconflict">Deconflict</button>
           <button data-action="collisionDebug">Hit Circles</button>
           <button data-action="pause">Pause</button>
+          <button data-action="exportDiagnostics">Export Diagnostics</button>
         </div>
       </section>
       <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause, U hide UI. Hold mouse to fire.</div>
@@ -1189,6 +1260,7 @@ export class EnemyLabScene extends Phaser.Scene {
           this.clearEnemyCollisionDebug();
         }
       }
+      if (action === 'exportDiagnostics') this.exportDiagnosticsReport();
       if (action === 'pause') this.isSimulationPaused = !this.isSimulationPaused;
       this.syncOverlayFromState();
     });
@@ -1771,6 +1843,149 @@ export class EnemyLabScene extends Phaser.Scene {
     this.fpsWorstDelta = 0;
   }
 
+  private beginDiagnosticsFrame(time: number, delta: number): EnemyLabDiagnosticsContext {
+    return {
+      frameId: this.diagnosticsFrameId,
+      timeMs: time,
+      deltaMs: delta,
+      actualFps: this.game.loop.actualFps,
+      startedAt: performance.now(),
+      phases: {}
+    };
+  }
+
+  private measureDiagnosticsPhase<T>(frame: EnemyLabDiagnosticsContext, name: string, callback: () => T): T {
+    const startedAt = performance.now();
+    try {
+      return callback();
+    } finally {
+      frame.phases[name] = roundDiagnosticsNumber((frame.phases[name] ?? 0) + performance.now() - startedAt);
+    }
+  }
+
+  private endDiagnosticsFrame(context: EnemyLabDiagnosticsContext): void {
+    const totalMs = performance.now() - context.startedAt;
+    const measuredMs = Object.values(context.phases).reduce((sum, value) => sum + value, 0);
+    context.phases['unmeasured-render-browser'] = roundDiagnosticsNumber(Math.max(0, totalMs - measuredMs));
+    const camera = this.cameras.main;
+    const canvas = this.game.canvas;
+    const selected = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variant = this.getSelectedVariant();
+    const frame: EnemyLabDiagnosticsFrame = {
+      frameId: context.frameId,
+      timeMs: roundDiagnosticsNumber(context.timeMs),
+      deltaMs: roundDiagnosticsNumber(context.deltaMs),
+      actualFps: roundDiagnosticsNumber(context.actualFps),
+      totalMs: roundDiagnosticsNumber(totalMs),
+      phases: context.phases,
+      counts: {
+        enemies: this.enemies.length,
+        projectiles: this.projectiles.length,
+        scrap: this.scrapPickups.length,
+        collisionDebugCircles: this.collisionDebugCircles.size
+      },
+      resizeCount: this.resizeEventCount,
+      lastResizeAgoMs: this.lastResizeAt > 0 ? roundDiagnosticsNumber(context.timeMs - this.lastResizeAt) : null,
+      overlayCollapsed: this.isOverlayCollapsed,
+      simulationPaused: this.isSimulationPaused,
+      documentVisible: document.visibilityState === 'visible',
+      documentHasFocus: document.hasFocus(),
+      viewport: {
+        scaleWidth: this.scale.width,
+        scaleHeight: this.scale.height,
+        windowWidth: window.innerWidth,
+        windowHeight: window.innerHeight,
+        canvasWidth: canvas.width,
+        canvasHeight: canvas.height,
+        devicePixelRatio: window.devicePixelRatio
+      },
+      player: {
+        x: roundDiagnosticsNumber(this.player.x),
+        y: roundDiagnosticsNumber(this.player.y),
+        velocityX: roundDiagnosticsNumber(this.playerVelocity.x),
+        velocityY: roundDiagnosticsNumber(this.playerVelocity.y),
+        speed: roundDiagnosticsNumber(this.playerVelocity.length())
+      },
+      camera: {
+        scrollX: roundDiagnosticsNumber(camera.scrollX),
+        scrollY: roundDiagnosticsNumber(camera.scrollY),
+        width: camera.width,
+        height: camera.height,
+        followOffsetX: roundDiagnosticsNumber(this.cameraLead.x),
+        followOffsetY: roundDiagnosticsNumber(this.cameraLead.y)
+      },
+      starfield: this.starfield.getDiagnosticsSnapshot(),
+      selectedEnemy: selected?.id,
+      selectedVariant: variant?.id
+    };
+
+    this.diagnosticsFrameId += 1;
+    this.diagnosticsFrames.push(frame);
+    if (this.diagnosticsFrames.length > LAB_DIAGNOSTICS_FRAME_LIMIT) {
+      this.diagnosticsFrames.splice(0, this.diagnosticsFrames.length - LAB_DIAGNOSTICS_FRAME_LIMIT);
+    }
+  }
+
+  private exportDiagnosticsReport(): void {
+    const filename = `enemy-lab-diagnostics-${getTimestampSlug()}.md`;
+    const report = this.createDiagnosticsMarkdown();
+
+    downloadTextFile(filename, report, 'text/markdown', 'reports');
+    this.lastDiagnosticsExportPath = filename;
+    this.nextOverlayStatusUpdateAt = 0;
+  }
+
+  private createDiagnosticsMarkdown(): string {
+    const frames = this.diagnosticsFrames;
+    const stats = summarizeEnemyLabDiagnostics(frames);
+    const latest = frames[frames.length - 1];
+    const worstFrames = [...frames].sort((a, b) => b.deltaMs - a.deltaMs).slice(0, 12);
+    const sampledFrames = sampleEnemyLabDiagnostics(frames, 120);
+    const machineReadable = {
+      type: 'starvivors-enemy-lab-diagnostics',
+      schemaVersion: 1,
+      savedAt: new Date().toISOString(),
+      summary: stats,
+      latest,
+      worstFrames,
+      sampledFrames
+    };
+
+    return [
+      '# Starvivors Enemy Lab Diagnostics',
+      '',
+      `Saved: ${new Date().toLocaleString()}`,
+      '',
+      '## Summary',
+      '',
+      `- Frames captured: ${frames.length}`,
+      `- Average delta: ${stats.averageDeltaMs.toFixed(2)}ms`,
+      `- P95 delta: ${stats.p95DeltaMs.toFixed(2)}ms`,
+      `- Worst delta: ${stats.maxDeltaMs.toFixed(2)}ms`,
+      `- Average measured update: ${stats.averageMeasuredMs.toFixed(2)}ms`,
+      `- Resize events: ${latest?.resizeCount ?? 0}`,
+      `- Latest visibility/focus: ${latest?.documentVisible ? 'visible' : 'hidden'} / ${latest?.documentHasFocus ? 'focused' : 'blurred'}`,
+      `- Latest canvas: ${latest ? `${latest.viewport.canvasWidth}x${latest.viewport.canvasHeight}` : 'n/a'}`,
+      `- Latest Phaser scale: ${latest ? `${latest.viewport.scaleWidth}x${latest.viewport.scaleHeight}` : 'n/a'}`,
+      `- Last export: ${this.lastDiagnosticsExportPath || 'n/a'}`,
+      '',
+      '## Top Phases',
+      '',
+      ...formatEnemyLabPhaseRows(stats.topPhases),
+      '',
+      '## Worst Frames',
+      '',
+      ...formatEnemyLabWorstFrames(worstFrames),
+      '',
+      '## Machine Readable Report',
+      '',
+      '```json',
+      JSON.stringify(machineReadable, null, 2),
+      '```',
+      ''
+    ].join('\n');
+  }
+
   private syncOverlayFromState(): void {
     if (!this.overlay) {
       return;
@@ -1806,7 +2021,8 @@ export class EnemyLabScene extends Phaser.Scene {
       `AI ${this.isAiEnabled ? 'on' : 'off'} | invuln ${this.isPlayerInvulnerable ? 'on' : 'off'} | ` +
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
-      `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL}`;
+      `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL}` +
+      `${this.lastDiagnosticsExportPath ? ` | report ${this.lastDiagnosticsExportPath}` : ''}`;
     if (statusText !== this.lastOverlayStatusText) {
       this.overlay.status.textContent = statusText;
       this.lastOverlayStatusText = statusText;
@@ -2004,6 +2220,8 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private handleResize(): void {
+    this.resizeEventCount += 1;
+    this.lastResizeAt = this.time.now;
     const viewport = getViewportSize(this);
     this.arena = createArenaSize(viewport);
     this.starfield.resize(viewport.width, viewport.height);
@@ -2013,4 +2231,98 @@ export class EnemyLabScene extends Phaser.Scene {
     this.resetBackgroundPlayerTracking();
     this.clearEnemyCollisionDebug();
   }
+}
+
+function summarizeEnemyLabDiagnostics(frames: EnemyLabDiagnosticsFrame[]) {
+  const deltas = frames.map((frame) => frame.deltaMs).sort((a, b) => a - b);
+  const measuredTotals = frames.map((frame) => frame.totalMs);
+  const phaseTotals: Record<string, number> = {};
+  const phaseMax: Record<string, number> = {};
+
+  for (const frame of frames) {
+    for (const [name, value] of Object.entries(frame.phases)) {
+      phaseTotals[name] = (phaseTotals[name] ?? 0) + value;
+      phaseMax[name] = Math.max(phaseMax[name] ?? 0, value);
+    }
+  }
+
+  const topPhases = Object.entries(phaseTotals)
+    .map(([name, totalMs]) => ({
+      name,
+      totalMs: roundDiagnosticsNumber(totalMs),
+      averageMs: roundDiagnosticsNumber(frames.length > 0 ? totalMs / frames.length : 0),
+      maxMs: roundDiagnosticsNumber(phaseMax[name] ?? 0)
+    }))
+    .sort((a, b) => b.totalMs - a.totalMs)
+    .slice(0, 12);
+
+  return {
+    averageDeltaMs: roundDiagnosticsNumber(averageDiagnosticsValue(deltas)),
+    p95DeltaMs: roundDiagnosticsNumber(percentileDiagnosticsValue(deltas, 0.95)),
+    maxDeltaMs: roundDiagnosticsNumber(deltas[deltas.length - 1] ?? 0),
+    averageMeasuredMs: roundDiagnosticsNumber(averageDiagnosticsValue(measuredTotals)),
+    topPhases
+  };
+}
+
+function formatEnemyLabPhaseRows(phases: Array<{ name: string; totalMs: number; averageMs: number; maxMs: number }>): string[] {
+  if (phases.length <= 0) {
+    return ['No phase timings captured.'];
+  }
+
+  return [
+    '| Phase | Total ms | Avg ms/frame | Max ms |',
+    '| --- | ---: | ---: | ---: |',
+    ...phases.map((phase) => `| ${phase.name} | ${phase.totalMs.toFixed(2)} | ${phase.averageMs.toFixed(3)} | ${phase.maxMs.toFixed(3)} |`)
+  ];
+}
+
+function formatEnemyLabWorstFrames(frames: EnemyLabDiagnosticsFrame[]): string[] {
+  if (frames.length <= 0) {
+    return ['No frames captured.'];
+  }
+
+  return frames.map((frame, index) => {
+    const topPhases = Object.entries(frame.phases)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([name, value]) => `${name} ${value.toFixed(2)}ms`)
+      .join(', ');
+
+    return `${index + 1}. Frame ${frame.frameId}: delta ${frame.deltaMs.toFixed(2)}ms, measured ${frame.totalMs.toFixed(2)}ms, actual ${frame.actualFps.toFixed(1)} FPS, resize count ${frame.resizeCount}, player speed ${frame.player.speed.toFixed(1)}, star near ${frame.starfield.nearTileX ?? 'n/a'}/${frame.starfield.nearTileY ?? 'n/a'}. Top phases: ${topPhases || 'n/a'}.`;
+  });
+}
+
+function sampleEnemyLabDiagnostics(frames: EnemyLabDiagnosticsFrame[], limit: number): EnemyLabDiagnosticsFrame[] {
+  if (frames.length <= limit) {
+    return frames;
+  }
+
+  const sampled: EnemyLabDiagnosticsFrame[] = [];
+  const step = (frames.length - 1) / (limit - 1);
+  for (let index = 0; index < limit; index += 1) {
+    sampled.push(frames[Math.round(index * step)]);
+  }
+  return sampled;
+}
+
+function averageDiagnosticsValue(values: number[]): number {
+  if (values.length <= 0) {
+    return 0;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function percentileDiagnosticsValue(sortedValues: number[], percentile: number): number {
+  if (sortedValues.length <= 0) {
+    return 0;
+  }
+
+  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil(sortedValues.length * percentile) - 1));
+  return sortedValues[index];
+}
+
+function roundDiagnosticsNumber(value: number): number {
+  return Number(value.toFixed(3));
 }

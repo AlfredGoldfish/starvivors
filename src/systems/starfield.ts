@@ -25,6 +25,21 @@ export interface StarfieldSystemConfig {
   getWrappedDirection: (fromX: number, fromY: number, toX: number, toY: number) => Phaser.Math.Vector2;
 }
 
+export interface StarfieldDiagnosticsSnapshot {
+  backgroundScrollX: number;
+  backgroundScrollY: number;
+  previousPlayerX?: number;
+  previousPlayerY?: number;
+  farTileX?: number;
+  farTileY?: number;
+  midTileX?: number;
+  midTileY?: number;
+  nearTileX?: number;
+  nearTileY?: number;
+  farWidth?: number;
+  farHeight?: number;
+}
+
 export class StarfieldSystem {
   private readonly scene: Phaser.Scene;
   private readonly getWrappedDirection: (fromX: number, fromY: number, toX: number, toY: number) => Phaser.Math.Vector2;
@@ -187,6 +202,23 @@ export class StarfieldSystem {
     };
   }
 
+  getDiagnosticsSnapshot(): StarfieldDiagnosticsSnapshot {
+    return {
+      backgroundScrollX: roundDiagnosticNumber(this.backgroundScrollX),
+      backgroundScrollY: roundDiagnosticNumber(this.backgroundScrollY),
+      previousPlayerX: roundOptionalDiagnosticNumber(this.previousBackgroundPlayerX),
+      previousPlayerY: roundOptionalDiagnosticNumber(this.previousBackgroundPlayerY),
+      farTileX: roundOptionalDiagnosticNumber(this.farStarfield?.tilePositionX),
+      farTileY: roundOptionalDiagnosticNumber(this.farStarfield?.tilePositionY),
+      midTileX: roundOptionalDiagnosticNumber(this.midStarfield?.tilePositionX),
+      midTileY: roundOptionalDiagnosticNumber(this.midStarfield?.tilePositionY),
+      nearTileX: roundOptionalDiagnosticNumber(this.nearStarfield?.tilePositionX),
+      nearTileY: roundOptionalDiagnosticNumber(this.nearStarfield?.tilePositionY),
+      farWidth: roundOptionalDiagnosticNumber(this.farStarfield?.width),
+      farHeight: roundOptionalDiagnosticNumber(this.farStarfield?.height)
+    };
+  }
+
   private createStarLayerTexture(
     textureKey: string,
     seed: string,
@@ -261,4 +293,12 @@ export class StarfieldSystem {
   private clampParallax(value: number): number {
     return Number(Phaser.Math.Clamp(value, STARFIELD_PARALLAX_MIN, STARFIELD_PARALLAX_MAX).toFixed(2));
   }
+}
+
+function roundDiagnosticNumber(value: number): number {
+  return Number(value.toFixed(3));
+}
+
+function roundOptionalDiagnosticNumber(value: number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? roundDiagnosticNumber(value) : undefined;
 }
