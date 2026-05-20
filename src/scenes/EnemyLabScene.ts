@@ -233,6 +233,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private fpsDeltaTotal = 0;
   private fpsWorstDelta = 0;
   private fpsSampleStartedAt = 0;
+  private delayedSquadSpawns: Phaser.Time.TimerEvent[] = [];
   private diagnosticsFrameId = 1;
   private diagnosticsFrames: EnemyLabDiagnosticsFrame[] = [];
   private resizeEventCount = 0;
@@ -274,6 +275,10 @@ export class EnemyLabScene extends Phaser.Scene {
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
+      for (const delayedSpawn of this.delayedSquadSpawns) {
+        delayedSpawn.remove(false);
+      }
+      this.delayedSquadSpawns = [];
       this.clearEnemyCollisionDebug();
       this.overlay?.root.remove();
       this.overlay = undefined;
@@ -757,11 +762,26 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private spawnCustomSquad(squad: EnemyLabSquadPreset, centerX: number, centerY: number): void {
     for (const entry of squad.entries) {
-      this.spawnEnemy(entry.definitionId, centerX + entry.x, centerY + entry.y, entry.variantId);
+      const spawn = () => this.spawnEnemy(entry.definitionId, centerX + entry.x, centerY + entry.y, entry.variantId);
+      const delay = Math.max(0, Number(entry.spawnDelayMs) || 0);
+
+      if (delay > 0) {
+        const event = this.time.delayedCall(delay, () => {
+          this.delayedSquadSpawns = this.delayedSquadSpawns.filter((candidate) => candidate !== event);
+          spawn();
+        });
+        this.delayedSquadSpawns.push(event);
+      } else {
+        spawn();
+      }
     }
   }
 
   private clearEnemies(): void {
+    for (const delayedSpawn of this.delayedSquadSpawns) {
+      delayedSpawn.remove(false);
+    }
+    this.delayedSquadSpawns = [];
     this.enemies = clearEnemyLabEnemies(this.enemies);
     this.clearEnemyCollisionDebug();
     for (const projectile of this.projectiles) {
@@ -956,6 +976,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="newVariant">Duplicate</button>
           <button data-action="saveVariant">Save Draft</button>
           <button data-action="resetVariant">Reset</button>
+          <button data-action="deleteVariant">Delete Draft</button>
           <button data-action="exportVariant">Export</button>
           <button data-action="importPreset">Import</button>
         </div>
@@ -991,6 +1012,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="addSquadEntry">Add Enemy</button>
           <button data-action="spawnSquad">Test Squad</button>
           <button data-action="exportSquad">Export Squad</button>
+          <button data-action="deleteSquad">Delete Squad</button>
         </div>
         <textarea data-field="squadNotes" rows="3" placeholder="Squad formation notes."></textarea>
         <div class="enemy-lab-row">
@@ -1161,6 +1183,9 @@ export class EnemyLabScene extends Phaser.Scene {
     }
     squadSelect.addEventListener('change', () => {
       this.selectedSquadIndex = Math.max(0, getEnemyLabSquads().findIndex((squad) => squad.id === squadSelect.value));
+      this.selectedCustomSquadId = '';
+      this.selectedSquadEntryIndex = -1;
+      this.syncSquadControlsFromState();
     });
     customSquadSelect.addEventListener('change', () => {
       this.selectedCustomSquadId = customSquadSelect.value;
@@ -1215,6 +1240,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'newVariant') this.createVariantForSelectedEnemy();
       if (action === 'saveVariant') this.persistVariantFromControls();
       if (action === 'resetVariant') this.resetSelectedVariant();
+      if (action === 'deleteVariant') this.deleteSelectedVariant();
       if (action === 'exportVariant') this.exportSelectedVariant();
       if (action === 'importPreset') this.importEnemyLabPreset();
       if (action === 'exportAiBrief') this.exportAiBrief();
@@ -1224,6 +1250,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'addSquadEntry') this.addSelectedEnemyToSquad();
       if (action === 'spawnSquad') this.spawnSelectedSquad();
       if (action === 'exportSquad') this.exportSelectedSquad();
+      if (action === 'deleteSquad') this.deleteSelectedSquad();
       if (action === 'rotateSquadLeft') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, -15));
       if (action === 'rotateSquadRight') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, 15));
       if (action === 'scaleSquadDown') this.transformSelectedSquad((entry) => ({ ...entry, x: Math.round(entry.x * 0.86), y: Math.round(entry.y * 0.86) }));
@@ -1307,6 +1334,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
     const variant = this.getSelectedVariant();
+    const hasVariant = Boolean(variant);
     this.overlay.variantSelect.value = this.selectedVariantId;
     this.overlay.variantName.value = variant?.displayName ?? `${definition.displayName} Variant`;
     this.overlay.variantName.disabled = !variant;
@@ -1340,6 +1368,8 @@ export class EnemyLabScene extends Phaser.Scene {
     }
     this.renderQuickTags();
     this.renderBehaviorParamControls();
+    this.setActionsEnabled(['saveVariant', 'resetVariant', 'deleteVariant', 'exportVariant', 'exportPromotion'], hasVariant);
+    this.setActionsEnabled(['exportAiBrief'], hasVariant || Boolean(this.getSelectedCustomSquad()));
   }
 
   private syncSquadControlsFromState(): void {
@@ -1348,6 +1378,7 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     const squad = this.getSelectedCustomSquad();
+    const hasSquad = Boolean(squad);
     this.overlay.customSquadSelect.value = this.selectedCustomSquadId;
     this.overlay.squadName.value = squad?.displayName ?? 'Custom Squad';
     this.overlay.squadName.disabled = !squad;
@@ -1356,6 +1387,11 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.squadNotes.value = squad?.notes ?? '';
     this.overlay.squadNotes.disabled = !squad;
     this.renderSquadEntries();
+    this.setActionsEnabled(
+      ['exportSquad', 'deleteSquad', 'rotateSquadLeft', 'rotateSquadRight', 'scaleSquadDown', 'scaleSquadUp', 'mirrorSquad', 'clearSquad'],
+      hasSquad
+    );
+    this.setActionsEnabled(['exportAiBrief'], hasSquad || Boolean(this.getSelectedVariant()));
   }
 
   private persistVariantFromControls(): void {
@@ -1578,6 +1614,38 @@ export class EnemyLabScene extends Phaser.Scene {
     this.renderSquadEntries();
   }
 
+  private deleteSelectedVariant(): void {
+    const variant = this.getSelectedVariant();
+    if (!variant) {
+      return;
+    }
+
+    this.presetState.variants = this.presetState.variants.filter((candidate) => candidate.id !== variant.id);
+    for (const squad of this.presetState.squads) {
+      for (const entry of squad.entries) {
+        if (entry.variantId === variant.id) {
+          entry.variantId = undefined;
+        }
+      }
+    }
+    this.selectedVariantId = '';
+    this.savePresetState();
+    this.syncOverlayFromState();
+  }
+
+  private deleteSelectedSquad(): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad) {
+      return;
+    }
+
+    this.presetState.squads = this.presetState.squads.filter((candidate) => candidate.id !== squad.id);
+    this.selectedCustomSquadId = '';
+    this.selectedSquadEntryIndex = -1;
+    this.savePresetState();
+    this.syncOverlayFromState();
+  }
+
   private transformSelectedSquad(transform: (entry: EnemyLabSquadPresetEntry) => EnemyLabSquadPresetEntry): void {
     const squad = this.getSelectedCustomSquad();
     if (!squad) {
@@ -1786,7 +1854,53 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private readNumberInput(input: HTMLInputElement, fallback: number): number {
     const value = Number(input.value);
-    return Number.isFinite(value) ? value : fallback;
+    const min = input.min === '' ? Number.NEGATIVE_INFINITY : Number(input.min);
+    const max = input.max === '' ? Number.POSITIVE_INFINITY : Number(input.max);
+    const clamped = Phaser.Math.Clamp(
+      Number.isFinite(value) ? value : fallback,
+      Number.isFinite(min) ? min : Number.NEGATIVE_INFINITY,
+      Number.isFinite(max) ? max : Number.POSITIVE_INFINITY
+    );
+
+    input.value = String(clamped);
+    return clamped;
+  }
+
+  private setActionsEnabled(actions: string[], enabled: boolean): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    for (const action of actions) {
+      const button = this.overlay.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+      if (button) {
+        button.disabled = !enabled;
+      }
+    }
+  }
+
+  private setActionState(action: string, active: boolean, activeLabel: string, inactiveLabel: string): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const button = this.overlay.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
+    if (!button) {
+      return;
+    }
+
+    button.classList.toggle('is-active', active);
+    button.textContent = active ? activeLabel : inactiveLabel;
+  }
+
+  private syncActionButtonStates(): void {
+    this.setActionState('ai', this.isAiEnabled, 'AI On', 'AI Off');
+    this.setActionState('invuln', this.isPlayerInvulnerable, 'Invuln On', 'Invuln Off');
+    this.setActionState('labels', this.showDebugLabels, 'Labels On', 'Labels Off');
+    this.setActionState('telegraphs', this.showTelegraphs, 'Telegraphs On', 'Telegraphs Off');
+    this.setActionState('deconflict', this.enemyDeconflictionEnabled, 'Deconflict On', 'Deconflict Off');
+    this.setActionState('collisionDebug', this.enemyCollisionDebugEnabled, 'Hit Circles On', 'Hit Circles Off');
+    this.setActionState('pause', this.isSimulationPaused, 'Paused', 'Pause');
   }
 
   private setOverlayCollapsed(collapsed: boolean): void {
@@ -1986,6 +2100,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.deconflictionStrength.value = String(this.enemyDeconflictionStrength);
     this.syncVariantControlsFromState();
     this.syncSquadControlsFromState();
+    this.syncActionButtonStates();
   }
 
   private updateOverlayStatus(time: number): void {
