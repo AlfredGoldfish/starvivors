@@ -90,6 +90,9 @@ export interface StarvivorsTestHarnessState {
   isPlayerDead: boolean;
   hasExtracted: boolean;
   sectorScale: number;
+  sectorSeed: string;
+  sectorRegionCount: number;
+  sectorSignalCount: number;
   arenaWidth: number;
   arenaHeight: number;
   cameraFollowOffsetX: number;

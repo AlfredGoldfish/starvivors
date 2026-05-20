@@ -279,6 +279,13 @@ import {
 import { GameplayHudSystem, type GameplayHudSnapshot, type WeaponHotbarSlotSnapshot } from '../systems/gameplayHud';
 import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import {
+  generateSectorLayout,
+  getSectorRegionColor,
+  getWrappedDistance,
+  type SectorLayout,
+  type SectorRegion
+} from '../systems/sectorGeneration';
+import {
   PerformanceProfilerSystem,
   type PerformanceProfilerCounts,
   type PerformanceProfilerFlags
@@ -505,9 +512,20 @@ interface EnemyTimeScaling {
   damageMultiplier: number;
 }
 
+interface SectorSignalBeacon {
+  region: SectorRegion;
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  ring: Phaser.GameObjects.Arc;
+  wrapMirrorRing: Phaser.GameObjects.Arc;
+}
+
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private sectorScale: SectorScale = DEFAULT_SECTOR_SCALE;
+  private sectorSeed = '';
+  private sectorLayout: SectorLayout = { seed: '', regions: [] };
+  private sectorSignalBeacons: SectorSignalBeacon[] = [];
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
@@ -772,6 +790,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
       this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
       this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
+      this.profileStep('sector-signals', () => this.updateSectorSignalBeacons(time));
       this.profileStep('black-hole', () => this.updateBlackHole(time, deltaSeconds, true));
       this.profileStep('debris', () => this.updateEnemyWreckageDebris(time, deltaSeconds));
       this.profileStep('death-shards', () => this.updateDeathShards(delta));
@@ -1464,6 +1483,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase8();
     }
 
+    if (query.get('testHarness') === 'phase9') {
+      this.runTestHarnessPhase9();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1503,6 +1526,9 @@ export class GameScene extends Phaser.Scene {
       isPlayerDead: this.isPlayerDead,
       hasExtracted: this.hasExtracted,
       sectorScale: this.sectorScale,
+      sectorSeed: this.sectorSeed,
+      sectorRegionCount: this.sectorLayout.regions.length,
+      sectorSignalCount: this.sectorSignalBeacons.length,
       arenaWidth: this.arena.width,
       arenaHeight: this.arena.height,
       cameraFollowOffsetX: -this.cameraLead.x,
@@ -2302,6 +2328,95 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase9(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase9-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase9-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const state = harness.getState();
+    const regionTypes = new Set(this.sectorLayout.regions.map((region) => region.type));
+    const repeated = generateSectorLayout({
+      arena: this.arena,
+      seed: this.sectorSeed,
+      startX: this.arena.width / 2,
+      startY: this.arena.height / 2
+    });
+    const deterministic = repeated.regions.every((region, index) => {
+      const original = this.sectorLayout.regions[index];
+      return (
+        original &&
+        original.type === region.type &&
+        Math.abs(original.x - region.x) < 0.001 &&
+        Math.abs(original.y - region.y) < 0.001 &&
+        Math.abs(original.radius - region.radius) < 0.001
+      );
+    });
+    const safeRegion = this.sectorLayout.regions.find((region) => region.type === 'safe-drift');
+    const safeStartPass = Boolean(
+      safeRegion &&
+        getWrappedDistance(this.arena, this.player.x, this.player.y, safeRegion.x, safeRegion.y) <= safeRegion.radius * 0.2
+    );
+    const regionMixPass =
+      regionTypes.has('safe-drift') &&
+      regionTypes.has('salvage-field') &&
+      regionTypes.has('asteroid-belt') &&
+      regionTypes.has('enemy-territory') &&
+      regionTypes.has('anomaly-signal');
+    const placementPass =
+      this.basicAsteroids.length >= BASIC_ASTEROID_COUNT &&
+      this.scrapPickups.length >= 8 &&
+      this.sectorSignalBeacons.length >= 4;
+    const boundsPass = this.sectorLayout.regions.every(
+      (region) =>
+        region.x >= 0 &&
+        region.x < this.arena.width &&
+        region.y >= 0 &&
+        region.y < this.arena.height &&
+        region.radius > 0
+    );
+
+    const pass =
+      state.sectorRegionCount >= 6 &&
+      state.sectorSignalCount >= 4 &&
+      state.sectorSeed === this.sectorSeed &&
+      deterministic &&
+      safeStartPass &&
+      regionMixPass &&
+      placementPass &&
+      boundsPass;
+
+    document.body.setAttribute('data-starvivors-phase9-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase9-harness-details',
+      JSON.stringify({
+        state,
+        sectorSeed: this.sectorSeed,
+        regions: this.sectorLayout.regions.map((region) => ({
+          id: region.id,
+          type: region.type,
+          x: Math.round(region.x),
+          y: Math.round(region.y),
+          radius: Math.round(region.radius),
+          danger: region.danger,
+          resource: region.resource
+        })),
+        asteroidCount: this.basicAsteroids.length,
+        scrapPickupCount: this.scrapPickups.length,
+        signalCount: this.sectorSignalBeacons.length,
+        deterministic,
+        safeStartPass,
+        regionMixPass,
+        placementPass,
+        boundsPass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2496,6 +2611,7 @@ export class GameScene extends Phaser.Scene {
     this.enemyWreckageDebris = [];
     this.deathShards = [];
     this.scrapPickups = [];
+    this.sectorSignalBeacons = [];
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -2548,9 +2664,18 @@ export class GameScene extends Phaser.Scene {
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
+    this.sectorSeed = this.getConfiguredSectorSeed();
+    this.sectorLayout = generateSectorLayout({
+      arena: this.arena,
+      seed: this.sectorSeed,
+      startX: center.x,
+      startY: center.y
+    });
     this.createExtractionBeacon(center);
     this.createInitialLiveEnemies(center);
-    this.createBasicAsteroids(center);
+    this.createSectorAsteroids(center);
+    this.createSectorScrapPockets();
+    this.createSectorSignalBeacons();
     this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.setFollowOffset(0, 0);
@@ -2587,6 +2712,15 @@ export class GameScene extends Phaser.Scene {
     const requestedScale = Number(query.get('sectorScale') ?? query.get('sector'));
 
     return normalizeSectorScale(requestedScale);
+  }
+
+  private getConfiguredSectorSeed(): string {
+    const query = new URLSearchParams(window.location.search);
+    const requestedSeed = query.get('sectorSeed');
+
+    return requestedSeed && requestedSeed.trim().length > 0
+      ? requestedSeed.trim()
+      : `sector-${Math.round(this.runStartedAt)}-${this.sectorScale}`;
   }
 
   private startRun(): void {
@@ -3533,20 +3667,133 @@ export class GameScene extends Phaser.Scene {
     return new Phaser.Math.Vector2(wrapCoordinate(this.player.x + safeDistance, this.arena.width), this.player.y);
   }
 
-  private createBasicAsteroids(center: Phaser.Math.Vector2): void {
-    for (let index = 0; index < BASIC_ASTEROID_COUNT; index += 1) {
-      let x = Phaser.Math.Between(0, this.arena.width);
-      let y = Phaser.Math.Between(0, this.arena.height);
-      const offsetFromPlayer = this.getWrappedDirection(center.x, center.y, x, y);
+  private createSectorAsteroids(center: Phaser.Math.Vector2): void {
+    const random = new Phaser.Math.RandomDataGenerator([`${this.sectorSeed}-asteroids`]);
 
-      if (offsetFromPlayer.length() < ASTEROID_SAFE_SPAWN_RADIUS) {
-        const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-        x = wrapCoordinate(center.x + Math.cos(angle) * ASTEROID_SAFE_SPAWN_RADIUS, this.arena.width);
-        y = wrapCoordinate(center.y + Math.sin(angle) * ASTEROID_SAFE_SPAWN_RADIUS, this.arena.height);
+    for (const region of this.sectorLayout.regions) {
+      const count =
+        region.type === 'asteroid-belt'
+          ? 5
+          : region.type === 'anomaly-signal'
+            ? 3
+            : region.type === 'salvage-field'
+              ? 2
+              : region.type === 'enemy-territory'
+                ? 2
+                : 0;
+
+      for (let index = 0; index < count; index += 1) {
+        const position = this.getRandomPointInSectorRegion(region, random);
+        if (getWrappedDistance(this.arena, center.x, center.y, position.x, position.y) < ASTEROID_SAFE_SPAWN_RADIUS) {
+          continue;
+        }
+
+        this.basicAsteroids.push(this.createAsteroidInstance(position.x, position.y, this.getSectorAsteroidTier(region, random)));
       }
-
-      this.basicAsteroids.push(this.createAsteroidInstance(x, y, this.getRandomInitialAsteroidTier()));
     }
+
+    while (this.basicAsteroids.length < BASIC_ASTEROID_COUNT) {
+      const fallbackRegion = this.sectorLayout.regions.find((region) => region.type === 'asteroid-belt') ?? this.sectorLayout.regions[0];
+      const position = this.getRandomPointInSectorRegion(fallbackRegion, random);
+      if (getWrappedDistance(this.arena, center.x, center.y, position.x, position.y) >= ASTEROID_SAFE_SPAWN_RADIUS) {
+        this.basicAsteroids.push(this.createAsteroidInstance(position.x, position.y, this.getSectorAsteroidTier(fallbackRegion, random)));
+      }
+    }
+  }
+
+  private createSectorScrapPockets(): void {
+    const random = new Phaser.Math.RandomDataGenerator([`${this.sectorSeed}-scrap`]);
+
+    for (const region of this.sectorLayout.regions) {
+      const count =
+        region.type === 'salvage-field'
+          ? 5
+          : region.type === 'anomaly-signal'
+            ? 3
+            : region.type === 'enemy-territory'
+              ? 2
+              : 0;
+
+      for (let index = 0; index < count; index += 1) {
+        const position = this.getRandomPointInSectorRegion(region, random);
+        this.spawnRewardPickup(
+          'scrap',
+          'debris',
+          region.type === 'salvage-field' ? random.between(12, 22) : random.between(8, 16),
+          position.x,
+          position.y,
+          new Phaser.Math.Vector2(0, 0)
+        );
+      }
+    }
+  }
+
+  private createSectorSignalBeacons(): void {
+    this.sectorSignalBeacons = [];
+
+    for (const region of this.sectorLayout.regions.filter((candidate) => candidate.signalStrength >= 0.5)) {
+      const beacon = this.createSectorSignalBeaconBody(region, false);
+      const mirror = this.createSectorSignalBeaconBody(region, true);
+      mirror.body.setVisible(false);
+      this.sectorSignalBeacons.push({
+        region,
+        body: beacon.body,
+        wrapMirrorBody: mirror.body,
+        ring: beacon.ring,
+        wrapMirrorRing: mirror.ring
+      });
+    }
+  }
+
+  private createSectorSignalBeaconBody(
+    region: SectorRegion,
+    isMirror: boolean
+  ): { body: Phaser.GameObjects.Container; ring: Phaser.GameObjects.Arc } {
+    const color = getSectorRegionColor(region.type);
+    const range = Phaser.Math.Clamp(region.radius * 0.18, 42, 86);
+    const outer = this.add.circle(0, 0, range, color, isMirror ? 0.035 : 0.055);
+    outer.setStrokeStyle(2, color, isMirror ? 0.36 : 0.58);
+    const ring = this.add.circle(0, 0, range * 0.55, 0x000000, 0);
+    ring.setStrokeStyle(2, region.type === 'enemy-territory' ? 0xff5964 : 0xf2fbff, isMirror ? 0.48 : 0.78);
+    const core = this.add.circle(0, 0, 6, color, isMirror ? 0.56 : 0.9);
+    const body = this.add.container(region.x, region.y, [outer, ring, core]);
+    body.setDepth(6);
+
+    return { body, ring };
+  }
+
+  private updateSectorSignalBeacons(time: number): void {
+    for (const beacon of this.sectorSignalBeacons) {
+      const pulse = 1 + Math.sin(time * 0.0024 + beacon.region.signalStrength * Math.PI) * 0.12;
+      beacon.ring.setScale(pulse);
+      beacon.wrapMirrorRing.setScale(pulse);
+      this.updateToroidalRenderMirror(beacon.body, beacon.wrapMirrorBody, beacon.region.radius * 0.22);
+    }
+  }
+
+  private getRandomPointInSectorRegion(
+    region: SectorRegion,
+    random: Phaser.Math.RandomDataGenerator
+  ): Phaser.Math.Vector2 {
+    const angle = random.realInRange(0, Math.PI * 2);
+    const distance = region.radius * Math.sqrt(random.realInRange(0.08, 0.92));
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(region.x + Math.cos(angle) * distance, this.arena.width),
+      wrapCoordinate(region.y + Math.sin(angle) * distance, this.arena.height)
+    );
+  }
+
+  private getSectorAsteroidTier(region: SectorRegion, random: Phaser.Math.RandomDataGenerator): AsteroidTier {
+    if (region.type === 'asteroid-belt') {
+      return ([2, 3, 3, 4, 4, 5] as AsteroidTier[])[random.between(0, 5)];
+    }
+
+    if (region.type === 'anomaly-signal' || region.type === 'enemy-territory') {
+      return ([2, 3, 4, 4] as AsteroidTier[])[random.between(0, 3)];
+    }
+
+    return ([1, 2, 2, 3] as AsteroidTier[])[random.between(0, 3)];
   }
 
   private updateBlackHole(time: number, deltaSeconds: number, shouldMove = true): void {
@@ -9303,7 +9550,8 @@ export class GameScene extends Phaser.Scene {
       tankEnemies: [],
       liveEnemies: this.liveEnemies,
       scrapPickups: this.scrapPickups,
-      blackHole: this.blackHole
+      blackHole: this.blackHole,
+      sectorRegions: this.sectorLayout.regions
     };
   }
 
@@ -9583,6 +9831,7 @@ export class GameScene extends Phaser.Scene {
       `FPS: ${fps}\n` +
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
         `Arena: ${this.arena.width} x ${this.arena.height} / sector ${this.sectorScale}x\n` +
+        `Sector: ${this.sectorSeed} / regions ${this.sectorLayout.regions.length} / signals ${this.sectorSignalBeacons.length}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +

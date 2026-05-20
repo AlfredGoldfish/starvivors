@@ -4,6 +4,7 @@ import { MINIMAP_HEIGHT, MINIMAP_MARGIN, MINIMAP_PADDING, MINIMAP_WIDTH } from '
 import type { BasicAsteroid, BasicEnemy, ScrapPickup, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
 import type { BlackHoleSystem } from './blackHole';
 import type { EnemyLabInstance } from './enemyLabSpawner';
+import { getSectorRegionColor, type SectorRegion } from './sectorGeneration';
 
 export interface MinimapSnapshot {
   arena: ArenaSize;
@@ -27,6 +28,7 @@ export interface MinimapSnapshot {
   liveEnemies?: EnemyLabInstance[];
   scrapPickups: ScrapPickup[];
   blackHole?: BlackHoleSystem;
+  sectorRegions?: SectorRegion[];
 }
 
 export class MinimapSystem {
@@ -95,6 +97,22 @@ export class MinimapSystem {
       this.graphics.strokeCircle(position.x, position.y, markerRadius);
       this.graphics.fillStyle(0xf2fbff, 0.95);
       this.graphics.fillRect(position.x - 1.4, position.y - 1.4, 2.8, 2.8);
+    }
+
+    for (const region of snapshot.sectorRegions ?? []) {
+      const position = this.getPosition(region.x, region.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      const radius = Phaser.Math.Clamp((region.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 5, 13);
+      const color = getSectorRegionColor(region.type);
+
+      this.graphics.fillStyle(color, region.type === 'safe-drift' ? 0.08 : 0.14);
+      this.graphics.fillCircle(position.x, position.y, radius);
+      this.graphics.lineStyle(1, color, region.type === 'enemy-territory' ? 0.82 : 0.58);
+      this.graphics.strokeCircle(position.x, position.y, radius);
+
+      if (region.signalStrength >= 0.7) {
+        this.graphics.fillStyle(color, 0.96);
+        this.graphics.fillTriangle(position.x, position.y - 5.2, position.x - 4.5, position.y + 3.8, position.x + 4.5, position.y + 3.8);
+      }
     }
 
     for (const asteroid of snapshot.basicAsteroids) {
