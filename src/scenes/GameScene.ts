@@ -1143,9 +1143,9 @@ export class GameScene extends Phaser.Scene {
 
   private getPerformanceProfilerCounts(): PerformanceProfilerCounts {
     return {
-      chasers: this.basicEnemies.length,
-      shooters: this.shooterEnemies.length,
-      tanks: this.tankEnemies.length,
+      chasers: this.getLiveEnemyLegacyCount('chaser'),
+      shooters: this.getLiveEnemyLegacyCount('shooter'),
+      tanks: this.getLiveEnemyLegacyCount('tank'),
       asteroids: this.basicAsteroids.length,
       debris: this.enemyWreckageDebris.length,
       scrap: this.scrapPickups.length,
@@ -1303,7 +1303,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       placeEnemyOnPlayer: () => {
-        const enemy = this.basicEnemies[0];
+        const enemy = this.liveEnemies[0];
 
         if (enemy) {
           enemy.body.setPosition(this.player.x, this.player.y);
@@ -1328,12 +1328,10 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       destroyFirstEnemy: () => {
-        const enemy = this.basicEnemies[0];
+        const enemy = this.liveEnemies[0];
 
         if (enemy && !this.isPlayerDead) {
-          this.destroyEnemyWithRewards(enemy, this.basicEnemies, 0, 'chaser');
-        } else if (this.liveEnemies[0] && !this.isPlayerDead) {
-          this.destroyLiveEnemyWithRewards(this.liveEnemies[0], 0);
+          this.destroyLiveEnemyWithRewards(enemy, 0);
         }
 
         return this.getTestHarnessState();
@@ -1486,9 +1484,9 @@ export class GameScene extends Phaser.Scene {
       playerMaxSpeed: this.getPlayerMaxSpeed(),
       playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
       isMinimapVisible: this.minimap.isVisible(),
-      enemies: this.basicEnemies.length,
-      shooterEnemies: this.shooterEnemies.length,
-      tankEnemies: this.tankEnemies.length,
+      enemies: this.getLiveEnemyLegacyCount('chaser'),
+      shooterEnemies: this.getLiveEnemyLegacyCount('shooter'),
+      tankEnemies: this.getLiveEnemyLegacyCount('tank'),
       liveEnemies: this.liveEnemies.length,
       activeEnemies: this.getActiveEnemyCount(),
       asteroids: this.basicAsteroids.length,
@@ -1897,7 +1895,7 @@ export class GameScene extends Phaser.Scene {
     this.updateRammingShieldDashBurstMovement(RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS);
     const afterDash = harness.getState();
     const dashVelocityAfter = this.playerVelocity.length();
-    const enemy = this.basicEnemies[0];
+    const enemy = this.liveEnemies[0];
     const forward = this.getForwardDirection(this.player.rotation);
 
     if (enemy) {
@@ -3168,7 +3166,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveEnemyCount(): number {
-    return this.liveEnemies.length + this.basicEnemies.length + this.shooterEnemies.length + this.tankEnemies.length;
+    return this.liveEnemies.length;
   }
 
   private spawnDebugEnemy(enemyType: DebugEnemyType): void {
@@ -3180,6 +3178,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private clearEnemies(): void {
+    this.liveEnemies = clearLiveEnemiesSystem(this.liveEnemies);
+
     for (const enemy of this.basicEnemies) {
       enemy.body.destroy(true);
       enemy.wrapMirrorBody.destroy(true);
@@ -3195,7 +3195,6 @@ export class GameScene extends Phaser.Scene {
       enemy.wrapMirrorBody.destroy(true);
     }
 
-    this.liveEnemies = clearLiveEnemiesSystem(this.liveEnemies);
     this.basicEnemies = [];
     this.shooterEnemies = [];
     this.tankEnemies = [];
@@ -3727,6 +3726,10 @@ export class GameScene extends Phaser.Scene {
     return raw === 'shooter' || raw === 'tank' || raw === 'chaser'
       ? raw
       : this.getLegacySpawnTypeForLiveDefinition(enemy.definitionId);
+  }
+
+  private getLiveEnemyLegacyCount(enemyType: EnemySpawnType): number {
+    return this.liveEnemies.filter((enemy) => this.getLiveEnemyLegacySpawnType(enemy) === enemyType).length;
   }
 
   private getLiveEnemyFallbackScrapValue(enemy: LiveGameEnemy): number {
@@ -5953,93 +5956,6 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    for (const enemy of this.basicEnemies) {
-      const shieldCollision = this.getRammingShieldCircleCollision(
-        enemy.body.x,
-        enemy.body.y,
-        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
-      );
-      if (shieldCollision) {
-        return {
-          enemy,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass,
-          hitRammingShield: true
-        };
-      }
-
-      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
-      if (collision) {
-        return {
-          enemy,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass
-        };
-      }
-    }
-
-    for (const enemy of this.shooterEnemies) {
-      const shieldCollision = this.getRammingShieldCircleCollision(
-        enemy.body.x,
-        enemy.body.y,
-        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
-      );
-      if (shieldCollision) {
-        return {
-          enemy,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass,
-          hitRammingShield: true
-        };
-      }
-
-      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
-      if (collision) {
-        return {
-          enemy,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass
-        };
-      }
-    }
-
-    for (const enemy of this.tankEnemies) {
-      const shieldCollision = this.getRammingShieldCircleCollision(
-        enemy.body.x,
-        enemy.body.y,
-        Math.max(this.getEnemyCollisionHalfWidth(enemy), this.getEnemyCollisionHalfLength(enemy))
-      );
-      if (shieldCollision) {
-        return {
-          enemy,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass,
-          hitRammingShield: true
-        };
-      }
-
-      const collision = this.getEnemyCapsulePlayerCollision(enemy, playerHitRadius);
-      if (collision) {
-        return {
-          enemy,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: enemy.stats.contactDamage,
-          mass: enemy.stats.mass
-        };
-      }
-    }
-
     return undefined;
   }
 
@@ -7558,7 +7474,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getAllEnemies(): AnyGameEnemy[] {
-    return [...this.liveEnemies, ...this.basicEnemies, ...this.shooterEnemies, ...this.tankEnemies];
+    return [...this.liveEnemies];
   }
 
   private getEnemyHitRadius(enemy: AnyGameEnemy): number {
@@ -7910,9 +7826,6 @@ export class GameScene extends Phaser.Scene {
       steerProjectile: (projectile, homingDeltaSeconds) => this.steerPulseProjectile(projectile, homingDeltaSeconds),
       tryHitTarget: (projectile) =>
         this.tryHitLiveEnemy(projectile) ||
-        this.tryHitBasicEnemy(projectile) ||
-        this.tryHitShooterEnemy(projectile) ||
-        this.tryHitTankEnemy(projectile) ||
         this.tryHitEnemyWreckageDebris(projectile) ||
         this.tryHitBasicAsteroid(projectile)
     });
@@ -8918,9 +8831,9 @@ export class GameScene extends Phaser.Scene {
       asteroidCollisionScale: this.debugState.getCollisionShapeScale('asteroid'),
       debrisCollisionScale: this.debugState.getCollisionShapeScale('debris'),
       shieldCollider: this.getRammingShieldCollider(),
-      basicEnemies: this.basicEnemies,
-      shooterEnemies: this.shooterEnemies,
-      tankEnemies: this.tankEnemies,
+      basicEnemies: [],
+      shooterEnemies: [],
+      tankEnemies: [],
       liveEnemies: this.liveEnemies,
       basicAsteroids: this.basicAsteroids,
       enemyWreckageDebris: this.enemyWreckageDebris,
@@ -8945,9 +8858,9 @@ export class GameScene extends Phaser.Scene {
       player: this.player,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
-      basicEnemies: this.basicEnemies,
-      shooterEnemies: this.shooterEnemies,
-      tankEnemies: this.tankEnemies,
+      basicEnemies: [],
+      shooterEnemies: [],
+      tankEnemies: [],
       liveEnemies: this.liveEnemies,
       scrapPickups: this.scrapPickups,
       blackHole: this.blackHole
@@ -9232,7 +9145,7 @@ export class GameScene extends Phaser.Scene {
         `Velocity: ${formatIntegerDisplayUnits(this.playerVelocity.x)}, ${formatIntegerDisplayUnits(this.playerVelocity.y)}\n` +
         `Player shots: ${this.playerProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
-        `Enemies: ${this.basicEnemies.length} chaser / ${this.shooterEnemies.length} shooter / ${this.tankEnemies.length} tank\n` +
+        `Enemies: ${this.liveEnemies.length} live (${this.getLiveEnemyLegacyCount('chaser')} chaser / ${this.getLiveEnemyLegacyCount('shooter')} shooter / ${this.getLiveEnemyLegacyCount('tank')} tank)\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Debug menu: Z ${this.debugMenuHost?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
