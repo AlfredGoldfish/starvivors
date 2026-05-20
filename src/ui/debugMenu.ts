@@ -260,6 +260,12 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'spawn-chaser': 'Spawn one Chaser enemy near the play area.',
   'spawn-shooter': 'Spawn one Shooter enemy near the play area.',
   'spawn-tank': 'Spawn one Tank enemy near the play area.',
+  'spawn-scout-pack': 'Spawn a Scout Pack encounter near the play area.',
+  'spawn-gunner-escort': 'Spawn a Gunner Escort encounter near the play area.',
+  'spawn-strike-wing': 'Spawn a Strike Wing encounter near the play area.',
+  'spawn-support-group': 'Spawn a Support Group encounter near the play area.',
+  'spawn-sniper-screen': 'Spawn a Sniper Screen encounter near the play area.',
+  'spawn-carrier-group': 'Spawn a Carrier Group encounter near the play area.',
   'clear-enemies': 'Remove active enemies without granting rewards.',
   'asteroid-state': 'Shows active asteroids and asteroid spawner state.',
   'asteroid-1': 'Spawn a tier 1 asteroid.',
@@ -932,6 +938,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('spawns', 'spawn-chaser', panelX + PANEL_PADDING, y, 98, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
     addButton('spawns', 'spawn-shooter', panelX + PANEL_PADDING + 109, y, 98, 'Shooter', () => config.callbacks.spawnEnemy('shooter'));
     addButton('spawns', 'spawn-tank', panelX + PANEL_PADDING + 218, y, 98, 'Tank', () => config.callbacks.spawnEnemy('tank'));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('spawns', 'spawn-scout-pack', panelX + PANEL_PADDING, y, 98, 'Scout', () => config.callbacks.spawnEncounter('scout-pack'));
+    addButton('spawns', 'spawn-gunner-escort', panelX + PANEL_PADDING + 109, y, 98, 'Escort', () => config.callbacks.spawnEncounter('gunner-escort'));
+    addButton('spawns', 'spawn-strike-wing', panelX + PANEL_PADDING + 218, y, 98, 'Strike', () => config.callbacks.spawnEncounter('strike-wing'));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('spawns', 'spawn-support-group', panelX + PANEL_PADDING, y, 98, 'Support', () => config.callbacks.spawnEncounter('support-group'));
+    addButton('spawns', 'spawn-sniper-screen', panelX + PANEL_PADDING + 109, y, 98, 'Sniper', () => config.callbacks.spawnEncounter('sniper-screen'));
+    addButton('spawns', 'spawn-carrier-group', panelX + PANEL_PADDING + 218, y, 98, 'Carrier', () => config.callbacks.spawnEncounter('carrier-group'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('spawns', 'clear-enemies', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Clear enemies', config.callbacks.clearEnemies);
     y += BUTTON_HEIGHT + ROW_GAP;

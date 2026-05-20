@@ -22,6 +22,7 @@ import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../data/enemies';
 import { COMBAT_NUMBER_SCALE, COMBAT_VARIANCE } from '../data/combatScale';
 import { interceptorMovement } from '../data/balance';
+import { getEncounterDefinition, type EncounterDefinitionId } from '../data/encounters';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
@@ -174,6 +175,12 @@ import {
   updateShooterEnemies as updateShooterEnemiesSystem,
   updateTankEnemies as updateTankEnemiesSystem
 } from '../systems/enemies';
+import {
+  createEncounterDirectorState,
+  delayEncounterDirectorState,
+  updateEncounterDirector,
+  type EncounterDirectorState
+} from '../systems/encounterDirector';
 import {
   ENEMY_LAB_DEFINITIONS,
   ENEMY_LAB_SQUADS,
@@ -367,12 +374,8 @@ import {
   ENEMY_SPAWN_MIN_INTERVAL_MS,
   ENEMY_SPAWN_SAFE_DISTANCE,
   ENEMY_SPAWN_WEIGHTS_BY_STEP,
-  ENEMY_SWARM_BASE_PACK_SIZE,
   ENEMY_SWARM_FIRST_SPAWN_MS,
-  ENEMY_SWARM_INTERVAL_MS,
-  ENEMY_SWARM_MAX_PACK_SIZE,
   ENEMY_SWARM_OVERFLOW_HARD_CAP,
-  ENEMY_SWARM_PACK_SIZE_PER_MINUTE,
   ENEMY_VELOCITY_RESPONSE,
   ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE,
   ENEMY_WRECKAGE_DEBRIS_COUNT_BY_ENEMY,
@@ -567,7 +570,7 @@ export class GameScene extends Phaser.Scene {
   private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
-  private nextEnemySwarmAt = 0;
+  private encounterDirectorState: EncounterDirectorState = createEncounterDirectorState();
   private runStartedAt = 0;
   private readonly debugState = new DebugState();
   private runUpgradeLevels: RunUpgradeLevels = createInitialRunUpgradeLevels();
@@ -878,6 +881,7 @@ export class GameScene extends Phaser.Scene {
           this.debugState.enemySpawningEnabled = !this.debugState.enemySpawningEnabled;
         }),
         spawnEnemy: (type) => this.runDebugMenuAction(() => this.spawnDebugEnemy(type)),
+        spawnEncounter: (id) => this.runDebugMenuAction(() => this.spawnDebugEncounter(id)),
         clearEnemies: () => this.runDebugMenuAction(() => this.clearEnemies()),
         toggleAsteroidSpawning: () => this.runDebugMenuAction(() => {
           this.debugState.asteroidSpawningEnabled = false;
@@ -1087,7 +1091,7 @@ export class GameScene extends Phaser.Scene {
     const pauseDurationMs = Math.max(0, time - this.debugMenuOpenedAt);
     this.totalDebugPauseMs += pauseDurationMs;
     this.nextEnemySpawnAt += pauseDurationMs;
-    this.nextEnemySwarmAt += pauseDurationMs;
+    delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     this.debugMenuOpenedAt = 0;
   }
 
@@ -1243,7 +1247,7 @@ export class GameScene extends Phaser.Scene {
         'pulse-cannon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('pulse-cannon')),
         'ramming-shield': this.debugState.getWeaponTuningSummary(getWeaponDefinition('ramming-shield'))
       },
-      nextEnemySpawnSeconds: Math.max(0, this.nextEnemySpawnAt - time) / 1000
+      nextEnemySpawnSeconds: Math.max(0, Math.min(this.nextEnemySpawnAt, this.encounterDirectorState.nextEncounterAt) - time) / 1000
     });
   }
 
@@ -2219,7 +2223,7 @@ export class GameScene extends Phaser.Scene {
     this.nextBlackHolePlayerDamageAt = 0;
     this.runStartedAt = this.time.now;
     this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
-    this.nextEnemySwarmAt = this.runStartedAt + ENEMY_SWARM_FIRST_SPAWN_MS;
+    this.encounterDirectorState = createEncounterDirectorState(this.runStartedAt + ENEMY_SWARM_FIRST_SPAWN_MS);
     this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
     this.isUpgradeOverlayOpen = false;
@@ -2939,7 +2943,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.updateEnemySwarmDirector(time);
+    this.updateEnemyEncounterDirector(time);
 
     if (time < this.nextEnemySpawnAt) {
       return;
@@ -2964,38 +2968,21 @@ export class GameScene extends Phaser.Scene {
     this.nextEnemySpawnAt = time + this.getEnemySpawnIntervalMs(time);
   }
 
-  private updateEnemySwarmDirector(time: number): void {
-    if (time < this.nextEnemySwarmAt || this.getActiveEnemyCount() >= ENEMY_SWARM_OVERFLOW_HARD_CAP) {
+  private updateEnemyEncounterDirector(time: number): void {
+    const result = updateEncounterDirector(this.encounterDirectorState, {
+      time,
+      elapsedMs: this.getSurvivalElapsedMs(time),
+      activeEnemyCount: this.getActiveEnemyCount(),
+      maxActiveEnemies: this.getEnemyEncounterMaxActiveEnemies(time),
+      random: () => Phaser.Math.FloatBetween(0, 1)
+    });
+
+    if (!result.encounter) {
       return;
     }
 
-    const packSize = Math.min(
-      ENEMY_SWARM_MAX_PACK_SIZE,
-      ENEMY_SWARM_BASE_PACK_SIZE + Math.floor(this.getEnemyTimeScaling(time).elapsedMinutes * ENEMY_SWARM_PACK_SIZE_PER_MINUTE)
-    );
-    const spawnCount = Math.min(packSize, Math.max(0, ENEMY_SWARM_OVERFLOW_HARD_CAP - this.getActiveEnemyCount()));
     const center = this.getEnemyDirectorSpawnPosition();
-    if (spawnCount >= 4) {
-      this.spawnLiveEnemySquad('scout-pack', center.x, center.y, time);
-      this.nextEnemySwarmAt = time + ENEMY_SWARM_INTERVAL_MS;
-      return;
-    }
-
-    const approachOffset = this.getWrappedDirection(center.x, center.y, this.player.x, this.player.y);
-    const approach = approachOffset.lengthSq() > 0 ? approachOffset.normalize() : new Phaser.Math.Vector2(0, 1);
-    const lateral = new Phaser.Math.Vector2(-approach.y, approach.x);
-
-    for (let i = 0; i < spawnCount; i += 1) {
-      const row = Math.floor(i / 4);
-      const column = i % 4;
-      const lateralOffset = (column - 1.5) * Phaser.Math.FloatBetween(42, 76);
-      const depthOffset = row * Phaser.Math.FloatBetween(54, 88);
-      const x = wrapCoordinate(center.x + lateral.x * lateralOffset - approach.x * depthOffset, this.arena.width);
-      const y = wrapCoordinate(center.y + lateral.y * lateralOffset - approach.y * depthOffset, this.arena.height);
-      this.spawnDirectedEnemyAt(this.chooseSwarmEnemyType(time, i), time, x, y);
-    }
-
-    this.nextEnemySwarmAt = time + ENEMY_SWARM_INTERVAL_MS;
+    this.spawnLiveEnemySquad(result.encounter.squadId, center.x, center.y, time);
   }
 
   private spawnDirectedEnemy(enemyType: EnemySpawnType, time: number): void {
@@ -3111,24 +3098,6 @@ export class GameScene extends Phaser.Scene {
     return this.rollEnemyType(weights);
   }
 
-  private chooseSwarmEnemyType(time: number, index: number): EnemySpawnType {
-    const minute = this.getEnemyTimeScaling(time).difficultyMinute;
-    const weights =
-      minute < 4
-        ? { chaser: 100, shooter: 0, tank: 0 }
-        : minute < 8
-          ? { chaser: 82, shooter: 16, tank: 2 }
-          : minute < 12
-            ? { chaser: 68, shooter: 26, tank: 6 }
-            : { chaser: 56, shooter: 34, tank: 10 };
-
-    if (index === 0) {
-      return 'chaser';
-    }
-
-    return this.rollEnemyType(weights);
-  }
-
   private rollEnemyType(weights: Record<EnemySpawnType, number>): EnemySpawnType {
     const totalWeight = weights.chaser + weights.shooter + weights.tank;
     let roll = Phaser.Math.FloatBetween(0, totalWeight);
@@ -3165,6 +3134,13 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private getEnemyEncounterMaxActiveEnemies(time: number): number {
+    return Math.min(
+      ENEMY_SWARM_OVERFLOW_HARD_CAP,
+      Math.max(this.getEnemySpawnMaxActiveEnemies(time), 10 + this.getEnemySpawnDifficultyStep(time) * 2)
+    );
+  }
+
   private getActiveEnemyCount(): number {
     return this.liveEnemies.length;
   }
@@ -3175,6 +3151,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.spawnDirectedEnemy(enemyType, this.time.now);
+  }
+
+  private spawnDebugEncounter(id: EncounterDefinitionId): void {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
+      return;
+    }
+
+    const encounter = getEncounterDefinition(id);
+    const position = this.getEnemyDirectorSpawnPosition();
+    this.spawnLiveEnemySquad(encounter.squadId, position.x, position.y, this.time.now);
   }
 
   private clearEnemies(): void {
@@ -4401,7 +4387,7 @@ export class GameScene extends Phaser.Scene {
     const pauseDurationMs = Math.max(0, time - this.pauseMenuOpenedAt);
     this.totalPauseMenuPauseMs += pauseDurationMs;
     this.nextEnemySpawnAt += pauseDurationMs;
-    this.nextEnemySwarmAt += pauseDurationMs;
+    delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     this.pauseMenuOpenedAt = 0;
     this.pauseMenuTab = 'pause';
     this.awaitingBinding = undefined;
@@ -4593,7 +4579,7 @@ export class GameScene extends Phaser.Scene {
       const pauseDurationMs = Math.max(0, time - this.upgradeOverlayOpenedAt);
       this.totalUpgradePauseMs += pauseDurationMs;
       this.nextEnemySpawnAt += pauseDurationMs;
-      this.nextEnemySwarmAt += pauseDurationMs;
+      delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     }
 
     this.isUpgradeOverlayOpen = false;
@@ -9117,7 +9103,7 @@ export class GameScene extends Phaser.Scene {
     const viewportHeight = this.scale.height;
     const enemyScaling = this.getEnemyTimeScaling(time);
     const spawnDirectorLine = this.debugState.collisionDebugEnabled
-      ? `Spawn director: minute ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s / swarm ${(Math.max(0, this.nextEnemySwarmAt - time) / 1000).toFixed(1)}s\n` +
+      ? `Spawn director: minute ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s / encounter ${(Math.max(0, this.encounterDirectorState.nextEncounterAt - time) / 1000).toFixed(1)}s\n` +
         `Enemy scaling: HP x${enemyScaling.hpMultiplier.toFixed(2)} / damage x${enemyScaling.damageMultiplier.toFixed(2)}\n`
       : '';
     const debugWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');

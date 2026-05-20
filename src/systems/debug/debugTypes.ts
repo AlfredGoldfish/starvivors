@@ -1,6 +1,7 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 import type { ShipId } from '../../data/ships';
 import type { WeaponId } from '../../data/weapons';
+import type { EncounterDefinitionId } from '../../data/encounters';
 import type {
   DebugCollisionShapeScaleKey,
   DebugImpactSourceType,
@@ -141,6 +142,7 @@ export interface DebugMenuCallbacks {
   openRunsFolder: () => void;
   toggleEnemySpawning: () => void;
   spawnEnemy: (type: DebugEnemyType) => void;
+  spawnEncounter: (id: EncounterDefinitionId) => void;
   clearEnemies: () => void;
   toggleAsteroidSpawning: () => void;
   spawnAsteroid: (tier: DebugAsteroidTier) => void;
