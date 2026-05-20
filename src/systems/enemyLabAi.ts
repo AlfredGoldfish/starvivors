@@ -3,6 +3,7 @@ import { wrapCoordinate, type ArenaSize } from '../core/arena';
 import type { EnemyLabDefinition } from '../data/enemyLabDefinitions';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import { destroyTelegraphs, updateEnemyLabDebugLabel } from './enemyLabSpawner';
+import { dampVelocityChannel, moveBodyWithVelocityChannels } from './physics';
 
 export interface EnemyLabProjectileRequest {
   x: number;
@@ -664,12 +665,14 @@ function fireEnemyShot(
 }
 
 function moveEnemy(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
-  const totalVelocity = enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity);
-
-  enemy.body.x = wrapCoordinate(enemy.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
-  enemy.body.y = wrapCoordinate(enemy.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
-  enemy.knockbackVelocity.scale(Math.pow(0.88, input.deltaSeconds * 60));
-  enemy.blackHoleVelocity.scale(Math.pow(0.988, input.deltaSeconds * 60));
+  moveBodyWithVelocityChannels({
+    arena: input.arena,
+    body: enemy.body,
+    channels: enemy,
+    deltaSeconds: input.deltaSeconds
+  });
+  dampVelocityChannel(enemy.knockbackVelocity, 0.88, input.deltaSeconds);
+  dampVelocityChannel(enemy.blackHoleVelocity, 0.988, input.deltaSeconds);
   input.updateToroidalRenderMirror(enemy.body, enemy.wrapMirrorBody, enemy.definition.visual.size);
   updateEnemyLabDebugLabel(enemy);
 }

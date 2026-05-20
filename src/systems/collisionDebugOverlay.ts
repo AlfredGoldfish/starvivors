@@ -22,7 +22,7 @@ import type {
 } from '../scenes/gameTypes';
 import type { BlackHoleSystem } from './blackHole';
 import type { RammingShieldCollider } from './rammingShield';
-import { scaleHalfExtent, scaleRadius } from './collisionShapes';
+import { createOrientedCapsuleCollisionShape, scaleHalfExtent, scaleRadius } from './collisionShapes';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 
 export interface CollisionDebugOverlaySnapshot {
@@ -190,15 +190,20 @@ export class CollisionDebugOverlaySystem {
       }
 
       const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
 
       const halfWidth = scaleHalfExtent(basicEnemy.stats.hitHalfWidth, snapshot.enemyCollisionScale);
       const halfLength = scaleHalfExtent(basicEnemy.stats.hitHalfLength, snapshot.enemyCollisionScale);
-      this.strokeOrientedCapsule(enemyPosition, enemyRight, enemyForward, halfWidth, halfLength, 0xffc857, 0.8);
+      const shape = createOrientedCapsuleCollisionShape({
+        body: enemy.body,
+        forward: enemyForward,
+        halfWidth,
+        halfLength
+      });
+      this.strokeOrientedCapsule(enemyPosition, shape.right, shape.forward, halfWidth, halfLength, 0xffc857, 0.8);
       this.strokeOrientedCapsule(
         enemyPosition,
-        enemyRight,
-        enemyForward,
+        shape.right,
+        shape.forward,
         halfWidth + playerHitRadius,
         halfLength + playerHitRadius,
         0xff5964,
@@ -214,14 +219,21 @@ export class CollisionDebugOverlaySystem {
       }
 
       const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
+      const halfWidth = scaleHalfExtent(shooterEnemy.stats.hitHalfWidth, snapshot.enemyCollisionScale);
+      const halfLength = scaleHalfExtent(shooterEnemy.stats.hitHalfLength, snapshot.enemyCollisionScale);
+      const shape = createOrientedCapsuleCollisionShape({
+        body: enemy.body,
+        forward: enemyForward,
+        halfWidth,
+        halfLength
+      });
 
       this.strokeOrientedCapsule(
         enemyPosition,
-        enemyRight,
-        enemyForward,
-        scaleHalfExtent(shooterEnemy.stats.hitHalfWidth, snapshot.enemyCollisionScale),
-        scaleHalfExtent(shooterEnemy.stats.hitHalfLength, snapshot.enemyCollisionScale),
+        shape.right,
+        shape.forward,
+        halfWidth,
+        halfLength,
         0xff5964,
         0.8
       );
@@ -235,15 +247,20 @@ export class CollisionDebugOverlaySystem {
       }
 
       const enemyForward = this.getForwardDirection(enemy.body.rotation);
-      const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
 
       const halfWidth = scaleHalfExtent(tankEnemy.stats.hitHalfWidth, snapshot.enemyCollisionScale);
       const halfLength = scaleHalfExtent(tankEnemy.stats.hitHalfLength, snapshot.enemyCollisionScale);
-      this.strokeOrientedCapsule(enemyPosition, enemyRight, enemyForward, halfWidth, halfLength, 0xb48cff, 0.84);
+      const shape = createOrientedCapsuleCollisionShape({
+        body: enemy.body,
+        forward: enemyForward,
+        halfWidth,
+        halfLength
+      });
+      this.strokeOrientedCapsule(enemyPosition, shape.right, shape.forward, halfWidth, halfLength, 0xb48cff, 0.84);
       this.strokeOrientedCapsule(
         enemyPosition,
-        enemyRight,
-        enemyForward,
+        shape.right,
+        shape.forward,
         halfWidth + playerHitRadius,
         halfLength + playerHitRadius,
         0xff5964,

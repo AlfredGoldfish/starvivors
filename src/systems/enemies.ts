@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { wrapCoordinate, type ArenaSize } from '../core/arena';
+import type { ArenaSize } from '../core/arena';
 import {
   BASIC_ENEMY_DISPLAY_SIZE,
   ENEMY_KNOCKBACK_DAMPING,
@@ -7,6 +7,7 @@ import {
   TANK_ENEMY_DISPLAY_SIZE
 } from '../scenes/gameConstants';
 import type { BasicEnemy, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
+import { dampVelocityChannel, moveBodyWithVelocityChannels } from './physics';
 
 type RuntimeEnemy = BasicEnemy | ShooterEnemy | TankEnemy;
 
@@ -207,15 +208,14 @@ function moveEnemy(input: {
     viewRadius: number
   ) => void;
 }): void {
-  const totalVelocity = input.enemy.velocity
-    .clone()
-    .add(input.enemy.knockbackVelocity)
-    .add(input.enemy.blackHoleVelocity)
-    .limit(input.getGlobalMaxSpeed());
-
-  input.enemy.body.x = wrapCoordinate(input.enemy.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
-  input.enemy.body.y = wrapCoordinate(input.enemy.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
-  input.enemy.knockbackVelocity.scale(Math.pow(ENEMY_KNOCKBACK_DAMPING, input.deltaSeconds * 60));
+  moveBodyWithVelocityChannels({
+    arena: input.arena,
+    body: input.enemy.body,
+    channels: input.enemy,
+    deltaSeconds: input.deltaSeconds,
+    maxSpeed: input.getGlobalMaxSpeed()
+  });
+  dampVelocityChannel(input.enemy.knockbackVelocity, ENEMY_KNOCKBACK_DAMPING, input.deltaSeconds);
   input.updateToroidalRenderMirror(input.enemy.body, input.enemy.wrapMirrorBody, input.viewRadius);
 }
 

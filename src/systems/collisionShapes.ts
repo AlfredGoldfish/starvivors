@@ -30,6 +30,43 @@ export function scaleHalfExtent(halfExtent: number, scale: number): number {
   return Math.max(1, halfExtent * scale);
 }
 
+export function createCircleCollisionShape(
+  body: Phaser.GameObjects.Components.Transform,
+  radius: number
+): CircleCollisionShape {
+  return {
+    x: body.x,
+    y: body.y,
+    radius
+  };
+}
+
+export function getForwardDirection(rotation: number): Phaser.Math.Vector2 {
+  return new Phaser.Math.Vector2(Math.cos(rotation - Math.PI / 2), Math.sin(rotation - Math.PI / 2));
+}
+
+export function getRightDirection(forward: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+  return new Phaser.Math.Vector2(-forward.y, forward.x);
+}
+
+export function createOrientedCapsuleCollisionShape(input: {
+  body: Phaser.GameObjects.Components.Transform;
+  halfWidth: number;
+  halfLength: number;
+  forward?: Phaser.Math.Vector2;
+}): OrientedCapsuleCollisionShape {
+  const forward = input.forward ?? getForwardDirection(input.body.rotation);
+
+  return {
+    x: input.body.x,
+    y: input.body.y,
+    right: getRightDirection(forward),
+    forward,
+    halfWidth: input.halfWidth,
+    halfLength: input.halfLength
+  };
+}
+
 export function getWrappedDirection(
   arena: ArenaSize,
   fromX: number,

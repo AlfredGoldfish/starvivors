@@ -98,13 +98,17 @@ import {
   toDisplayUnits
 } from '../systems/statUnits';
 import {
+  addDirectionalImpulse,
   applyAccelerationWithMass,
   applyCollisionImpulse,
   calculateImpactDamage,
+  dampVelocityChannel,
   getClosingSpeed,
+  getCollisionNormalFromOffset,
   getMassResponseShare,
   getRelativeSpeed,
   getRelativeVelocity,
+  getTotalVelocity,
   steerVelocityToward
 } from '../systems/physics';
 import {
@@ -249,6 +253,8 @@ import {
   type AutoRunDiagnosticsRunState
 } from '../systems/autoRunDiagnostics';
 import {
+  createCircleCollisionShape,
+  createOrientedCapsuleCollisionShape,
   getCapsuleCircleCollision,
   getCircleCollision,
   scaleHalfExtent,
@@ -3417,7 +3423,7 @@ export class GameScene extends Phaser.Scene {
       this.getActiveDebugBlackHoleFieldTuning()
     );
 
-    enemy.blackHoleVelocity.scale(Math.pow(BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds * 60));
+    dampVelocityChannel(enemy.blackHoleVelocity, BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds);
 
     if (result.isInsideEventHorizon) {
       this.destroyLiveEnemyWithoutRewards(enemy);
@@ -3493,7 +3499,7 @@ export class GameScene extends Phaser.Scene {
       this.getActiveDebugBlackHoleFieldTuning()
     );
 
-    enemy.blackHoleVelocity.scale(Math.pow(BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds * 60));
+    dampVelocityChannel(enemy.blackHoleVelocity, BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds);
 
     if (result.isInsideEventHorizon) {
       this.destroyEnemyWithoutRewards(enemy);
@@ -5840,8 +5846,12 @@ export class GameScene extends Phaser.Scene {
     this.rammingShieldDashBurstRemaining = Math.max(0, this.rammingShieldDashBurstRemaining - travel);
 
     if (this.rammingShieldDashBurstRemaining <= 0) {
-      this.playerVelocity.x += this.rammingShieldDashBurstDirection.x * this.rammingShieldDashPendingImpulse;
-      this.playerVelocity.y += this.rammingShieldDashBurstDirection.y * this.rammingShieldDashPendingImpulse;
+      addDirectionalImpulse(
+        this.playerVelocity,
+        this.rammingShieldDashBurstDirection,
+        this.rammingShieldDashPendingImpulse,
+        this.getPlayerOverspeedSafetyLimit()
+      );
       this.clearRammingShieldDashBurst();
     }
   }
@@ -5929,8 +5939,8 @@ export class GameScene extends Phaser.Scene {
 
       const collision = getCircleCollision(
         this.arena,
-        { x: enemy.body.x, y: enemy.body.y, radius: enemy.definition.stats.radius },
-        { x: this.player.x, y: this.player.y, radius: playerHitRadius }
+        createCircleCollisionShape(enemy.body, enemy.definition.stats.radius),
+        createCircleCollisionShape(this.player, playerHitRadius)
       );
       if (collision) {
         return {
@@ -6037,23 +6047,15 @@ export class GameScene extends Phaser.Scene {
     enemy: BasicEnemy | ShooterEnemy | TankEnemy,
     playerRadius: number
   ): { normal: Phaser.Math.Vector2; penetration: number } | undefined {
-    const enemyForward = this.getForwardDirection(enemy.body.rotation);
-    const enemyRight = new Phaser.Math.Vector2(-enemyForward.y, enemyForward.x);
     const collision = getCapsuleCircleCollision(
       this.arena,
-      {
-        x: enemy.body.x,
-        y: enemy.body.y,
-        right: enemyRight,
-        forward: enemyForward,
+      createOrientedCapsuleCollisionShape({
+        body: enemy.body,
+        forward: this.getForwardDirection(enemy.body.rotation),
         halfWidth: this.getEnemyCollisionHalfWidth(enemy),
         halfLength: this.getEnemyCollisionHalfLength(enemy)
-      },
-      {
-        x: this.player.x,
-        y: this.player.y,
-        radius: playerRadius
-      }
+      }),
+      createCircleCollisionShape(this.player, playerRadius)
     );
 
     if (!collision) {
@@ -6084,8 +6086,8 @@ export class GameScene extends Phaser.Scene {
 
       const collision = getCircleCollision(
         this.arena,
-        { x: this.player.x, y: this.player.y, radius: playerHitRadius },
-        { x: asteroid.body.x, y: asteroid.body.y, radius: asteroidRadius }
+        createCircleCollisionShape(this.player, playerHitRadius),
+        createCircleCollisionShape(asteroid.body, asteroidRadius)
       );
       if (collision) {
         return {
@@ -6118,8 +6120,8 @@ export class GameScene extends Phaser.Scene {
 
       const collision = getCircleCollision(
         this.arena,
-        { x: this.player.x, y: this.player.y, radius: playerHitRadius },
-        { x: debris.body.x, y: debris.body.y, radius: debrisRadius }
+        createCircleCollisionShape(this.player, playerHitRadius),
+        createCircleCollisionShape(debris.body, debrisRadius)
       );
       if (collision) {
         return {
@@ -6753,27 +6755,24 @@ export class GameScene extends Phaser.Scene {
 
   private applyRammingShieldAsteroidImpulse(asteroid: BasicAsteroid): void {
     const impactDirection = this.getWrappedDirection(this.player.x, this.player.y, asteroid.body.x, asteroid.body.y);
-    if (impactDirection.lengthSq() <= 0.0001) {
-      return;
-    }
 
     const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
-    impactDirection.normalize();
-    asteroid.velocity.x += impactDirection.x * tierConfig.impactImpulse;
-    asteroid.velocity.y += impactDirection.y * tierConfig.impactImpulse;
-    asteroid.velocity.limit(this.getGlobalMaxSpeed());
+    addDirectionalImpulse(asteroid.velocity, impactDirection, tierConfig.impactImpulse, this.getGlobalMaxSpeed());
   }
 
   private getEnemyContactVelocity(enemy: AnyGameEnemy): Phaser.Math.Vector2 {
-    return enemy.velocity.clone().add(enemy.knockbackVelocity);
+    return getTotalVelocity({
+      velocity: enemy.velocity,
+      knockbackVelocity: enemy.knockbackVelocity
+    });
   }
 
   private getEnemyTotalVelocity(enemy: AnyGameEnemy): Phaser.Math.Vector2 {
-    return this.getEnemyContactVelocity(enemy).add(enemy.blackHoleVelocity);
+    return getTotalVelocity(enemy);
   }
 
   private getLiveEnemyTotalVelocity(enemy: LiveGameEnemy): Phaser.Math.Vector2 {
-    return enemy.velocity.clone().add(enemy.knockbackVelocity).add(enemy.blackHoleVelocity);
+    return getTotalVelocity(enemy);
   }
 
   private applyPlayerEnemyKnockback(contact: PlayerEnemyContact, time: number): void {
@@ -6868,15 +6867,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getCollisionNormal(offset: Phaser.Math.Vector2): Phaser.Math.Vector2 {
-    if (offset.lengthSq() > 0.0001) {
-      return offset.clone().normalize();
-    }
-
-    if (this.playerVelocity.lengthSq() > 0.0001) {
-      return this.playerVelocity.clone().normalize();
-    }
-
-    return new Phaser.Math.Vector2(1, 0);
+    return getCollisionNormalFromOffset(offset, this.playerVelocity);
   }
 
   private nudgeWrappedObject(
@@ -8709,12 +8700,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyAsteroidImpactFromProjectile(asteroid: BasicAsteroid, projectile: PlayerProjectile | EnemyProjectile): void {
-    const impactDirection = projectile.velocity.clone().normalize();
     const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
 
-    asteroid.velocity.x += impactDirection.x * tierConfig.impactImpulse;
-    asteroid.velocity.y += impactDirection.y * tierConfig.impactImpulse;
-    asteroid.velocity.limit(this.getGlobalMaxSpeed());
+    addDirectionalImpulse(asteroid.velocity, projectile.velocity, tierConfig.impactImpulse, this.getGlobalMaxSpeed());
   }
 
   private destroyBasicAsteroid(index: number, grantReward = true, shardStyle: DeathShardStyle = 'asteroid'): void {

@@ -1,8 +1,23 @@
 import Phaser from 'phaser';
+import { wrapCoordinate, type ArenaSize } from '../core/arena';
 
 export interface PhysicsBodyLike {
   velocity: Phaser.Math.Vector2;
   mass: number;
+  maxSpeed?: number;
+}
+
+export interface VelocityChannels {
+  velocity: Phaser.Math.Vector2;
+  knockbackVelocity?: Phaser.Math.Vector2;
+  blackHoleVelocity?: Phaser.Math.Vector2;
+}
+
+export interface MoveVelocityChannelsInput {
+  arena: ArenaSize;
+  body: Phaser.GameObjects.Components.Transform;
+  channels: VelocityChannels;
+  deltaSeconds: number;
   maxSpeed?: number;
 }
 
@@ -116,6 +131,71 @@ export function calculateImpactDamage(input: ImpactDamageInput): number {
 
 export function clampVelocity(velocity: Phaser.Math.Vector2, maxSpeed: number): void {
   velocity.limit(Math.max(0, maxSpeed));
+}
+
+export function getTotalVelocity(channels: VelocityChannels, maxSpeed?: number): Phaser.Math.Vector2 {
+  const totalVelocity = channels.velocity.clone();
+
+  if (channels.knockbackVelocity) {
+    totalVelocity.add(channels.knockbackVelocity);
+  }
+
+  if (channels.blackHoleVelocity) {
+    totalVelocity.add(channels.blackHoleVelocity);
+  }
+
+  if (maxSpeed !== undefined) {
+    clampVelocity(totalVelocity, maxSpeed);
+  }
+
+  return totalVelocity;
+}
+
+export function moveBodyWithVelocityChannels(input: MoveVelocityChannelsInput): Phaser.Math.Vector2 {
+  const totalVelocity = getTotalVelocity(input.channels, input.maxSpeed);
+
+  input.body.x = wrapCoordinate(input.body.x + totalVelocity.x * input.deltaSeconds, input.arena.width);
+  input.body.y = wrapCoordinate(input.body.y + totalVelocity.y * input.deltaSeconds, input.arena.height);
+
+  return totalVelocity;
+}
+
+export function dampVelocityChannel(velocity: Phaser.Math.Vector2, damping: number, deltaSeconds: number): void {
+  velocity.scale(Math.pow(damping, deltaSeconds * 60));
+}
+
+export function addDirectionalImpulse(
+  velocity: Phaser.Math.Vector2,
+  direction: Phaser.Math.Vector2,
+  impulse: number,
+  maxSpeed?: number
+): void {
+  if (direction.lengthSq() <= 0.0001 || impulse === 0) {
+    return;
+  }
+
+  const normalizedDirection = direction.clone().normalize();
+  velocity.x += normalizedDirection.x * impulse;
+  velocity.y += normalizedDirection.y * impulse;
+
+  if (maxSpeed !== undefined) {
+    clampVelocity(velocity, maxSpeed);
+  }
+}
+
+export function getCollisionNormalFromOffset(
+  offset: Phaser.Math.Vector2,
+  fallbackVelocity?: Phaser.Math.Vector2
+): Phaser.Math.Vector2 {
+  if (offset.lengthSq() > 0.0001) {
+    return offset.clone().normalize();
+  }
+
+  if (fallbackVelocity && fallbackVelocity.lengthSq() > 0.0001) {
+    return fallbackVelocity.clone().normalize();
+  }
+
+  return new Phaser.Math.Vector2(1, 0);
 }
 
 export function getMassAccelerationScale(mass: number, referenceMass = 1, massExponent = 1): number {

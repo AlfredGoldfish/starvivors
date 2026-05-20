@@ -18,6 +18,8 @@ import type {
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import type { DebugImpactSourceType } from './debug/debugState';
 import {
+  createCircleCollisionShape,
+  createOrientedCapsuleCollisionShape,
   getCapsuleCircleCollision,
   getCircleCollision,
   getWrappedDirection,
@@ -286,8 +288,8 @@ function resolveAsteroidDebrisImpactCollisions(input: ResolveWorldImpactCollisio
       const debrisRadius = input.getDebrisCollisionRadius(debris);
       const collision = getCircleCollision(
         input.arena,
-        { x: asteroid.body.x, y: asteroid.body.y, radius: asteroidRadius },
-        { x: debris.body.x, y: debris.body.y, radius: debrisRadius }
+        createCircleCollisionShape(asteroid.body, asteroidRadius),
+        createCircleCollisionShape(debris.body, debrisRadius)
       );
       if (
         !input.asteroids.includes(asteroid) ||
@@ -333,33 +335,20 @@ function getEnemyCircleCollision(
   if (isLiveEnemy(enemy)) {
     return getCircleCollision(
       input.arena,
-      {
-        x: enemy.body.x,
-        y: enemy.body.y,
-        radius: enemy.definition.stats.radius * input.getEnemyCollisionScale()
-      },
-      {
-        x: circleX,
-        y: circleY,
-        radius: circleRadius
-      }
+      createCircleCollisionShape(enemy.body, enemy.definition.stats.radius * input.getEnemyCollisionScale()),
+      { x: circleX, y: circleY, radius: circleRadius }
     );
   }
 
-  const forward = new Phaser.Math.Vector2(Math.cos(enemy.body.rotation - Math.PI / 2), Math.sin(enemy.body.rotation - Math.PI / 2));
-  const right = new Phaser.Math.Vector2(-forward.y, forward.x);
   const enemyScale = input.getEnemyCollisionScale();
 
   return getCapsuleCircleCollision(
     input.arena,
-    {
-      x: enemy.body.x,
-      y: enemy.body.y,
-      right,
-      forward,
+    createOrientedCapsuleCollisionShape({
+      body: enemy.body,
       halfWidth: scaleHalfExtent(enemy.stats.hitHalfWidth, enemyScale),
       halfLength: scaleHalfExtent(enemy.stats.hitHalfLength, enemyScale)
-    },
+    }),
     {
       x: circleX,
       y: circleY,
