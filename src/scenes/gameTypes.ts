@@ -93,6 +93,11 @@ export interface StarvivorsTestHarnessState {
   sectorSeed: string;
   sectorRegionCount: number;
   sectorSignalCount: number;
+  generatedSectorAsteroidCount: number;
+  generatedSectorScrapCount: number;
+  activeSectorAsteroidCount: number;
+  activeSectorScrapCount: number;
+  activeSectorSignalCount: number;
   arenaWidth: number;
   arenaHeight: number;
   cameraFollowOffsetX: number;
