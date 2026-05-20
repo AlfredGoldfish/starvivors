@@ -8,13 +8,23 @@ export interface ArenaSize {
   height: number;
 }
 
-export const ARENA_VIEWPORT_MULTIPLIER = 9;
+export const BASE_ARENA_VIEWPORT_MULTIPLIER = 9;
+export const DEFAULT_SECTOR_SCALE = 2;
+export const SECTOR_SCALE_OPTIONS = [1, 2, 3, 5] as const;
 
-export function createArenaSize(viewport: ViewportSize): ArenaSize {
+export type SectorScale = (typeof SECTOR_SCALE_OPTIONS)[number];
+
+export function createArenaSize(viewport: ViewportSize, sectorScale = DEFAULT_SECTOR_SCALE): ArenaSize {
+  const scale = normalizeSectorScale(sectorScale);
+
   return {
-    width: viewport.width * ARENA_VIEWPORT_MULTIPLIER,
-    height: viewport.height * ARENA_VIEWPORT_MULTIPLIER
+    width: Math.round(viewport.width * BASE_ARENA_VIEWPORT_MULTIPLIER * scale),
+    height: Math.round(viewport.height * BASE_ARENA_VIEWPORT_MULTIPLIER * scale)
   };
+}
+
+export function normalizeSectorScale(value: number): SectorScale {
+  return SECTOR_SCALE_OPTIONS.includes(value as SectorScale) ? (value as SectorScale) : DEFAULT_SECTOR_SCALE;
 }
 
 export function getArenaCenter(arena: ArenaSize): Phaser.Math.Vector2 {

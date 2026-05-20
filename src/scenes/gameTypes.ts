@@ -89,6 +89,11 @@ export interface StarvivorsTestHarnessState {
   maxHull: number;
   isPlayerDead: boolean;
   hasExtracted: boolean;
+  sectorScale: number;
+  arenaWidth: number;
+  arenaHeight: number;
+  cameraFollowOffsetX: number;
+  cameraFollowOffsetY: number;
   fuel: number;
   maxFuel: number;
   extractionDistance: number;

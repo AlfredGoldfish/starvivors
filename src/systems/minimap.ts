@@ -8,6 +8,17 @@ import type { EnemyLabInstance } from './enemyLabSpawner';
 export interface MinimapSnapshot {
   arena: ArenaSize;
   player?: Phaser.GameObjects.Container;
+  camera?: {
+    centerX: number;
+    centerY: number;
+    width: number;
+    height: number;
+  };
+  extraction?: {
+    x: number;
+    y: number;
+    radius: number;
+  };
   isUpgradeOverlayOpen: boolean;
   basicAsteroids: BasicAsteroid[];
   basicEnemies: BasicEnemy[];
@@ -69,6 +80,22 @@ export class MinimapSystem {
     this.graphics.strokeRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
     this.graphics.lineStyle(1, 0x42f5d7, 0.42);
     this.graphics.strokeRect(innerX, innerY, innerWidth, innerHeight);
+
+    if (snapshot.camera) {
+      this.drawCameraViewport(snapshot.camera, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+    }
+
+    if (snapshot.extraction) {
+      const position = this.getPosition(snapshot.extraction.x, snapshot.extraction.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      const markerRadius = Phaser.Math.Clamp((snapshot.extraction.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 3.5, 6.5);
+
+      this.graphics.fillStyle(0x42f5d7, 0.24);
+      this.graphics.fillCircle(position.x, position.y, markerRadius + 2);
+      this.graphics.lineStyle(1, 0xffc857, 0.92);
+      this.graphics.strokeCircle(position.x, position.y, markerRadius);
+      this.graphics.fillStyle(0xf2fbff, 0.95);
+      this.graphics.fillRect(position.x - 1.4, position.y - 1.4, 2.8, 2.8);
+    }
 
     for (const asteroid of snapshot.basicAsteroids) {
       const position = this.getPosition(asteroid.body.x, asteroid.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
@@ -179,6 +206,22 @@ export class MinimapSystem {
       x: mapX + (wrappedX / arena.width) * mapWidth,
       y: mapY + (wrappedY / arena.height) * mapHeight
     };
+  }
+
+  private drawCameraViewport(
+    camera: { centerX: number; centerY: number; width: number; height: number },
+    mapX: number,
+    mapY: number,
+    mapWidth: number,
+    mapHeight: number,
+    arena: ArenaSize
+  ): void {
+    const center = this.getPosition(camera.centerX, camera.centerY, mapX, mapY, mapWidth, mapHeight, arena);
+    const viewportWidth = Phaser.Math.Clamp((camera.width / arena.width) * mapWidth, 8, mapWidth);
+    const viewportHeight = Phaser.Math.Clamp((camera.height / arena.height) * mapHeight, 6, mapHeight);
+
+    this.graphics?.lineStyle(1, 0xf2fbff, 0.34);
+    this.graphics?.strokeRect(center.x - viewportWidth / 2, center.y - viewportHeight / 2, viewportWidth, viewportHeight);
   }
 }
 

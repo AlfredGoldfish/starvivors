@@ -17,7 +17,16 @@ import upgradeCratePickupUrl from '../../assets/upgrade_create.png';
 import bulwarkShipUrl from '../../assets/ships/bulwark.png';
 import rammingShieldUrl from '../../assets/ships/ramming shield.png';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
-import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize, type ViewportSize } from '../core/arena';
+import {
+  createArenaSize,
+  DEFAULT_SECTOR_SCALE,
+  getArenaCenter,
+  normalizeSectorScale,
+  wrapCoordinate,
+  type ArenaSize,
+  type SectorScale,
+  type ViewportSize
+} from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../data/enemies';
 import { COMBAT_NUMBER_SCALE, COMBAT_VARIANCE } from '../data/combatScale';
@@ -333,6 +342,8 @@ import {
   BLACK_HOLE_TANK_WHIRLPOOL_TUNING,
   BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS,
   BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO,
+  CAMERA_LOOK_AHEAD_DISTANCE,
+  CAMERA_LOOK_AHEAD_LERP,
   CONTACT_IMPACT_MASS_DAMAGE_SCALE,
   CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER,
   CONTACT_IMPACT_MIN_DAMAGE_SPEED,
@@ -495,10 +506,12 @@ interface EnemyTimeScaling {
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
+  private sectorScale: SectorScale = DEFAULT_SECTOR_SCALE;
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private cameraLookAhead = new Phaser.Math.Vector2(0, 0);
   private fuel = RUN_FUEL_MAX;
   private extractionPosition = new Phaser.Math.Vector2(0, 0);
   private extractionBeacon?: Phaser.GameObjects.Container;
@@ -764,6 +777,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('world-impacts', () => this.resolveWorldImpactCollisions(time));
       if (!this.isPlayerDead) {
         this.profileStep('player-wrap', () => this.wrapPlayer());
+        this.profileStep('camera-follow', () => this.updateCameraFollow());
         this.profileStep('extraction', () => this.updateExtraction(time));
       }
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
@@ -1445,6 +1459,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase7();
     }
 
+    if (query.get('testHarness') === 'phase8') {
+      this.runTestHarnessPhase8();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1483,6 +1501,11 @@ export class GameScene extends Phaser.Scene {
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
       hasExtracted: this.hasExtracted,
+      sectorScale: this.sectorScale,
+      arenaWidth: this.arena.width,
+      arenaHeight: this.arena.height,
+      cameraFollowOffsetX: -this.cameraLookAhead.x,
+      cameraFollowOffsetY: -this.cameraLookAhead.y,
       fuel: this.fuel,
       maxFuel: RUN_FUEL_MAX,
       extractionDistance: this.getExtractionDistance(),
@@ -2176,6 +2199,107 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase8(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase8-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase8-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const viewport = getViewportSize(this);
+    const initial = harness.getState();
+    const scaleSamples = [2, 3, 5].map((scale) => ({
+      scale,
+      arena: createArenaSize(viewport, scale)
+    }));
+    const expectedArena = createArenaSize(viewport, this.sectorScale);
+    const extractionInBounds =
+      this.extractionPosition.x >= 0 &&
+      this.extractionPosition.x < this.arena.width &&
+      this.extractionPosition.y >= 0 &&
+      this.extractionPosition.y < this.arena.height;
+
+    this.player.setPosition(this.arena.width + 42, -37);
+    this.wrapPlayer();
+    const wrapped = harness.getState();
+    const wrapPass = wrapped.arenaWidth === expectedArena.width && this.player.x === 42 && this.player.y === this.arena.height - 37;
+
+    const nearbyEnemy = this.liveEnemies[0];
+    let mirrorState: { baseVisible: boolean; mirrorVisible: boolean; showMirror: boolean } | undefined;
+    if (nearbyEnemy) {
+      nearbyEnemy.body.setPosition(this.arena.width - 24, this.player.y);
+      nearbyEnemy.wrapMirrorBody.setPosition(nearbyEnemy.body.x, nearbyEnemy.body.y);
+      mirrorState = this.updateToroidalRenderMirror(nearbyEnemy.body, nearbyEnemy.wrapMirrorBody, nearbyEnemy.definition.visual.size);
+    }
+
+    this.playerVelocity.set(720, 0);
+    for (let index = 0; index < 24; index += 1) {
+      this.updateCameraFollow();
+    }
+    const cameraAhead = harness.getState();
+    this.playerVelocity.set(0, 0);
+    for (let index = 0; index < 24; index += 1) {
+      this.updateCameraFollow();
+    }
+    const cameraSettled = harness.getState();
+
+    const minimapBefore = harness.getState();
+    const minimapOff = harness.toggleMinimap();
+    const minimapOn = harness.toggleMinimap();
+    const configuredScalePass = initial.sectorScale === this.sectorScale && initial.arenaWidth === expectedArena.width && initial.arenaHeight === expectedArena.height;
+    const scaleSamplesPass = scaleSamples.every(
+      (sample) =>
+        sample.arena.width === Math.round(viewport.width * 9 * sample.scale) &&
+        sample.arena.height === Math.round(viewport.height * 9 * sample.scale)
+    );
+    const cameraPass =
+      cameraAhead.cameraFollowOffsetX < -120 &&
+      Math.abs(cameraAhead.cameraFollowOffsetY) < 1 &&
+      Math.abs(cameraSettled.cameraFollowOffsetX) < Math.abs(cameraAhead.cameraFollowOffsetX);
+    const minimapPass = minimapBefore.isMinimapVisible && !minimapOff.isMinimapVisible && minimapOn.isMinimapVisible;
+
+    const pass =
+      configuredScalePass &&
+      scaleSamplesPass &&
+      extractionInBounds &&
+      wrapPass &&
+      Boolean(mirrorState?.showMirror) &&
+      cameraPass &&
+      minimapPass;
+
+    document.body.setAttribute('data-starvivors-phase8-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase8-harness-details',
+      JSON.stringify({
+        initial,
+        viewport,
+        sectorScale: this.sectorScale,
+        expectedArena,
+        scaleSamples,
+        extractionPosition: {
+          x: this.extractionPosition.x,
+          y: this.extractionPosition.y
+        },
+        extractionInBounds,
+        wrapped,
+        wrapPass,
+        mirrorState,
+        cameraAhead,
+        cameraSettled,
+        minimapBefore,
+        minimapOff,
+        minimapOn,
+        configuredScalePass,
+        scaleSamplesPass,
+        cameraPass,
+        minimapPass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2322,7 +2446,8 @@ export class GameScene extends Phaser.Scene {
   private rebuildWorld(): void {
     this.gameFlowState = 'running';
     const viewport = getViewportSize(this);
-    this.arena = createArenaSize(viewport);
+    this.sectorScale = this.getConfiguredSectorScale();
+    this.arena = createArenaSize(viewport, this.sectorScale);
     const center = getArenaCenter(this.arena);
 
     this.debugMenuHost?.destroy();
@@ -2341,6 +2466,7 @@ export class GameScene extends Phaser.Scene {
       this.hasRammingShield() ? this.getRammingShieldStats() : undefined
     );
     this.playerVelocity.set(0, 0);
+    this.cameraLookAhead.set(0, 0);
     this.fuel = RUN_FUEL_MAX;
     this.extractionPosition.set(0, 0);
     this.extractionBeacon = undefined;
@@ -2425,6 +2551,7 @@ export class GameScene extends Phaser.Scene {
     this.createBasicAsteroids(center);
     this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
+    this.cameras.main.setFollowOffset(0, 0);
     this.cameras.main.centerOn(center.x, center.y);
     this.resetBackgroundPlayerTracking();
 
@@ -2451,6 +2578,13 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateDebugText(0);
+  }
+
+  private getConfiguredSectorScale(): SectorScale {
+    const query = new URLSearchParams(window.location.search);
+    const requestedScale = Number(query.get('sectorScale') ?? query.get('sector'));
+
+    return normalizeSectorScale(requestedScale);
   }
 
   private startRun(): void {
@@ -6088,6 +6222,17 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateCameraFollow(): void {
+    const speed = this.playerVelocity.length();
+    const targetLookAhead =
+      speed > 1
+        ? this.playerVelocity.clone().normalize().scale(CAMERA_LOOK_AHEAD_DISTANCE)
+        : new Phaser.Math.Vector2(0, 0);
+
+    this.cameraLookAhead.lerp(targetLookAhead, CAMERA_LOOK_AHEAD_LERP);
+    this.cameras.main.setFollowOffset(-this.cameraLookAhead.x, -this.cameraLookAhead.y);
+  }
+
   private startRammingShieldDashBurst(direction: Phaser.Math.Vector2, impulse: number): void {
     this.rammingShieldDashBurstDirection.copy(direction);
     this.rammingShieldDashBurstRemaining = RAMMING_SHIELD_DASH_BURST_DISTANCE;
@@ -9131,9 +9276,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getMinimapSnapshot(): MinimapSnapshot {
+    const camera = this.cameras.main;
+
     return {
       arena: this.arena,
       player: this.player,
+      camera: {
+        centerX: camera.scrollX + camera.width / 2,
+        centerY: camera.scrollY + camera.height / 2,
+        width: camera.width,
+        height: camera.height
+      },
+      extraction: {
+        x: this.extractionPosition.x,
+        y: this.extractionPosition.y,
+        radius: EXTRACTION_ZONE_RADIUS
+      },
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
       basicEnemies: [],
@@ -9420,7 +9578,7 @@ export class GameScene extends Phaser.Scene {
     this.debugText.setText(
       `FPS: ${fps}\n` +
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
-        `Arena: ${this.arena.width} x ${this.arena.height}\n` +
+        `Arena: ${this.arena.width} x ${this.arena.height} / sector ${this.sectorScale}x\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
         `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +
