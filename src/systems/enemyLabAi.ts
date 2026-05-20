@@ -4,6 +4,7 @@ import type { EnemyLabDefinition } from '../data/enemyLabDefinitions';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import { destroyTelegraphs, updateEnemyLabDebugLabel } from './enemyLabSpawner';
 import { dampVelocityChannel, moveBodyWithVelocityChannels } from './physics';
+import { ENEMY_CONTACT_RECOIL_SPEED } from '../scenes/gameConstants';
 
 export interface EnemyLabProjectileRequest {
   x: number;
@@ -72,6 +73,12 @@ export function updateEnemyLabAi(input: UpdateEnemyLabAiInput): void {
       continue;
     }
 
+    if (updateContactRecoil(input, enemy)) {
+      updateEnemyVisualPulse(enemy, input.time);
+      updateEnemyLabDebugLabel(enemy);
+      continue;
+    }
+
     switch (enemy.definition.behavior.id) {
       case 'chargeDash':
         updateChargeDash(input, enemy);
@@ -133,6 +140,32 @@ export function updateEnemyLabAi(input: UpdateEnemyLabAiInput): void {
     updateEnemyVisualPulse(enemy, input.time);
     updateEnemyLabDebugLabel(enemy);
   }
+}
+
+function updateContactRecoil(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): boolean {
+  const recoilUntil = getEnemyStateNumber(enemy, 'contactRecoilUntil');
+
+  if (input.time >= recoilUntil) {
+    return false;
+  }
+
+  const normalX = getEnemyStateNumber(enemy, 'contactRecoilNormalX');
+  const normalY = getEnemyStateNumber(enemy, 'contactRecoilNormalY');
+  const direction = new Phaser.Math.Vector2(-normalX, -normalY);
+
+  if (direction.lengthSq() <= 0.0001) {
+    direction.copy(getWrappedDirection(input.arena, input.playerX, input.playerY, enemy.body.x, enemy.body.y));
+  }
+
+  enemy.state = 'contact-recoil';
+  steerToward(input, enemy, direction, ENEMY_CONTACT_RECOIL_SPEED * input.enemySpeedMultiplier);
+  return true;
+}
+
+function getEnemyStateNumber(enemy: EnemyLabInstance, key: string): number {
+  const value = enemy.stateData[key];
+
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 export function getWrappedDirection(arena: ArenaSize, fromX: number, fromY: number, toX: number, toY: number): Phaser.Math.Vector2 {

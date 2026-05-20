@@ -359,6 +359,7 @@ import {
   DEFAULT_STARFIELD_MID_PARALLAX,
   DEFAULT_STARFIELD_NEAR_PARALLAX,
   ENEMY_CONTACT_DAMAGE,
+  ENEMY_CONTACT_RECOIL_MS,
   ENEMY_CONTACT_RESTITUTION_SHARE,
   ENEMY_IMPACT_EXPLOSION_MS,
   ENEMY_SCALING_TARGET_DAMAGE_MULTIPLIER,
@@ -403,6 +404,12 @@ import {
   PLAYER_CONTACT_MIN_IMPULSE,
   PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
   PLAYER_CONTACT_SEPARATION_PERCENT,
+  PLAYER_ENEMY_CONTACT_IMPULSE_COOLDOWN_MS,
+  PLAYER_ENEMY_CONTACT_MAX_IMPULSE,
+  PLAYER_ENEMY_CONTACT_MAX_SEPARATION,
+  PLAYER_ENEMY_CONTACT_MIN_IMPULSE,
+  PLAYER_ENEMY_CONTACT_RELATIVE_SPEED_SCALE,
+  PLAYER_ENEMY_CONTACT_SEPARATION_PERCENT,
   PLAYER_DAMAGE_FLASH_MS,
   PLAYER_DAMAGE_INVULNERABILITY_MS,
   PLAYER_HIT_RADIUS,
@@ -1438,6 +1445,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase7();
     }
 
+    if (query.get('testHarness') === 'enemyContactBalance') {
+      this.runTestHarnessEnemyContactBalance();
+    }
+
     if (query.get('testHarness') === 'worldImpactCleanup') {
       this.runTestHarnessWorldImpactCleanup();
     }
@@ -2160,6 +2171,73 @@ export class GameScene extends Phaser.Scene {
         extracted,
         interceptorDampedSpeed,
         bulwarkDampedSpeed
+      })
+    );
+  }
+
+  private runTestHarnessEnemyContactBalance(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-enemy-contact-harness', 'fail');
+      document.body.setAttribute('data-starvivors-enemy-contact-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const enemy = this.liveEnemies[0];
+
+    if (!enemy) {
+      document.body.setAttribute('data-starvivors-enemy-contact-harness', 'fail');
+      document.body.setAttribute('data-starvivors-enemy-contact-harness-details', 'No live enemy spawned.');
+      return;
+    }
+
+    const testTime = this.time.now + 1000;
+    const playerStartX = this.arena.width / 2;
+    const playerStartY = this.arena.height / 2;
+    this.player.setPosition(playerStartX, playerStartY);
+    this.playerVelocity.set(0, 0);
+    enemy.body.setPosition(playerStartX + 30, playerStartY);
+    enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+    enemy.velocity.set(0, 0);
+    enemy.knockbackVelocity.set(0, 0);
+    enemy.blackHoleVelocity.set(0, 0);
+    this.nextPlayerContactImpulseAt = 0;
+
+    const contact = this.getEnemyContact();
+    const playerXBefore = this.player.x;
+    const enemyXBefore = enemy.body.x;
+
+    if (contact) {
+      this.resolvePlayerEnemyContact(contact, testTime);
+    }
+
+    const scoutDefinition = ENEMY_LAB_DEFINITIONS.find((definition) => definition.id === 'scout');
+    const recoilUntil = typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0;
+    const pass =
+      Boolean(contact) &&
+      (contact?.normal.x ?? 0) < -0.9 &&
+      this.player.x < playerXBefore &&
+      enemy.body.x > enemyXBefore &&
+      this.playerVelocity.x < 0 &&
+      enemy.knockbackVelocity.x > 0 &&
+      recoilUntil > testTime &&
+      scoutDefinition?.stats.speed === 122;
+
+    document.body.setAttribute('data-starvivors-enemy-contact-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-enemy-contact-harness-details',
+      JSON.stringify({
+        contactNormalX: contact?.normal.x ?? null,
+        playerXBefore,
+        playerXAfter: this.player.x,
+        enemyXBefore,
+        enemyXAfter: enemy.body.x,
+        playerVelocityX: this.playerVelocity.x,
+        enemyKnockbackVelocityX: enemy.knockbackVelocity.x,
+        recoilUntil,
+        scoutSpeed: scoutDefinition?.stats.speed ?? null
       })
     );
   }
@@ -6118,8 +6196,8 @@ export class GameScene extends Phaser.Scene {
 
       const collision = getCircleCollision(
         this.arena,
-        createCircleCollisionShape(enemy.body, enemy.definition.stats.radius),
-        createCircleCollisionShape(this.player, playerHitRadius)
+        createCircleCollisionShape(this.player, playerHitRadius),
+        createCircleCollisionShape(enemy.body, enemy.definition.stats.radius)
       );
       if (collision) {
         return {
@@ -6872,10 +6950,14 @@ export class GameScene extends Phaser.Scene {
     const playerMass = this.getPlayerMass();
     const playerShare = getMassResponseShare(contact.mass, playerMass);
     const enemyShare = getMassResponseShare(playerMass, contact.mass);
-    const separation = Math.min(contact.penetration * PLAYER_CONTACT_SEPARATION_PERCENT, PLAYER_CONTACT_MAX_SEPARATION);
+    const separation = Math.min(
+      contact.penetration * PLAYER_ENEMY_CONTACT_SEPARATION_PERCENT,
+      PLAYER_ENEMY_CONTACT_MAX_SEPARATION
+    );
 
     this.nudgeWrappedObject(this.player, normal, separation * playerShare);
     this.nudgeWrappedObject(contact.enemy.body, normal, -separation * enemyShare);
+    this.markEnemyContactRecoil(contact.enemy, normal, time);
 
     if (time < this.nextPlayerContactImpulseAt) {
       return;
@@ -6887,14 +6969,29 @@ export class GameScene extends Phaser.Scene {
       secondVelocity: contact.enemy.knockbackVelocity,
       firstMass: playerMass,
       secondMass: contact.mass,
-      minImpulse: PLAYER_CONTACT_MIN_IMPULSE,
-      maxImpulse: PLAYER_CONTACT_MAX_IMPULSE,
-      relativeSpeedScale: PLAYER_CONTACT_RELATIVE_SPEED_SCALE,
+      minImpulse: PLAYER_ENEMY_CONTACT_MIN_IMPULSE,
+      maxImpulse: PLAYER_ENEMY_CONTACT_MAX_IMPULSE,
+      relativeSpeedScale: PLAYER_ENEMY_CONTACT_RELATIVE_SPEED_SCALE,
       secondMaxSpeed: this.getGlobalMaxSpeed(),
       restitution: ENEMY_CONTACT_RESTITUTION_SHARE,
       relativeVelocity: getRelativeVelocity(this.playerVelocity, this.getEnemyContactVelocity(contact.enemy))
     });
-    this.nextPlayerContactImpulseAt = time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS;
+    this.nextPlayerContactImpulseAt = time + PLAYER_ENEMY_CONTACT_IMPULSE_COOLDOWN_MS;
+  }
+
+  private markEnemyContactRecoil(enemy: AnyGameEnemy, normal: Phaser.Math.Vector2, time: number): void {
+    if (!this.isLiveEnemy(enemy)) {
+      return;
+    }
+
+    enemy.stateData.contactRecoilUntil = Math.max(
+      typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0,
+      time + ENEMY_CONTACT_RECOIL_MS
+    );
+    enemy.stateData.contactRecoilNormalX = normal.x;
+    enemy.stateData.contactRecoilNormalY = normal.y;
+    enemy.state = 'contact-recoil';
+    enemy.stateStartedAt = time;
   }
 
   private applyPlayerAsteroidKnockback(contact: PlayerAsteroidContact, time: number): void {

@@ -134,7 +134,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       telegraphType: 'none',
       hasFins: true
     },
-    stats: { hp: 18, speed: 150, acceleration: 5.8, contactDamage: 8, mass: 1.4, radius: 20 },
+    stats: { hp: 18, speed: 122, acceleration: 4.8, contactDamage: 8, mass: 1.4, radius: 20 },
     behavior: { id: 'directChase' },
     rewards: { scrap: 1, xp: 4 }
   },
@@ -156,7 +156,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       telegraphType: 'charge-line',
       hasCore: true
     },
-    stats: { hp: 34, speed: 125, acceleration: 6, contactDamage: 18, mass: 2.3, radius: 25 },
+    stats: { hp: 34, speed: 112, acceleration: 5.1, contactDamage: 18, mass: 2.3, radius: 25 },
     behavior: {
       id: 'chargeDash',
       params: { windupMs: 720, dashMs: 560, recoverMs: 850, dashSpeed: 520 }
@@ -181,7 +181,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       telegraphType: 'none',
       hasFins: true
     },
-    stats: { hp: 42, speed: 96, acceleration: 4.1, contactDamage: 8, mass: 2.1, radius: 27 },
+    stats: { hp: 42, speed: 88, acceleration: 3.7, contactDamage: 8, mass: 2.1, radius: 27 },
     behavior: {
       id: 'rangeOrbitShooter',
       params: { preferredRange: 560, retreatRange: 340, orbitSpeed: 0.56 }
@@ -230,7 +230,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       hasCore: true,
       hasRing: true
     },
-    stats: { hp: 30, speed: 112, acceleration: 4.2, contactDamage: 10, mass: 1.8, radius: 26 },
+    stats: { hp: 30, speed: 104, acceleration: 3.8, contactDamage: 10, mass: 1.8, radius: 26 },
     behavior: {
       id: 'proximityDetonate',
       params: { triggerRange: 120, blastRadius: 170, countdownMs: 1500, blastDamage: 35 }
@@ -276,7 +276,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       trailType: 'spark',
       telegraphType: 'none'
     },
-    stats: { hp: 10, speed: 170, acceleration: 6.2, contactDamage: 6, mass: 0.8, radius: 15 },
+    stats: { hp: 10, speed: 142, acceleration: 5.3, contactDamage: 6, mass: 0.8, radius: 15 },
     behavior: { id: 'directChase' },
     rewards: { scrap: 1, xp: 2 }
   },
@@ -437,7 +437,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
       telegraphType: 'none',
       hasCore: true
     },
-    stats: { hp: 40, speed: 138, acceleration: 5.5, contactDamage: 12, mass: 1.9, radius: 28 },
+    stats: { hp: 40, speed: 126, acceleration: 4.8, contactDamage: 12, mass: 1.9, radius: 28 },
     behavior: { id: 'flanker', params: { flankDistance: 300, attackRange: 170 } },
     rewards: { scrap: 3, xp: 16 }
   },
