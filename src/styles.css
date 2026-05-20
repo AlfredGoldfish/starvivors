@@ -109,6 +109,7 @@ canvas {
 .enemy-lab-overlay input,
 .enemy-lab-overlay button {
   min-width: 0;
+  box-sizing: border-box;
   border: 1px solid rgba(168, 199, 255, 0.22);
   border-radius: 4px;
   background: rgba(15, 24, 42, 0.92);
@@ -125,6 +126,7 @@ canvas {
 .enemy-lab-overlay textarea {
   width: 100%;
   min-width: 0;
+  box-sizing: border-box;
   margin-top: 8px;
   padding: 7px;
   border: 1px solid rgba(168, 199, 255, 0.22);
@@ -147,6 +149,14 @@ canvas {
 .enemy-lab-overlay button:hover {
   border-color: rgba(115, 242, 255, 0.62);
   background: rgba(22, 42, 66, 0.96);
+}
+
+.enemy-lab-overlay button:disabled,
+.enemy-lab-overlay input:disabled,
+.enemy-lab-overlay select:disabled,
+.enemy-lab-overlay textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.46;
 }
 
 .enemy-lab-overlay button.is-active,
@@ -175,7 +185,7 @@ canvas {
 
 .enemy-lab-entry {
   display: grid;
-  grid-template-columns: minmax(92px, 1fr) repeat(3, minmax(56px, 72px)) auto;
+  grid-template-columns: minmax(0, 1fr) repeat(3, minmax(54px, 68px)) minmax(62px, auto);
   gap: 5px;
   align-items: center;
 }

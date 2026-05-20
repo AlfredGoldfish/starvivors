@@ -902,6 +902,10 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private handleShortcuts(): void {
+    if (this.isControlPanelEditingText()) {
+      return;
+    }
+
     const definitions = getEnemyLabDefinitions();
     for (let i = 0; i < Math.min(10, definitions.length); i += 1) {
       const key = this.keys[`digit${i === 9 ? 0 : i + 1}`];
@@ -1178,8 +1182,8 @@ export class EnemyLabScene extends Phaser.Scene {
       this.syncVariantControlsFromState();
     });
     for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statMass, statContactDamage]) {
-      input.addEventListener('input', () => this.persistVariantFromControls());
-      input.addEventListener('change', () => this.persistVariantFromControls());
+      input.addEventListener('input', () => this.persistVariantFromControls(false));
+      input.addEventListener('change', () => this.persistVariantFromControls(true));
     }
     squadSelect.addEventListener('change', () => {
       this.selectedSquadIndex = Math.max(0, getEnemyLabSquads().findIndex((squad) => squad.id === squadSelect.value));
@@ -1212,6 +1216,22 @@ export class EnemyLabScene extends Phaser.Scene {
       this.enemyDeconflictionStrength = Number(deconflictionStrength.value) || 0;
     });
 
+    root.addEventListener('keydown', (event) => {
+      if (this.isEditablePanelTarget(event.target)) {
+        event.stopPropagation();
+      }
+    });
+    root.addEventListener('keyup', (event) => {
+      if (this.isEditablePanelTarget(event.target)) {
+        event.stopPropagation();
+      }
+    });
+    root.addEventListener('keypress', (event) => {
+      if (this.isEditablePanelTarget(event.target)) {
+        event.stopPropagation();
+      }
+    });
+
     root.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
       const tag = target.dataset.tag;
@@ -1238,7 +1258,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'spawnScrap') this.spawnTestScrap();
       if (action === 'clearScrap') this.clearScrap();
       if (action === 'newVariant') this.createVariantForSelectedEnemy();
-      if (action === 'saveVariant') this.persistVariantFromControls();
+      if (action === 'saveVariant') this.persistVariantFromControls(true);
       if (action === 'resetVariant') this.resetSelectedVariant();
       if (action === 'deleteVariant') this.deleteSelectedVariant();
       if (action === 'exportVariant') this.exportSelectedVariant();
@@ -1279,7 +1299,7 @@ export class EnemyLabScene extends Phaser.Scene {
     root.addEventListener('input', (event) => {
       const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
       if (target.dataset.behaviorParam) {
-        this.persistVariantFromControls();
+        this.persistVariantFromControls(false);
       }
       if (target.dataset.entryField) {
         this.updateSquadEntryFromInput(target);
@@ -1337,11 +1357,11 @@ export class EnemyLabScene extends Phaser.Scene {
     const hasVariant = Boolean(variant);
     this.overlay.variantSelect.value = this.selectedVariantId;
     this.overlay.variantName.value = variant?.displayName ?? `${definition.displayName} Variant`;
-    this.overlay.variantName.disabled = !variant;
+    this.overlay.variantName.disabled = false;
     this.overlay.variantStatus.value = variant?.status ?? 'Idea';
-    this.overlay.variantStatus.disabled = !variant;
+    this.overlay.variantStatus.disabled = false;
     this.overlay.variantNotes.value = variant?.notes ?? '';
-    this.overlay.variantNotes.disabled = !variant;
+    this.overlay.variantNotes.disabled = false;
     this.overlay.visualScale.value = String(variant?.visualOverrides.visualScale ?? 1);
     this.overlay.scaleX.value = String(variant?.visualOverrides.scaleX ?? 1);
     this.overlay.scaleY.value = String(variant?.visualOverrides.scaleY ?? 1);
@@ -1364,7 +1384,7 @@ export class EnemyLabScene extends Phaser.Scene {
       this.overlay.statMass,
       this.overlay.statContactDamage
     ]) {
-      input.disabled = !variant;
+      input.disabled = false;
     }
     this.renderQuickTags();
     this.renderBehaviorParamControls();
@@ -1381,11 +1401,11 @@ export class EnemyLabScene extends Phaser.Scene {
     const hasSquad = Boolean(squad);
     this.overlay.customSquadSelect.value = this.selectedCustomSquadId;
     this.overlay.squadName.value = squad?.displayName ?? 'Custom Squad';
-    this.overlay.squadName.disabled = !squad;
+    this.overlay.squadName.disabled = false;
     this.overlay.squadStatus.value = squad?.status ?? 'Idea';
-    this.overlay.squadStatus.disabled = !squad;
+    this.overlay.squadStatus.disabled = false;
     this.overlay.squadNotes.value = squad?.notes ?? '';
-    this.overlay.squadNotes.disabled = !squad;
+    this.overlay.squadNotes.disabled = false;
     this.renderSquadEntries();
     this.setActionsEnabled(
       ['exportSquad', 'deleteSquad', 'rotateSquadLeft', 'rotateSquadRight', 'scaleSquadDown', 'scaleSquadUp', 'mirrorSquad', 'clearSquad'],
@@ -1394,8 +1414,8 @@ export class EnemyLabScene extends Phaser.Scene {
     this.setActionsEnabled(['exportAiBrief'], hasSquad || Boolean(this.getSelectedVariant()));
   }
 
-  private persistVariantFromControls(): void {
-    const variant = this.getSelectedVariant();
+  private persistVariantFromControls(clampNumbers = true): void {
+    const variant = this.ensureVariantDraftForEditing();
     if (!variant || !this.overlay) {
       return;
     }
@@ -1404,18 +1424,18 @@ export class EnemyLabScene extends Phaser.Scene {
     variant.status = this.overlay.variantStatus.value as EnemyLabAssetStatus;
     variant.notes = this.overlay.variantNotes.value;
     variant.visualOverrides = {
-      visualScale: this.readNumberInput(this.overlay.visualScale, 1),
-      scaleX: this.readNumberInput(this.overlay.scaleX, 1),
-      scaleY: this.readNumberInput(this.overlay.scaleY, 1),
-      rotationOffsetDegrees: this.readNumberInput(this.overlay.rotationOffset, 0),
-      glowScale: this.readNumberInput(this.overlay.glowScale, 1)
+      visualScale: this.readNumberInput(this.overlay.visualScale, 1, clampNumbers),
+      scaleX: this.readNumberInput(this.overlay.scaleX, 1, clampNumbers),
+      scaleY: this.readNumberInput(this.overlay.scaleY, 1, clampNumbers),
+      rotationOffsetDegrees: this.readNumberInput(this.overlay.rotationOffset, 0, clampNumbers),
+      glowScale: this.readNumberInput(this.overlay.glowScale, 1, clampNumbers)
     };
     variant.statOverrides = {
-      hp: this.readNumberInput(this.overlay.statHp, variant.statOverrides.hp ?? 1),
-      speed: this.readNumberInput(this.overlay.statSpeed, variant.statOverrides.speed ?? 1),
-      radius: this.readNumberInput(this.overlay.statRadius, variant.statOverrides.radius ?? 1),
-      mass: this.readNumberInput(this.overlay.statMass, variant.statOverrides.mass ?? 1),
-      contactDamage: this.readNumberInput(this.overlay.statContactDamage, variant.statOverrides.contactDamage ?? 0)
+      hp: this.readNumberInput(this.overlay.statHp, variant.statOverrides.hp ?? 1, clampNumbers),
+      speed: this.readNumberInput(this.overlay.statSpeed, variant.statOverrides.speed ?? 1, clampNumbers),
+      radius: this.readNumberInput(this.overlay.statRadius, variant.statOverrides.radius ?? 1, clampNumbers),
+      mass: this.readNumberInput(this.overlay.statMass, variant.statOverrides.mass ?? 1, clampNumbers),
+      contactDamage: this.readNumberInput(this.overlay.statContactDamage, variant.statOverrides.contactDamage ?? 0, clampNumbers)
     };
     const behaviorParamInputs = this.overlay.behaviorParams.querySelectorAll<HTMLInputElement>('[data-behavior-param]');
     for (const input of behaviorParamInputs) {
@@ -1423,7 +1443,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (!key) {
         continue;
       }
-      variant.behaviorParamOverrides[key] = input.type === 'number' ? this.readNumberInput(input, 0) : input.value;
+      variant.behaviorParamOverrides[key] = input.type === 'number' ? this.readNumberInput(input, 0, clampNumbers) : input.value;
     }
     variant.savedAt = new Date().toISOString();
     this.savePresetState();
@@ -1431,7 +1451,7 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private persistSquadFromControls(): void {
-    const squad = this.getSelectedCustomSquad();
+    const squad = this.ensureCustomSquadForEditing();
     if (!squad || !this.overlay) {
       return;
     }
@@ -1453,6 +1473,26 @@ export class EnemyLabScene extends Phaser.Scene {
     this.savePresetState();
     this.populateVariantSelect();
     this.syncVariantControlsFromState();
+  }
+
+  private ensureVariantDraftForEditing(): EnemyLabVariantPreset | undefined {
+    const existing = this.getSelectedVariant();
+    if (existing) {
+      return existing;
+    }
+
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    if (!definition) {
+      return undefined;
+    }
+
+    const variant = createVariantFromDefinition(definition);
+    this.presetState.variants.push(variant);
+    this.selectedVariantId = variant.id;
+    this.populateVariantSelect();
+    this.setActionsEnabled(['saveVariant', 'resetVariant', 'deleteVariant', 'exportVariant', 'exportPromotion'], true);
+    this.setActionsEnabled(['exportAiBrief'], true);
+    return variant;
   }
 
   private resetSelectedVariant(): void {
@@ -1552,6 +1592,25 @@ export class EnemyLabScene extends Phaser.Scene {
     this.savePresetState();
     this.populateCustomSquadSelect();
     this.syncSquadControlsFromState();
+  }
+
+  private ensureCustomSquadForEditing(): EnemyLabSquadPreset | undefined {
+    const existing = this.getSelectedCustomSquad();
+    if (existing) {
+      return existing;
+    }
+
+    const squad = createEmptySquadPreset();
+    this.presetState.squads.push(squad);
+    this.selectedCustomSquadId = squad.id;
+    this.selectedSquadEntryIndex = -1;
+    this.populateCustomSquadSelect();
+    this.setActionsEnabled(
+      ['exportSquad', 'deleteSquad', 'rotateSquadLeft', 'rotateSquadRight', 'scaleSquadDown', 'scaleSquadUp', 'mirrorSquad', 'clearSquad'],
+      true
+    );
+    this.setActionsEnabled(['exportAiBrief'], true);
+    return squad;
   }
 
   private copyBuiltInSquad(): void {
@@ -1852,18 +1911,40 @@ export class EnemyLabScene extends Phaser.Scene {
     saveEnemyLabStorageState(this.presetState);
   }
 
-  private readNumberInput(input: HTMLInputElement, fallback: number): number {
+  private readNumberInput(input: HTMLInputElement, fallback: number, clampValue = true): number {
     const value = Number(input.value);
     const min = input.min === '' ? Number.NEGATIVE_INFINITY : Number(input.min);
     const max = input.max === '' ? Number.POSITIVE_INFINITY : Number(input.max);
+    if (!Number.isFinite(value)) {
+      return fallback;
+    }
+
     const clamped = Phaser.Math.Clamp(
-      Number.isFinite(value) ? value : fallback,
+      value,
       Number.isFinite(min) ? min : Number.NEGATIVE_INFINITY,
       Number.isFinite(max) ? max : Number.POSITIVE_INFINITY
     );
 
-    input.value = String(clamped);
+    if (clampValue) {
+      input.value = String(clamped);
+    }
     return clamped;
+  }
+
+  private isControlPanelEditingText(): boolean {
+    if (!this.overlay) {
+      return false;
+    }
+
+    return this.isEditablePanelTarget(document.activeElement);
+  }
+
+  private isEditablePanelTarget(target: EventTarget | Element | null): boolean {
+    if (!this.overlay || !(target instanceof HTMLElement) || !this.overlay.root.contains(target)) {
+      return false;
+    }
+
+    return target.matches('input, textarea, select, [contenteditable="true"]');
   }
 
   private setActionsEnabled(actions: string[], enabled: boolean): void {
