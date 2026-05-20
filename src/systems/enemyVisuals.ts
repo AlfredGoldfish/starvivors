@@ -19,20 +19,33 @@ export function createEnemyLabVisualContainer(
   y: number,
   definition: EnemyLabDefinition
 ): Phaser.GameObjects.Container {
-  const glow = scene.add.ellipse(0, 0, definition.visual.size * 1.55, definition.visual.size * 1.55, definition.visual.glowColor, 0.18);
+  const scaleX = definition.visual.scaleX ?? 1;
+  const scaleY = definition.visual.scaleY ?? 1;
+  const glowScale = definition.visual.glowScale ?? 1;
+  const visualWidth = definition.visual.size * scaleX;
+  const visualHeight = definition.visual.size * scaleY;
+  const glow = scene.add.ellipse(
+    0,
+    0,
+    visualWidth * 1.55 * glowScale,
+    visualHeight * 1.55 * glowScale,
+    definition.visual.glowColor,
+    0.18
+  );
   glow.setBlendMode(Phaser.BlendModes.ADD);
 
   const image = scene.add.image(0, 0, getEnemyLabTextureKey(definition.id));
   image.setOrigin(0.5);
-  image.setDisplaySize(definition.visual.size, definition.visual.size);
+  image.setDisplaySize(visualWidth, visualHeight);
+  image.setRotation(definition.visual.rotationOffset ?? 0);
 
   const core = definition.visual.hasCore
-    ? scene.add.ellipse(0, 0, definition.visual.size * 0.22, definition.visual.size * 0.22, definition.visual.accentColor, 0.82)
+    ? scene.add.ellipse(0, 0, visualWidth * 0.22, visualHeight * 0.22, definition.visual.accentColor, 0.82)
     : undefined;
 
   const container = scene.add.container(x, y, core ? [glow, image, core] : [glow, image]);
   container.setDepth(9);
-  container.setSize(definition.visual.size, definition.visual.size);
+  container.setSize(visualWidth, visualHeight);
   container.setData('visualImage', image);
   container.setData('visualGlow', glow);
   if (core) {

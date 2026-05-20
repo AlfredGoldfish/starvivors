@@ -20,9 +20,32 @@ import {
   getEnemyLabSquads,
   setEnemyLabDebugLabels,
   spawnEnemyLabEnemy,
-  spawnEnemyLabSquad,
   type EnemyLabInstance
 } from '../systems/enemyLabSpawner';
+import { downloadTextFile, loadMarkdownFile } from '../systems/debug/debugPersistence';
+import {
+  ENEMY_LAB_ASSET_STATUSES,
+  ENEMY_LAB_QUICK_TAGS,
+  applyVariantToDefinition,
+  convertBuiltInSquadToPreset,
+  createEmptySquadPreset,
+  createEnemyLabAiBriefMarkdown,
+  createEnemyLabPromotionMarkdown,
+  createEnemySquadMarkdown,
+  createEnemyVariantMarkdown,
+  createInitialEnemyLabStorageState,
+  createVariantFromDefinition,
+  duplicateVariant,
+  loadEnemyLabStorageState,
+  parseEnemyLabPresetMarkdown,
+  saveEnemyLabStorageState,
+  slugify,
+  type EnemyLabAssetStatus,
+  type EnemyLabSquadPreset,
+  type EnemyLabSquadPresetEntry,
+  type EnemyLabStorageState,
+  type EnemyLabVariantPreset
+} from '../systems/enemyLabPresets';
 
 interface EnemyLabProjectile {
   id: string;
@@ -43,7 +66,28 @@ interface EnemyLabScrapPickup extends EnemyLabScrapTarget {
 interface EnemyLabOverlayRefs {
   root: HTMLDivElement;
   enemySelect: HTMLSelectElement;
+  variantSelect: HTMLSelectElement;
+  variantName: HTMLInputElement;
+  variantStatus: HTMLSelectElement;
+  variantNotes: HTMLTextAreaElement;
+  variantTags: HTMLDivElement;
+  visualScale: HTMLInputElement;
+  scaleX: HTMLInputElement;
+  scaleY: HTMLInputElement;
+  rotationOffset: HTMLInputElement;
+  glowScale: HTMLInputElement;
+  statHp: HTMLInputElement;
+  statSpeed: HTMLInputElement;
+  statRadius: HTMLInputElement;
+  statMass: HTMLInputElement;
+  statContactDamage: HTMLInputElement;
+  behaviorParams: HTMLDivElement;
   squadSelect: HTMLSelectElement;
+  customSquadSelect: HTMLSelectElement;
+  squadName: HTMLInputElement;
+  squadStatus: HTMLSelectElement;
+  squadNotes: HTMLTextAreaElement;
+  squadEntries: HTMLDivElement;
   spawnCount: HTMLInputElement;
   speedMultiplier: HTMLInputElement;
   hpMultiplier: HTMLInputElement;
@@ -71,8 +115,12 @@ export class EnemyLabScene extends Phaser.Scene {
   private projectiles: EnemyLabProjectile[] = [];
   private scrapPickups: EnemyLabScrapPickup[] = [];
   private overlay?: EnemyLabOverlayRefs;
+  private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
   private selectedEnemyIndex = 0;
+  private selectedVariantId = '';
   private selectedSquadIndex = 0;
+  private selectedCustomSquadId = '';
+  private selectedSquadEntryIndex = -1;
   private spawnCount = 1;
   private enemySpeedMultiplier = 1;
   private enemyHpMultiplier = 1;
@@ -117,6 +165,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.centerOn(center.x, center.y);
 
+    this.presetState = loadEnemyLabStorageState();
     this.createInput();
     this.createOverlay();
     this.spawnInitialScrap();
@@ -518,12 +567,21 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
-  private spawnEnemy(definitionId: string, x: number, y: number): void {
+  private spawnEnemy(definitionId: string, x: number, y: number, variantId?: string): void {
+    const baseDefinition = getEnemyLabDefinitions().find((definition) => definition.id === definitionId);
+    if (!baseDefinition) {
+      return;
+    }
+
+    const variant = variantId ? this.presetState.variants.find((candidate) => candidate.id === variantId) : undefined;
+    const effectiveDefinition = applyVariantToDefinition(baseDefinition, variant);
     this.enemies.push(
       spawnEnemyLabEnemy({
         scene: this,
         arena: this.arena,
         definitionId,
+        definitionOverride: effectiveDefinition,
+        variantId: variant?.id,
         x,
         y,
         time: this.time.now,
@@ -537,25 +595,27 @@ export class EnemyLabScene extends Phaser.Scene {
     const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
     for (let i = 0; i < this.spawnCount; i += 1) {
       const position = this.getSpawnPositionAroundPlayer(420 + i * 16);
-      this.spawnEnemy(definition.id, position.x, position.y);
+      this.spawnEnemy(definition.id, position.x, position.y, this.getSelectedVariant()?.id);
     }
   }
 
   private spawnSelectedSquad(): void {
-    const squad = getEnemyLabSquads()[this.selectedSquadIndex];
     const position = this.getSpawnPositionAroundPlayer(620);
-    this.enemies.push(
-      ...spawnEnemyLabSquad({
-        scene: this,
-        arena: this.arena,
-        squadId: squad.id,
-        centerX: position.x,
-        centerY: position.y,
-        time: this.time.now,
-        hpMultiplier: this.enemyHpMultiplier,
-        showDebugLabel: this.showDebugLabels
-      })
-    );
+    const customSquad = this.getSelectedCustomSquad();
+    if (customSquad) {
+      this.spawnCustomSquad(customSquad, position.x, position.y);
+      return;
+    }
+
+    const squad = getEnemyLabSquads()[this.selectedSquadIndex];
+    const preset = convertBuiltInSquadToPreset(squad);
+    this.spawnCustomSquad(preset, position.x, position.y);
+  }
+
+  private spawnCustomSquad(squad: EnemyLabSquadPreset, centerX: number, centerY: number): void {
+    for (const entry of squad.entries) {
+      this.spawnEnemy(entry.definitionId, centerX + entry.x, centerY + entry.y, entry.variantId);
+    }
   }
 
   private clearEnemies(): void {
@@ -729,34 +789,109 @@ export class EnemyLabScene extends Phaser.Scene {
     root.className = 'enemy-lab-overlay';
     root.innerHTML = `
       <div class="enemy-lab-title">Enemy Lab</div>
-      <label>Enemy <select data-field="enemy"></select></label>
-      <label>Squad <select data-field="squad"></select></label>
-      <div class="enemy-lab-row">
-        <button data-action="spawn">Spawn</button>
-        <button data-action="squad">Squad</button>
-        <button data-action="clear">Clear</button>
-      </div>
-      <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="40" step="1" value="1"></label>
-      <label>Speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
-      <label>HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
-      <label>Fire rate <input data-field="fireRate" type="range" min="0.25" max="3" step="0.05" value="1"></label>
-      <label>Nudge <input data-field="deconflict" type="range" min="0" max="3" step="0.05" value="1"></label>
-      <div class="enemy-lab-row">
-        <button data-action="ai">AI</button>
-        <button data-action="invuln">Invuln</button>
-        <button data-action="labels">Labels</button>
-        <button data-action="telegraphs">Telegraphs</button>
-        <button data-action="deconflict">Deconflict</button>
-        <button data-action="collisionDebug">Hit Circles</button>
-        <button data-action="pause">Pause</button>
-      </div>
+      <section class="enemy-lab-panel">
+        <label>Enemy <select data-field="enemy"></select></label>
+        <label>Variant <select data-field="variant"></select></label>
+        <label>Name <input data-field="variantName" type="text" maxlength="48"></label>
+        <label>Status <select data-field="variantStatus"></select></label>
+        <div class="enemy-lab-row">
+          <button data-action="newVariant">Duplicate</button>
+          <button data-action="saveVariant">Save Draft</button>
+          <button data-action="resetVariant">Reset</button>
+          <button data-action="exportVariant">Export</button>
+          <button data-action="importPreset">Import</button>
+        </div>
+        <div class="enemy-lab-grid">
+          <label>Visual <input data-field="visualScale" type="number" min="0.25" max="3" step="0.05"></label>
+          <label>Width <input data-field="scaleX" type="number" min="0.25" max="3" step="0.05"></label>
+          <label>Length <input data-field="scaleY" type="number" min="0.25" max="3" step="0.05"></label>
+          <label>Rotate <input data-field="rotationOffset" type="number" min="-180" max="180" step="5"></label>
+          <label>Glow <input data-field="glowScale" type="number" min="0" max="3" step="0.05"></label>
+          <label>Hit R <input data-field="statRadius" type="number" min="4" max="220" step="1"></label>
+          <label>HP <input data-field="statHp" type="number" min="1" max="5000" step="1"></label>
+          <label>Speed <input data-field="statSpeed" type="number" min="1" max="1200" step="1"></label>
+          <label>Mass <input data-field="statMass" type="number" min="0.1" max="80" step="0.1"></label>
+          <label>Contact <input data-field="statContactDamage" type="number" min="0" max="1000" step="1"></label>
+        </div>
+        <div class="enemy-lab-subtitle">Behavior Params</div>
+        <div class="enemy-lab-param-grid" data-field="behaviorParams"></div>
+        <textarea data-field="variantNotes" rows="4" placeholder="Write dev feedback while testing."></textarea>
+        <div class="enemy-lab-tags" data-field="variantTags"></div>
+        <div class="enemy-lab-row">
+          <button data-action="exportAiBrief">AI Brief</button>
+          <button data-action="exportPromotion">Promotion</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel">
+        <label>Built-in <select data-field="squad"></select></label>
+        <label>Custom <select data-field="customSquad"></select></label>
+        <label>Squad name <input data-field="squadName" type="text" maxlength="48"></label>
+        <label>Squad status <select data-field="squadStatus"></select></label>
+        <div class="enemy-lab-row">
+          <button data-action="newSquad">New Squad</button>
+          <button data-action="copyBuiltInSquad">Copy Built-in</button>
+          <button data-action="addSquadEntry">Add Enemy</button>
+          <button data-action="spawnSquad">Test Squad</button>
+          <button data-action="exportSquad">Export Squad</button>
+        </div>
+        <textarea data-field="squadNotes" rows="3" placeholder="Squad formation notes."></textarea>
+        <div class="enemy-lab-row">
+          <button data-action="rotateSquadLeft">Rotate -15</button>
+          <button data-action="rotateSquadRight">Rotate +15</button>
+          <button data-action="scaleSquadDown">Tighter</button>
+          <button data-action="scaleSquadUp">Wider</button>
+          <button data-action="mirrorSquad">Mirror</button>
+          <button data-action="clearSquad">Clear Squad</button>
+        </div>
+        <div class="enemy-lab-squad-entries" data-field="squadEntries"></div>
+      </section>
+      <section class="enemy-lab-panel">
+        <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="40" step="1" value="1"></label>
+        <label>Lab speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
+        <label>Lab HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
+        <label>Fire rate <input data-field="fireRate" type="range" min="0.25" max="3" step="0.05" value="1"></label>
+        <label>Nudge <input data-field="deconflict" type="range" min="0" max="3" step="0.05" value="1"></label>
+        <div class="enemy-lab-row">
+          <button data-action="spawn">Spawn</button>
+          <button data-action="squad">Squad</button>
+          <button data-action="clear">Clear</button>
+          <button data-action="ai">AI</button>
+          <button data-action="invuln">Invuln</button>
+          <button data-action="labels">Labels</button>
+          <button data-action="telegraphs">Telegraphs</button>
+          <button data-action="deconflict">Deconflict</button>
+          <button data-action="collisionDebug">Hit Circles</button>
+          <button data-action="pause">Pause</button>
+        </div>
+      </section>
       <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause. Hold mouse to fire.</div>
       <div class="enemy-lab-status" data-field="status"></div>
     `;
     document.body.appendChild(root);
 
     const enemySelect = root.querySelector<HTMLSelectElement>('[data-field="enemy"]');
+    const variantSelect = root.querySelector<HTMLSelectElement>('[data-field="variant"]');
+    const variantName = root.querySelector<HTMLInputElement>('[data-field="variantName"]');
+    const variantStatus = root.querySelector<HTMLSelectElement>('[data-field="variantStatus"]');
+    const variantNotes = root.querySelector<HTMLTextAreaElement>('[data-field="variantNotes"]');
+    const variantTags = root.querySelector<HTMLDivElement>('[data-field="variantTags"]');
+    const visualScale = root.querySelector<HTMLInputElement>('[data-field="visualScale"]');
+    const scaleX = root.querySelector<HTMLInputElement>('[data-field="scaleX"]');
+    const scaleY = root.querySelector<HTMLInputElement>('[data-field="scaleY"]');
+    const rotationOffset = root.querySelector<HTMLInputElement>('[data-field="rotationOffset"]');
+    const glowScale = root.querySelector<HTMLInputElement>('[data-field="glowScale"]');
+    const statHp = root.querySelector<HTMLInputElement>('[data-field="statHp"]');
+    const statSpeed = root.querySelector<HTMLInputElement>('[data-field="statSpeed"]');
+    const statRadius = root.querySelector<HTMLInputElement>('[data-field="statRadius"]');
+    const statMass = root.querySelector<HTMLInputElement>('[data-field="statMass"]');
+    const statContactDamage = root.querySelector<HTMLInputElement>('[data-field="statContactDamage"]');
+    const behaviorParams = root.querySelector<HTMLDivElement>('[data-field="behaviorParams"]');
     const squadSelect = root.querySelector<HTMLSelectElement>('[data-field="squad"]');
+    const customSquadSelect = root.querySelector<HTMLSelectElement>('[data-field="customSquad"]');
+    const squadName = root.querySelector<HTMLInputElement>('[data-field="squadName"]');
+    const squadStatus = root.querySelector<HTMLSelectElement>('[data-field="squadStatus"]');
+    const squadNotes = root.querySelector<HTMLTextAreaElement>('[data-field="squadNotes"]');
+    const squadEntries = root.querySelector<HTMLDivElement>('[data-field="squadEntries"]');
     const spawnCount = root.querySelector<HTMLInputElement>('[data-field="spawnCount"]');
     const speedMultiplier = root.querySelector<HTMLInputElement>('[data-field="speed"]');
     const hpMultiplier = root.querySelector<HTMLInputElement>('[data-field="hp"]');
@@ -766,7 +901,28 @@ export class EnemyLabScene extends Phaser.Scene {
 
     if (
       !enemySelect ||
+      !variantSelect ||
+      !variantName ||
+      !variantStatus ||
+      !variantNotes ||
+      !variantTags ||
+      !visualScale ||
+      !scaleX ||
+      !scaleY ||
+      !rotationOffset ||
+      !glowScale ||
+      !statHp ||
+      !statSpeed ||
+      !statRadius ||
+      !statMass ||
+      !statContactDamage ||
+      !behaviorParams ||
       !squadSelect ||
+      !customSquadSelect ||
+      !squadName ||
+      !squadStatus ||
+      !squadNotes ||
+      !squadEntries ||
       !spawnCount ||
       !speedMultiplier ||
       !hpMultiplier ||
@@ -783,11 +939,36 @@ export class EnemyLabScene extends Phaser.Scene {
     for (const squad of getEnemyLabSquads()) {
       squadSelect.add(new Option(squad.displayName, squad.id));
     }
+    for (const status of ENEMY_LAB_ASSET_STATUSES) {
+      variantStatus.add(new Option(status, status));
+      squadStatus.add(new Option(status, status));
+    }
 
     this.overlay = {
       root,
       enemySelect,
+      variantSelect,
+      variantName,
+      variantStatus,
+      variantNotes,
+      variantTags,
+      visualScale,
+      scaleX,
+      scaleY,
+      rotationOffset,
+      glowScale,
+      statHp,
+      statSpeed,
+      statRadius,
+      statMass,
+      statContactDamage,
+      behaviorParams,
       squadSelect,
+      customSquadSelect,
+      squadName,
+      squadStatus,
+      squadNotes,
+      squadEntries,
       spawnCount,
       speedMultiplier,
       hpMultiplier,
@@ -798,10 +979,30 @@ export class EnemyLabScene extends Phaser.Scene {
 
     enemySelect.addEventListener('change', () => {
       this.selectedEnemyIndex = Math.max(0, getEnemyLabDefinitions().findIndex((definition) => definition.id === enemySelect.value));
+      this.selectedVariantId = '';
+      this.populateVariantSelect();
+      this.syncVariantControlsFromState();
     });
+    variantSelect.addEventListener('change', () => {
+      this.selectedVariantId = variantSelect.value;
+      this.syncVariantControlsFromState();
+    });
+    for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statMass, statContactDamage]) {
+      input.addEventListener('input', () => this.persistVariantFromControls());
+      input.addEventListener('change', () => this.persistVariantFromControls());
+    }
     squadSelect.addEventListener('change', () => {
       this.selectedSquadIndex = Math.max(0, getEnemyLabSquads().findIndex((squad) => squad.id === squadSelect.value));
     });
+    customSquadSelect.addEventListener('change', () => {
+      this.selectedCustomSquadId = customSquadSelect.value;
+      this.selectedSquadEntryIndex = -1;
+      this.syncSquadControlsFromState();
+    });
+    for (const input of [squadName, squadStatus, squadNotes]) {
+      input.addEventListener('input', () => this.persistSquadFromControls());
+      input.addEventListener('change', () => this.persistSquadFromControls());
+    }
     spawnCount.addEventListener('input', () => {
       this.spawnCount = Phaser.Math.Clamp(Number(spawnCount.value) || 1, 1, 40);
     });
@@ -819,7 +1020,20 @@ export class EnemyLabScene extends Phaser.Scene {
     });
 
     root.addEventListener('click', (event) => {
-      const action = (event.target as HTMLElement).dataset.action;
+      const target = event.target as HTMLElement;
+      const tag = target.dataset.tag;
+      if (tag) {
+        this.toggleSelectedVariantTag(tag);
+        return;
+      }
+
+      const entryAction = target.dataset.entryAction;
+      if (entryAction) {
+        this.handleSquadEntryAction(entryAction, Number(target.dataset.entryIndex));
+        return;
+      }
+
+      const action = target.dataset.action;
       if (!action) {
         return;
       }
@@ -827,6 +1041,24 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'spawn') this.spawnSelectedEnemy();
       if (action === 'squad') this.spawnSelectedSquad();
       if (action === 'clear') this.clearEnemies();
+      if (action === 'newVariant') this.createVariantForSelectedEnemy();
+      if (action === 'saveVariant') this.persistVariantFromControls();
+      if (action === 'resetVariant') this.resetSelectedVariant();
+      if (action === 'exportVariant') this.exportSelectedVariant();
+      if (action === 'importPreset') this.importEnemyLabPreset();
+      if (action === 'exportAiBrief') this.exportAiBrief();
+      if (action === 'exportPromotion') this.exportPromotionReport();
+      if (action === 'newSquad') this.createNewCustomSquad();
+      if (action === 'copyBuiltInSquad') this.copyBuiltInSquad();
+      if (action === 'addSquadEntry') this.addSelectedEnemyToSquad();
+      if (action === 'spawnSquad') this.spawnSelectedSquad();
+      if (action === 'exportSquad') this.exportSelectedSquad();
+      if (action === 'rotateSquadLeft') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, -15));
+      if (action === 'rotateSquadRight') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, 15));
+      if (action === 'scaleSquadDown') this.transformSelectedSquad((entry) => ({ ...entry, x: Math.round(entry.x * 0.86), y: Math.round(entry.y * 0.86) }));
+      if (action === 'scaleSquadUp') this.transformSelectedSquad((entry) => ({ ...entry, x: Math.round(entry.x * 1.16), y: Math.round(entry.y * 1.16) }));
+      if (action === 'mirrorSquad') this.transformSelectedSquad((entry) => ({ ...entry, x: -entry.x }));
+      if (action === 'clearSquad') this.clearSelectedSquad();
       if (action === 'ai') this.isAiEnabled = !this.isAiEnabled;
       if (action === 'invuln') this.isPlayerInvulnerable = !this.isPlayerInvulnerable;
       if (action === 'labels') {
@@ -845,7 +1077,544 @@ export class EnemyLabScene extends Phaser.Scene {
       this.syncOverlayFromState();
     });
 
+    root.addEventListener('input', (event) => {
+      const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      if (target.dataset.behaviorParam) {
+        this.persistVariantFromControls();
+      }
+      if (target.dataset.entryField) {
+        this.updateSquadEntryFromInput(target);
+      }
+    });
+
+    this.populateVariantSelect();
+    this.populateCustomSquadSelect();
+    this.renderQuickTags();
+    this.renderBehaviorParamControls();
+    this.renderSquadEntries();
     this.syncOverlayFromState();
+  }
+
+  private populateVariantSelect(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const selectedDefinition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variants = this.presetState.variants.filter((variant) => variant.baseDefinitionId === selectedDefinition.id);
+    this.overlay.variantSelect.replaceChildren(new Option('Base definition', ''));
+    for (const variant of variants) {
+      this.overlay.variantSelect.add(new Option(variant.displayName, variant.id));
+    }
+
+    if (this.selectedVariantId && !variants.some((variant) => variant.id === this.selectedVariantId)) {
+      this.selectedVariantId = '';
+    }
+    this.overlay.variantSelect.value = this.selectedVariantId;
+  }
+
+  private populateCustomSquadSelect(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    this.overlay.customSquadSelect.replaceChildren(new Option('None', ''));
+    for (const squad of this.presetState.squads) {
+      this.overlay.customSquadSelect.add(new Option(squad.displayName, squad.id));
+    }
+    if (this.selectedCustomSquadId && !this.presetState.squads.some((squad) => squad.id === this.selectedCustomSquadId)) {
+      this.selectedCustomSquadId = '';
+    }
+    this.overlay.customSquadSelect.value = this.selectedCustomSquadId;
+  }
+
+  private syncVariantControlsFromState(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variant = this.getSelectedVariant();
+    this.overlay.variantSelect.value = this.selectedVariantId;
+    this.overlay.variantName.value = variant?.displayName ?? `${definition.displayName} Variant`;
+    this.overlay.variantName.disabled = !variant;
+    this.overlay.variantStatus.value = variant?.status ?? 'Idea';
+    this.overlay.variantStatus.disabled = !variant;
+    this.overlay.variantNotes.value = variant?.notes ?? '';
+    this.overlay.variantNotes.disabled = !variant;
+    this.overlay.visualScale.value = String(variant?.visualOverrides.visualScale ?? 1);
+    this.overlay.scaleX.value = String(variant?.visualOverrides.scaleX ?? 1);
+    this.overlay.scaleY.value = String(variant?.visualOverrides.scaleY ?? 1);
+    this.overlay.rotationOffset.value = String(variant?.visualOverrides.rotationOffsetDegrees ?? 0);
+    this.overlay.glowScale.value = String(variant?.visualOverrides.glowScale ?? 1);
+    this.overlay.statHp.value = String(variant?.statOverrides.hp ?? definition.stats.hp);
+    this.overlay.statSpeed.value = String(variant?.statOverrides.speed ?? definition.stats.speed);
+    this.overlay.statRadius.value = String(variant?.statOverrides.radius ?? definition.stats.radius);
+    this.overlay.statMass.value = String(variant?.statOverrides.mass ?? definition.stats.mass ?? 1);
+    this.overlay.statContactDamage.value = String(variant?.statOverrides.contactDamage ?? definition.stats.contactDamage);
+    for (const input of [
+      this.overlay.visualScale,
+      this.overlay.scaleX,
+      this.overlay.scaleY,
+      this.overlay.rotationOffset,
+      this.overlay.glowScale,
+      this.overlay.statHp,
+      this.overlay.statSpeed,
+      this.overlay.statRadius,
+      this.overlay.statMass,
+      this.overlay.statContactDamage
+    ]) {
+      input.disabled = !variant;
+    }
+    this.renderQuickTags();
+    this.renderBehaviorParamControls();
+  }
+
+  private syncSquadControlsFromState(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const squad = this.getSelectedCustomSquad();
+    this.overlay.customSquadSelect.value = this.selectedCustomSquadId;
+    this.overlay.squadName.value = squad?.displayName ?? 'Custom Squad';
+    this.overlay.squadName.disabled = !squad;
+    this.overlay.squadStatus.value = squad?.status ?? 'Idea';
+    this.overlay.squadStatus.disabled = !squad;
+    this.overlay.squadNotes.value = squad?.notes ?? '';
+    this.overlay.squadNotes.disabled = !squad;
+    this.renderSquadEntries();
+  }
+
+  private persistVariantFromControls(): void {
+    const variant = this.getSelectedVariant();
+    if (!variant || !this.overlay) {
+      return;
+    }
+
+    variant.displayName = this.overlay.variantName.value.trim() || variant.displayName;
+    variant.status = this.overlay.variantStatus.value as EnemyLabAssetStatus;
+    variant.notes = this.overlay.variantNotes.value;
+    variant.visualOverrides = {
+      visualScale: this.readNumberInput(this.overlay.visualScale, 1),
+      scaleX: this.readNumberInput(this.overlay.scaleX, 1),
+      scaleY: this.readNumberInput(this.overlay.scaleY, 1),
+      rotationOffsetDegrees: this.readNumberInput(this.overlay.rotationOffset, 0),
+      glowScale: this.readNumberInput(this.overlay.glowScale, 1)
+    };
+    variant.statOverrides = {
+      hp: this.readNumberInput(this.overlay.statHp, variant.statOverrides.hp ?? 1),
+      speed: this.readNumberInput(this.overlay.statSpeed, variant.statOverrides.speed ?? 1),
+      radius: this.readNumberInput(this.overlay.statRadius, variant.statOverrides.radius ?? 1),
+      mass: this.readNumberInput(this.overlay.statMass, variant.statOverrides.mass ?? 1),
+      contactDamage: this.readNumberInput(this.overlay.statContactDamage, variant.statOverrides.contactDamage ?? 0)
+    };
+    const behaviorParamInputs = this.overlay.behaviorParams.querySelectorAll<HTMLInputElement>('[data-behavior-param]');
+    for (const input of behaviorParamInputs) {
+      const key = input.dataset.behaviorParam;
+      if (!key) {
+        continue;
+      }
+      variant.behaviorParamOverrides[key] = input.type === 'number' ? this.readNumberInput(input, 0) : input.value;
+    }
+    variant.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.populateVariantSelect();
+  }
+
+  private persistSquadFromControls(): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad || !this.overlay) {
+      return;
+    }
+
+    squad.displayName = this.overlay.squadName.value.trim() || squad.displayName;
+    squad.status = this.overlay.squadStatus.value as EnemyLabAssetStatus;
+    squad.notes = this.overlay.squadNotes.value;
+    squad.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.populateCustomSquadSelect();
+  }
+
+  private createVariantForSelectedEnemy(): void {
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const current = this.getSelectedVariant();
+    const variant = current ? duplicateVariant(current) : createVariantFromDefinition(definition);
+    this.presetState.variants.push(variant);
+    this.selectedVariantId = variant.id;
+    this.savePresetState();
+    this.populateVariantSelect();
+    this.syncVariantControlsFromState();
+  }
+
+  private resetSelectedVariant(): void {
+    const variant = this.getSelectedVariant();
+    if (!variant) {
+      return;
+    }
+
+    const definition = getEnemyLabDefinitions().find((candidate) => candidate.id === variant.baseDefinitionId);
+    if (!definition) {
+      return;
+    }
+
+    const reset = createVariantFromDefinition(definition);
+    variant.visualOverrides = reset.visualOverrides;
+    variant.statOverrides = reset.statOverrides;
+    variant.behaviorParamOverrides = reset.behaviorParamOverrides;
+    variant.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncVariantControlsFromState();
+  }
+
+  private exportSelectedVariant(): void {
+    const variant = this.getSelectedVariant();
+    if (!variant) {
+      return;
+    }
+
+    downloadTextFile(
+      `enemy-${slugify(variant.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createEnemyVariantMarkdown(variant),
+      'text/markdown'
+    );
+  }
+
+  private exportAiBrief(): void {
+    const variant = this.getSelectedVariant();
+    const squad = this.getSelectedCustomSquad();
+    const target = variant ?? squad;
+    if (!target) {
+      return;
+    }
+
+    downloadTextFile(
+      `ai-brief-${slugify(target.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createEnemyLabAiBriefMarkdown({
+        targetLabel: target.displayName,
+        targetData: target,
+        context: this.createContextSnapshot()
+      }),
+      'text/markdown'
+    );
+  }
+
+  private exportPromotionReport(): void {
+    const variant = this.getSelectedVariant();
+    if (!variant) {
+      return;
+    }
+
+    downloadTextFile(
+      `promotion-${slugify(variant.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createEnemyLabPromotionMarkdown({ variant, context: this.createContextSnapshot() }),
+      'text/markdown'
+    );
+  }
+
+  private importEnemyLabPreset(): void {
+    loadMarkdownFile((contents) => {
+      const preset = parseEnemyLabPresetMarkdown(contents);
+      if (!preset) {
+        console.warn('Unable to import enemy lab preset.');
+        return;
+      }
+
+      if (preset.type === 'starvivors-enemy-lab-variant') {
+        const id = `${preset.id}-${Date.now()}`;
+        this.upsertVariantPreset({ ...preset, id });
+        this.selectedEnemyIndex = Math.max(0, getEnemyLabDefinitions().findIndex((definition) => definition.id === preset.baseDefinitionId));
+        this.selectedVariantId = id;
+      } else {
+        const id = `${preset.id}-${Date.now()}`;
+        this.upsertSquadPreset({ ...preset, id });
+        this.selectedCustomSquadId = id;
+      }
+      this.savePresetState();
+      this.populateVariantSelect();
+      this.populateCustomSquadSelect();
+      this.syncOverlayFromState();
+    });
+  }
+
+  private createNewCustomSquad(): void {
+    const squad = createEmptySquadPreset();
+    this.presetState.squads.push(squad);
+    this.selectedCustomSquadId = squad.id;
+    this.savePresetState();
+    this.populateCustomSquadSelect();
+    this.syncSquadControlsFromState();
+  }
+
+  private copyBuiltInSquad(): void {
+    const builtIn = getEnemyLabSquads()[this.selectedSquadIndex];
+    const squad = convertBuiltInSquadToPreset(builtIn);
+    this.presetState.squads.push(squad);
+    this.selectedCustomSquadId = squad.id;
+    this.savePresetState();
+    this.populateCustomSquadSelect();
+    this.syncSquadControlsFromState();
+  }
+
+  private addSelectedEnemyToSquad(): void {
+    let squad = this.getSelectedCustomSquad();
+    if (!squad) {
+      this.createNewCustomSquad();
+      squad = this.getSelectedCustomSquad();
+    }
+    if (!squad) {
+      return;
+    }
+
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const angle = (Math.PI * 2 * squad.entries.length) / Math.max(1, squad.entries.length + 1);
+    squad.entries.push({
+      definitionId: definition.id,
+      variantId: this.getSelectedVariant()?.id,
+      x: Math.round(Math.cos(angle) * 150),
+      y: Math.round(Math.sin(angle) * 150)
+    });
+    this.selectedSquadEntryIndex = squad.entries.length - 1;
+    squad.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.renderSquadEntries();
+  }
+
+  private exportSelectedSquad(): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad) {
+      return;
+    }
+
+    downloadTextFile(
+      `squad-${slugify(squad.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createEnemySquadMarkdown(squad),
+      'text/markdown'
+    );
+  }
+
+  private clearSelectedSquad(): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad) {
+      return;
+    }
+
+    squad.entries = [];
+    this.selectedSquadEntryIndex = -1;
+    squad.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.renderSquadEntries();
+  }
+
+  private transformSelectedSquad(transform: (entry: EnemyLabSquadPresetEntry) => EnemyLabSquadPresetEntry): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad) {
+      return;
+    }
+
+    squad.entries = squad.entries.map(transform);
+    squad.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.renderSquadEntries();
+  }
+
+  private rotateSquadEntry(entry: EnemyLabSquadPresetEntry, degrees: number): EnemyLabSquadPresetEntry {
+    const radians = Phaser.Math.DegToRad(degrees);
+    const cos = Math.cos(radians);
+    const sin = Math.sin(radians);
+    return {
+      ...entry,
+      x: Math.round(entry.x * cos - entry.y * sin),
+      y: Math.round(entry.x * sin + entry.y * cos)
+    };
+  }
+
+  private renderQuickTags(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const variant = this.getSelectedVariant();
+    this.overlay.variantTags.replaceChildren();
+    for (const tag of ENEMY_LAB_QUICK_TAGS) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.tag = tag;
+      button.textContent = tag;
+      button.className = variant?.tags.includes(tag) ? 'is-active' : '';
+      button.disabled = !variant;
+      this.overlay.variantTags.appendChild(button);
+    }
+  }
+
+  private renderBehaviorParamControls(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variant = this.getSelectedVariant();
+    const params = { ...(definition.behavior.params ?? {}), ...(variant?.behaviorParamOverrides ?? {}) };
+    this.overlay.behaviorParams.replaceChildren();
+    for (const [key, value] of Object.entries(params)) {
+      const label = document.createElement('label');
+      label.textContent = key;
+      const input = document.createElement('input');
+      input.dataset.behaviorParam = key;
+      input.type = typeof value === 'number' ? 'number' : 'text';
+      input.step = typeof value === 'number' && Math.abs(value) < 10 ? '0.05' : '1';
+      input.value = String(value);
+      input.disabled = !variant;
+      label.appendChild(input);
+      this.overlay.behaviorParams.appendChild(label);
+    }
+  }
+
+  private renderSquadEntries(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const squad = this.getSelectedCustomSquad();
+    this.overlay.squadEntries.replaceChildren();
+    if (!squad) {
+      const empty = document.createElement('div');
+      empty.className = 'enemy-lab-empty';
+      empty.textContent = 'Create or copy a squad to edit placed formations.';
+      this.overlay.squadEntries.appendChild(empty);
+      return;
+    }
+
+    for (const [index, entry] of squad.entries.entries()) {
+      const row = document.createElement('div');
+      row.className = index === this.selectedSquadEntryIndex ? 'enemy-lab-entry is-active' : 'enemy-lab-entry';
+      const title = document.createElement('button');
+      title.type = 'button';
+      title.dataset.entryAction = 'select';
+      title.dataset.entryIndex = String(index);
+      title.textContent = this.getEntryLabel(entry);
+      row.appendChild(title);
+      row.appendChild(this.createSquadEntryInput(index, 'x', entry.x));
+      row.appendChild(this.createSquadEntryInput(index, 'y', entry.y));
+      row.appendChild(this.createSquadEntryInput(index, 'spawnDelayMs', entry.spawnDelayMs ?? 0));
+      const remove = document.createElement('button');
+      remove.type = 'button';
+      remove.dataset.entryAction = 'remove';
+      remove.dataset.entryIndex = String(index);
+      remove.textContent = 'Remove';
+      row.appendChild(remove);
+      this.overlay.squadEntries.appendChild(row);
+    }
+  }
+
+  private createSquadEntryInput(index: number, field: 'x' | 'y' | 'spawnDelayMs', value: number): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = field === 'spawnDelayMs' ? 'Delay' : field.toUpperCase();
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = field === 'spawnDelayMs' ? '100' : '10';
+    input.value = String(value);
+    input.dataset.entryIndex = String(index);
+    input.dataset.entryField = field;
+    label.appendChild(input);
+    return label;
+  }
+
+  private handleSquadEntryAction(action: string, index: number): void {
+    const squad = this.getSelectedCustomSquad();
+    if (!squad || !Number.isInteger(index) || !squad.entries[index]) {
+      return;
+    }
+
+    if (action === 'select') {
+      this.selectedSquadEntryIndex = index;
+    }
+    if (action === 'remove') {
+      squad.entries.splice(index, 1);
+      this.selectedSquadEntryIndex = Math.min(this.selectedSquadEntryIndex, squad.entries.length - 1);
+      squad.savedAt = new Date().toISOString();
+      this.savePresetState();
+    }
+    this.renderSquadEntries();
+  }
+
+  private updateSquadEntryFromInput(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): void {
+    const squad = this.getSelectedCustomSquad();
+    const index = Number(input.dataset.entryIndex);
+    const field = input.dataset.entryField as keyof EnemyLabSquadPresetEntry | undefined;
+    if (!squad || !Number.isInteger(index) || !field || !squad.entries[index]) {
+      return;
+    }
+
+    if (field === 'x' || field === 'y' || field === 'spawnDelayMs') {
+      squad.entries[index][field] = Number(input.value) || 0;
+    }
+    squad.savedAt = new Date().toISOString();
+    this.savePresetState();
+  }
+
+  private toggleSelectedVariantTag(tag: string): void {
+    const variant = this.getSelectedVariant();
+    if (!variant) {
+      return;
+    }
+
+    variant.tags = variant.tags.includes(tag) ? variant.tags.filter((candidate) => candidate !== tag) : [...variant.tags, tag];
+    if (tag === 'Candidate') {
+      variant.status = 'Candidate';
+    }
+    variant.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncVariantControlsFromState();
+  }
+
+  private getSelectedVariant(): EnemyLabVariantPreset | undefined {
+    return this.selectedVariantId ? this.presetState.variants.find((variant) => variant.id === this.selectedVariantId) : undefined;
+  }
+
+  private getSelectedCustomSquad(): EnemyLabSquadPreset | undefined {
+    return this.selectedCustomSquadId ? this.presetState.squads.find((squad) => squad.id === this.selectedCustomSquadId) : undefined;
+  }
+
+  private upsertVariantPreset(variant: EnemyLabVariantPreset): void {
+    this.presetState.variants = this.presetState.variants.filter((candidate) => candidate.id !== variant.id);
+    this.presetState.variants.push(variant);
+  }
+
+  private upsertSquadPreset(squad: EnemyLabSquadPreset): void {
+    this.presetState.squads = this.presetState.squads.filter((candidate) => candidate.id !== squad.id);
+    this.presetState.squads.push(squad);
+  }
+
+  private createContextSnapshot() {
+    const selectedDefinition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    return {
+      selectedEnemyName: selectedDefinition.displayName,
+      selectedVariantName: this.getSelectedVariant()?.displayName,
+      selectedSquadName: this.getSelectedCustomSquad()?.displayName ?? getEnemyLabSquads()[this.selectedSquadIndex]?.displayName,
+      enemyCount: this.enemies.length,
+      projectileCount: this.projectiles.length,
+      speedMultiplier: this.enemySpeedMultiplier,
+      hpMultiplier: this.enemyHpMultiplier,
+      fireRateMultiplier: this.enemyFireRateMultiplier,
+      deconfliction: this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off',
+      notes: this.getSelectedVariant()?.notes ?? this.getSelectedCustomSquad()?.notes ?? ''
+    };
+  }
+
+  private getEntryLabel(entry: EnemyLabSquadPresetEntry): string {
+    const variant = entry.variantId ? this.presetState.variants.find((candidate) => candidate.id === entry.variantId) : undefined;
+    const definition = getEnemyLabDefinitions().find((candidate) => candidate.id === entry.definitionId);
+    return variant?.displayName ?? definition?.displayName ?? entry.definitionId;
+  }
+
+  private savePresetState(): void {
+    saveEnemyLabStorageState(this.presetState);
+  }
+
+  private readNumberInput(input: HTMLInputElement, fallback: number): number {
+    const value = Number(input.value);
+    return Number.isFinite(value) ? value : fallback;
   }
 
   private syncOverlayFromState(): void {
@@ -853,6 +1622,8 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
+    this.populateVariantSelect();
+    this.populateCustomSquadSelect();
     this.overlay.enemySelect.selectedIndex = this.selectedEnemyIndex;
     this.overlay.squadSelect.selectedIndex = this.selectedSquadIndex;
     this.overlay.spawnCount.value = String(this.spawnCount);
@@ -860,6 +1631,8 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.hpMultiplier.value = String(this.enemyHpMultiplier);
     this.overlay.fireRateMultiplier.value = String(this.enemyFireRateMultiplier);
     this.overlay.deconflictionStrength.value = String(this.enemyDeconflictionStrength);
+    this.syncVariantControlsFromState();
+    this.syncSquadControlsFromState();
   }
 
   private updateOverlayStatus(): void {
@@ -868,8 +1641,11 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     const selected = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variant = this.getSelectedVariant();
+    const customSquad = this.getSelectedCustomSquad();
     this.overlay.status.textContent =
-      `${selected.displayName} | enemies ${this.enemies.length} | shots ${this.projectiles.length} | scrap ${this.scrapPickups.length} | ` +
+      `${variant?.displayName ?? selected.displayName} | custom squad ${customSquad?.displayName ?? 'none'} | ` +
+      `enemies ${this.enemies.length} | shots ${this.projectiles.length} | scrap ${this.scrapPickups.length} | ` +
       `AI ${this.isAiEnabled ? 'on' : 'off'} | invuln ${this.isPlayerInvulnerable ? 'on' : 'off'} | ` +
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +

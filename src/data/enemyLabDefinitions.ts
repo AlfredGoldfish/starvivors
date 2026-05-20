@@ -37,6 +37,10 @@ export type EnemyLabTelegraphType = 'none' | 'charge-line' | 'sniper-beam' | 'bl
 export interface EnemyVisualDefinition {
   hullShape: EnemyLabHullShape;
   size: number;
+  scaleX?: number;
+  scaleY?: number;
+  rotationOffset?: number;
+  glowScale?: number;
   primaryColor: number;
   secondaryColor: number;
   accentColor: number;

@@ -20,6 +20,7 @@ export interface EnemyLabTelegraphs {
 export interface EnemyLabInstance {
   id: string;
   definitionId: string;
+  variantId?: string;
   definition: EnemyLabDefinition;
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
@@ -51,6 +52,8 @@ export interface SpawnEnemyLabEnemyInput {
   scene: Phaser.Scene;
   arena: ArenaSize;
   definitionId: string;
+  definitionOverride?: EnemyLabDefinition;
+  variantId?: string;
   x: number;
   y: number;
   time: number;
@@ -69,7 +72,7 @@ export function getEnemyLabSquads(): EnemyLabSquadDefinition[] {
 }
 
 export function spawnEnemyLabEnemy(input: SpawnEnemyLabEnemyInput): EnemyLabInstance {
-  const definition = getEnemyLabDefinition(input.definitionId);
+  const definition = input.definitionOverride ?? getEnemyLabDefinition(input.definitionId);
   const x = wrapCoordinate(input.x, input.arena.width);
   const y = wrapCoordinate(input.y, input.arena.height);
   const hp = Math.max(1, definition.stats.hp * input.hpMultiplier);
@@ -80,6 +83,7 @@ export function spawnEnemyLabEnemy(input: SpawnEnemyLabEnemyInput): EnemyLabInst
   const instance: EnemyLabInstance = {
     id: `enemy-lab-${nextEnemyLabRuntimeId++}`,
     definitionId: definition.id,
+    variantId: input.variantId,
     definition,
     body,
     wrapMirrorBody,
