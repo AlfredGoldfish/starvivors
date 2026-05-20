@@ -391,6 +391,7 @@ import {
   ENEMY_WRECKAGE_DEBRIS_MIN_ROTATION_SPEED,
   ENEMY_WRECKAGE_DEBRIS_MIN_SPEED,
   ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY,
+  EXTRACTION_ZONE_RADIUS,
   FORWARD_THRUSTER_INTERVAL_MS,
   IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE,
   IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
@@ -416,6 +417,10 @@ import {
   RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE,
   RAMMING_SHIELD_TEXTURE_CROP,
   RAMMING_SHIELD_TEXTURE_KEY,
+  RUN_FUEL_BASE_DRAIN_PER_SECOND,
+  RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER,
+  RUN_FUEL_MAX,
+  RUN_FUEL_THRUST_DRAIN_PER_SECOND,
   SCRAP_PICKUP_COLLECT_RADIUS,
   SCRAP_PICKUP_DEBUG_VALUE,
   SCRAP_PICKUP_DISPLAY_SIZE,
@@ -487,6 +492,11 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private fuel = RUN_FUEL_MAX;
+  private extractionPosition = new Phaser.Math.Vector2(0, 0);
+  private extractionBeacon?: Phaser.GameObjects.Container;
+  private extractionBeaconRing?: Phaser.GameObjects.Arc;
+  private extractionBeaconCore?: Phaser.GameObjects.Arc;
   private debugText!: Phaser.GameObjects.Text;
   private gameplayHud!: GameplayHudSystem;
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
@@ -545,6 +555,7 @@ export class GameScene extends Phaser.Scene {
   private rammingShieldDashPendingImpulse = 0;
   private rammingShieldDashBurstDirection = new Phaser.Math.Vector2(0, 0);
   private isPlayerDead = false;
+  private hasExtracted = false;
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
   private bankedUpgrades = 0;
@@ -746,6 +757,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('world-impacts', () => this.resolveWorldImpactCollisions(time));
       if (!this.isPlayerDead) {
         this.profileStep('player-wrap', () => this.wrapPlayer());
+        this.profileStep('extraction', () => this.updateExtraction(time));
       }
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
       if (!this.isPlayerDead) {
@@ -1422,6 +1434,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessWeaponHotbar();
     }
 
+    if (query.get('testHarness') === 'phase7') {
+      this.runTestHarnessPhase7();
+    }
+
     if (query.get('testHarness') === 'worldImpactCleanup') {
       this.runTestHarnessWorldImpactCleanup();
     }
@@ -1455,6 +1471,10 @@ export class GameScene extends Phaser.Scene {
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
+      hasExtracted: this.hasExtracted,
+      fuel: this.fuel,
+      maxFuel: RUN_FUEL_MAX,
+      extractionDistance: this.getExtractionDistance(),
       playerXp: this.playerXp,
       runScrapTotal: this.runScrapTotal,
       lastRunScrapTotal: this.lastRunScrapTotal,
@@ -2094,6 +2114,56 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase7(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase7-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase7-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const initial = harness.getState();
+    this.playerVelocity.set(500, 0);
+    this.applyPlayerCoastDamping(1);
+    const interceptorDampedSpeed = this.playerVelocity.length();
+    this.updateFuel(10, true);
+    const afterFuelDrain = harness.getState();
+    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
+    this.updateExtraction(this.time.now);
+    const extracted = harness.getState();
+
+    harness.addCredits(100);
+    harness.unlockShip('bulwark');
+    harness.selectShip('bulwark');
+    this.startRun();
+    this.playerVelocity.set(500, 0);
+    this.applyPlayerCoastDamping(1);
+    const bulwarkDampedSpeed = this.playerVelocity.length();
+
+    const pass =
+      initial.fuel === RUN_FUEL_MAX &&
+      afterFuelDrain.fuel < initial.fuel &&
+      interceptorDampedSpeed < 500 &&
+      bulwarkDampedSpeed > interceptorDampedSpeed &&
+      extracted.hasExtracted &&
+      extracted.isResultsScreenOpen &&
+      extracted.hasPaidRunCredits;
+
+    document.body.setAttribute('data-starvivors-phase7-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase7-harness-details',
+      JSON.stringify({
+        initial,
+        afterFuelDrain,
+        extracted,
+        interceptorDampedSpeed,
+        bulwarkDampedSpeed
+      })
+    );
+  }
+
   private runTestHarnessWorldImpactCleanup(): void {
     const staleBody = this.add.container(0, 0);
     const staleWrapMirrorBody = this.add.container(0, 0);
@@ -2192,6 +2262,11 @@ export class GameScene extends Phaser.Scene {
       this.hasRammingShield() ? this.getRammingShieldStats() : undefined
     );
     this.playerVelocity.set(0, 0);
+    this.fuel = RUN_FUEL_MAX;
+    this.extractionPosition.set(0, 0);
+    this.extractionBeacon = undefined;
+    this.extractionBeaconRing = undefined;
+    this.extractionBeaconCore = undefined;
     this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
@@ -2199,6 +2274,7 @@ export class GameScene extends Phaser.Scene {
     this.lastRunSurvivalMs = 0;
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
+    this.hasExtracted = false;
     this.playerXp = 0;
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
@@ -2265,6 +2341,7 @@ export class GameScene extends Phaser.Scene {
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
+    this.createExtractionBeacon(center);
     this.createInitialLiveEnemies(center);
     this.createBasicAsteroids(center);
     this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
@@ -2726,6 +2803,25 @@ export class GameScene extends Phaser.Scene {
     ship.setDepth(10);
 
     return ship;
+  }
+
+  private createExtractionBeacon(center: Phaser.Math.Vector2): void {
+    const distance = Math.min(this.arena.width, this.arena.height) * 0.38;
+    this.extractionPosition.set(
+      wrapCoordinate(center.x + distance, this.arena.width),
+      wrapCoordinate(center.y - distance * 0.62, this.arena.height)
+    );
+
+    const outer = this.add.circle(0, 0, EXTRACTION_ZONE_RADIUS, 0x42f5d7, 0.06);
+    outer.setStrokeStyle(2, 0x42f5d7, 0.64);
+    const ring = this.add.circle(0, 0, EXTRACTION_ZONE_RADIUS * 0.62, 0x000000, 0);
+    ring.setStrokeStyle(2, 0xffc857, 0.9);
+    const core = this.add.circle(0, 0, 9, 0xf2fbff, 0.85);
+
+    this.extractionBeacon = this.add.container(this.extractionPosition.x, this.extractionPosition.y, [outer, ring, core]);
+    this.extractionBeacon.setDepth(7);
+    this.extractionBeaconRing = ring;
+    this.extractionBeaconCore = core;
   }
 
   private createRammingShieldImage(): Phaser.GameObjects.Image {
@@ -4200,6 +4296,7 @@ export class GameScene extends Phaser.Scene {
     const strafeRight = this.isControlDown('moveRight');
     const thrustForward = this.isControlDown('moveUp');
     const thrustReverse = this.isControlDown('moveDown');
+    const isThrusting = thrustForward || thrustReverse || strafeLeft || strafeRight;
     const shipForward = this.getForwardDirection(this.player.rotation);
     const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
     const isWorldRelative = this.gameSettings.movementMode === 'worldRelative';
@@ -4236,7 +4333,7 @@ export class GameScene extends Phaser.Scene {
         deltaSeconds,
         referenceMass: PLAYER_MASS,
         massExponent: this.debugState.playerControlMassExponent,
-        accelerationScale: this.debugState.playerInertiaScale
+        accelerationScale: this.debugState.playerInertiaScale * this.getFuelThrustMultiplier()
       });
     }
 
@@ -4247,11 +4344,36 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.updateFuel(deltaSeconds, isThrusting);
+    this.applyPlayerCoastDamping(deltaSeconds);
     this.applyPlayerOverspeedDamping(deltaSeconds);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
     this.player.y += this.playerVelocity.y * deltaSeconds;
     this.updateRammingShieldDashBurstMovement(deltaSeconds);
+  }
+
+  private updateFuel(deltaSeconds: number, isThrusting: boolean): void {
+    if (this.isPlayerDead || deltaSeconds <= 0) {
+      return;
+    }
+
+    const drain =
+      RUN_FUEL_BASE_DRAIN_PER_SECOND +
+      (isThrusting && this.fuel > 0 ? RUN_FUEL_THRUST_DRAIN_PER_SECOND : 0);
+    this.fuel = Math.max(0, this.fuel - drain * deltaSeconds);
+  }
+
+  private getFuelThrustMultiplier(): number {
+    return this.fuel > 0 ? 1 : RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER;
+  }
+
+  private applyPlayerCoastDamping(deltaSeconds: number): void {
+    if (deltaSeconds <= 0 || this.playerVelocity.lengthSq() <= 0.0001) {
+      return;
+    }
+
+    dampVelocityChannel(this.playerVelocity, this.getSelectedShipDefinition().movement.lowFrictionDamping, deltaSeconds);
   }
 
   private applyPlayerOverspeedDamping(deltaSeconds: number): void {
@@ -4265,6 +4387,61 @@ export class GameScene extends Phaser.Scene {
     const excessSpeed = speed - velocityLimit;
     const dampedExcessSpeed = excessSpeed * Math.exp(-this.getPlayerOverspeedDamping() * deltaSeconds);
     this.playerVelocity.setLength(velocityLimit + dampedExcessSpeed);
+  }
+
+  private updateExtraction(time: number): void {
+    this.updateExtractionBeaconVisual(time);
+
+    if (!this.extractionBeacon || this.isPlayerDead) {
+      return;
+    }
+
+    if (this.getExtractionDistance() <= EXTRACTION_ZONE_RADIUS) {
+      this.completeExtraction();
+    }
+  }
+
+  private updateExtractionBeaconVisual(time: number): void {
+    if (!this.extractionBeacon || !this.extractionBeaconRing || !this.extractionBeaconCore) {
+      return;
+    }
+
+    const pulse = 0.5 + Math.sin(time * 0.004) * 0.5;
+    this.extractionBeaconRing.setScale(1 + pulse * 0.12);
+    this.extractionBeaconRing.setAlpha(0.68 + pulse * 0.28);
+    this.extractionBeaconCore.setScale(0.9 + pulse * 0.35);
+  }
+
+  private getExtractionDistance(): number {
+    if (!this.player) {
+      return 0;
+    }
+
+    return this.getWrappedDirection(this.player.x, this.player.y, this.extractionPosition.x, this.extractionPosition.y).length();
+  }
+
+  private completeExtraction(): void {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
+      return;
+    }
+
+    this.isPlayerDead = true;
+    this.hasExtracted = true;
+    this.gameFlowState = 'results';
+    this.lastRunScrapTotal = this.runScrapTotal;
+    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
+    this.payRunCredits();
+    this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
+    if (this.isUpgradeOverlayOpen) {
+      this.closeUpgradeOverlay(this.time.now);
+    }
+    if (this.isPauseMenuOpen) {
+      this.closePauseMenu(this.time.now);
+    }
+    this.updateGameplayHud(this.time.now);
+    this.showResultsScreen();
+    this.autoRunDiagnostics.endRun('extracted');
   }
 
   private updateDebugMenuInput(time: number): void {
@@ -6959,6 +7136,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isPlayerDead = true;
+    this.hasExtracted = false;
     this.gameFlowState = 'results';
     this.playerHull = 0;
     this.lastRunScrapTotal = this.runScrapTotal;
@@ -6988,6 +7166,7 @@ export class GameScene extends Phaser.Scene {
 
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
+    this.hasExtracted = false;
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -8873,13 +9052,17 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getGameplayHudSnapshot(time: number): GameplayHudSnapshot {
-    const status = this.isPlayerDead
-      ? 'CRITICAL'
-      : this.debugState.playerInvulnerable
-        ? 'DEBUG INVULN'
-        : this.playerInvulnerableUntil > time
-          ? 'HIT'
-          : 'STABLE';
+    const status = this.hasExtracted
+      ? 'EXTRACTED'
+      : this.isPlayerDead
+        ? 'CRITICAL'
+        : this.fuel <= 0
+          ? 'FUEL EMPTY'
+          : this.debugState.playerInvulnerable
+            ? 'DEBUG INVULN'
+            : this.playerInvulnerableUntil > time
+              ? 'HIT'
+              : 'STABLE';
     const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
     const maxHull = this.getPlayerMaxHull();
     const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
@@ -8899,6 +9082,12 @@ export class GameScene extends Phaser.Scene {
       status,
       playerXp: this.playerXp,
       nextXpThreshold: this.nextXpThreshold,
+      fuel: this.fuel,
+      maxFuel: RUN_FUEL_MAX,
+      fuelProgress: this.fuel / RUN_FUEL_MAX,
+      isFuelEmergency: this.fuel <= 0,
+      extractionDistance: this.getExtractionDistance(),
+      extractionRadius: EXTRACTION_ZONE_RADIUS,
       runScrapTotal: this.runScrapTotal,
       bankedUpgrades: this.bankedUpgrades,
       autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',
@@ -9134,6 +9323,7 @@ export class GameScene extends Phaser.Scene {
         `Arena: ${this.arena.width} x ${this.arena.height}\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
+        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} F${

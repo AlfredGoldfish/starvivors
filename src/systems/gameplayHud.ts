@@ -27,6 +27,12 @@ export interface GameplayHudSnapshot {
   status: string;
   playerXp: number;
   nextXpThreshold: number;
+  fuel: number;
+  maxFuel: number;
+  fuelProgress: number;
+  isFuelEmergency: boolean;
+  extractionDistance: number;
+  extractionRadius: number;
   runScrapTotal: number;
   bankedUpgrades: number;
   autoWeaponName: string;
@@ -151,6 +157,8 @@ export class GameplayHudSystem {
         `Time ${this.formatSurvivalTime(snapshot.timeSeconds)}\n` +
           `Hull ${Math.round(snapshot.playerHull)} / ${Math.round(snapshot.maxHull)}  ${snapshot.status}\n` +
           shieldStatus +
+          `Fuel ${Math.ceil(snapshot.fuel)} / ${snapshot.maxFuel}${snapshot.isFuelEmergency ? '  EMERGENCY' : ''}\n` +
+          `Extract ${Math.max(0, Math.round(snapshot.extractionDistance - snapshot.extractionRadius))}m\n` +
           `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
           `Scrap ${snapshot.runScrapTotal}\n` +
           `Banked upgrades ${snapshot.bankedUpgrades}\n` +
@@ -177,9 +185,11 @@ export class GameplayHudSystem {
     const hullY = HUD_RIGHT_BAR_Y;
     const pulseY = hullY + 26;
     const shieldY = pulseY + 26;
+    const fuelY = xpY + 26;
 
     this.hudGraphics.clear();
     this.drawBar(xpX, xpY, Phaser.Math.Clamp(snapshot.xpProgress, 0, 1), 0x42f5d7);
+    this.drawBar(xpX, fuelY, Phaser.Math.Clamp(snapshot.fuelProgress, 0, 1), snapshot.isFuelEmergency ? 0xff5964 : 0xffc857);
     this.drawBar(hullX, hullY, Phaser.Math.Clamp(snapshot.hullProgress, 0, 1), 0xff5964);
     this.drawBar(hullX, pulseY, Phaser.Math.Clamp(snapshot.weaponProgress, 0, 1), 0xffc857);
 

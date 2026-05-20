@@ -88,6 +88,10 @@ export interface StarvivorsTestHarnessState {
   hull: number;
   maxHull: number;
   isPlayerDead: boolean;
+  hasExtracted: boolean;
+  fuel: number;
+  maxFuel: number;
+  extractionDistance: number;
   playerXp: number;
   runScrapTotal: number;
   lastRunScrapTotal: number;

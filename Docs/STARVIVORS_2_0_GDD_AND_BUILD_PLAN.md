@@ -1067,11 +1067,11 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
-### Phase 7: Fuel Timer and Extraction Prototype
+### Phase 7: Controlled Movement, Fuel Timer, and Extraction Prototype
 
 Goal:
 
-- Replace or supplement the run timer with fuel.
+- Replace or supplement the run timer with fuel while shifting the baseline flight model from full drift to normal movement with light drift.
 
 Design dialogue before coding:
 
@@ -1080,23 +1080,32 @@ Design dialogue before coding:
 - What should happen emotionally when fuel gets low: panic, planning, risk-taking, or extraction pressure?
 - Should boosting spend fuel, or would that punish fun movement too much?
 - Should running out of fuel kill the run, trigger emergency drift, summon rescue/extraction, or create a last-chance state?
+- How much drift should remain on the Interceptor as the baseline ship?
+- How much extra momentum should Bulwark preserve before it becomes hard to control?
 
 Tasks:
 
+- Apply normal coasting damping so ships no longer drift indefinitely.
+- Keep Interceptor more stable and Bulwark slightly more momentum-heavy.
 - Add fuel stat to run state.
 - Drain fuel over time.
+- Add only light extra fuel drain for active thrust/strafe/brake so movement still feels good.
 - Display fuel in HUD.
-- Decide first behavior for fuel empty: run end or emergency state.
-- Add simple extraction condition or placeholder.
+- Use a first fuel-empty behavior, preferably an emergency thrust state rather than instant death.
+- Add simple extraction condition or placeholder beacon.
 
 Do not:
 
 - Redesign all progression rewards in this phase.
+- Add the later full-drift shop/module system yet.
 
 Acceptance:
 
+- Interceptor movement is controlled with slight drift.
+- Bulwark preserves more momentum than Interceptor without feeling uncontrollable.
 - Fuel is visible and affects run outcome.
 - Timer pressure still works in some form.
+- Extraction can end a run.
 - Build passes.
 - Commit and push.
 
@@ -1571,3 +1580,35 @@ The Starvivors 2.0 prototype is successful when:
 - Rewards/unlocks persist.
 - The game builds cleanly.
 - The implementation is committed and pushed in stable phases.
+
+## 20. Future Systems and Content Expansion Backlog
+
+Use this section for expansion ideas that should not interrupt the current phase order. Items here are candidates for later shop content, sector loot, mission rewards, rare event rewards, or permanent unlocks after the core 2.0 loop is proven.
+
+### Movement and Drift Modifiers
+
+- Full Drift Module: restores a higher-inertia Asteroids-style drift profile for players who want a high-skill movement build.
+- Stabilizer Module: increases coasting damping and braking control for safer navigation.
+- Bulwark Momentum Kit: preserves heavy-ship momentum while improving recovery after rams.
+- Precision Thrusters: lowers drift while aiming/firing, useful for Pulse Cannon builds.
+
+### Fuel Expansions
+
+- Fuel Tank upgrades: increase maximum fuel for longer routes.
+- Efficient Thrusters: reduce active-thrust fuel drain.
+- Emergency Reserve: grants a one-time fuel buffer when the tank hits zero.
+- Fuel Siphon: recover small fuel amounts from elite enemies, wreckage, or specific objectives.
+- Extraction Discount: lowers the fuel threshold or travel pressure needed to extract safely.
+
+### World Fuel Drops and Sector Resources
+
+- Fuel cells can appear as rare world drops, especially near salvage fields, strongholds, or dead fleet events.
+- Fuel caches can be marked by signal pings and create route decisions under pressure.
+- Dangerous fuel pickups can sit inside enemy patrol zones or black-hole hazard regions.
+- Mission contracts can guarantee fuel cache spawns when the objective requires longer travel.
+
+### Shop and Mission Reward Candidates
+
+- Shop items can temporarily change movement feel for a run, including full drift, stabilizers, or fuel-efficient flight.
+- Mission rewards can unlock new fuel economy modifiers.
+- Rare events can grant experimental movement/fuel modules with strong upside and clear drawbacks.
