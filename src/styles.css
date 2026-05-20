@@ -159,6 +159,16 @@ canvas {
   background: rgba(22, 42, 66, 0.96);
 }
 
+.enemy-lab-overlay button.enemy-lab-danger-button {
+  border-color: rgba(255, 99, 99, 0.42);
+  color: #ffd9d9;
+}
+
+.enemy-lab-overlay button.enemy-lab-danger-button:hover {
+  border-color: rgba(255, 99, 99, 0.78);
+  background: rgba(82, 25, 34, 0.96);
+}
+
 .enemy-lab-overlay button:disabled,
 .enemy-lab-overlay input:disabled,
 .enemy-lab-overlay select:disabled,

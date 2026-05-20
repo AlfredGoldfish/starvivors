@@ -913,6 +913,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="labels">Labels</button>
           <button data-action="telegraphs">Telegraphs</button>
           <button data-action="pause">Pause</button>
+          <button class="enemy-lab-danger-button" data-action="deleteVariant">Delete Variant</button>
         </div>
       </section>
       <section class="enemy-lab-panel">
@@ -1614,6 +1615,11 @@ export class EnemyLabScene extends Phaser.Scene {
   private deleteSelectedVariant(): void {
     const variant = this.getSelectedVariant();
     if (!variant) {
+      return;
+    }
+
+    const shouldDelete = window.confirm(`Delete enemy variant "${variant.displayName}"? This cannot be undone.`);
+    if (!shouldDelete) {
       return;
     }
 
