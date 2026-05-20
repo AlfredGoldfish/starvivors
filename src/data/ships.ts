@@ -221,7 +221,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
       thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.35),
       reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.45),
       strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.3),
-      lowFrictionDamping: 0.985,
+      lowFrictionDamping: 0.995,
       overspeedDamping: 2.2,
       maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.85)
     }

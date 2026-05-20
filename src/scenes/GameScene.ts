@@ -2156,7 +2156,8 @@ export class GameScene extends Phaser.Scene {
     const pass =
       initial.fuel === RUN_FUEL_MAX &&
       afterFuelDrain.fuel < initial.fuel &&
-      interceptorDampedSpeed < 500 &&
+      interceptorDampedSpeed > 275 &&
+      interceptorDampedSpeed < 380 &&
       bulwarkDampedSpeed > interceptorDampedSpeed &&
       extracted.hasExtracted &&
       extracted.isResultsScreenOpen &&
@@ -4423,7 +4424,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.updateFuel(deltaSeconds, isThrusting);
-    this.applyPlayerCoastDamping(deltaSeconds);
+    if (!isThrusting) {
+      this.applyPlayerCoastDamping(deltaSeconds);
+    }
     this.applyPlayerOverspeedDamping(deltaSeconds);
 
     this.player.x += this.playerVelocity.x * deltaSeconds;
