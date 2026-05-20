@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
+import { getViewportSize } from '../core/viewport';
 import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
 import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
 import { ENEMY_LAB_DEFINITIONS } from '../data/enemyLabDefinitions';
@@ -175,7 +176,7 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   create(): void {
-    const viewport = { width: this.scale.width, height: this.scale.height };
+    const viewport = getViewportSize(this);
     this.arena = createArenaSize(viewport);
     const center = getArenaCenter(this.arena);
 
@@ -196,8 +197,10 @@ export class EnemyLabScene extends Phaser.Scene {
     this.presetState = loadEnemyLabStorageState();
     this.createInput();
     this.createOverlay();
+    this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.scale.off(Phaser.Scale.Events.RESIZE, this.handleResize, this);
       this.clearEnemyCollisionDebug();
       this.overlay?.root.remove();
       this.overlay = undefined;
@@ -1998,5 +2001,16 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private updateBackgroundTiles(time: number): void {
     this.starfield.update(time, this.player);
+  }
+
+  private handleResize(): void {
+    const viewport = getViewportSize(this);
+    this.arena = createArenaSize(viewport);
+    this.starfield.resize(viewport.width, viewport.height);
+    this.player.setPosition(wrapCoordinate(this.player.x, this.arena.width), wrapCoordinate(this.player.y, this.arena.height));
+    this.cameras.main.setFollowOffset(-this.cameraLead.x, -this.cameraLead.y);
+    this.cameras.main.centerOn(this.player.x, this.player.y);
+    this.resetBackgroundPlayerTracking();
+    this.clearEnemyCollisionDebug();
   }
 }

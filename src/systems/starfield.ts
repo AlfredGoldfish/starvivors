@@ -76,6 +76,12 @@ export class StarfieldSystem {
     this.applyStarVisibility();
   }
 
+  resize(width = this.scene.scale.width, height = this.scene.scale.height): void {
+    this.farStarfield?.setSize(width, height);
+    this.midStarfield?.setSize(width, height);
+    this.nearStarfield?.setSize(width, height);
+  }
+
   resetState(): void {
     this.backgroundStarsVisible = true;
     this.backgroundScrollX = 0;
