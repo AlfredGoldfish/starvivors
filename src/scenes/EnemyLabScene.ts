@@ -911,16 +911,16 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="importPreset">Import</button>
         </div>
         <div class="enemy-lab-grid">
-          <label>Visual <input data-field="visualScale" type="number" min="0.25" max="3" step="0.05"></label>
-          <label>Width <input data-field="scaleX" type="number" min="0.25" max="3" step="0.05"></label>
-          <label>Length <input data-field="scaleY" type="number" min="0.25" max="3" step="0.05"></label>
-          <label>Rotate <input data-field="rotationOffset" type="number" min="-180" max="180" step="5"></label>
-          <label>Glow <input data-field="glowScale" type="number" min="0" max="3" step="0.05"></label>
-          <label>Hit R <input data-field="statRadius" type="number" min="4" max="220" step="1"></label>
-          <label>HP <input data-field="statHp" type="number" min="1" max="5000" step="1"></label>
-          <label>Speed <input data-field="statSpeed" type="number" min="1" max="1200" step="1"></label>
-          <label>Mass <input data-field="statMass" type="number" min="0.1" max="80" step="0.1"></label>
-          <label>Contact <input data-field="statContactDamage" type="number" min="0" max="1000" step="1"></label>
+          <label>Visual <input data-field="visualScale" type="number" min="0.25" max="9999" step="0.05"></label>
+          <label>Width <input data-field="scaleX" type="number" min="0.25" max="9999" step="0.05"></label>
+          <label>Length <input data-field="scaleY" type="number" min="0.25" max="9999" step="0.05"></label>
+          <label>Rotate <input data-field="rotationOffset" type="number" min="-9999" max="9999" step="5"></label>
+          <label>Glow <input data-field="glowScale" type="number" min="0" max="9999" step="0.05"></label>
+          <label>Hit R <input data-field="statRadius" type="number" min="4" max="9999" step="1"></label>
+          <label>HP <input data-field="statHp" type="number" min="1" max="9999" step="1"></label>
+          <label>Speed <input data-field="statSpeed" type="number" min="1" max="9999" step="1"></label>
+          <label>Mass <input data-field="statMass" type="number" min="0.1" max="9999" step="0.1"></label>
+          <label>Contact <input data-field="statContactDamage" type="number" min="0" max="9999" step="1"></label>
         </div>
         <div class="enemy-lab-subtitle">Behavior Params</div>
         <div class="enemy-lab-param-grid" data-field="behaviorParams"></div>
@@ -956,7 +956,7 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-squad-entries" data-field="squadEntries"></div>
       </section>
       <section class="enemy-lab-panel">
-        <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="40" step="1" value="1"></label>
+        <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="9999" step="1" value="1"></label>
         <label>Lab speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
         <label>Lab HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
         <label>Fire rate <input data-field="fireRate" type="range" min="0.25" max="3" step="0.05" value="1"></label>
@@ -1125,7 +1125,7 @@ export class EnemyLabScene extends Phaser.Scene {
       input.addEventListener('change', () => this.persistSquadFromControls());
     }
     spawnCount.addEventListener('input', () => {
-      this.spawnCount = Phaser.Math.Clamp(Number(spawnCount.value) || 1, 1, 40);
+      this.spawnCount = Phaser.Math.Clamp(Number(spawnCount.value) || 1, 1, 9999);
     });
     speedMultiplier.addEventListener('input', () => {
       this.enemySpeedMultiplier = Number(speedMultiplier.value) || 1;
