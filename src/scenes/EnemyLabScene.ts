@@ -209,6 +209,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private showDebugLabels = true;
   private showTelegraphs = true;
   private isOverlayCollapsed = false;
+  private isPointerOverControlPanel = false;
   private isSimulationPaused = false;
   private playerHull = PLAYER_LAB_HULL;
   private nextPlayerFireAt = 0;
@@ -458,6 +459,10 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private updatePlayerFacing(): void {
+    if (this.isPointerOverControlPanel) {
+      return;
+    }
+
     updatePlayerFacingFromPointer({
       scene: this,
       player: this.player,
@@ -466,7 +471,7 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private updatePlayerFiring(time: number): void {
-    if (!this.input.activePointer.isDown || time < this.nextPlayerFireAt) {
+    if (this.isPointerOverControlPanel || !this.input.activePointer.isDown || time < this.nextPlayerFireAt) {
       return;
     }
 
@@ -1171,6 +1176,19 @@ export class EnemyLabScene extends Phaser.Scene {
       if (this.isEditablePanelTarget(event.target)) {
         event.stopPropagation();
       }
+    });
+    root.addEventListener('pointerenter', () => {
+      this.isPointerOverControlPanel = true;
+    });
+    root.addEventListener('pointerleave', () => {
+      this.isPointerOverControlPanel = false;
+    });
+    root.addEventListener('pointerdown', (event) => {
+      this.isPointerOverControlPanel = true;
+      event.stopPropagation();
+    });
+    root.addEventListener('pointerup', (event) => {
+      event.stopPropagation();
     });
 
     root.addEventListener('click', (event) => {
