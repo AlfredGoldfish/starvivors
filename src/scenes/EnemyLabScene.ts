@@ -18,7 +18,17 @@ import {
   THRUSTER_FADE_MS
 } from './gameConstants';
 import { StarfieldSystem } from '../systems/starfield';
-import { applyAccelerationWithMass, dampVelocityChannel } from '../systems/physics';
+import {
+  applyPlayerFlightAcceleration,
+  calculatePlayerOverspeedDamping,
+  dampPlayerFlightVelocity,
+  integratePlayerFlightPosition,
+  resolvePlayerFlightControls,
+  updatePlayerFacingFromPointer,
+  updatePlayerFlightCameraLead,
+  wrapPlayerFlightPosition,
+  type PlayerFlightStats
+} from '../systems/playerFlight';
 import { createEnemyLabVisualTextures } from '../systems/enemyVisuals';
 import {
   getWrappedDirection,
@@ -376,54 +386,35 @@ export class EnemyLabScene extends Phaser.Scene {
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
     this.updatePlayerFacing();
 
-    const strafeLeft = this.keys.left.isDown || this.keys.leftAlt.isDown;
-    const strafeRight = this.keys.right.isDown || this.keys.rightAlt.isDown;
-    const thrustForward = this.keys.up.isDown || this.keys.upAlt.isDown;
-    const thrustReverse = this.keys.down.isDown || this.keys.downAlt.isDown;
-    const isThrusting = thrustForward || thrustReverse || strafeLeft || strafeRight;
-    const shipForward = this.getForwardDirection(this.player.rotation);
-    const shipRight = new Phaser.Math.Vector2(-shipForward.y, shipForward.x);
-    const playerAcceleration = new Phaser.Math.Vector2(0, 0);
+    const controls = resolvePlayerFlightControls({
+      strafeLeft: this.keys.left.isDown || this.keys.leftAlt.isDown,
+      strafeRight: this.keys.right.isDown || this.keys.rightAlt.isDown,
+      thrustForward: this.keys.up.isDown || this.keys.upAlt.isDown,
+      thrustReverse: this.keys.down.isDown || this.keys.downAlt.isDown
+    });
+    const flightStats = this.getPlayerFlightStats();
 
-    if (thrustForward) {
-      playerAcceleration.x += shipForward.x * this.getPlayerThrustAcceleration();
-      playerAcceleration.y += shipForward.y * this.getPlayerThrustAcceleration();
-    }
+    applyPlayerFlightAcceleration({
+      player: this.player,
+      velocity: this.playerVelocity,
+      controls,
+      stats: flightStats,
+      deltaSeconds,
+      referenceMass: PLAYER_MASS
+    });
 
-    if (thrustReverse) {
-      playerAcceleration.x -= shipForward.x * this.getPlayerReverseThrustAcceleration();
-      playerAcceleration.y -= shipForward.y * this.getPlayerReverseThrustAcceleration();
-    }
-
-    if (strafeLeft) {
-      playerAcceleration.x -= shipRight.x * this.getPlayerStrafeThrustAcceleration();
-      playerAcceleration.y -= shipRight.y * this.getPlayerStrafeThrustAcceleration();
-    }
-
-    if (strafeRight) {
-      playerAcceleration.x += shipRight.x * this.getPlayerStrafeThrustAcceleration();
-      playerAcceleration.y += shipRight.y * this.getPlayerStrafeThrustAcceleration();
-    }
-
-    if (playerAcceleration.lengthSq() > 0) {
-      applyAccelerationWithMass({
-        velocity: this.playerVelocity,
-        acceleration: playerAcceleration,
-        mass: this.getPlayerMass(),
-        deltaSeconds,
-        referenceMass: PLAYER_MASS
-      });
-    }
-
-    this.updateThrusterEffects(time, thrustForward, thrustReverse, strafeLeft, strafeRight);
-
-    if (!isThrusting) {
-      this.applyPlayerCoastDamping(deltaSeconds);
-    }
-    this.applyPlayerOverspeedDamping(deltaSeconds);
-
-    this.player.x += this.playerVelocity.x * deltaSeconds;
-    this.player.y += this.playerVelocity.y * deltaSeconds;
+    this.updateThrusterEffects(time, controls.thrustForward, controls.thrustReverse, controls.strafeLeft, controls.strafeRight);
+    dampPlayerFlightVelocity({
+      velocity: this.playerVelocity,
+      stats: flightStats,
+      deltaSeconds,
+      isThrusting: controls.isThrusting
+    });
+    integratePlayerFlightPosition({
+      player: this.player,
+      velocity: this.playerVelocity,
+      deltaSeconds
+    });
   }
 
   private getPlayerMass(): number {
@@ -451,39 +442,32 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private getPlayerOverspeedDamping(): number {
-    const massScale = Math.sqrt(PLAYER_MASS / Math.max(0.001, this.getPlayerMass()));
-    return Math.max(0, LAB_PLAYER_SHIP.movement.overspeedDamping * massScale);
+    return calculatePlayerOverspeedDamping({
+      baselineMass: PLAYER_MASS,
+      currentMass: this.getPlayerMass(),
+      baseOverspeedDamping: LAB_PLAYER_SHIP.movement.overspeedDamping
+    });
   }
 
-  private applyPlayerCoastDamping(deltaSeconds: number): void {
-    if (deltaSeconds <= 0 || this.playerVelocity.lengthSq() <= 0.0001) {
-      return;
-    }
-
-    dampVelocityChannel(this.playerVelocity, LAB_PLAYER_SHIP.movement.lowFrictionDamping, deltaSeconds);
-  }
-
-  private applyPlayerOverspeedDamping(deltaSeconds: number): void {
-    const speed = this.playerVelocity.length();
-    const velocityLimit = this.getPlayerVelocityLimit();
-
-    if (speed <= velocityLimit || speed <= 0.0001 || deltaSeconds <= 0) {
-      return;
-    }
-
-    const excessSpeed = speed - velocityLimit;
-    const dampedExcessSpeed = excessSpeed * Math.exp(-this.getPlayerOverspeedDamping() * deltaSeconds);
-    this.playerVelocity.setLength(velocityLimit + dampedExcessSpeed);
+  private getPlayerFlightStats(): PlayerFlightStats {
+    return {
+      mass: this.getPlayerMass(),
+      thrust: this.getPlayerThrustAcceleration(),
+      brake: this.getPlayerReverseThrustAcceleration(),
+      strafe: this.getPlayerStrafeThrustAcceleration(),
+      moveSpeed: this.getPlayerMaxSpeed(),
+      velocityLimit: this.getPlayerVelocityLimit(),
+      lowFrictionDamping: LAB_PLAYER_SHIP.movement.lowFrictionDamping,
+      overspeedDamping: this.getPlayerOverspeedDamping()
+    };
   }
 
   private updatePlayerFacing(): void {
-    const pointer = this.input.activePointer;
-    const pointerWorld = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
-    const direction = this.getWrappedDirection(this.player.x, this.player.y, pointerWorld.x, pointerWorld.y);
-
-    if (direction.lengthSq() > 0) {
-      this.player.rotation = Math.atan2(direction.x, -direction.y);
-    }
+    updatePlayerFacingFromPointer({
+      scene: this,
+      player: this.player,
+      getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
+    });
   }
 
   private updatePlayerFiring(time: number): void {
@@ -2137,27 +2121,23 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private wrapPlayer(): void {
-    const wrappedX = wrapCoordinate(this.player.x, this.arena.width);
-    const wrappedY = wrapCoordinate(this.player.y, this.arena.height);
-    const didWrap = wrappedX !== this.player.x || wrappedY !== this.player.y;
-    this.player.setPosition(wrappedX, wrappedY);
-    if (didWrap) {
-      this.cameras.main.centerOn(wrappedX, wrappedY);
-      this.resetBackgroundPlayerTracking();
-    }
+    wrapPlayerFlightPosition({
+      player: this.player,
+      arena: this.arena,
+      camera: this.cameras.main
+    });
   }
 
   private updateCameraLead(): void {
-    const speed = this.playerVelocity.length();
-    const maxSpeed = Math.max(CAMERA_LEAD_MIN_SPEED + 1, this.getPlayerMaxSpeed());
-    const leadProgress = Phaser.Math.Clamp((speed - CAMERA_LEAD_MIN_SPEED) / (maxSpeed - CAMERA_LEAD_MIN_SPEED), 0, 1);
-    const targetLead =
-      speed > CAMERA_LEAD_MIN_SPEED && leadProgress > 0
-        ? this.playerVelocity.clone().normalize().scale(CAMERA_LEAD_MAX_DISTANCE * leadProgress)
-        : new Phaser.Math.Vector2(0, 0);
-
-    this.cameraLead.lerp(targetLead, CAMERA_LEAD_LERP);
-    this.cameras.main.setFollowOffset(-this.cameraLead.x, -this.cameraLead.y);
+    updatePlayerFlightCameraLead({
+      camera: this.cameras.main,
+      cameraLead: this.cameraLead,
+      velocity: this.playerVelocity,
+      maxSpeed: this.getPlayerMaxSpeed(),
+      minSpeed: CAMERA_LEAD_MIN_SPEED,
+      maxDistance: CAMERA_LEAD_MAX_DISTANCE,
+      lerp: CAMERA_LEAD_LERP
+    });
   }
 
   private updateToroidalRenderMirror(
