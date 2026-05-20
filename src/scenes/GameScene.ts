@@ -518,6 +518,12 @@ const SPECIAL_UPGRADE_DROP_CHANCE = 0.025;
 const PICKUP_MAGNET_RADIUS_MULTIPLIER = 4.2;
 const SECTOR_STREAM_ACTIVATION_PADDING = 920;
 const SECTOR_STREAM_DEACTIVATION_PADDING = 1320;
+const WORLD_SQUAD_COUNT = 6;
+const WORLD_SQUAD_ACTIVATION_RANGE = 1280;
+const WORLD_SQUAD_DISENGAGE_RANGE = 2550;
+const WORLD_SQUAD_INACTIVE_UPDATE_MS = 850;
+const WORLD_SQUAD_ROAM_SPEED = 34;
+const WORLD_SQUAD_PATROL_SPEED = 46;
 
 interface EnemyTimeScaling {
   elapsedMinutes: number;
@@ -561,6 +567,26 @@ interface SectorSignalSpawn {
   region: SectorRegion;
 }
 
+type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
+
+interface WorldSquadInstance {
+  id: string;
+  squadId: EncounterDefinitionId;
+  displayName: string;
+  regionId: string;
+  x: number;
+  y: number;
+  homeX: number;
+  homeY: number;
+  patrolX: number;
+  patrolY: number;
+  heading: number;
+  state: WorldSquadState;
+  nextUpdateAt: number;
+  stateUntil: number;
+  activeEnemyIds: string[];
+}
+
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
   private sectorScale: SectorScale = DEFAULT_SECTOR_SCALE;
@@ -575,6 +601,7 @@ export class GameScene extends Phaser.Scene {
   private sectorAsteroidIds = new WeakMap<BasicAsteroid, string>();
   private sectorScrapIds = new WeakMap<ScrapPickup, string>();
   private sectorSignalBeacons: SectorSignalBeacon[] = [];
+  private worldSquads: WorldSquadInstance[] = [];
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
@@ -837,6 +864,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.profileStep('player-movement', () => this.updatePlayerMovement(time, this.isPlayerDead ? 0 : deltaSeconds));
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
+      this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
       this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
       this.profileStep('sector-streaming', () => this.updateSectorStreaming());
       this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
@@ -1537,6 +1565,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase9();
     }
 
+    if (query.get('testHarness') === 'phase10') {
+      this.runTestHarnessPhase10();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1584,6 +1616,9 @@ export class GameScene extends Phaser.Scene {
       activeSectorAsteroidCount: this.activeSectorAsteroids.size,
       activeSectorScrapCount: this.activeSectorScrapPickups.size,
       activeSectorSignalCount: this.activeSectorSignals.size,
+      worldSquadCount: this.worldSquads.length,
+      activeWorldSquadCount: this.worldSquads.filter((squad) => squad.state === 'pursue').length,
+      defeatedWorldSquadCount: this.worldSquads.filter((squad) => squad.state === 'defeated').length,
       arenaWidth: this.arena.width,
       arenaHeight: this.arena.height,
       cameraFollowOffsetX: -this.cameraLead.x,
@@ -2498,6 +2533,76 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase10(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase10-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase10-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const initial = harness.getState();
+    const targetSquad = this.worldSquads.find((squad) => squad.state !== 'defeated');
+    const initialLiveEnemies = this.liveEnemies.length;
+    const initialInactiveSquads = this.worldSquads.filter((squad) => squad.state !== 'pursue' && squad.state !== 'defeated').length;
+
+    if (targetSquad) {
+      this.player.setPosition(targetSquad.x, targetSquad.y);
+      this.updateWorldSquads(this.time.now + WORLD_SQUAD_INACTIVE_UPDATE_MS + 1, 1);
+    }
+
+    const activated = harness.getState();
+    const activatedSquad = targetSquad ? this.worldSquads.find((squad) => squad.id === targetSquad.id) : undefined;
+    const activatedSquadState = activatedSquad?.state ?? null;
+    const activatedSquadEnemyCount = activatedSquad?.activeEnemyIds.length ?? 0;
+
+    if (targetSquad) {
+      this.player.setPosition(wrapCoordinate(targetSquad.homeX + this.arena.width * 0.38, this.arena.width), targetSquad.homeY);
+      this.updateWorldSquads(this.time.now + WORLD_SQUAD_INACTIVE_UPDATE_MS * 2 + 1, 1);
+    }
+
+    const disengaged = harness.getState();
+    const disengagedSquad = targetSquad ? this.worldSquads.find((squad) => squad.id === targetSquad.id) : undefined;
+    const stateMix = new Set(this.worldSquads.map((squad) => squad.state));
+    const pass =
+      initial.worldSquadCount >= WORLD_SQUAD_COUNT &&
+      initialInactiveSquads >= 1 &&
+      Boolean(targetSquad) &&
+      activatedSquadState === 'pursue' &&
+      activatedSquadEnemyCount > 0 &&
+      activated.activeWorldSquadCount >= 1 &&
+      activated.liveEnemies > initialLiveEnemies &&
+      Boolean(disengagedSquad && disengagedSquad.state === 'disengage') &&
+      disengaged.activeWorldSquadCount === 0 &&
+      stateMix.has('roam') &&
+      stateMix.has('patrol') &&
+      stateMix.has('guard');
+
+    document.body.setAttribute('data-starvivors-phase10-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase10-harness-details',
+      JSON.stringify({
+        initial,
+        activated,
+        disengaged,
+        targetSquad: targetSquad
+          ? {
+              id: targetSquad.id,
+              squadId: targetSquad.squadId,
+              state: targetSquad.state,
+              activeEnemyIds: targetSquad.activeEnemyIds
+            }
+          : null,
+        activatedSquadState,
+        activatedSquadEnemyCount,
+        disengagedState: disengagedSquad?.state ?? null,
+        stateMix: [...stateMix]
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2701,6 +2806,7 @@ export class GameScene extends Phaser.Scene {
     this.sectorAsteroidIds = new WeakMap<BasicAsteroid, string>();
     this.sectorScrapIds = new WeakMap<ScrapPickup, string>();
     this.sectorSignalBeacons = [];
+    this.worldSquads = [];
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -2765,6 +2871,7 @@ export class GameScene extends Phaser.Scene {
     this.createSectorAsteroidSpawns(center);
     this.createSectorScrapSpawns();
     this.createSectorSignalSpawns();
+    this.createWorldSquads(center);
     this.updateSectorStreaming();
     this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
@@ -3291,6 +3398,189 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private createWorldSquads(center: Phaser.Math.Vector2): void {
+    const random = new Phaser.Math.RandomDataGenerator([`${this.sectorSeed}-world-squads`]);
+    const candidateRegions = this.sectorLayout.regions.filter((region) => region.type !== 'safe-drift');
+    const squadIds: EncounterDefinitionId[] = [
+      'scout-pack',
+      'gunner-escort',
+      'strike-wing',
+      'sniper-screen',
+      'support-group',
+      'carrier-group'
+    ];
+    const states: WorldSquadState[] = ['guard', 'patrol', 'roam', 'patrol', 'guard', 'roam'];
+
+    this.worldSquads = [];
+
+    for (let index = 0; index < WORLD_SQUAD_COUNT; index += 1) {
+      const region = candidateRegions[index % Math.max(1, candidateRegions.length)] ?? this.sectorLayout.regions[0];
+      const position = this.getRandomPointInSectorRegion(region, random);
+      if (getWrappedDistance(this.arena, center.x, center.y, position.x, position.y) < ASTEROID_SAFE_SPAWN_RADIUS * 1.6) {
+        position.x = wrapCoordinate(region.x, this.arena.width);
+        position.y = wrapCoordinate(region.y, this.arena.height);
+      }
+
+      const patrolAngle = random.realInRange(0, Math.PI * 2);
+      const patrolDistance = region.radius * random.realInRange(0.42, 0.76);
+      const squadId = squadIds[index % squadIds.length];
+      const encounter = getEncounterDefinition(squadId);
+
+      this.worldSquads.push({
+        id: `world-squad-${index + 1}`,
+        squadId,
+        displayName: encounter.displayName,
+        regionId: region.id,
+        x: position.x,
+        y: position.y,
+        homeX: position.x,
+        homeY: position.y,
+        patrolX: wrapCoordinate(position.x + Math.cos(patrolAngle) * patrolDistance, this.arena.width),
+        patrolY: wrapCoordinate(position.y + Math.sin(patrolAngle) * patrolDistance, this.arena.height),
+        heading: random.realInRange(0, Math.PI * 2),
+        state: states[index % states.length],
+        nextUpdateAt: this.time.now + random.between(0, WORLD_SQUAD_INACTIVE_UPDATE_MS),
+        stateUntil: 0,
+        activeEnemyIds: []
+      });
+    }
+  }
+
+  private updateWorldSquads(time: number, deltaSeconds: number): void {
+    for (const squad of this.worldSquads) {
+      this.pruneWorldSquadActiveEnemies(squad);
+
+      if (squad.state === 'defeated') {
+        continue;
+      }
+
+      if (squad.state === 'pursue') {
+        if (squad.activeEnemyIds.length === 0) {
+          squad.state = 'defeated';
+          squad.stateUntil = 0;
+          continue;
+        }
+
+        const center = this.getWorldSquadActiveCenter(squad);
+        if (center) {
+          squad.x = center.x;
+          squad.y = center.y;
+        }
+
+        if (getWrappedDistance(this.arena, this.player.x, this.player.y, squad.homeX, squad.homeY) > WORLD_SQUAD_DISENGAGE_RANGE) {
+          this.disengageWorldSquad(squad, time);
+        }
+
+        continue;
+      }
+
+      if (squad.state === 'disengage' && time >= squad.stateUntil) {
+        squad.state = 'patrol';
+        squad.activeEnemyIds = [];
+      }
+
+      if (time >= squad.nextUpdateAt) {
+        this.updateInactiveWorldSquad(squad, Math.max(deltaSeconds, WORLD_SQUAD_INACTIVE_UPDATE_MS / 1000));
+        squad.nextUpdateAt = time + WORLD_SQUAD_INACTIVE_UPDATE_MS;
+      }
+
+      if (this.getDistanceFromPlayer(squad.x, squad.y) <= WORLD_SQUAD_ACTIVATION_RANGE) {
+        this.activateWorldSquad(squad, time);
+      }
+    }
+  }
+
+  private updateInactiveWorldSquad(squad: WorldSquadInstance, deltaSeconds: number): void {
+    if (squad.state === 'guard' || squad.state === 'disengage') {
+      return;
+    }
+
+    if (squad.state === 'roam') {
+      squad.heading += Math.sin(this.time.now * 0.0007 + squad.homeX * 0.01) * 0.18;
+      squad.x = wrapCoordinate(squad.x + Math.cos(squad.heading) * WORLD_SQUAD_ROAM_SPEED * deltaSeconds, this.arena.width);
+      squad.y = wrapCoordinate(squad.y + Math.sin(squad.heading) * WORLD_SQUAD_ROAM_SPEED * deltaSeconds, this.arena.height);
+      return;
+    }
+
+    const offset = this.getWrappedDirection(squad.x, squad.y, squad.patrolX, squad.patrolY);
+    if (offset.length() < 80) {
+      const oldPatrolX = squad.patrolX;
+      const oldPatrolY = squad.patrolY;
+      squad.patrolX = squad.homeX;
+      squad.patrolY = squad.homeY;
+      squad.homeX = oldPatrolX;
+      squad.homeY = oldPatrolY;
+      return;
+    }
+
+    offset.normalize();
+    squad.x = wrapCoordinate(squad.x + offset.x * WORLD_SQUAD_PATROL_SPEED * deltaSeconds, this.arena.width);
+    squad.y = wrapCoordinate(squad.y + offset.y * WORLD_SQUAD_PATROL_SPEED * deltaSeconds, this.arena.height);
+  }
+
+  private activateWorldSquad(squad: WorldSquadInstance, time: number): void {
+    if (squad.state === 'pursue' || squad.state === 'defeated') {
+      return;
+    }
+
+    const beforeIds = new Set(this.liveEnemies.map((enemy) => enemy.id));
+    this.spawnLiveEnemySquad(squad.squadId, squad.x, squad.y, time, squad.id);
+    squad.activeEnemyIds = this.liveEnemies.filter((enemy) => !beforeIds.has(enemy.id)).map((enemy) => enemy.id);
+    squad.state = 'pursue';
+    squad.stateUntil = 0;
+  }
+
+  private disengageWorldSquad(squad: WorldSquadInstance, time: number): void {
+    for (const enemyId of squad.activeEnemyIds) {
+      const index = this.liveEnemies.findIndex((enemy) => enemy.id === enemyId);
+      if (index < 0) {
+        continue;
+      }
+
+      const enemy = this.liveEnemies[index];
+      squad.x = wrapCoordinate(enemy.body.x, this.arena.width);
+      squad.y = wrapCoordinate(enemy.body.y, this.arena.height);
+      destroyLiveEnemySystem(enemy);
+      this.liveEnemies.splice(index, 1);
+    }
+
+    squad.activeEnemyIds = [];
+    squad.state = 'disengage';
+    squad.stateUntil = time + 4500;
+    squad.nextUpdateAt = time + WORLD_SQUAD_INACTIVE_UPDATE_MS;
+  }
+
+  private pruneWorldSquadActiveEnemies(squad: WorldSquadInstance): void {
+    if (squad.activeEnemyIds.length === 0) {
+      return;
+    }
+
+    const liveIds = new Set(this.liveEnemies.map((enemy) => enemy.id));
+    squad.activeEnemyIds = squad.activeEnemyIds.filter((id) => liveIds.has(id));
+  }
+
+  private getWorldSquadActiveCenter(squad: WorldSquadInstance): Phaser.Math.Vector2 | undefined {
+    const members = this.liveEnemies.filter((enemy) => squad.activeEnemyIds.includes(enemy.id));
+    if (members.length === 0) {
+      return undefined;
+    }
+
+    const first = members[0].body;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    for (const enemy of members) {
+      const offset = this.getWrappedDirection(first.x, first.y, enemy.body.x, enemy.body.y);
+      offsetX += offset.x;
+      offsetY += offset.y;
+    }
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(first.x + offsetX / members.length, this.arena.width),
+      wrapCoordinate(first.y + offsetY / members.length, this.arena.height)
+    );
+  }
+
   private createBasicEnemies(center: Phaser.Math.Vector2): void {
     const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.78;
 
@@ -3566,7 +3856,13 @@ export class GameScene extends Phaser.Scene {
     return enemy;
   }
 
-  private spawnLiveEnemySquad(squadId: string, centerX: number, centerY: number, time: number): void {
+  private spawnLiveEnemySquad(
+    squadId: string,
+    centerX: number,
+    centerY: number,
+    time: number,
+    worldSquadId?: string
+  ): void {
     const scaling = this.getEnemyTimeScaling(time);
     const squad = ENEMY_LAB_SQUADS.find((candidate) => candidate.id === squadId);
     const spawned = spawnLiveEnemySquadSystem({
@@ -3584,6 +3880,9 @@ export class GameScene extends Phaser.Scene {
       enemy.damageMultiplier = scaling.damageMultiplier * this.getCombatVarianceMultiplier();
       enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(enemy.definitionId);
       enemy.stateData.squadId = squad?.id ?? squadId;
+      if (worldSquadId) {
+        enemy.stateData.worldSquadId = worldSquadId;
+      }
     }
 
     this.liveEnemies.push(...spawned);
@@ -10195,6 +10494,7 @@ export class GameScene extends Phaser.Scene {
         `Player shots: ${this.playerProjectiles.length} active, enemy shots: ${this.enemyProjectiles.length}\n` +
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
         `Enemies: ${this.liveEnemies.length} live (${this.getLiveEnemyLegacyCount('chaser')} chaser / ${this.getLiveEnemyLegacyCount('shooter')} shooter / ${this.getLiveEnemyLegacyCount('tank')} tank)\n` +
+        `World squads: ${this.worldSquads.filter((squad) => squad.state === 'pursue').length}/${this.worldSquads.length} active, ${this.worldSquads.filter((squad) => squad.state === 'defeated').length} defeated\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Debug menu: Z ${this.debugMenuHost?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +
