@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
 import { SHOOTER_ENEMY_DISPLAY_SIZE, SHOOTER_PROJECTILE_HIT_RADIUS } from '../scenes/gameConstants';
 import type { EnemyProjectile, ShooterEnemy } from '../scenes/gameTypes';
+import { clearRuntimeProjectiles, destroyRuntimeProjectile, updateProjectiles } from './projectiles';
 
 export interface FireShooterProjectileInput {
   scene: Phaser.Scene;
@@ -25,6 +26,7 @@ export interface UpdateEnemyProjectilesInput {
     viewRadius: number
   ) => void;
   tryHitPlayer: (projectile: EnemyProjectile) => boolean;
+  tryHitObstruction?: (projectile: EnemyProjectile) => boolean;
 }
 
 export function fireShooterProjectile(input: FireShooterProjectileInput): EnemyProjectile {
@@ -43,60 +45,37 @@ export function fireShooterProjectile(input: FireShooterProjectileInput): EnemyP
     speed: input.enemy.stats.projectileSpeed,
     damage: input.enemy.stats.attackDamage,
     hitRadius: input.enemy.stats.projectileSize,
+    owner: 'enemy',
+    pierceRemaining: 0,
+    knockback: 0,
     expiresAt: input.time + input.enemy.stats.projectileLifetimeSeconds * 1000,
     distanceRemaining: input.enemy.stats.projectileRange
   };
 }
 
 export function updateEnemyProjectiles(input: UpdateEnemyProjectilesInput): EnemyProjectile[] {
-  if (input.isPlayerDead) {
-    return input.projectiles;
-  }
-
-  const projectiles = [...input.projectiles];
-
-  for (let i = projectiles.length - 1; i >= 0; i -= 1) {
-    const projectile = projectiles[i];
-    input.applyProjectileGravity(projectile, input.deltaSeconds);
-    const travelDistance = projectile.speed * input.deltaSeconds;
-
-    projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * input.deltaSeconds, input.arena.width);
-    projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * input.deltaSeconds, input.arena.height);
-    projectile.distanceRemaining -= travelDistance;
-    input.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, projectile.hitRadius);
-
-    if (projectile.capturedByBlackHole) {
-      if (input.updateCapturedProjectile(projectile, input.deltaSeconds, projectile.hitRadius)) {
-        destroyEnemyProjectile(projectile);
-        projectiles.splice(i, 1);
-      }
-
-      continue;
-    }
-
-    if (input.tryHitPlayer(projectile)) {
-      destroyEnemyProjectile(projectile);
-      projectiles.splice(i, 1);
-    } else if (input.time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-      destroyEnemyProjectile(projectile);
-      projectiles.splice(i, 1);
-    }
-  }
-
-  return projectiles;
+  return updateProjectiles({
+    arena: input.arena,
+    projectiles: input.projectiles,
+    time: input.time,
+    deltaSeconds: input.deltaSeconds,
+    isSimulationPaused: input.isPlayerDead,
+    applyProjectileGravity: input.applyProjectileGravity,
+    updateCapturedProjectile: input.updateCapturedProjectile,
+    updateToroidalRenderMirror: input.updateToroidalRenderMirror,
+    getMirrorViewRadius: (projectile) => projectile.hitRadius,
+    destroyProjectile: destroyEnemyProjectile,
+    tryHitTarget: input.tryHitPlayer,
+    tryHitObstruction: input.tryHitObstruction
+  });
 }
 
 export function destroyEnemyProjectile(projectile: EnemyProjectile): void {
-  projectile.body.destroy(true);
-  projectile.wrapMirrorBody.destroy(true);
+  destroyRuntimeProjectile(projectile);
 }
 
 export function clearEnemyProjectiles(projectiles: EnemyProjectile[]): EnemyProjectile[] {
-  for (const projectile of projectiles) {
-    destroyEnemyProjectile(projectile);
-  }
-
-  return [];
+  return clearRuntimeProjectiles(projectiles);
 }
 
 function createEnemyProjectileBody(

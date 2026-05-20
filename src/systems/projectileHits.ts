@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { ArenaSize } from '../core/arena';
-import type { PlayerProjectile } from '../scenes/gameTypes';
+import type { RuntimeProjectile } from './projectiles';
 
 export interface EllipseProjectileTarget {
   body: Phaser.GameObjects.Container;
@@ -17,7 +17,7 @@ export interface CircleProjectileTarget {
 
 export interface TryHitEllipseTargetsInput<T extends EllipseProjectileTarget> {
   arena: ArenaSize;
-  projectile: PlayerProjectile;
+  projectile: RuntimeProjectile;
   targets: T[];
   getForwardDirection: (rotation: number) => Phaser.Math.Vector2;
   getTargetHitHalfWidth?: (target: T) => number;
@@ -27,7 +27,7 @@ export interface TryHitEllipseTargetsInput<T extends EllipseProjectileTarget> {
 
 export interface TryHitCircleTargetsInput<T extends CircleProjectileTarget> {
   arena: ArenaSize;
-  projectile: PlayerProjectile;
+  projectile: RuntimeProjectile;
   targets: T[];
   getTargetHitRadius?: (target: T) => number;
   onHit: (target: T, index: number) => void;
@@ -38,7 +38,7 @@ export function tryHitEllipseTargets<T extends EllipseProjectileTarget>(
 ): boolean {
   for (let i = input.targets.length - 1; i >= 0; i -= 1) {
     const target = input.targets[i];
-    if (input.projectile.piercedTargets.has(target.body)) {
+    if (input.projectile.piercedTargets?.has(target.body)) {
       continue;
     }
 
@@ -58,7 +58,7 @@ export function tryHitEllipseTargets<T extends EllipseProjectileTarget>(
     const normalizedHit = (localX * localX) / (hitHalfWidth * hitHalfWidth) + (localY * localY) / (hitHalfLength * hitHalfLength);
 
     if (normalizedHit <= 1) {
-      input.projectile.piercedTargets.add(target.body);
+      input.projectile.piercedTargets?.add(target.body);
       input.onHit(target, i);
       return true;
     }
@@ -72,7 +72,7 @@ export function tryHitCircleTargets<T extends CircleProjectileTarget>(
 ): boolean {
   for (let i = input.targets.length - 1; i >= 0; i -= 1) {
     const target = input.targets[i];
-    if (input.projectile.piercedTargets.has(target.body)) {
+    if (input.projectile.piercedTargets?.has(target.body)) {
       continue;
     }
 
@@ -86,7 +86,7 @@ export function tryHitCircleTargets<T extends CircleProjectileTarget>(
     const hitRadius = (input.getTargetHitRadius?.(target) ?? target.hitRadius) + input.projectile.hitRadius;
 
     if (offset.lengthSq() <= hitRadius * hitRadius) {
-      input.projectile.piercedTargets.add(target.body);
+      input.projectile.piercedTargets?.add(target.body);
       input.onHit(target, i);
       return true;
     }

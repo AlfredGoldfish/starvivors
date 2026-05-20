@@ -7221,6 +7221,9 @@ export class GameScene extends Phaser.Scene {
       speed: request.speed,
       damage: request.damage,
       hitRadius: request.radius,
+      owner: 'enemy',
+      pierceRemaining: 0,
+      knockback: 0,
       expiresAt: this.time.now + (request.range / Math.max(1, request.speed)) * 1000,
       distanceRemaining: request.range
     });
@@ -7369,7 +7372,8 @@ export class GameScene extends Phaser.Scene {
         this.updateCapturedProjectile(projectile, capturedDeltaSeconds, mirrorViewRadius),
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
         this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
-      tryHitPlayer: (projectile) => this.tryHitPlayerWithEnemyProjectile(projectile, time)
+      tryHitPlayer: (projectile) => this.tryHitPlayerWithEnemyProjectile(projectile, time),
+      tryHitObstruction: (projectile) => this.tryHitEnemyProjectileObstruction(projectile)
     });
   }
 
@@ -7401,6 +7405,51 @@ export class GameScene extends Phaser.Scene {
     }
 
     return true;
+  }
+
+  private tryHitEnemyProjectileObstruction(projectile: EnemyProjectile): boolean {
+    return this.tryHitEnemyProjectileDebris(projectile) || this.tryHitEnemyProjectileAsteroid(projectile);
+  }
+
+  private tryHitEnemyProjectileDebris(projectile: EnemyProjectile): boolean {
+    return tryHitCircleTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.enemyWreckageDebris,
+      getTargetHitRadius: (debris) => this.getDebrisCollisionRadius(debris),
+      onHit: (debris, i) => {
+        this.damageDebris(debris, projectile.damage, 'enemy', true);
+
+        if (debris.hp <= 0) {
+          this.destroyEnemyWreckageDebris(debris, true);
+          this.enemyWreckageDebris.splice(i, 1);
+        } else {
+          this.flashDamageSprites(debris.body, debris.wrapMirrorBody);
+          this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+        }
+      }
+    });
+  }
+
+  private tryHitEnemyProjectileAsteroid(projectile: EnemyProjectile): boolean {
+    return tryHitCircleTargets({
+      arena: this.arena,
+      projectile,
+      targets: this.basicAsteroids,
+      getTargetHitRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
+      onHit: (asteroid, i) => {
+        this.damageAsteroid(asteroid, projectile.damage, 'enemy', true);
+
+        if (asteroid.hp <= 0) {
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.destroyBasicAsteroid(i, false);
+        } else {
+          this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.applyAsteroidImpactFromProjectile(asteroid, projectile);
+        }
+      }
+    });
   }
 
   private updateBasicAsteroids(deltaSeconds: number): void {
@@ -8656,6 +8705,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyAsteroidImpact(asteroid: BasicAsteroid, projectile: PlayerProjectile): void {
+    this.applyAsteroidImpactFromProjectile(asteroid, projectile);
+  }
+
+  private applyAsteroidImpactFromProjectile(asteroid: BasicAsteroid, projectile: PlayerProjectile | EnemyProjectile): void {
     const impactDirection = projectile.velocity.clone().normalize();
     const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
 

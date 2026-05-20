@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { wrapCoordinate, type ArenaSize } from '../core/arena';
+import type { ArenaSize } from '../core/arena';
 import {
   PLAYER_PROJECTILE_HIT_RADIUS,
   PLAYER_PROJECTILE_MUZZLE_OFFSET,
@@ -10,6 +10,12 @@ import {
 import type { PlayerProjectile } from '../scenes/gameTypes';
 import type { ResolvedProjectilePatternStats, ResolvedWeaponStats } from './weaponStats';
 import { isProjectileWeapon } from '../data/weapons';
+import {
+  clearRuntimeProjectiles,
+  destroyRuntimeProjectile,
+  updateProjectiles,
+  type ProjectileStatusPayload
+} from './projectiles';
 
 export interface FireProjectileWeaponInput {
   scene: Phaser.Scene;
@@ -89,7 +95,9 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
       speed: projectileConfig.projectileSpeed,
       damage: projectileConfig.damage * damageMultiplier,
       hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileAreaScale,
+      owner: 'player',
       pierceRemaining: projectileConfig.pierce,
+      knockback: 0,
       bouncesRemaining: projectileConfig.effects.bounceCount,
       piercedTargets: new WeakSet<object>(),
       expiresAt: input.time + projectileConfig.projectileLifetimeMs,
@@ -97,6 +105,14 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
       nextTrailAt: input.time,
       trailColor: weapon.projectileVisual.trailColor,
       effects: projectileConfig.effects,
+      splash:
+        projectileConfig.effects.explosionRadius > 0 && projectileConfig.effects.explosionDamageMultiplier > 0
+          ? {
+              radius: projectileConfig.effects.explosionRadius * projectileAreaScale,
+              damageMultiplier: projectileConfig.effects.explosionDamageMultiplier
+            }
+          : undefined,
+      statuses: resolveProjectileStatuses(projectileConfig.effects),
       isOverloaded: input.isOverloaded ?? false,
       isEmergencyEmpowered: input.isEmergencyEmpowered ?? false
     });
@@ -106,60 +122,35 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
 }
 
 export function updatePlayerProjectiles(input: UpdatePlayerProjectilesInput): PlayerProjectile[] {
-  if (input.isPlayerDead) {
-    return input.projectiles;
-  }
-
-  const projectiles = [...input.projectiles];
-
-  for (let i = projectiles.length - 1; i >= 0; i -= 1) {
-    const projectile = projectiles[i];
-    input.steerProjectile?.(projectile, input.deltaSeconds);
-    input.applyProjectileGravity(projectile, input.deltaSeconds);
-    const travelDistance = projectile.speed * input.deltaSeconds;
-
-    projectile.body.x = wrapCoordinate(projectile.body.x + projectile.velocity.x * input.deltaSeconds, input.arena.width);
-    projectile.body.y = wrapCoordinate(projectile.body.y + projectile.velocity.y * input.deltaSeconds, input.arena.height);
-    projectile.distanceRemaining -= travelDistance;
-    input.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, PLAYER_PROJECTILE_MUZZLE_OFFSET);
-
-    if (projectile.capturedByBlackHole) {
-      if (input.updateCapturedProjectile(projectile, input.deltaSeconds, PLAYER_PROJECTILE_MUZZLE_OFFSET)) {
-        destroyPlayerProjectile(projectile);
-        projectiles.splice(i, 1);
+  return updateProjectiles({
+    arena: input.arena,
+    projectiles: input.projectiles,
+    time: input.time,
+    deltaSeconds: input.deltaSeconds,
+    isSimulationPaused: input.isPlayerDead,
+    applyProjectileGravity: input.applyProjectileGravity,
+    updateCapturedProjectile: input.updateCapturedProjectile,
+    updateToroidalRenderMirror: input.updateToroidalRenderMirror,
+    getMirrorViewRadius: () => PLAYER_PROJECTILE_MUZZLE_OFFSET,
+    destroyProjectile: destroyPlayerProjectile,
+    steerProjectile: input.steerProjectile,
+    tryHitTarget: input.tryHitTarget,
+    shouldDestroyAfterHit: shouldDestroyProjectileAfterHit,
+    afterProjectileUpdate: (projectile) => {
+      if (input.time >= projectile.nextTrailAt) {
+        emitPlayerProjectileTrail(input.scene, projectile);
+        projectile.nextTrailAt = input.time + PLAYER_PROJECTILE_TRAIL_INTERVAL_MS;
       }
-
-      continue;
     }
-
-    const didHitTarget = !input.isPlayerDead && input.tryHitTarget(projectile);
-
-    if (didHitTarget && shouldDestroyProjectileAfterHit(projectile)) {
-      destroyPlayerProjectile(projectile);
-      projectiles.splice(i, 1);
-    } else if (input.time >= projectile.expiresAt || projectile.distanceRemaining <= 0) {
-      destroyPlayerProjectile(projectile);
-      projectiles.splice(i, 1);
-    } else if (input.time >= projectile.nextTrailAt) {
-      emitPlayerProjectileTrail(input.scene, projectile);
-      projectile.nextTrailAt = input.time + PLAYER_PROJECTILE_TRAIL_INTERVAL_MS;
-    }
-  }
-
-  return projectiles;
+  });
 }
 
 export function destroyPlayerProjectile(projectile: PlayerProjectile): void {
-  projectile.body.destroy(true);
-  projectile.wrapMirrorBody.destroy(true);
+  destroyRuntimeProjectile(projectile);
 }
 
 export function clearPlayerProjectiles(projectiles: PlayerProjectile[]): PlayerProjectile[] {
-  for (const projectile of projectiles) {
-    destroyPlayerProjectile(projectile);
-  }
-
-  return [];
+  return clearRuntimeProjectiles(projectiles);
 }
 
 function shouldDestroyProjectileAfterHit(projectile: PlayerProjectile): boolean {
@@ -204,6 +195,36 @@ function appendSpreadRotations(rotations: number[], centerRotation: number, coun
     const spreadOffset = index - (count - 1) / 2;
     rotations.push(centerRotation + spreadOffset * spreadRadians);
   }
+}
+
+function resolveProjectileStatuses(effects: PlayerProjectile['effects']): ProjectileStatusPayload[] | undefined {
+  const statuses: ProjectileStatusPayload[] = [];
+
+  if (effects.ionizeDurationMs > 0) {
+    statuses.push({
+      kind: 'ionize',
+      durationMs: effects.ionizeDurationMs,
+      damageMultiplier: effects.ionizeDamageMultiplier
+    });
+  }
+
+  if (effects.plasmaWakeDurationMs > 0) {
+    statuses.push({
+      kind: 'plasma-wake',
+      durationMs: effects.plasmaWakeDurationMs,
+      damageMultiplier: effects.plasmaWakeDamageMultiplier
+    });
+  }
+
+  if (effects.criticalDurationMs > 0) {
+    statuses.push({
+      kind: 'critical',
+      durationMs: effects.criticalDurationMs,
+      damageMultiplier: effects.criticalDamageBonusPerHit
+    });
+  }
+
+  return statuses.length > 0 ? statuses : undefined;
 }
 
 function emitPlayerProjectileTrail(scene: Phaser.Scene, projectile: PlayerProjectile): void {

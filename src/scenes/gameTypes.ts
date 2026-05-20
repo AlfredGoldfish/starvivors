@@ -4,8 +4,8 @@ import type { ShipId } from '../data/ships';
 import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
 import type { EnemyStatProfile } from '../data/enemies';
-import type { BlackHoleCapturedProjectileState } from '../systems/blackHole';
 import type { EnemyLabInstance } from '../systems/enemyLabSpawner';
+import type { RuntimeProjectile, ProjectileSplashPayload, ProjectileStatusPayload } from '../systems/projectiles';
 import type { ResolvedProjectileEffectStats } from '../systems/weaponStats';
 
 export interface SavedBlackHolePngLayer {
@@ -173,35 +173,19 @@ export interface AsteroidTierConfig {
   maxVelocity: number;
 }
 
-export interface PlayerProjectile extends BlackHoleCapturedProjectileState {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  speed: number;
-  damage: number;
-  hitRadius: number;
-  pierceRemaining: number;
+export interface PlayerProjectile extends RuntimeProjectile {
   bouncesRemaining: number;
   piercedTargets: WeakSet<object>;
-  expiresAt: number;
-  distanceRemaining: number;
   nextTrailAt: number;
   trailColor: number;
   effects: ResolvedProjectileEffectStats;
   isOverloaded: boolean;
   isEmergencyEmpowered: boolean;
+  splash?: ProjectileSplashPayload;
+  statuses?: ProjectileStatusPayload[];
 }
 
-export interface EnemyProjectile extends BlackHoleCapturedProjectileState {
-  body: Phaser.GameObjects.Container;
-  wrapMirrorBody: Phaser.GameObjects.Container;
-  velocity: Phaser.Math.Vector2;
-  speed: number;
-  damage: number;
-  hitRadius: number;
-  expiresAt: number;
-  distanceRemaining: number;
-}
+export interface EnemyProjectile extends RuntimeProjectile {}
 
 export interface BasicEnemy {
   body: Phaser.GameObjects.Container;
