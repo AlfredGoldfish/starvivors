@@ -137,6 +137,8 @@ export class EnemyLabScene extends Phaser.Scene {
   private nextPlayerFireAt = 0;
   private nextProjectileId = 1;
   private nextScrapId = 1;
+  private nextOverlayStatusUpdateAt = 0;
+  private lastOverlayStatusText = '';
   private collisionDebugCircles = new Map<string, Phaser.GameObjects.Arc>();
 
   constructor() {
@@ -168,7 +170,6 @@ export class EnemyLabScene extends Phaser.Scene {
     this.presetState = loadEnemyLabStorageState();
     this.createInput();
     this.createOverlay();
-    this.spawnInitialScrap();
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.clearEnemyCollisionDebug();
@@ -181,7 +182,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const deltaSeconds = Math.min(delta / 1000, 0.05);
 
     this.handleShortcuts();
-    this.updateOverlayStatus();
+    this.updateOverlayStatus(time);
 
     if (this.isSimulationPaused) {
       return;
@@ -626,6 +627,7 @@ export class EnemyLabScene extends Phaser.Scene {
       projectile.wrapMirrorBody.destroy(true);
     }
     this.projectiles = [];
+    this.clearScrap();
   }
 
   private getSpawnPositionAroundPlayer(distance: number): Phaser.Math.Vector2 {
@@ -634,13 +636,6 @@ export class EnemyLabScene extends Phaser.Scene {
       wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width),
       wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height)
     );
-  }
-
-  private spawnInitialScrap(): void {
-    for (let i = 0; i < 10; i += 1) {
-      const position = this.getSpawnPositionAroundPlayer(240 + i * 30);
-      this.spawnScrap(position.x, position.y, 1);
-    }
   }
 
   private spawnScrap(x: number, y: number, count: number): void {
@@ -663,6 +658,21 @@ export class EnemyLabScene extends Phaser.Scene {
         collected: false
       });
     }
+  }
+
+  private spawnTestScrap(): void {
+    for (let i = 0; i < 8; i += 1) {
+      const position = this.getSpawnPositionAroundPlayer(240 + i * 22);
+      this.spawnScrap(position.x, position.y, 1);
+    }
+  }
+
+  private clearScrap(): void {
+    for (const scrap of this.scrapPickups) {
+      scrap.body.destroy();
+      scrap.wrapMirrorBody.destroy();
+    }
+    this.scrapPickups = [];
   }
 
   private removeCollectedScrap(): void {
@@ -855,6 +865,8 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="spawn">Spawn</button>
           <button data-action="squad">Squad</button>
           <button data-action="clear">Clear</button>
+          <button data-action="spawnScrap">Spawn Scrap</button>
+          <button data-action="clearScrap">Clear Drops</button>
           <button data-action="ai">AI</button>
           <button data-action="invuln">Invuln</button>
           <button data-action="labels">Labels</button>
@@ -1041,6 +1053,8 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'spawn') this.spawnSelectedEnemy();
       if (action === 'squad') this.spawnSelectedSquad();
       if (action === 'clear') this.clearEnemies();
+      if (action === 'spawnScrap') this.spawnTestScrap();
+      if (action === 'clearScrap') this.clearScrap();
       if (action === 'newVariant') this.createVariantForSelectedEnemy();
       if (action === 'saveVariant') this.persistVariantFromControls();
       if (action === 'resetVariant') this.resetSelectedVariant();
@@ -1635,21 +1649,29 @@ export class EnemyLabScene extends Phaser.Scene {
     this.syncSquadControlsFromState();
   }
 
-  private updateOverlayStatus(): void {
+  private updateOverlayStatus(time: number): void {
     if (!this.overlay) {
+      return;
+    }
+    if (time < this.nextOverlayStatusUpdateAt) {
       return;
     }
 
     const selected = getEnemyLabDefinitions()[this.selectedEnemyIndex];
     const variant = this.getSelectedVariant();
     const customSquad = this.getSelectedCustomSquad();
-    this.overlay.status.textContent =
+    const statusText =
       `${variant?.displayName ?? selected.displayName} | custom squad ${customSquad?.displayName ?? 'none'} | ` +
       `enemies ${this.enemies.length} | shots ${this.projectiles.length} | scrap ${this.scrapPickups.length} | ` +
       `AI ${this.isAiEnabled ? 'on' : 'off'} | invuln ${this.isPlayerInvulnerable ? 'on' : 'off'} | ` +
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
       `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL}`;
+    if (statusText !== this.lastOverlayStatusText) {
+      this.overlay.status.textContent = statusText;
+      this.lastOverlayStatusText = statusText;
+    }
+    this.nextOverlayStatusUpdateAt = time + 250;
   }
 
   private emitPlayerThruster(time: number, forward: Phaser.Math.Vector2): void {
