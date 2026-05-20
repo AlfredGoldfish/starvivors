@@ -898,8 +898,25 @@ export class EnemyLabScene extends Phaser.Scene {
         <button data-action="toggleOverlay">Hide UI</button>
       </div>
       <section class="enemy-lab-panel">
+        <div class="enemy-lab-panel-title">Test Enemy</div>
         <label>Enemy <select data-field="enemy"></select></label>
         <label>Variant <select data-field="variant"></select></label>
+        <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="9999" step="1" value="1"></label>
+        <div class="enemy-lab-row enemy-lab-primary-row">
+          <button data-action="spawn">Spawn Enemy</button>
+          <button data-action="clear">Clear Enemies</button>
+        </div>
+        <div class="enemy-lab-subtitle">Testing Toggles</div>
+        <div class="enemy-lab-row">
+          <button data-action="ai">AI</button>
+          <button data-action="invuln">Invuln</button>
+          <button data-action="labels">Labels</button>
+          <button data-action="telegraphs">Telegraphs</button>
+          <button data-action="pause">Pause</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel">
+        <div class="enemy-lab-panel-title">Variant Editor</div>
         <label>Name <input data-field="variantName" type="text" maxlength="48"></label>
         <label>Status <select data-field="variantStatus"></select></label>
         <div class="enemy-lab-row">
@@ -922,6 +939,10 @@ export class EnemyLabScene extends Phaser.Scene {
           <label>Mass <input data-field="statMass" type="number" min="0.1" max="9999" step="0.1"></label>
           <label>Contact <input data-field="statContactDamage" type="number" min="0" max="9999" step="1"></label>
         </div>
+        <div class="enemy-lab-row enemy-lab-primary-row">
+          <button data-action="spawn">Spawn Enemy</button>
+          <button data-action="clear">Clear Enemies</button>
+        </div>
         <div class="enemy-lab-subtitle">Behavior Params</div>
         <div class="enemy-lab-param-grid" data-field="behaviorParams"></div>
         <textarea data-field="variantNotes" rows="4" placeholder="Write dev feedback while testing."></textarea>
@@ -932,15 +953,18 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
       </section>
       <section class="enemy-lab-panel">
+        <div class="enemy-lab-panel-title">Squad Builder</div>
         <label>Built-in <select data-field="squad"></select></label>
         <label>Custom <select data-field="customSquad"></select></label>
+        <div class="enemy-lab-row enemy-lab-primary-row">
+          <button data-action="spawnSquad">Test Squad</button>
+          <button data-action="addSquadEntry">Add Selected Enemy</button>
+        </div>
         <label>Squad name <input data-field="squadName" type="text" maxlength="48"></label>
         <label>Squad status <select data-field="squadStatus"></select></label>
         <div class="enemy-lab-row">
           <button data-action="newSquad">New Squad</button>
           <button data-action="copyBuiltInSquad">Copy Built-in</button>
-          <button data-action="addSquadEntry">Add Enemy</button>
-          <button data-action="spawnSquad">Test Squad</button>
           <button data-action="exportSquad">Export Squad</button>
           <button data-action="deleteSquad">Delete Squad</button>
         </div>
@@ -956,22 +980,14 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-squad-entries" data-field="squadEntries"></div>
       </section>
       <section class="enemy-lab-panel">
-        <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="9999" step="1" value="1"></label>
+        <div class="enemy-lab-panel-title">Lab Settings</div>
         <label>Lab speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
         <label>Lab HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
         <label>Fire rate <input data-field="fireRate" type="range" min="0.25" max="3" step="0.05" value="1"></label>
         <label>Nudge <input data-field="deconflict" type="range" min="0" max="3" step="0.05" value="1"></label>
         <div class="enemy-lab-row">
-          <button data-action="spawn">Spawn</button>
-          <button data-action="squad">Squad</button>
-          <button data-action="clear">Clear</button>
-          <button data-action="ai">AI</button>
-          <button data-action="invuln">Invuln</button>
-          <button data-action="labels">Labels</button>
-          <button data-action="telegraphs">Telegraphs</button>
           <button data-action="deconflict">Deconflict</button>
           <button data-action="collisionDebug">Hit Circles</button>
-          <button data-action="pause">Pause</button>
           <button data-action="exportDiagnostics">Export Diagnostics</button>
         </div>
       </section>
@@ -1875,8 +1891,8 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     for (const action of actions) {
-      const button = this.overlay.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
-      if (button) {
+      const buttons = this.overlay.root.querySelectorAll<HTMLButtonElement>(`[data-action="${action}"]`);
+      for (const button of buttons) {
         button.disabled = !enabled;
       }
     }
@@ -1887,13 +1903,11 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    const button = this.overlay.root.querySelector<HTMLButtonElement>(`[data-action="${action}"]`);
-    if (!button) {
-      return;
+    const buttons = this.overlay.root.querySelectorAll<HTMLButtonElement>(`[data-action="${action}"]`);
+    for (const button of buttons) {
+      button.classList.toggle('is-active', active);
+      button.textContent = active ? activeLabel : inactiveLabel;
     }
-
-    button.classList.toggle('is-active', active);
-    button.textContent = active ? activeLabel : inactiveLabel;
   }
 
   private syncActionButtonStates(): void {
