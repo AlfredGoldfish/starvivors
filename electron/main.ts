@@ -16,16 +16,28 @@ const categoryFolders: Record<DesktopFileCategory, string> = {
 };
 
 let mainWindow: BrowserWindow | undefined;
+let enemyLabWindow: BrowserWindow | undefined;
 const pendingMainProcessErrors: string[] = [];
 
 installMainProcessDiagnostics();
 
-async function createWindow(): Promise<void> {
-  mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 720,
-    minWidth: 960,
-    minHeight: 540,
+function createDesktopWindow(input: {
+  title: string;
+  width: number;
+  height: number;
+  minWidth: number;
+  minHeight: number;
+  x?: number;
+  y?: number;
+}): BrowserWindow {
+  return new BrowserWindow({
+    title: input.title,
+    width: input.width,
+    height: input.height,
+    minWidth: input.minWidth,
+    minHeight: input.minHeight,
+    x: input.x,
+    y: input.y,
     backgroundColor: '#02040a',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -33,6 +45,19 @@ async function createWindow(): Promise<void> {
       nodeIntegration: false,
       sandbox: false
     }
+  });
+}
+
+async function createMainWindow(): Promise<void> {
+  mainWindow = createDesktopWindow({
+    title: 'Starvivors',
+    width: 1280,
+    height: 720,
+    minWidth: 960,
+    minHeight: 540
+  });
+  mainWindow.on('closed', () => {
+    mainWindow = undefined;
   });
 
   if (isDev) {
@@ -46,14 +71,44 @@ async function createWindow(): Promise<void> {
   await mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
+async function createEnemyLabWindow(): Promise<void> {
+  enemyLabWindow = createDesktopWindow({
+    title: 'Starvivors Enemy Lab',
+    width: 1280,
+    height: 720,
+    minWidth: 960,
+    minHeight: 540,
+    x: 80,
+    y: 80
+  });
+  enemyLabWindow.on('closed', () => {
+    enemyLabWindow = undefined;
+  });
+
+  if (isDev) {
+    await enemyLabWindow.loadURL('http://127.0.0.1:5173/enemy-lab.html');
+    if (process.env.STARVIVORS_OPEN_DEVTOOLS === '1') {
+      enemyLabWindow.webContents.openDevTools({ mode: 'detach' });
+    }
+    return;
+  }
+
+  await enemyLabWindow.loadFile(path.join(__dirname, '../dist/enemy-lab.html'));
+}
+
+async function createWindows(): Promise<void> {
+  await createMainWindow();
+  await createEnemyLabWindow();
+}
+
 app.whenReady().then(async () => {
   registerFileIpc();
   await flushPendingMainProcessErrors();
-  await createWindow();
+  await createWindows();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      void createWindow();
+      void createWindows();
     }
   });
 });
