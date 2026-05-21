@@ -1769,6 +1769,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessResultsContinueFuel();
     }
 
+    if (query.get('testHarness') === 'asteroidStaleDestroy') {
+      this.runTestHarnessAsteroidStaleDestroy();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -3115,6 +3119,63 @@ export class GameScene extends Phaser.Scene {
         continued,
         fuelControlsPass,
         continuePass
+      })
+    );
+  }
+
+  private runTestHarnessAsteroidStaleDestroy(): void {
+    this.startRun();
+    this.clearAsteroids();
+    this.clearScrapPickups();
+
+    const center = getArenaCenter(this.arena);
+    const nearbyAsteroids = [
+      this.createAsteroidInstance(center.x + 36, center.y, 1, new Phaser.Math.Vector2(0, 0)),
+      this.createAsteroidInstance(center.x - 36, center.y, 1, new Phaser.Math.Vector2(0, 0)),
+      this.createAsteroidInstance(center.x, center.y + 36, 1, new Phaser.Math.Vector2(0, 0))
+    ];
+    const source = this.createAsteroidInstance(center.x, center.y, 1, new Phaser.Math.Vector2(0, 0));
+
+    this.basicAsteroids.push(...nearbyAsteroids, source);
+    const staleSourceIndex = this.basicAsteroids.indexOf(source);
+    let staleIndexNoop = false;
+    let sourceDestroyed = false;
+    let errorMessage = '';
+
+    try {
+      this.applyPulseExplosion(
+        {
+          damage: ASTEROID_TIER_CONFIG[1].hp,
+          effects: {
+            explosionRadius: 160,
+            explosionDamageMultiplier: 1
+          }
+        } as PlayerProjectile,
+        source.body,
+        source.body.x,
+        source.body.y
+      );
+      staleIndexNoop = !this.destroyBasicAsteroid(staleSourceIndex);
+      sourceDestroyed = this.destroyBasicAsteroidInstance(source);
+    } catch (error) {
+      errorMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    const pass =
+      errorMessage === '' &&
+      staleIndexNoop &&
+      sourceDestroyed &&
+      !this.basicAsteroids.includes(source);
+
+    document.body.setAttribute('data-starvivors-asteroid-stale-destroy-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-asteroid-stale-destroy-harness-details',
+      JSON.stringify({
+        staleSourceIndex,
+        staleIndexNoop,
+        sourceDestroyed,
+        activeAsteroids: this.basicAsteroids.length,
+        errorMessage
       })
     );
   }
@@ -8668,8 +8729,8 @@ export class GameScene extends Phaser.Scene {
   ): void {
     this.damageAsteroid(asteroid, damage, source, false);
     const index = this.basicAsteroids.indexOf(asteroid);
-    if (asteroid.hp <= 0 && index >= 0) {
-      this.destroyBasicAsteroid(index);
+    if (asteroid.hp <= 0) {
+      this.destroyBasicAsteroidInstance(asteroid);
     } else if (index >= 0) {
       this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
     }
@@ -8995,9 +9056,8 @@ export class GameScene extends Phaser.Scene {
     this.damageAsteroid(asteroid, damage, 'shield', true);
     this.emitAsteroidImpactExplosion(asteroid.body.x, asteroid.body.y, asteroid.tier);
 
-    const index = this.basicAsteroids.indexOf(asteroid);
-    if (asteroid.hp <= 0 && index >= 0) {
-      this.destroyBasicAsteroid(index);
+    if (asteroid.hp <= 0) {
+      this.destroyBasicAsteroidInstance(asteroid);
     } else {
       this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
       this.applyRammingShieldAsteroidImpulse(asteroid);
@@ -9745,12 +9805,12 @@ export class GameScene extends Phaser.Scene {
       projectile,
       targets: this.basicAsteroids,
       getTargetHitRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
-      onHit: (asteroid, i) => {
+      onHit: (asteroid) => {
         this.damageAsteroid(asteroid, projectile.damage, 'enemy', true);
 
         if (asteroid.hp <= 0) {
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
-          this.destroyBasicAsteroid(i, false);
+          this.destroyBasicAsteroidInstance(asteroid, false);
         } else {
           this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
@@ -10889,7 +10949,7 @@ export class GameScene extends Phaser.Scene {
 
       this.damageAsteroid(asteroid, this.rollPlayerDamage(baseDamage), 'player', true);
       if (asteroid.hp <= 0) {
-        this.destroyBasicAsteroid(i);
+        this.destroyBasicAsteroidInstance(asteroid);
       } else {
         this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
       }
@@ -11309,14 +11369,14 @@ export class GameScene extends Phaser.Scene {
       projectile,
       targets: this.basicAsteroids,
       getTargetHitRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
-      onHit: (asteroid, i) => {
+      onHit: (asteroid) => {
         const appliedDamage = this.damageAsteroid(asteroid, this.rollPlayerDamage(projectile.damage), 'player', true);
         const destroyedAsteroid = asteroid.hp <= 0;
         this.applyPulseProjectileHitEffects(projectile, asteroid.body, asteroid.body.x, asteroid.body.y, appliedDamage, destroyedAsteroid);
 
         if (destroyedAsteroid) {
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
-          this.destroyBasicAsteroid(i);
+          this.destroyBasicAsteroidInstance(asteroid);
         } else {
           this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
           this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
@@ -11332,8 +11392,25 @@ export class GameScene extends Phaser.Scene {
 
   private applyAsteroidImpactFromProjectile(_asteroid: BasicAsteroid, _projectile: PlayerProjectile | EnemyProjectile): void {}
 
-  private destroyBasicAsteroid(index: number, grantReward = true, shardStyle: DeathShardStyle = 'asteroid'): void {
+  private destroyBasicAsteroid(index: number, grantReward = true, shardStyle: DeathShardStyle = 'asteroid'): boolean {
     const asteroid = this.basicAsteroids[index];
+    if (!asteroid) {
+      return false;
+    }
+
+    return this.destroyBasicAsteroidInstance(asteroid, grantReward, shardStyle);
+  }
+
+  private destroyBasicAsteroidInstance(
+    asteroid: BasicAsteroid,
+    grantReward = true,
+    shardStyle: DeathShardStyle = 'asteroid'
+  ): boolean {
+    const index = this.basicAsteroids.indexOf(asteroid);
+    if (index < 0 || !asteroid.body.scene) {
+      return false;
+    }
+
     const x = asteroid.body.x;
     const y = asteroid.body.y;
     const velocity = asteroid.velocity.clone();
@@ -11357,6 +11434,8 @@ export class GameScene extends Phaser.Scene {
     if (breakupPlan.fragmentTiers.length > 0) {
       this.spawnAsteroidFragments(x, y, velocity, asteroid.breakupProfile, breakupPlan.fragmentTiers, asteroid.tier);
     }
+
+    return true;
   }
 
   private recordAsteroidDestruction(time: number): number {
