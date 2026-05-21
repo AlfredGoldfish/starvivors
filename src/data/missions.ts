@@ -1,6 +1,7 @@
 import type { SectorRegionType } from '../systems/sectorGeneration';
 import type { RareEventDefinitionId } from './rareEvents';
 import type { WorldEventDefinitionId } from './worldEvents';
+import type { RewardHookId } from '../systems/progressionStorage';
 
 export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe' | 'mothership-contract' | 'rift-cache-contract';
 export type MissionDifficulty = 'Low' | 'Medium' | 'High';
@@ -19,6 +20,7 @@ export interface MissionDefinition {
   objectiveRadius: number;
   guaranteedWorldEventId?: WorldEventDefinitionId;
   guaranteedRareEventId?: RareEventDefinitionId;
+  rewardUnlockHooks?: RewardHookId[];
 }
 
 export const DEFAULT_MISSION_ID: MissionDefinitionId = 'survey-signal';
@@ -34,7 +36,8 @@ export const missionRegistry: MissionDefinition[] = [
     difficulty: 'Low',
     rewardPreview: 'Credits + route data',
     preferredRegionTypes: ['anomaly-signal', 'salvage-field'],
-    objectiveRadius: 118
+    objectiveRadius: 118,
+    rewardUnlockHooks: ['mission.survey-signal']
   },
   {
     id: 'salvage-cache',
@@ -46,7 +49,8 @@ export const missionRegistry: MissionDefinition[] = [
     difficulty: 'Medium',
     rewardPreview: 'Scrap + upgrade lead',
     preferredRegionTypes: ['salvage-field', 'asteroid-belt'],
-    objectiveRadius: 108
+    objectiveRadius: 108,
+    rewardUnlockHooks: ['mission.salvage-cache']
   },
   {
     id: 'enemy-probe',
@@ -58,7 +62,8 @@ export const missionRegistry: MissionDefinition[] = [
     difficulty: 'High',
     rewardPreview: 'Credits + threat intel',
     preferredRegionTypes: ['enemy-territory', 'anomaly-signal'],
-    objectiveRadius: 104
+    objectiveRadius: 104,
+    rewardUnlockHooks: ['mission.enemy-probe']
   },
   {
     id: 'mothership-contract',
@@ -71,7 +76,8 @@ export const missionRegistry: MissionDefinition[] = [
     rewardPreview: 'Scrap + weapon lead',
     preferredRegionTypes: ['enemy-territory', 'anomaly-signal'],
     objectiveRadius: 180,
-    guaranteedWorldEventId: 'mothership-prototype'
+    guaranteedWorldEventId: 'mothership-prototype',
+    rewardUnlockHooks: ['mission.mothership-contract']
   },
   {
     id: 'rift-cache-contract',
@@ -84,7 +90,8 @@ export const missionRegistry: MissionDefinition[] = [
     rewardPreview: 'Scrap + scanner lead',
     preferredRegionTypes: ['anomaly-signal', 'salvage-field'],
     objectiveRadius: 360,
-    guaranteedRareEventId: 'unstable-black-hole-cache'
+    guaranteedRareEventId: 'unstable-black-hole-cache',
+    rewardUnlockHooks: ['mission.rift-cache-contract', 'sector-scanner.black-hole-cache']
   }
 ];
 

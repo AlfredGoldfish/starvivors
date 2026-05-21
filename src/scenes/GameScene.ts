@@ -319,6 +319,25 @@ import {
   type RareEventInstance
 } from '../systems/rareEventRuntime';
 import { createRareEventBody as createRareEventBodySystem } from '../systems/rareEventVisuals';
+import {
+  getNextSectorScannerLevel,
+  getSectorScannerCost,
+  isSectorScannerAvailable,
+  loadProgressionState,
+  saveProgressionState,
+  resetProgressionState,
+  type ProgressionState,
+  type RewardHookId
+} from '../systems/progressionStorage';
+import {
+  createSectorScannerRuntime,
+  getSectorScannerSnapshot,
+  getSectorScannerTarget,
+  updateSectorScannerRuntime,
+  type SectorScannerRuntime,
+  type SectorScannerTarget
+} from '../systems/sectorScanner';
+import { resolveMissionReward, resolveRareEventReward, resolveWorldEventReward } from '../systems/rewardResolver';
 import { generateWorldEvents, type GeneratedWorldEvent } from '../systems/worldEventGeneration';
 import {
   PerformanceProfilerSystem,
@@ -541,7 +560,9 @@ const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
   { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, url: blackHoleEventHorizonLinesUrl }
 ] as const;
 
-const UPGRADE_OVERLAY_CHOICE_COUNT = 6;
+const UPGRADE_OVERLAY_CHOICE_COUNT = 3;
+const REROLL_BASE_COST = 5;
+const REROLL_DEBUG_BASE_COST = 10;
 const DEATH_SHARD_MAX_ACTIVE = 180;
 const ASTEROID_DEATH_SHARD_BURST_LIMIT = 24;
 const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
@@ -754,12 +775,17 @@ export class GameScene extends Phaser.Scene {
   private selectedShipId: ShipId = DEFAULT_SHIP_ID;
   private hangarPreviewShipId: ShipId = DEFAULT_SHIP_ID;
   private unlockedShipIds = new Set<ShipId>([DEFAULT_SHIP_ID]);
+  private progressionState: ProgressionState = loadProgressionState();
   private playerHull = PLAYER_MAX_HULL;
   private rammingShieldState: RammingShieldRuntimeState = createRammingShieldRuntimeState(false);
   private runScrapTotal = 0;
+  private runScrapSpent = 0;
   private lastRunScrapTotal = 0;
   private totalCredits = 0;
   private lastRunCreditsEarned = 0;
+  private lastRunScrapSpent = 0;
+  private lastRunScrapConverted = 0;
+  private lastRunUnlockedRewards: RewardHookId[] = [];
   private hasPaidRunCredits = false;
   private lastRunSurvivalMs = 0;
   private playerInvulnerableUntil = 0;
@@ -773,6 +799,8 @@ export class GameScene extends Phaser.Scene {
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
   private bankedUpgrades = 0;
+  private rerollsThisRun = 0;
+  private debugRerollCostBase = REROLL_BASE_COST;
   private asteroidCameraViewCount = 0;
   private asteroidWrappedViewCount = 0;
   private asteroidWrapMirrorCount = 0;
@@ -810,8 +838,9 @@ export class GameScene extends Phaser.Scene {
   private blackHoleDebugControls!: BlackHoleDebugControls;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
-  private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
-  private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
+  private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.permanentUpgradeLevels };
+  private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.activePermanentUpgradeLevels };
+  private sectorScannerRuntime: SectorScannerRuntime = createSectorScannerRuntime();
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private upgradeOverlayPromptText!: Phaser.GameObjects.Text;
@@ -820,6 +849,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayChoiceHitZones: Phaser.GameObjects.Zone[] = [];
   private normalUpgradeOverlayChoices: UpgradeOverlayChoice[] | null = null;
   private specialUpgradeOverlayChoices: UpgradeDefinition[] | null = null;
+  private sectorScannerArrow?: Phaser.GameObjects.Graphics;
   private nextDebugMenuRefreshAt = 0;
   private isDebugMenuRefreshDirty = true;
   private minimap!: MinimapSystem;
@@ -921,6 +951,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.createInput();
     this.createBackgroundTextures();
+    this.applyProgressionState(loadProgressionState());
     this.showMainMenu();
     this.installTestHarness();
     this.autoRunDiagnostics.installGlobalHandlers();
@@ -970,6 +1001,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
       this.profileStep('world-events', () => this.updateWorldEvents(time));
       this.profileStep('rare-events', () => this.updateRareEvents(time, deltaSeconds));
+      this.profileStep('sector-scanner', () => this.updateSectorScanner(deltaSeconds));
       this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
       this.profileStep('sector-streaming', () => this.updateSectorStreaming());
       this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
@@ -1151,6 +1183,9 @@ export class GameScene extends Phaser.Scene {
         clearScrap: () => this.runDebugMenuAction(() => this.clearScrapPickups()),
         addScrap: (amount) => this.runDebugMenuAction(() => this.addRunScrap(amount)),
         addCredits: (amount) => this.runDebugMenuAction(() => this.addDebugCredits(amount)),
+        toggleRerollDebugCost: () => this.runDebugMenuAction(() => {
+          this.debugRerollCostBase = this.debugRerollCostBase === REROLL_BASE_COST ? REROLL_DEBUG_BASE_COST : REROLL_BASE_COST;
+        }),
         clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPlayerProjectiles()),
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
@@ -1330,6 +1365,7 @@ export class GameScene extends Phaser.Scene {
   private addDebugCredits(amount: number): void {
     const shouldReopenDebugMenu = this.debugMenuHost?.isOpen() ?? false;
     this.totalCredits = Math.max(0, this.totalCredits + amount);
+    this.saveProgression();
 
     if (this.gameFlowState === 'mainMenu') {
       this.showMainMenu();
@@ -1492,7 +1528,10 @@ export class GameScene extends Phaser.Scene {
       activeDebris: this.enemyWreckageDebris.length,
       activeScrapPickups: this.scrapPickups.length,
       runScrapTotal: this.runScrapTotal,
+      runScrapSpent: this.runScrapSpent,
       totalCredits: this.totalCredits,
+      nextRerollCost: this.getNextRerollCost(),
+      debugRerollCostBase: this.debugRerollCostBase,
       playerProjectiles: this.playerProjectiles.length,
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
@@ -1532,6 +1571,7 @@ export class GameScene extends Phaser.Scene {
       getState: () => this.getTestHarnessState(),
       addCredits: (amount: number) => {
         this.totalCredits = Math.max(0, this.totalCredits + amount);
+        this.saveProgression();
         return this.getTestHarnessState();
       },
       purchasePermanentUpgrade: (upgradeId: PermanentUpgradeId) => {
@@ -1677,6 +1717,36 @@ export class GameScene extends Phaser.Scene {
         this.debugFuelDrainMode = this.debugFuelDrainMode === 'timer-plus-thrust' ? 'thrust-only' : 'timer-plus-thrust';
         return this.getTestHarnessState();
       },
+      resetProgression: () => {
+        this.applyProgressionState(resetProgressionState());
+        return this.getTestHarnessState();
+      },
+      unlockRewardHook: (hook: string) => {
+        this.recordUnlockedRewards([hook as RewardHookId]);
+        return this.getTestHarnessState();
+      },
+      purchaseSectorScanner: () => {
+        this.purchaseSectorScanner();
+        return this.getTestHarnessState();
+      },
+      fastForwardScanner: () => {
+        this.updateSectorScanner(5 * 60);
+        this.updateMinimap();
+        this.updateGameplayHud(this.time.now);
+        return this.getTestHarnessState();
+      },
+      addRunScrap: (amount: number) => {
+        this.addRunScrap(amount);
+        return this.getTestHarnessState();
+      },
+      rerollUpgrades: () => {
+        this.rerollUpgradeOverlayChoices();
+        return this.getTestHarnessState();
+      },
+      toggleRerollDebugCost: () => {
+        this.debugRerollCostBase = this.debugRerollCostBase === REROLL_BASE_COST ? REROLL_DEBUG_BASE_COST : REROLL_BASE_COST;
+        return this.getTestHarnessState();
+      },
       restartRun: () => {
         this.startRun();
         return this.getTestHarnessState();
@@ -1781,6 +1851,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase13();
     }
 
+    if (query.get('testHarness') === 'phase14') {
+      this.runTestHarnessPhase14();
+    }
+
     if (query.get('testHarness') === 'resultsContinueFuel') {
       this.runTestHarnessResultsContinueFuel();
     }
@@ -1816,6 +1890,11 @@ export class GameScene extends Phaser.Scene {
     const selectedShip = this.getSelectedShipDefinition();
     const firstWorldEvent = this.worldEvents[0];
     const firstRareEvent = this.rareEvents[0];
+    const scannerSnapshot = getSectorScannerSnapshot(
+      this.sectorScannerRuntime,
+      this.progressionState.sectorScannerLevel,
+      isSectorScannerAvailable(this.progressionState)
+    );
 
     return {
       selectedShipId: selectedShip.id,
@@ -1872,10 +1951,25 @@ export class GameScene extends Phaser.Scene {
       extractionDistance: this.getExtractionDistance(),
       playerXp: this.playerXp,
       runScrapTotal: this.runScrapTotal,
+      runScrapSpent: this.runScrapSpent,
       lastRunScrapTotal: this.lastRunScrapTotal,
+      lastRunScrapSpent: this.lastRunScrapSpent,
+      lastRunScrapConverted: this.lastRunScrapConverted,
       totalCredits: this.totalCredits,
       lastRunCreditsEarned: this.lastRunCreditsEarned,
       hasPaidRunCredits: this.hasPaidRunCredits,
+      unlockedRewardHooks: [...this.progressionState.unlockedRewardHooks],
+      lastRunUnlockedRewards: [...this.lastRunUnlockedRewards],
+      sectorScannerAvailable: scannerSnapshot.available,
+      sectorScannerLevel: scannerSnapshot.level,
+      sectorScannerProgress: scannerSnapshot.scanProgress,
+      sectorScannerTargetLabel: scannerSnapshot.targetLabel,
+      sectorScannerShowsArrow: scannerSnapshot.showArrow,
+      sectorScannerShowsMinimap: scannerSnapshot.showMinimap,
+      rerollsThisRun: this.rerollsThisRun,
+      nextRerollCost: this.getNextRerollCost(),
+      debugRerollCostBase: this.debugRerollCostBase,
+      upgradeChoiceCount: this.isUpgradeOverlayOpen ? this.getUpgradeOverlayChoices().length : UPGRADE_OVERLAY_CHOICE_COUNT,
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
@@ -3152,6 +3246,113 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase14(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase14-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase14-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    harness.selectMission('rift-cache-contract');
+    this.startRun();
+    const initial = harness.getState();
+    const blackHoleEvent = this.rareEvents.find((event) => event.definition.id === 'unstable-black-hole-cache');
+
+    if (blackHoleEvent) {
+      this.player.setPosition(
+        wrapCoordinate(blackHoleEvent.x + blackHoleEvent.definition.objectiveRadius * 0.82, this.arena.width),
+        blackHoleEvent.y
+      );
+      this.playerVelocity.set(0, 0);
+
+      for (let i = 0; i < 6; i += 1) {
+        this.updateRareEvents(this.time.now + i * 1000, 1);
+      }
+    }
+
+    const afterContract = harness.getState();
+    harness.addCredits(500);
+    const scannerLevel1 = harness.purchaseSectorScanner();
+    harness.restartRun();
+    const scannerRunInitial = harness.getState();
+    const scannerLevel1Complete = harness.fastForwardScanner();
+    const scannerLevel2 = harness.purchaseSectorScanner();
+    const scannerLevel2Visible = harness.getState();
+    const scannerLevel3 = harness.purchaseSectorScanner();
+    const scannerLevel3Visible = harness.getState();
+
+    harness.grantXp(1000);
+    harness.openUpgradeOverlay();
+    harness.addRunScrap(20);
+    const beforeReroll = harness.getState();
+    const afterReroll = harness.rerollUpgrades();
+    const debugMode = harness.toggleRerollDebugCost();
+
+    this.completeExtraction();
+    const afterResults = harness.getState();
+    const persisted = loadProgressionState();
+    const rewardPass =
+      initial.sectorScannerLevel === 0 &&
+      afterContract.missionStatus === 'completed' &&
+      afterContract.sectorScannerAvailable &&
+      afterContract.unlockedRewardHooks.includes('sector-scanner.black-hole-cache') &&
+      afterContract.lastRunUnlockedRewards.includes('sector-scanner.black-hole-cache');
+    const scannerPass =
+      scannerLevel1.sectorScannerLevel === 1 &&
+      scannerRunInitial.sectorScannerProgress === 0 &&
+      scannerLevel1Complete.sectorScannerProgress === 1 &&
+      scannerLevel1Complete.sectorScannerTargetLabel !== null &&
+      !scannerLevel1Complete.sectorScannerShowsArrow &&
+      !scannerLevel1Complete.sectorScannerShowsMinimap &&
+      scannerLevel2.sectorScannerLevel === 2 &&
+      scannerLevel2Visible.sectorScannerShowsArrow &&
+      scannerLevel3.sectorScannerLevel === 3 &&
+      scannerLevel3Visible.sectorScannerShowsMinimap;
+    const rerollPass =
+      beforeReroll.upgradeChoiceCount === 3 &&
+      beforeReroll.nextRerollCost === 5 &&
+      afterReroll.rerollsThisRun === 1 &&
+      afterReroll.runScrapTotal === beforeReroll.runScrapTotal - 5 &&
+      afterReroll.runScrapSpent === beforeReroll.runScrapSpent + 5 &&
+      afterReroll.nextRerollCost === 10 &&
+      debugMode.debugRerollCostBase === 10 &&
+      debugMode.nextRerollCost === 20;
+    const resultsPass =
+      afterResults.isResultsScreenOpen &&
+      afterResults.lastRunScrapSpent >= 5 &&
+      afterResults.lastRunScrapConverted === afterResults.runScrapTotal &&
+      persisted.sectorScannerLevel === 3;
+    const pass = rewardPass && scannerPass && rerollPass && resultsPass;
+
+    document.body.setAttribute('data-starvivors-phase14-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase14-harness-details',
+      JSON.stringify({
+        initial,
+        afterContract,
+        scannerLevel1,
+        scannerRunInitial,
+        scannerLevel1Complete,
+        scannerLevel2,
+        scannerLevel2Visible,
+        scannerLevel3,
+        scannerLevel3Visible,
+        beforeReroll,
+        afterReroll,
+        debugMode,
+        afterResults,
+        persisted,
+        rewardPass,
+        scannerPass,
+        rerollPass,
+        resultsPass
+      })
+    );
+  }
+
   private runTestHarnessResultsContinueFuel(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -3473,7 +3674,11 @@ export class GameScene extends Phaser.Scene {
     this.rareEvents = [];
     this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
+    this.runScrapSpent = 0;
     this.lastRunCreditsEarned = 0;
+    this.lastRunScrapSpent = 0;
+    this.lastRunScrapConverted = 0;
+    this.lastRunUnlockedRewards = [];
     this.hasPaidRunCredits = false;
     this.lastRunSurvivalMs = 0;
     this.playerInvulnerableUntil = 0;
@@ -3483,6 +3688,7 @@ export class GameScene extends Phaser.Scene {
     this.playerXp = 0;
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
+    this.rerollsThisRun = 0;
     this.resultsScreen = undefined;
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
@@ -3536,6 +3742,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.pauseMenuOpenedAt = 0;
     this.specialUpgradeOverlayChoices = null;
+    this.sectorScannerRuntime = createSectorScannerRuntime();
     this.totalUpgradePauseMs = 0;
     this.totalPauseMenuPauseMs = 0;
     this.debugMenuOpenedAt = 0;
@@ -3631,6 +3838,42 @@ export class GameScene extends Phaser.Scene {
     return requestedMissionId && isMissionDefinitionId(requestedMissionId)
       ? requestedMissionId
       : this.selectedMissionId;
+  }
+
+  private applyProgressionState(state: ProgressionState): void {
+    this.progressionState = state;
+    this.totalCredits = state.totalCredits;
+    this.unlockedShipIds = new Set<ShipId>(state.unlockedShipIds);
+    this.permanentUpgradeLevels = { ...state.permanentUpgradeLevels };
+    this.activePermanentUpgradeLevels = { ...state.activePermanentUpgradeLevels };
+
+    if (!this.unlockedShipIds.has(this.selectedShipId)) {
+      this.selectedShipId = DEFAULT_SHIP_ID;
+    }
+
+    if (!this.unlockedShipIds.has(this.hangarPreviewShipId)) {
+      this.hangarPreviewShipId = this.selectedShipId;
+    }
+  }
+
+  private saveProgression(): void {
+    this.progressionState.totalCredits = this.totalCredits;
+    this.progressionState.unlockedShipIds = [...this.unlockedShipIds];
+    this.progressionState.permanentUpgradeLevels = { ...this.permanentUpgradeLevels };
+    this.progressionState.activePermanentUpgradeLevels = { ...this.activePermanentUpgradeLevels };
+    saveProgressionState(this.progressionState);
+  }
+
+  private recordUnlockedRewards(hooks: RewardHookId[]): void {
+    if (hooks.length <= 0) {
+      return;
+    }
+
+    this.lastRunUnlockedRewards.push(...hooks.filter((hook) => !this.lastRunUnlockedRewards.includes(hook)));
+    this.saveProgression();
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    }
   }
 
   private startRun(): void {
@@ -3761,6 +4004,7 @@ export class GameScene extends Phaser.Scene {
     this.unlockedShipIds.add(ship.id);
     this.selectedShipId = ship.id;
     this.hangarPreviewShipId = ship.id;
+    this.saveProgression();
     this.showShipSelect();
   }
 
@@ -3792,6 +4036,9 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       backTarget,
       totalCredits: this.totalCredits,
+      isSectorScannerAvailable: isSectorScannerAvailable(this.progressionState),
+      sectorScannerLevel: this.progressionState.sectorScannerLevel,
+      sectorScannerCost: getSectorScannerCost(this.progressionState),
       getPermanentUpgradeLevel: (id) => this.getPermanentUpgradeLevel(id),
       getActivePermanentUpgradeLevel: (id) => this.getActivePermanentUpgradeLevel(id),
       isPermanentUpgradeMaxed: (upgrade) => this.isPermanentUpgradeMaxed(upgrade),
@@ -3801,6 +4048,7 @@ export class GameScene extends Phaser.Scene {
       resetCursor: () => this.resetUiCursor(),
       onPurchasePermanentUpgrade: (upgrade) => this.purchasePermanentUpgrade(upgrade),
       onAdjustActivePermanentUpgradeLevel: (id, delta) => this.adjustActivePermanentUpgradeLevel(id, delta),
+      onPurchaseSectorScanner: () => this.purchaseSectorScanner(),
       onBack: () => this.handleShopBack()
     });
     this.createDebugMenu();
@@ -3961,6 +4209,7 @@ export class GameScene extends Phaser.Scene {
     this.totalCredits -= this.getPermanentUpgradeCost(upgrade);
     this.permanentUpgradeLevels[upgrade.id] += 1;
     this.activePermanentUpgradeLevels[upgrade.id] = this.permanentUpgradeLevels[upgrade.id];
+    this.saveProgression();
     if (this.gameFlowState === 'shop') {
       this.showShop(this.shopBackTarget);
     }
@@ -3970,6 +4219,23 @@ export class GameScene extends Phaser.Scene {
     const purchasedLevel = this.getPermanentUpgradeLevel(id);
     const activeLevel = this.getActivePermanentUpgradeLevel(id);
     this.activePermanentUpgradeLevels[id] = Phaser.Math.Clamp(activeLevel + delta, 0, purchasedLevel);
+    this.saveProgression();
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    }
+  }
+
+  private purchaseSectorScanner(): void {
+    const nextLevel = getNextSectorScannerLevel(this.progressionState);
+    const cost = getSectorScannerCost(this.progressionState);
+
+    if (!nextLevel || cost === null || this.totalCredits < cost) {
+      return;
+    }
+
+    this.totalCredits -= cost;
+    this.progressionState.sectorScannerLevel = nextLevel;
+    this.saveProgression();
     if (this.gameFlowState === 'shop') {
       this.showShop(this.shopBackTarget);
     }
@@ -4577,7 +4843,99 @@ export class GameScene extends Phaser.Scene {
     }
 
     event.unlockHooksResolved = true;
-    // Phase 14 will resolve these hook ids into actual unlock storage and shop inventory.
+    const resolution = resolveRareEventReward(this.progressionState, event.definition);
+    this.recordUnlockedRewards(resolution.newlyUnlockedHooks);
+  }
+
+  private updateSectorScanner(deltaSeconds: number): void {
+    const available = isSectorScannerAvailable(this.progressionState);
+    const level = this.progressionState.sectorScannerLevel;
+    const targets = this.getSectorScannerTargets();
+
+    updateSectorScannerRuntime(
+      this.sectorScannerRuntime,
+      level,
+      deltaSeconds,
+      targets,
+      this.player.x,
+      this.player.y,
+      this.arena
+    );
+
+    const snapshot = getSectorScannerSnapshot(this.sectorScannerRuntime, level, available);
+    const target = getSectorScannerTarget(this.sectorScannerRuntime, targets);
+    this.updateSectorScannerArrow(snapshot.showArrow ? target : undefined);
+  }
+
+  private getSectorScannerTargets(): SectorScannerTarget[] {
+    const rareMarkers = createRareEventMinimapMarkers(this.rareEvents);
+    const targets: SectorScannerTarget[] = [];
+
+    for (const event of this.worldEvents) {
+      if (event.status !== 'active') {
+        continue;
+      }
+
+      targets.push({
+        id: event.id,
+        label: event.definition.shortName,
+        x: event.x,
+        y: event.y,
+        kind: 'world-event',
+        status: event.status
+      });
+    }
+
+    for (let i = 0; i < this.rareEvents.length; i += 1) {
+      const event = this.rareEvents[i];
+      if (event.status !== 'active') {
+        continue;
+      }
+
+      targets.push({
+        id: event.id,
+        label: event.definition.shortName,
+        x: event.x,
+        y: event.y,
+        kind: 'rare-event',
+        status: event.status,
+        minimapMarker: rareMarkers[i]
+      });
+    }
+
+    return targets;
+  }
+
+  private updateSectorScannerArrow(target: SectorScannerTarget | undefined): void {
+    if (!target || this.gameFlowState !== 'running' || this.isPlayerDead) {
+      this.sectorScannerArrow?.setVisible(false);
+      return;
+    }
+
+    if (!this.sectorScannerArrow) {
+      this.sectorScannerArrow = this.add.graphics().setScrollFactor(0).setDepth(1100);
+    }
+
+    const direction = this.getWrappedDirection(this.player.x, this.player.y, target.x, target.y).normalize();
+    const centerX = this.scale.width / 2;
+    const centerY = this.scale.height / 2;
+    const edgePadding = 28;
+    const edgeX = Phaser.Math.Clamp(centerX + direction.x * centerX, edgePadding, this.scale.width - edgePadding);
+    const edgeY = Phaser.Math.Clamp(centerY + direction.y * centerY, edgePadding, this.scale.height - edgePadding);
+    const rotation = Math.atan2(direction.y, direction.x);
+
+    this.sectorScannerArrow.clear();
+    this.sectorScannerArrow.setVisible(true);
+    this.sectorScannerArrow.fillStyle(0xb88cff, 0.92);
+    this.sectorScannerArrow.lineStyle(2, 0xf2fbff, 0.9);
+    const points = [
+      new Phaser.Math.Vector2(14, 0).rotate(rotation).add(new Phaser.Math.Vector2(edgeX, edgeY)),
+      new Phaser.Math.Vector2(-8, -9).rotate(rotation).add(new Phaser.Math.Vector2(edgeX, edgeY)),
+      new Phaser.Math.Vector2(-4, 0).rotate(rotation).add(new Phaser.Math.Vector2(edgeX, edgeY)),
+      new Phaser.Math.Vector2(-8, 9).rotate(rotation).add(new Phaser.Math.Vector2(edgeX, edgeY))
+    ];
+    this.sectorScannerArrow.fillPoints(points, true);
+    this.sectorScannerArrow.strokePoints(points, true);
   }
 
   private spawnWorldEventGuards(event: WorldEventInstance, time: number): void {
@@ -6556,6 +6914,17 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
   }
 
+  private spendRunScrap(amount: number): boolean {
+    if (amount <= 0 || this.runScrapTotal < amount) {
+      return false;
+    }
+
+    this.runScrapTotal -= amount;
+    this.runScrapSpent += amount;
+    this.updateGameplayHud(this.time.now);
+    return true;
+  }
+
   private emitScrapPickupFeedback(x: number, y: number, value: number): void {
     const position = this.getNearestWrappedRenderPosition(x, y);
     const particleCount = Phaser.Math.Clamp(4 + Math.ceil(value / 4), 5, 12);
@@ -6875,6 +7244,8 @@ export class GameScene extends Phaser.Scene {
     this.missionRuntime.completedAt = time;
     this.missionRuntime.failedAt = null;
     this.missionRuntime.failureReason = null;
+    const resolution = resolveMissionReward(this.progressionState, this.missionRuntime.definition);
+    this.recordUnlockedRewards(resolution.newlyUnlockedHooks);
     this.updateGameplayHud(time);
     this.completeMissionRun(time);
   }
@@ -6888,8 +7259,7 @@ export class GameScene extends Phaser.Scene {
     this.hasExtracted = false;
     this.runEndReason = 'mission';
     this.gameFlowState = 'results';
-    this.lastRunScrapTotal = this.runScrapTotal;
-    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(time);
+    this.captureRunResults(time);
     this.payRunCredits();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
@@ -6949,6 +7319,28 @@ export class GameScene extends Phaser.Scene {
     return this.missionRuntime.status;
   }
 
+  private getSectorScannerHudStatus(): string {
+    const snapshot = getSectorScannerSnapshot(
+      this.sectorScannerRuntime,
+      this.progressionState.sectorScannerLevel,
+      isSectorScannerAvailable(this.progressionState)
+    );
+
+    if (!snapshot.available) {
+      return 'LOCKED';
+    }
+
+    if (snapshot.level <= 0) {
+      return 'AVAILABLE IN SHOP';
+    }
+
+    if (snapshot.completed) {
+      return `${snapshot.targetLabel ?? 'SIGNAL'} FOUND`;
+    }
+
+    return `${Math.floor(snapshot.scanProgress * 100)}%`;
+  }
+
   private updateExtraction(time: number): void {
     this.updateExtractionBeaconVisual(time);
 
@@ -7000,8 +7392,7 @@ export class GameScene extends Phaser.Scene {
     this.extractionRequiresExitBeforeCompletion = false;
     this.gameFlowState = 'results';
     this.failMission('extracted-early', this.time.now);
-    this.lastRunScrapTotal = this.runScrapTotal;
-    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
+    this.captureRunResults(this.time.now);
     this.payRunCredits();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
@@ -7090,6 +7481,11 @@ export class GameScene extends Phaser.Scene {
     if (this.isPauseJustDown()) {
       this.closeUpgradeOverlay(time);
       this.suppressPauseToggleUntil = time + 120;
+      return;
+    }
+
+    if (this.isControlJustDown('restart')) {
+      this.rerollUpgradeOverlayChoices();
       return;
     }
 
@@ -7377,6 +7773,38 @@ export class GameScene extends Phaser.Scene {
           ]).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
 
     return this.normalUpgradeOverlayChoices;
+  }
+
+  private getNextRerollCost(): number {
+    return this.debugRerollCostBase * (this.rerollsThisRun + 1);
+  }
+
+  private canRerollUpgradeOverlay(): boolean {
+    return (
+      this.isUpgradeOverlayOpen &&
+      this.specialUpgradeOverlayChoices === null &&
+      this.getSecondaryWeaponChoices().length <= 0 &&
+      this.runScrapTotal >= this.getNextRerollCost()
+    );
+  }
+
+  private rerollUpgradeOverlayChoices(): void {
+    if (!this.canRerollUpgradeOverlay()) {
+      return;
+    }
+
+    const previousChoices = new Set(this.getUpgradeOverlayChoices().map((choice) => choice.category === 'secondary-weapon' ? choice.weaponId : choice.id));
+    const cost = this.getNextRerollCost();
+    if (!this.spendRunScrap(cost)) {
+      return;
+    }
+
+    this.rerollsThisRun += 1;
+    const available = getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions());
+    const fresh = Phaser.Utils.Array.Shuffle([...available.filter((choice) => !previousChoices.has(choice.id))]);
+    const fallback = Phaser.Utils.Array.Shuffle([...available]);
+    this.normalUpgradeOverlayChoices = (fresh.length >= UPGRADE_OVERLAY_CHOICE_COUNT ? fresh : fallback).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+    this.refreshUpgradeOverlayText();
   }
 
   private getSpecialUpgradeDropChoices(): UpgradeDefinition[] {
@@ -8356,8 +8784,11 @@ export class GameScene extends Phaser.Scene {
     const cooldownSeconds = this.getPulseCannonCooldownMs() / 1000;
     const speed = Math.round(this.getActiveAutoWeaponProjectileSpeed());
     const choices = this.getUpgradeOverlayChoices();
+    const rerollCost = this.getNextRerollCost();
     const choicePrompt =
-      choices.length > 0 ? `Click a card or press 1-${choices.length} to choose.  Esc closes without spending.` : 'Esc closes.';
+      choices.length > 0
+        ? `Click a card or press 1-${choices.length} to choose.  R rerolls for ${rerollCost} scrap.  Esc closes.`
+        : 'Esc closes.';
 
     this.drawUpgradeOverlayCards(choices);
     choices.forEach((choice, index) => {
@@ -8384,6 +8815,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayText.setText(
       `${this.specialUpgradeOverlayChoices ? 'SPECIAL UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
         `Banked upgrades: ${this.bankedUpgrades}\n` +
+        `Run scrap: ${this.runScrapTotal}  Reroll cost: ${rerollCost}\n` +
         `${activeWeapon.displayName}: ${activeDamage} damage, x${damageMultiplier.toFixed(2)}, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
         `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames`
     );
@@ -9716,8 +10148,7 @@ export class GameScene extends Phaser.Scene {
     this.gameFlowState = 'results';
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
-    this.lastRunScrapTotal = this.runScrapTotal;
-    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
+    this.captureRunResults(this.time.now);
     this.payRunCredits();
     this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
@@ -9766,10 +10197,18 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.lastRunCreditsEarned = Math.floor(
-      this.lastRunScrapTotal * SCRAP_TO_CREDIT_RATE * this.getScrapCreditMultiplier()
+      this.lastRunScrapConverted * SCRAP_TO_CREDIT_RATE * this.getScrapCreditMultiplier()
     );
     this.totalCredits += this.lastRunCreditsEarned;
     this.hasPaidRunCredits = true;
+    this.saveProgression();
+  }
+
+  private captureRunResults(time: number): void {
+    this.lastRunScrapTotal = this.runScrapTotal + this.runScrapSpent;
+    this.lastRunScrapSpent = this.runScrapSpent;
+    this.lastRunScrapConverted = this.runScrapTotal;
+    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(time);
   }
 
   private getScrapCreditMultiplier(): number {
@@ -9786,8 +10225,11 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       survivalTimeLabel: this.formatSurvivalTime(elapsedSeconds),
       scrapCollected: this.lastRunScrapTotal,
+      scrapSpent: this.lastRunScrapSpent,
+      scrapConverted: this.lastRunScrapConverted,
       creditsEarned: this.lastRunCreditsEarned,
       totalCredits: this.totalCredits,
+      unlockedRewards: this.lastRunUnlockedRewards,
       missionName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
       missionStatus: this.getMissionResultStatus(),
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
@@ -11524,6 +11966,8 @@ export class GameScene extends Phaser.Scene {
     event.wrapMirrorBody.setAlpha(0.28);
     this.emitWorldEventDestroyedFeedback(event);
     this.dropWorldEventRewards(event);
+    const resolution = resolveWorldEventReward(this.progressionState, event.definition);
+    this.recordUnlockedRewards(resolution.newlyUnlockedHooks);
     this.updateGameplayHud(this.time.now);
   }
 
@@ -12044,6 +12488,14 @@ export class GameScene extends Phaser.Scene {
 
   private getMinimapSnapshot(): MinimapSnapshot {
     const camera = this.cameras.main;
+    const scannerSnapshot = getSectorScannerSnapshot(
+      this.sectorScannerRuntime,
+      this.progressionState.sectorScannerLevel,
+      isSectorScannerAvailable(this.progressionState)
+    );
+    const scannerTarget = scannerSnapshot.showMinimap
+      ? getSectorScannerTarget(this.sectorScannerRuntime, this.getSectorScannerTargets())
+      : undefined;
 
     return {
       arena: this.arena,
@@ -12075,6 +12527,7 @@ export class GameScene extends Phaser.Scene {
         status: event.status
       })),
       rareEvents: createRareEventMinimapMarkers(this.rareEvents),
+      scannerTarget,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
       basicEnemies: [],
@@ -12135,7 +12588,10 @@ export class GameScene extends Phaser.Scene {
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
       missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
       runScrapTotal: this.runScrapTotal,
+      scrapSpentThisRun: this.runScrapSpent,
+      nextRerollCost: this.getNextRerollCost(),
       bankedUpgrades: this.bankedUpgrades,
+      sectorScannerStatus: this.getSectorScannerHudStatus(),
       autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',
       primaryWeaponName: primaryWeapon ? primaryWeapon.displayName : 'Empty',
       weaponStatus,

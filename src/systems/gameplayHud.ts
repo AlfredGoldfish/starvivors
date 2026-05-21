@@ -38,7 +38,10 @@ export interface GameplayHudSnapshot {
   missionObjectiveDistance: number;
   missionObjectiveRadius: number;
   runScrapTotal: number;
+  scrapSpentThisRun: number;
+  nextRerollCost: number;
   bankedUpgrades: number;
+  sectorScannerStatus: string;
   autoWeaponName: string;
   primaryWeaponName: string;
   weaponStatus: string;
@@ -165,7 +168,8 @@ export class GameplayHudSystem {
           `Extract ${Math.max(0, Math.round(snapshot.extractionDistance - snapshot.extractionRadius))}m\n` +
           `Mission ${snapshot.missionName} ${snapshot.missionStatus} ${Math.max(0, Math.round(snapshot.missionObjectiveDistance - snapshot.missionObjectiveRadius))}m\n` +
           `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
-          `Scrap ${snapshot.runScrapTotal}\n` +
+          `Scrap ${snapshot.runScrapTotal}  Spent ${snapshot.scrapSpentThisRun}  Reroll ${snapshot.nextRerollCost}\n` +
+          `Scanner ${snapshot.sectorScannerStatus}\n` +
           `Banked upgrades ${snapshot.bankedUpgrades}\n` +
           `${upgradeStatus}\n` +
           `Auto ${snapshot.autoWeaponName} ${snapshot.weaponStatus}\n` +

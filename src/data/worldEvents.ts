@@ -1,5 +1,6 @@
 import type { EncounterDefinitionId } from './encounters';
 import type { SectorRegionType } from '../systems/sectorGeneration';
+import type { RewardHookId } from '../systems/progressionStorage';
 
 export type WorldEventDefinitionId = 'mothership-prototype';
 export type WorldEventKind = 'mothership' | 'stronghold';
@@ -16,6 +17,7 @@ export interface WorldEventDefinition {
   dangerRadius: number;
   rewardScrap: number;
   rewardUpgradeCrates: number;
+  rewardUnlockHooks?: RewardHookId[];
   guardSquadIds: EncounterDefinitionId[];
 }
 
@@ -32,6 +34,7 @@ export const worldEventRegistry: WorldEventDefinition[] = [
     dangerRadius: 1180,
     rewardScrap: 120,
     rewardUpgradeCrates: 2,
+    rewardUnlockHooks: ['world-event.mothership-prototype'],
     guardSquadIds: ['gunner-escort', 'strike-wing']
   }
 ];

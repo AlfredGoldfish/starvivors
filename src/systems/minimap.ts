@@ -5,6 +5,7 @@ import type { BasicAsteroid, BasicEnemy, ScrapPickup, ShooterEnemy, TankEnemy } 
 import type { BlackHoleSystem } from './blackHole';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import type { RareEventMinimapMarker } from './rareEventRuntime';
+import type { SectorScannerTarget } from './sectorScanner';
 import { getSectorRegionColor, type SectorRegion } from './sectorGeneration';
 
 export interface MinimapSnapshot {
@@ -35,6 +36,7 @@ export interface MinimapSnapshot {
     status: 'active' | 'destroyed';
   }>;
   rareEvents?: RareEventMinimapMarker[];
+  scannerTarget?: SectorScannerTarget;
   isUpgradeOverlayOpen: boolean;
   basicAsteroids: BasicAsteroid[];
   basicEnemies: BasicEnemy[];
@@ -177,6 +179,16 @@ export class MinimapSystem {
           position.y + 4.2
         );
       }
+    }
+
+    if (snapshot.scannerTarget) {
+      const position = this.getPosition(snapshot.scannerTarget.x, snapshot.scannerTarget.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      this.graphics.lineStyle(2, 0xb88cff, 0.94);
+      this.graphics.strokeCircle(position.x, position.y, 9);
+      this.graphics.lineStyle(1, 0xf2fbff, 0.88);
+      this.graphics.strokeCircle(position.x, position.y, 12);
+      this.graphics.fillStyle(0xb88cff, 0.95);
+      this.graphics.fillTriangle(position.x, position.y - 7, position.x - 6, position.y + 5, position.x + 6, position.y + 5);
     }
 
     for (const region of snapshot.sectorRegions ?? []) {

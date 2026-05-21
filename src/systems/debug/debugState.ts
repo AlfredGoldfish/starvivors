@@ -712,7 +712,10 @@ export class DebugState {
     activeDebris: number;
     activeScrapPickups: number;
     runScrapTotal: number;
+    runScrapSpent: number;
     totalCredits: number;
+    nextRerollCost: number;
+    debugRerollCostBase: number;
     playerProjectiles: number;
     enemyProjectiles: number;
     playerHull: number;
@@ -790,7 +793,10 @@ export class DebugState {
       activeDebris: snapshot.activeDebris,
       activeScrapPickups: snapshot.activeScrapPickups,
       runScrapTotal: snapshot.runScrapTotal,
+      runScrapSpent: snapshot.runScrapSpent,
       totalCredits: snapshot.totalCredits,
+      nextRerollCost: snapshot.nextRerollCost,
+      debugRerollCostBase: snapshot.debugRerollCostBase,
       playerProjectiles: snapshot.playerProjectiles,
       enemyProjectiles: snapshot.enemyProjectiles,
       playerHull: snapshot.playerHull,

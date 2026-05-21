@@ -69,7 +69,10 @@ export interface DebugMenuValues {
   activeDebris: number;
   activeScrapPickups: number;
   runScrapTotal: number;
+  runScrapSpent: number;
   totalCredits: number;
+  nextRerollCost: number;
+  debugRerollCostBase: number;
   playerProjectiles: number;
   enemyProjectiles: number;
   playerHull: number;
@@ -172,6 +175,7 @@ export interface DebugMenuCallbacks {
   clearScrap: () => void;
   addScrap: (amount: number) => void;
   addCredits: (amount: number) => void;
+  toggleRerollDebugCost: () => void;
   clearPlayerProjectiles: () => void;
   clearEnemyProjectiles: () => void;
   restorePlayerHull: () => void;

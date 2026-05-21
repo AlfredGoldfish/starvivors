@@ -1,5 +1,6 @@
 import type { EncounterDefinitionId } from './encounters';
 import type { SectorRegionType } from '../systems/sectorGeneration';
+import type { RewardHookId } from '../systems/progressionStorage';
 
 export type RareEventDefinitionId = 'unstable-black-hole-cache' | 'hunter-swarm';
 export type RareEventKind = 'black-hole' | 'swarm';
@@ -21,7 +22,7 @@ export interface RareEventDefinition {
   investigationMs: number;
   rewardScrap: number;
   rewardUpgradeCrates: number;
-  rewardUnlockHooks: string[];
+  rewardUnlockHooks: RewardHookId[];
   squadIds: EncounterDefinitionId[];
 }
 

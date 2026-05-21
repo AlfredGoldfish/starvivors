@@ -1,0 +1,154 @@
+import { INITIAL_PERMANENT_UPGRADE_LEVELS, type PermanentUpgradeId } from '../data/permanentUpgrades';
+import { DEFAULT_SHIP_ID, type ShipId } from '../data/ships';
+import type { WeaponId } from '../data/weapons';
+
+export type RewardHookId =
+  | 'mission.survey-signal'
+  | 'mission.salvage-cache'
+  | 'mission.enemy-probe'
+  | 'mission.mothership-contract'
+  | 'mission.rift-cache-contract'
+  | 'world-event.mothership-prototype'
+  | 'sector-scanner.black-hole-cache'
+  | 'sector-scanner.hunter-swarm';
+
+export type SectorScannerLevel = 0 | 1 | 2 | 3;
+
+export interface ProgressionState {
+  schemaVersion: 1;
+  totalCredits: number;
+  unlockedShipIds: ShipId[];
+  permanentUpgradeLevels: Record<PermanentUpgradeId, number>;
+  activePermanentUpgradeLevels: Record<PermanentUpgradeId, number>;
+  unlockedRewardHooks: RewardHookId[];
+  sectorScannerLevel: SectorScannerLevel;
+  unlockedWeaponIds: WeaponId[];
+}
+
+const STORAGE_KEY = 'starvivors.progression.v1';
+
+export const SECTOR_SCANNER_COSTS: Record<Exclude<SectorScannerLevel, 0>, number> = {
+  1: 75,
+  2: 125,
+  3: 175
+};
+
+export function createDefaultProgressionState(): ProgressionState {
+  return {
+    schemaVersion: 1,
+    totalCredits: 0,
+    unlockedShipIds: [DEFAULT_SHIP_ID],
+    permanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
+    activePermanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
+    unlockedRewardHooks: [],
+    sectorScannerLevel: 0,
+    unlockedWeaponIds: []
+  };
+}
+
+export function loadProgressionState(): ProgressionState {
+  if (typeof window === 'undefined') {
+    return createDefaultProgressionState();
+  }
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) {
+      return createDefaultProgressionState();
+    }
+
+    return normalizeProgressionState(JSON.parse(raw));
+  } catch {
+    return createDefaultProgressionState();
+  }
+}
+
+export function saveProgressionState(state: ProgressionState): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeProgressionState(state)));
+}
+
+export function resetProgressionState(): ProgressionState {
+  const state = createDefaultProgressionState();
+  saveProgressionState(state);
+  return state;
+}
+
+export function normalizeProgressionState(value: unknown): ProgressionState {
+  const base = createDefaultProgressionState();
+  const record = isRecord(value) ? value : {};
+  const permanentUpgradeLevels = normalizeUpgradeLevels(record.permanentUpgradeLevels);
+  const activePermanentUpgradeLevels = normalizeUpgradeLevels(record.activePermanentUpgradeLevels);
+
+  return {
+    schemaVersion: 1,
+    totalCredits: Math.max(0, Math.floor(Number(record.totalCredits ?? base.totalCredits))),
+    unlockedShipIds: normalizeUniqueArray(record.unlockedShipIds, base.unlockedShipIds) as ShipId[],
+    permanentUpgradeLevels,
+    activePermanentUpgradeLevels: clampActiveUpgradeLevels(activePermanentUpgradeLevels, permanentUpgradeLevels),
+    unlockedRewardHooks: normalizeUniqueArray(record.unlockedRewardHooks, []) as RewardHookId[],
+    sectorScannerLevel: normalizeScannerLevel(record.sectorScannerLevel),
+    unlockedWeaponIds: normalizeUniqueArray(record.unlockedWeaponIds, []) as WeaponId[]
+  };
+}
+
+export function isSectorScannerAvailable(state: ProgressionState): boolean {
+  return (
+    state.sectorScannerLevel > 0 ||
+    state.unlockedRewardHooks.some((hook) => hook === 'sector-scanner.black-hole-cache' || hook === 'sector-scanner.hunter-swarm')
+  );
+}
+
+export function getNextSectorScannerLevel(state: ProgressionState): Exclude<SectorScannerLevel, 0> | null {
+  if (!isSectorScannerAvailable(state) || state.sectorScannerLevel >= 3) {
+    return null;
+  }
+
+  return (state.sectorScannerLevel + 1) as Exclude<SectorScannerLevel, 0>;
+}
+
+export function getSectorScannerCost(state: ProgressionState): number | null {
+  const nextLevel = getNextSectorScannerLevel(state);
+  return nextLevel ? SECTOR_SCANNER_COSTS[nextLevel] : null;
+}
+
+function normalizeUpgradeLevels(value: unknown): Record<PermanentUpgradeId, number> {
+  const source = isRecord(value) ? value : {};
+  const levels = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
+
+  for (const id of Object.keys(levels) as PermanentUpgradeId[]) {
+    levels[id] = Math.max(0, Math.floor(Number(source[id] ?? levels[id])));
+  }
+
+  return levels;
+}
+
+function clampActiveUpgradeLevels(
+  activeLevels: Record<PermanentUpgradeId, number>,
+  purchasedLevels: Record<PermanentUpgradeId, number>
+): Record<PermanentUpgradeId, number> {
+  const clamped = { ...activeLevels };
+
+  for (const id of Object.keys(clamped) as PermanentUpgradeId[]) {
+    clamped[id] = Math.max(0, Math.min(clamped[id], purchasedLevels[id]));
+  }
+
+  return clamped;
+}
+
+function normalizeUniqueArray(value: unknown, fallback: string[]): string[] {
+  const source = Array.isArray(value) ? value : fallback;
+  return [...new Set(source.filter((item): item is string => typeof item === 'string'))];
+}
+
+function normalizeScannerLevel(value: unknown): SectorScannerLevel {
+  const level = Math.max(0, Math.min(3, Math.floor(Number(value ?? 0))));
+  return level as SectorScannerLevel;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}

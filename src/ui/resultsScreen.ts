@@ -5,8 +5,11 @@ export interface ResultsScreenConfig {
   scene: Phaser.Scene;
   survivalTimeLabel: string;
   scrapCollected: number;
+  scrapSpent: number;
+  scrapConverted: number;
   creditsEarned: number;
   totalCredits: number;
+  unlockedRewards: string[];
   missionName: string;
   missionStatus: string;
   scrapToCreditRate: number;
@@ -53,12 +56,15 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     .text(
       panelX + 32,
       textTop,
-      `RUN RESULTS\n` +
+        `RUN RESULTS\n` +
         `Survival time        ${config.survivalTimeLabel}\n` +
         `Scrap collected      ${config.scrapCollected}\n` +
+        `Scrap spent          ${config.scrapSpent}\n` +
+        `Scrap converted      ${config.scrapConverted}\n` +
         `Credits earned       ${config.creditsEarned}\n` +
         `Total credits        ${config.totalCredits}\n` +
         `Mission              ${config.missionName} ${config.missionStatus}\n` +
+        `Unlocks              ${config.unlockedRewards.length > 0 ? config.unlockedRewards.join(', ') : 'None'}\n` +
         `Conversion: ${config.scrapToCreditRate} scrap = ${config.scrapToCreditRate} credit x${config.scrapCreditMultiplier.toFixed(2)}\n` +
         `Shortcut: R restarts the run`,
       {

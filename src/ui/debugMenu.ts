@@ -577,6 +577,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('run', 'add-scrap', panelX + PANEL_PADDING + 216, y, 100, '+100', () => config.callbacks.addScrap(100));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('run', 'add-credits', panelX + PANEL_PADDING, y, COLUMN_WIDTH, '+100 credits', () => config.callbacks.addCredits(100));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('run', 'reroll-cost-mode', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reroll cost mode', config.callbacks.toggleRerollDebugCost);
     setTabContentHeight('run', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
 
@@ -1717,7 +1719,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
             values.fuelDrainEnabled ? 'on' : 'paused'
           }\nMode: ${values.fuelDrainMode}`
         );
-        setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
+        setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal} / spent ${values.runScrapSpent}\nCredits: ${values.totalCredits}\nReroll next: ${values.nextRerollCost}`);
         setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
         setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
         setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
@@ -1725,6 +1727,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
         setButtonLabel('fuel-drain-toggle', `Drain: ${values.fuelDrainEnabled ? 'on' : 'paused'}`);
         setButtonLabel('fuel-mode-toggle', values.fuelDrainMode === 'timer-plus-thrust' ? 'Timer mode' : 'Thrust mode');
+        setButtonLabel('reroll-cost-mode', values.debugRerollCostBase === 5 ? 'Reroll: 5 scale' : 'Reroll: 10 scale');
       } else if (activeTab === 'ship') {
         setValue(
           'ship-stats',
