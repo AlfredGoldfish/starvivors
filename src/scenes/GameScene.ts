@@ -698,6 +698,7 @@ export class GameScene extends Phaser.Scene {
   private extractionBeacon?: Phaser.GameObjects.Container;
   private extractionBeaconRing?: Phaser.GameObjects.Arc;
   private extractionBeaconCore?: Phaser.GameObjects.Arc;
+  private extractionRequiresExitBeforeCompletion = false;
   private debugText!: Phaser.GameObjects.Text;
   private gameplayHud!: GameplayHudSystem;
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
@@ -3052,6 +3053,16 @@ export class GameScene extends Phaser.Scene {
     const modeToggled = harness.toggleFuelDrainMode();
     const dead = harness.killPlayer();
     const deathContinueBlocked = harness.continueRun();
+
+    harness.restartRun();
+    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
+    this.playerVelocity.set(0, 0);
+    this.updateExtraction(this.time.now);
+    const extracted = harness.getState();
+    const continuedFromExtraction = harness.continueRun();
+    this.updateExtraction(this.time.now + 16);
+    const afterExtractionContinueTick = harness.getState();
+
     harness.restartRun();
     if (this.missionRuntime) {
       this.player.setPosition(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
@@ -3071,6 +3082,13 @@ export class GameScene extends Phaser.Scene {
       deathContinueBlocked.isPlayerDead &&
       deathContinueBlocked.isResultsScreenOpen &&
       !deathContinueBlocked.canContinueRun &&
+      extracted.runEndReason === 'extraction' &&
+      extracted.canContinueRun &&
+      !continuedFromExtraction.isPlayerDead &&
+      !continuedFromExtraction.isResultsScreenOpen &&
+      afterExtractionContinueTick.runEndReason === 'none' &&
+      !afterExtractionContinueTick.isPlayerDead &&
+      !afterExtractionContinueTick.isResultsScreenOpen &&
       missionComplete.runEndReason === 'mission' &&
       missionComplete.canContinueRun &&
       !continued.isPlayerDead &&
@@ -3090,6 +3108,9 @@ export class GameScene extends Phaser.Scene {
         modeToggled,
         dead,
         deathContinueBlocked,
+        extracted,
+        continuedFromExtraction,
+        afterExtractionContinueTick,
         missionComplete,
         continued,
         fuelControlsPass,
@@ -3270,6 +3291,7 @@ export class GameScene extends Phaser.Scene {
     this.extractionBeacon = undefined;
     this.extractionBeaconRing = undefined;
     this.extractionBeaconCore = undefined;
+    this.extractionRequiresExitBeforeCompletion = false;
     this.missionRuntime = undefined;
     this.missionObjectiveBeacon = undefined;
     this.missionObjectiveBeaconRing = undefined;
@@ -6537,7 +6559,16 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.getExtractionDistance() <= EXTRACTION_ZONE_RADIUS) {
+    const extractionDistance = this.getExtractionDistance();
+
+    if (this.extractionRequiresExitBeforeCompletion) {
+      if (extractionDistance > EXTRACTION_ZONE_RADIUS + 24) {
+        this.extractionRequiresExitBeforeCompletion = false;
+      }
+      return;
+    }
+
+    if (extractionDistance <= EXTRACTION_ZONE_RADIUS) {
       this.completeExtraction();
     }
   }
@@ -6569,6 +6600,7 @@ export class GameScene extends Phaser.Scene {
     this.isPlayerDead = true;
     this.hasExtracted = true;
     this.runEndReason = 'extraction';
+    this.extractionRequiresExitBeforeCompletion = false;
     this.gameFlowState = 'results';
     this.failMission('extracted-early', this.time.now);
     this.lastRunScrapTotal = this.runScrapTotal;
@@ -9284,6 +9316,7 @@ export class GameScene extends Phaser.Scene {
     this.isPlayerDead = true;
     this.hasExtracted = false;
     this.runEndReason = 'death';
+    this.extractionRequiresExitBeforeCompletion = false;
     this.gameFlowState = 'results';
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
@@ -9316,6 +9349,7 @@ export class GameScene extends Phaser.Scene {
     this.isPlayerDead = false;
     this.hasExtracted = false;
     this.runEndReason = 'none';
+    this.extractionRequiresExitBeforeCompletion = false;
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -9381,11 +9415,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const continuedFromExtraction = this.runEndReason === 'extraction';
+
     this.destroyResultsScreen();
     this.gameFlowState = 'running';
     this.isPlayerDead = false;
     this.hasExtracted = false;
     this.runEndReason = 'none';
+    this.extractionRequiresExitBeforeCompletion = continuedFromExtraction;
     this.playerHull = Math.max(this.playerHull, this.getPlayerMaxHull());
     this.player.setVisible(true);
     this.playerSprite.clearTint();

@@ -25,10 +25,20 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
   const height = config.scene.scale.height;
   const centerX = width / 2;
   const centerY = height / 2;
-  const panelWidth = Math.min(width - 48, 520);
-  const panelHeight = Math.min(height - 48, 430);
+  const panelWidth = Math.min(width - 48, 560);
+  const panelHeight = Math.min(height - 48, config.canContinueRun ? 520 : 474);
   const panelX = -panelWidth / 2;
   const panelY = -panelHeight / 2;
+  const buttonWidth = 220;
+  const buttonHeight = 38;
+  const buttonGap = 10;
+  const buttonLabels = config.canContinueRun
+    ? ['Continue Run', 'Restart Run', 'Main Menu', 'Shop']
+    : ['Restart Run', 'Main Menu', 'Shop'];
+  const buttonStackHeight = buttonLabels.length * buttonHeight + (buttonLabels.length - 1) * buttonGap;
+  const buttonTop = panelY + panelHeight - 28 - buttonStackHeight;
+  const textTop = panelY + 30;
+  const detailsWidth = panelWidth - 64;
   const actionZones: Phaser.GameObjects.Zone[] = [];
 
   const background = config.scene.add.graphics();
@@ -41,26 +51,26 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
 
   const text = config.scene.add
     .text(
-      0,
-      panelY + 28,
-      `RUN RESULTS\n\n` +
+      panelX + 32,
+      textTop,
+      `RUN RESULTS\n` +
         `Survival time        ${config.survivalTimeLabel}\n` +
         `Scrap collected      ${config.scrapCollected}\n` +
         `Credits earned       ${config.creditsEarned}\n` +
-        `Total credits        ${config.totalCredits}\n\n` +
-        `Mission              ${config.missionName} ${config.missionStatus}\n\n` +
+        `Total credits        ${config.totalCredits}\n` +
+        `Mission              ${config.missionName} ${config.missionStatus}\n` +
         `Conversion: ${config.scrapToCreditRate} scrap = ${config.scrapToCreditRate} credit x${config.scrapCreditMultiplier.toFixed(2)}\n` +
-        `Press R to restart`,
+        `Shortcut: R restarts the run`,
       {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
+        fontSize: height < 560 ? '16px' : '18px',
         color: '#f2fbff',
         align: 'left',
-        fixedWidth: panelWidth - 64,
-        lineSpacing: 5
+        fixedWidth: detailsWidth,
+        lineSpacing: height < 560 ? 3 : 5
       }
     )
-    .setOrigin(0.5, 0);
+    .setOrigin(0, 0);
 
   const container = config.scene.add
     .container(centerX, centerY, [background, text])
@@ -75,9 +85,9 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
       screenCenterX: centerX,
       screenCenterY: centerY,
       x: 0,
-      y: panelY + panelHeight - 196,
-      width: 220,
-      height: 38,
+      y: buttonTop,
+      width: buttonWidth,
+      height: buttonHeight,
       label: 'Continue Run',
       callback: config.onContinueRun,
       isActionActive: config.isActionActive,
@@ -91,9 +101,9 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + panelHeight - 150,
-    width: 220,
-    height: 38,
+    y: buttonTop + (config.canContinueRun ? buttonHeight + buttonGap : 0),
+    width: buttonWidth,
+    height: buttonHeight,
     label: 'Restart Run',
     callback: config.onRestartRun,
     isActionActive: config.isActionActive,
@@ -106,9 +116,9 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + panelHeight - 104,
-    width: 220,
-    height: 38,
+    y: buttonTop + (config.canContinueRun ? 2 : 1) * (buttonHeight + buttonGap),
+    width: buttonWidth,
+    height: buttonHeight,
     label: 'Main Menu',
     callback: config.onMainMenu,
     isActionActive: config.isActionActive,
@@ -121,9 +131,9 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + panelHeight - 58,
-    width: 220,
-    height: 38,
+    y: buttonTop + (config.canContinueRun ? 3 : 2) * (buttonHeight + buttonGap),
+    width: buttonWidth,
+    height: buttonHeight,
     label: 'Shop',
     callback: config.onShop,
     isActionActive: config.isActionActive,
