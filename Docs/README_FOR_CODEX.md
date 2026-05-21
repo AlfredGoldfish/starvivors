@@ -27,7 +27,7 @@ Core influences:
 
 Core hook:
 
-The player pilots a ship through a large wrapping space arena while enemies, debris, projectiles, pickups, and the player are affected by moving black holes. The player destroys enemies and debris, gains XP directly, banks upgrades, collects scrap, and survives until the round timer ends.
+The player pilots a ship through a large wrapping space arena while enemies, debris, projectiles, pickups, and the player are affected by moving black holes. The player destroys enemies and hazards, collects scrap for resources and XP, banks upgrades, and survives until the round timer ends.
 
 ## MVP Build Target
 

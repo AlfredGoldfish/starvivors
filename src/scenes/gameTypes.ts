@@ -59,8 +59,9 @@ export interface SavedDebugWeaponLoadout {
   overrides?: unknown;
 }
 
-export type AsteroidTier = 1 | 2 | 3 | 4 | 5;
+export type AsteroidTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 export type AsteroidBreakupProfileMode = 'many-small' | 'balanced' | 'few-large' | 'single-tier';
+export type AsteroidBreakupMotionMode = 'crumble' | 'shear' | 'split' | 'burst';
 export type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 export type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
 export type PlayerPickupKind = 'scrap' | 'banked-upgrade' | 'special-upgrade';
@@ -187,7 +188,6 @@ export interface AsteroidTierConfig {
   displaySize: number;
   hitRadius: number;
   hp: number;
-  massBudget: number;
   minSpeed: number;
   maxSpeed: number;
   impactImpulse: number;
@@ -252,6 +252,8 @@ export interface BasicAsteroid {
   velocity: Phaser.Math.Vector2;
   rotationSpeed: number;
   hitRadius: number;
+  offscreenSince: number | null;
+  collisionInvulnerableUntil: number;
   nextBlackHoleDamageAt: number;
 }
 
@@ -306,6 +308,7 @@ export interface ScrapPickup {
 
 export interface AsteroidBreakupProfile {
   mode: AsteroidBreakupProfileMode;
+  motionMode: AsteroidBreakupMotionMode;
   preferredTier?: AsteroidTier;
   burstMultiplier: number;
   spreadMultiplier: number;

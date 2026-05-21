@@ -104,40 +104,63 @@ export const ASTEROID_MIN_ROTATION_SPEED = 0.08;
 export const ASTEROID_MAX_ROTATION_SPEED = 0.26;
 export const ASTEROID_SAFE_SPAWN_RADIUS = 520;
 export const ASTEROID_COLLISION_COOLDOWN_MS = 260;
-export const ASTEROID_COLLISION_MIN_DAMAGE_SPEED = 55;
-export const ASTEROID_COLLISION_SPEED_DAMAGE_SCALE = 0.011 * COMBAT_NUMBER_SCALE;
-export const ASTEROID_COLLISION_MASS_DAMAGE_SCALE = 0.035 * COMBAT_NUMBER_SCALE;
-export const ASTEROID_COLLISION_MAX_DAMAGE = 3.5 * COMBAT_NUMBER_SCALE;
 export const ASTEROID_COLLISION_MIN_IMPULSE = 18;
 export const ASTEROID_COLLISION_MAX_IMPULSE = 210;
 export const ASTEROID_COLLISION_IMPULSE_SPEED_SCALE = 0.26;
 export const ASTEROID_COLLISION_RESTITUTION = 0.58;
 export const ASTEROID_COLLISION_SEPARATION_PERCENT = 0.48;
 export const ASTEROID_COLLISION_MAX_SEPARATION = 22;
-export const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.62;
-export const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 36;
-export const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 128;
+export const ASTEROID_FRAGMENT_COLLISION_GRACE_MS = 700;
+export const ASTEROID_COLLISION_WEIGHT_EXPONENT = 2;
+export const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.76;
+export const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 18;
+export const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 88;
 export const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
   1: 8 * COMBAT_NUMBER_SCALE,
   2: 12 * COMBAT_NUMBER_SCALE,
   3: 16 * COMBAT_NUMBER_SCALE,
   4: 22 * COMBAT_NUMBER_SCALE,
-  5: 28 * COMBAT_NUMBER_SCALE
+  5: 28 * COMBAT_NUMBER_SCALE,
+  6: 36 * COMBAT_NUMBER_SCALE,
+  7: 45 * COMBAT_NUMBER_SCALE,
+  8: 56 * COMBAT_NUMBER_SCALE,
+  9: 68 * COMBAT_NUMBER_SCALE,
+  10: 82 * COMBAT_NUMBER_SCALE
+};
+export const ASTEROID_COLLISION_DAMAGE_BY_TIER: Record<AsteroidTier, { min: number; max: number }> = {
+  1: { min: 0.25 * COMBAT_NUMBER_SCALE, max: 0.45 * COMBAT_NUMBER_SCALE },
+  2: { min: 0.45 * COMBAT_NUMBER_SCALE, max: 0.8 * COMBAT_NUMBER_SCALE },
+  3: { min: 0.75 * COMBAT_NUMBER_SCALE, max: 1.3 * COMBAT_NUMBER_SCALE },
+  4: { min: 1.1 * COMBAT_NUMBER_SCALE, max: 2 * COMBAT_NUMBER_SCALE },
+  5: { min: 1.6 * COMBAT_NUMBER_SCALE, max: 2.9 * COMBAT_NUMBER_SCALE },
+  6: { min: 2.4 * COMBAT_NUMBER_SCALE, max: 4.2 * COMBAT_NUMBER_SCALE },
+  7: { min: 3.5 * COMBAT_NUMBER_SCALE, max: 6.1 * COMBAT_NUMBER_SCALE },
+  8: { min: 5.2 * COMBAT_NUMBER_SCALE, max: 9 * COMBAT_NUMBER_SCALE },
+  9: { min: 7.6 * COMBAT_NUMBER_SCALE, max: 13.2 * COMBAT_NUMBER_SCALE },
+  10: { min: 11 * COMBAT_NUMBER_SCALE, max: 19 * COMBAT_NUMBER_SCALE }
 };
 export const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
   1: 4,
   2: 8,
   3: 14,
   4: 24,
-  5: 40
+  5: 40,
+  6: 64,
+  7: 96,
+  8: 138,
+  9: 188,
+  10: 250
 };
-export const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5];
+export const ASTEROID_TIERS: AsteroidTier[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const INITIAL_ASTEROID_TIERS: AsteroidTier[] = [5, 5, 4, 4, 4, 3, 3, 2, 2, 1];
 
 export const DAMAGE_FLASH_MS = 90;
 export const ENEMY_IMPACT_EXPLOSION_MS = 150;
 export const ASTEROID_IMPACT_EXPLOSION_MS = 180;
 export const ASTEROID_BREAKUP_FEEDBACK_MS = 360;
+export const ASTEROID_BREAKUP_GHOST_MS = 280;
+export const ASTEROID_FRAGMENT_GROW_IN_MS = 240;
+export const ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER: AsteroidTier = 5;
 export const PLAYER_PROJECTILE_HIT_RADIUS = 8;
 export const PLAYER_MAX_HULL = 40 * COMBAT_NUMBER_SCALE;
 export const PLAYER_HIT_RADIUS = 32;
@@ -232,7 +255,12 @@ export const BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER: Record<number, number> = {
   2: 2.6,
   3: 4.8,
   4: 8.4,
-  5: 13
+  5: 13,
+  6: 18.5,
+  7: 25,
+  8: 32.5,
+  9: 41,
+  10: 50
 };
 export const BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 110,
@@ -336,59 +364,104 @@ export const SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER: Record<AsteroidTier, number> =
   2: 3,
   3: 6,
   4: 10,
-  5: 16
+  5: 16,
+  6: 25,
+  7: 38,
+  8: 55,
+  9: 76,
+  10: 100
 };
 export const SCRAP_PICKUP_VALUE_FROM_DEBRIS = 2;
 
 export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   1: {
     displaySize: 52,
-    hitRadius: 20,
+    hitRadius: 18,
     hp: 2 * COMBAT_NUMBER_SCALE,
-    massBudget: 1,
     minSpeed: 92,
     maxSpeed: 160,
-    impactImpulse: 94,
+    impactImpulse: 12,
     maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   2: {
     displaySize: 76,
-    hitRadius: 30,
+    hitRadius: 26,
     hp: 4 * COMBAT_NUMBER_SCALE,
-    massBudget: 4,
     minSpeed: 76,
     maxSpeed: 138,
-    impactImpulse: 78,
+    impactImpulse: 10,
     maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   3: {
     displaySize: 108,
-    hitRadius: 42,
+    hitRadius: 37,
     hp: 6 * COMBAT_NUMBER_SCALE,
-    massBudget: 8,
     minSpeed: 54,
     maxSpeed: 112,
-    impactImpulse: 58,
+    impactImpulse: 8,
     maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   4: {
     displaySize: 154,
-    hitRadius: 58,
+    hitRadius: 52,
     hp: 9 * COMBAT_NUMBER_SCALE,
-    massBudget: 16,
     minSpeed: 34,
     maxSpeed: 78,
-    impactImpulse: 36,
+    impactImpulse: 6,
     maxVelocity: GAMEPLAY_MAX_VELOCITY
   },
   5: {
     displaySize: 196,
-    hitRadius: 74,
+    hitRadius: 66,
     hp: 13 * COMBAT_NUMBER_SCALE,
-    massBudget: 32,
     minSpeed: 22,
     maxSpeed: 56,
-    impactImpulse: 24,
+    impactImpulse: 5,
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
+  },
+  6: {
+    displaySize: 268,
+    hitRadius: 90,
+    hp: 19 * COMBAT_NUMBER_SCALE,
+    minSpeed: 18,
+    maxSpeed: 48,
+    impactImpulse: 4,
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
+  },
+  7: {
+    displaySize: 336,
+    hitRadius: 114,
+    hp: 28 * COMBAT_NUMBER_SCALE,
+    minSpeed: 15,
+    maxSpeed: 42,
+    impactImpulse: 3,
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
+  },
+  8: {
+    displaySize: 420,
+    hitRadius: 142,
+    hp: 42 * COMBAT_NUMBER_SCALE,
+    minSpeed: 12,
+    maxSpeed: 36,
+    impactImpulse: 2,
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
+  },
+  9: {
+    displaySize: 560,
+    hitRadius: 188,
+    hp: 62 * COMBAT_NUMBER_SCALE,
+    minSpeed: 10,
+    maxSpeed: 30,
+    impactImpulse: 1,
+    maxVelocity: GAMEPLAY_MAX_VELOCITY
+  },
+  10: {
+    displaySize: 992,
+    hitRadius: 332,
+    hp: 90 * COMBAT_NUMBER_SCALE,
+    minSpeed: 8,
+    maxSpeed: 24,
+    impactImpulse: 0,
     maxVelocity: GAMEPLAY_MAX_VELOCITY
   }
 };

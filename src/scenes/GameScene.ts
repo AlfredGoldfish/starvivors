@@ -320,23 +320,25 @@ import {
 
 import {
   ASTEROID_BREAKUP_FEEDBACK_MS,
+  ASTEROID_BREAKUP_GHOST_MS,
   ASTEROID_COLLISION_COOLDOWN_MS,
+  ASTEROID_COLLISION_DAMAGE_BY_TIER,
   ASTEROID_COLLISION_IMPULSE_SPEED_SCALE,
-  ASTEROID_COLLISION_MASS_DAMAGE_SCALE,
-  ASTEROID_COLLISION_MAX_DAMAGE,
   ASTEROID_COLLISION_MAX_IMPULSE,
   ASTEROID_COLLISION_MAX_SEPARATION,
-  ASTEROID_COLLISION_MIN_DAMAGE_SPEED,
   ASTEROID_COLLISION_MIN_IMPULSE,
   ASTEROID_COLLISION_RESTITUTION,
   ASTEROID_COLLISION_SEPARATION_PERCENT,
-  ASTEROID_COLLISION_SPEED_DAMAGE_SCALE,
   ASTEROID_CONTACT_DAMAGE_BY_TIER,
+  ASTEROID_FRAGMENT_COLLISION_GRACE_MS,
+  ASTEROID_FRAGMENT_GROW_IN_MS,
   ASTEROID_IMPACT_EXPLOSION_MS,
+  ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER,
   ASTEROID_MAX_ROTATION_SPEED,
   ASTEROID_MIN_ROTATION_SPEED,
   ASTEROID_SAFE_SPAWN_RADIUS,
   ASTEROID_TIER_CONFIG,
+  ASTEROID_TIERS,
   BACKGROUND_TILE_SIZE,
   BASIC_ASTEROID_COUNT,
   BASIC_ENEMY_COUNT,
@@ -448,6 +450,7 @@ import {
   PLAYER_HIT_RADIUS,
   PLAYER_MASS,
   PLAYER_MAX_HULL,
+  PLAYER_PROJECTILE_HIT_RADIUS,
   PLAYER_SHIP_DISPLAY_SIZE,
   PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
@@ -520,6 +523,7 @@ const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
 
 const UPGRADE_OVERLAY_CHOICE_COUNT = 6;
 const DEATH_SHARD_MAX_ACTIVE = 180;
+const ASTEROID_DEATH_SHARD_BURST_LIMIT = 24;
 const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
 const SPECIAL_UPGRADE_DROP_CHANCE = 0.025;
 const PICKUP_MAGNET_RADIUS_MULTIPLIER = 4.2;
@@ -539,6 +543,18 @@ const SCRAP_ROLLUP_NORMAL_OFFSCREEN_MS = 5000;
 const SCRAP_ROLLUP_EMERGENCY_OFFSCREEN_MS = 1500;
 const SCRAP_ROLLUP_NEAR_RADIUS = 180;
 const SCRAP_ROLLUP_FALLBACK_RADIUS = 620;
+const ASTEROID_FRAGMENT_BURST_WINDOW_MS = 500;
+const ASTEROID_FRAGMENT_PRESSURE_MAX_SPAWNS = 2;
+const ASTEROID_COALESCE_RECIPE_COUNT = 10;
+const ASTEROID_COALESCE_SOFT_LIMIT = 650;
+const ASTEROID_COALESCE_HARD_LIMIT = 900;
+const ASTEROID_COALESCE_TARGET_LIMIT = 560;
+const ASTEROID_COALESCE_INTERVAL_MS = 950;
+const ASTEROID_COALESCE_NORMAL_OFFSCREEN_MS = 6000;
+const ASTEROID_COALESCE_EMERGENCY_OFFSCREEN_MS = 1200;
+const ASTEROID_COALESCE_MAX_TIER_NORMAL: AsteroidTier = 3;
+const ASTEROID_COALESCE_MAX_TIER_EMERGENCY: AsteroidTier = 4;
+const ASTEROID_COALESCE_NEAR_RADIUS = 420;
 
 interface EnemyTimeScaling {
   elapsedMinutes: number;
@@ -618,6 +634,8 @@ export class GameScene extends Phaser.Scene {
   private sectorSignalBeacons: SectorSignalBeacon[] = [];
   private worldSquads: WorldSquadInstance[] = [];
   private nextScrapRollupAt = 0;
+  private nextAsteroidCoalesceAt = 0;
+  private asteroidDestructionHistory: number[] = [];
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
@@ -1039,6 +1057,26 @@ export class GameScene extends Phaser.Scene {
         }),
         spawnAsteroid: (tier) => this.runDebugMenuAction(() => this.spawnDebugAsteroid(tier)),
         clearAsteroids: () => this.runDebugMenuAction(() => this.clearAsteroids()),
+        adjustAsteroidFragmentSoftCap: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustAsteroidFragmentSoftCap(delta)),
+        adjustAsteroidFragmentHardCap: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustAsteroidFragmentHardCap(delta)),
+        adjustAsteroidFragmentBurstLimit: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustAsteroidFragmentBurstLimit(delta)),
+        setAsteroidFragmentSoftCap: (value) =>
+          this.runDebugMenuAction(() => this.debugState.setAsteroidFragmentSoftCap(value)),
+        setAsteroidFragmentHardCap: (value) =>
+          this.runDebugMenuAction(() => this.debugState.setAsteroidFragmentHardCap(value)),
+        setAsteroidFragmentBurstLimit: (value) =>
+          this.runDebugMenuAction(() => this.debugState.setAsteroidFragmentBurstLimit(value)),
+        adjustDebugAsteroidSpawnCount: (delta) =>
+          this.runDebugMenuAction(() => this.debugState.adjustDebugAsteroidSpawnCount(delta)),
+        setDebugAsteroidSpawnCount: (value) =>
+          this.runDebugMenuAction(() => this.debugState.setDebugAsteroidSpawnCount(value)),
+        resetDebugAsteroidSpawnCount: () =>
+          this.runDebugMenuAction(() => this.debugState.resetDebugAsteroidSpawnCount()),
+        resetAsteroidFragmentTuning: () =>
+          this.runDebugMenuAction(() => this.debugState.resetAsteroidFragmentTuning()),
         spawnDebris: () => this.runDebugMenuAction(() => this.spawnDebugEnemyWreckageDebris()),
         clearDebris: () => this.runDebugMenuAction(() => this.clearEnemyWreckageDebris()),
         spawnScrap: () => this.runDebugMenuAction(() => this.spawnDebugScrapPickup()),
@@ -1098,6 +1136,9 @@ export class GameScene extends Phaser.Scene {
         }),
         toggleDamageNumberSourceColors: () => this.runDebugMenuAction(() => {
           this.debugState.damageNumberSourceColorsEnabled = !this.debugState.damageNumberSourceColorsEnabled;
+        }),
+        toggleAsteroidDamageFlash: () => this.runDebugMenuAction(() => {
+          this.debugState.asteroidDamageFlashEnabled = !this.debugState.asteroidDamageFlashEnabled;
         }),
         adjustDamageNumberFontSize: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberFontSize(delta)),
         adjustDamageNumberLifetimeMs: (delta) => this.runDebugMenuAction(() => this.debugState.adjustDamageNumberLifetimeMs(delta)),
@@ -1606,6 +1647,10 @@ export class GameScene extends Phaser.Scene {
 
     if (query.get('testHarness') === 'phase10_5') {
       this.runTestHarnessPhase10_5();
+    }
+
+    if (query.get('testHarness') === 'phase10_6') {
+      this.runTestHarnessPhase10_6();
     }
 
     if (query.get('testHarness') === 'enemyContactBalance') {
@@ -2701,6 +2746,76 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase10_6(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase10-6-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase10-6-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    this.clearAsteroids();
+    this.clearEnemyWreckageDebris();
+    this.clearScrapPickups();
+
+    const defaultTuningPass =
+      this.debugState.asteroidFragmentSoftCap === 500 &&
+      this.debugState.asteroidFragmentHardCap === 500 &&
+      this.debugState.asteroidFragmentBurstLimit === 250;
+    this.debugState.setAsteroidFragmentSoftCap(45);
+    this.debugState.setAsteroidFragmentHardCap(70);
+    this.debugState.setAsteroidFragmentBurstLimit(6);
+
+    const enemy = this.spawnLiveEnemy('scout', this.player.x + 180, this.player.y, this.time.now, 'chaser');
+    const enemyIndex = this.liveEnemies.indexOf(enemy);
+    this.destroyLiveEnemyWithRewards(enemy, enemyIndex);
+    const enemyDeathDebrisPass = this.enemyWreckageDebris.length === 0;
+
+    const stressAsteroids: BasicAsteroid[] = [];
+    for (let i = 0; i < 50; i += 1) {
+      const angle = (Math.PI * 2 * i) / 50;
+      const ring = 820 + (i % 5) * 38;
+      const asteroid = this.createAsteroidInstance(
+        wrapCoordinate(this.player.x + Math.cos(angle) * ring, this.arena.width),
+        wrapCoordinate(this.player.y + Math.sin(angle) * ring, this.arena.height),
+        5,
+        new Phaser.Math.Vector2(0, 0)
+      );
+      stressAsteroids.push(asteroid);
+      this.basicAsteroids.push(asteroid);
+    }
+
+    for (const asteroid of stressAsteroids) {
+      const index = this.basicAsteroids.indexOf(asteroid);
+
+      if (index >= 0) {
+        this.destroyBasicAsteroid(index);
+      }
+    }
+
+    const scrapValue = this.scrapPickups.reduce((total, pickup) => total + (pickup.kind === 'scrap' ? pickup.value : 0), 0);
+    const asteroidCapPass = this.basicAsteroids.length <= this.debugState.asteroidFragmentHardCap;
+    const directScrapOnlyPass = scrapValue >= 50 * SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER[5];
+    const pass = defaultTuningPass && enemyDeathDebrisPass && asteroidCapPass && directScrapOnlyPass;
+
+    document.body.setAttribute('data-starvivors-phase10-6-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase10-6-harness-details',
+      JSON.stringify({
+        enemyDeathDebrisPass,
+        defaultTuningPass,
+        asteroidCapPass,
+        directScrapOnlyPass,
+        activeAsteroids: this.basicAsteroids.length,
+        scrapPickupCount: this.scrapPickups.length,
+        scrapValue,
+        hardCap: this.debugState.asteroidFragmentHardCap
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2906,6 +3021,8 @@ export class GameScene extends Phaser.Scene {
     this.sectorSignalBeacons = [];
     this.worldSquads = [];
     this.nextScrapRollupAt = 0;
+    this.nextAsteroidCoalesceAt = 0;
+    this.asteroidDestructionHistory = [];
     this.blackHole = undefined;
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
@@ -4135,8 +4252,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const position = this.getDebugSpawnPosition(ASTEROID_SAFE_SPAWN_RADIUS);
-    this.basicAsteroids.push(this.createAsteroidInstance(position.x, position.y, tier));
+    const spawnCount = Math.max(1, Math.round(this.debugState.debugAsteroidSpawnCount));
+    for (let index = 0; index < spawnCount; index += 1) {
+      const position = this.getDebugSpawnPosition(ASTEROID_SAFE_SPAWN_RADIUS);
+      this.basicAsteroids.push(this.createAsteroidInstance(position.x, position.y, tier));
+    }
   }
 
   private getDebugSpawnPosition(safeDistance: number): Phaser.Math.Vector2 {
@@ -4665,7 +4785,7 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
-      this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+      this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
     }
 
     return false;
@@ -4966,7 +5086,6 @@ export class GameScene extends Phaser.Scene {
     const y = enemy.body.y;
 
     this.emitEnemyDeathShards(enemy, enemyType, inheritedVelocity);
-    this.spawnEnemyWreckageDebris(enemyType, x, y, inheritedVelocity);
     this.trySpawnEnemyRewardPickup(enemy.stats.scrapValue, x, y, inheritedVelocity, enemy.stats.scrapDropChance);
     enemy.body.destroy(true);
     enemy.wrapMirrorBody.destroy(true);
@@ -4976,10 +5095,8 @@ export class GameScene extends Phaser.Scene {
   private destroyLiveEnemyWithRewards(enemy: LiveGameEnemy, index: number, inheritedVelocity = this.getLiveEnemyTotalVelocity(enemy)): void {
     const x = enemy.body.x;
     const y = enemy.body.y;
-    const legacyType = this.getLiveEnemyLegacySpawnType(enemy);
 
     this.emitLiveEnemyDeathShards(enemy, inheritedVelocity);
-    this.spawnEnemyWreckageDebris(legacyType, x, y, inheritedVelocity);
     this.trySpawnEnemyRewardPickup(
       enemy.definition.rewards?.scrap ?? this.getLiveEnemyFallbackScrapValue(enemy),
       x,
@@ -5642,6 +5759,8 @@ export class GameScene extends Phaser.Scene {
         Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
         (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
       hitRadius: tierConfig.hitRadius,
+      offscreenSince: null,
+      collisionInvulnerableUntil: 0,
       nextBlackHoleDamageAt: 0
     };
   }
@@ -7704,20 +7823,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolvePlayerAsteroidContact(contact: PlayerAsteroidContact, time: number): void {
-    const impactDamage = this.getPlayerAsteroidImpactDamage(contact);
+    const contactDamage = this.getPlayerAsteroidContactDamage(contact);
     this.applyPlayerAsteroidKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.asteroid.body, time, () => this.damageRammedAsteroid(contact.asteroid, time));
-      this.blockDamageWithRammingShield(impactDamage, time, contact.asteroid.body.x, contact.asteroid.body.y);
+      this.blockDamageWithRammingShield(contactDamage, time, contact.asteroid.body.x, contact.asteroid.body.y);
       return;
     }
 
-    this.applyPlayerBodyImpactDamageToAsteroid(contact.asteroid, contact.normal, time);
-
-    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (contactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'asteroid' });
+      this.damagePlayer(contactDamage, time, impact.x, impact.y, { source: 'asteroid' });
     }
   }
 
@@ -7751,24 +7868,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getPlayerEnemyImpactDamage(contact: PlayerEnemyContact): number {
-    return this.getPlayerContactImpactDamage(contact.damage, contact.mass, this.getEnemyContactVelocity(contact.enemy), contact.normal);
+    return this.getPlayerContactImpactDamage('enemy', contact.mass, this.getEnemyContactVelocity(contact.enemy), contact.normal);
   }
 
-  private getPlayerAsteroidImpactDamage(contact: PlayerAsteroidContact): number {
-    return this.getPlayerContactImpactDamage(
-      contact.damage,
-      this.getAsteroidMass(contact.asteroid.tier),
-      contact.asteroid.velocity,
-      contact.normal
-    );
+  private getPlayerAsteroidContactDamage(contact: PlayerAsteroidContact): number {
+    return contact.damage;
   }
 
   private getPlayerDebrisImpactDamage(contact: PlayerDebrisContact): number {
-    return this.getPlayerContactImpactDamage(contact.damage, contact.debris.mass, contact.debris.velocity, contact.normal);
+    return this.getPlayerContactImpactDamage('debris', contact.debris.mass, contact.debris.velocity, contact.normal);
   }
 
   private getPlayerContactImpactDamage(
-    legacyDamage: number,
+    source: DebugImpactSourceType,
     targetMass: number,
     targetVelocity: Phaser.Math.Vector2,
     normal: Phaser.Math.Vector2
@@ -7777,24 +7889,12 @@ export class GameScene extends Phaser.Scene {
     const closingSpeed = getClosingSpeed(relativeVelocity, normal);
 
     return this.calculatePhysicalImpactDamage({
-      source: this.getImpactSourceFromLegacyDamage(legacyDamage),
+      source,
       baseDamage: 0,
       attackerMass: targetMass,
       targetMass: this.getPlayerMass(),
       impactSpeed: closingSpeed
     });
-  }
-
-  private getImpactSourceFromLegacyDamage(legacyDamage: number): DebugImpactSourceType {
-    if (legacyDamage === ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE) {
-      return 'debris';
-    }
-
-    if (Object.values(ASTEROID_CONTACT_DAMAGE_BY_TIER).includes(legacyDamage)) {
-      return 'asteroid';
-    }
-
-    return 'enemy';
   }
 
   private calculatePhysicalImpactDamage(input: {
@@ -7860,27 +7960,6 @@ export class GameScene extends Phaser.Scene {
     this.resolveEnemyDestroyedByPhysicalImpact(enemy);
   }
 
-  private applyPlayerBodyImpactDamageToAsteroid(asteroid: BasicAsteroid, normal: Phaser.Math.Vector2, time: number): void {
-    if (!this.canApplyPlayerBodyImpactDamage(asteroid.body, time)) {
-      return;
-    }
-
-    const damage = this.getPlayerBodyImpactDamage(this.getAsteroidMass(asteroid.tier), asteroid.velocity, normal);
-    this.markPlayerBodyImpactDamageApplied(asteroid.body, time);
-    if (damage <= 0) {
-      return;
-    }
-
-    this.damageAsteroid(asteroid, damage, 'player', true);
-    this.emitAsteroidImpactExplosion(asteroid.body.x, asteroid.body.y, asteroid.tier);
-    const index = this.basicAsteroids.indexOf(asteroid);
-    if (asteroid.hp <= 0 && index >= 0) {
-      this.destroyBasicAsteroid(index);
-    } else {
-      this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
-    }
-  }
-
   private applyPlayerBodyImpactDamageToDebris(debris: EnemyWreckageDebris, normal: Phaser.Math.Vector2, time: number): void {
     if (!this.canApplyPlayerBodyImpactDamage(debris.body, time)) {
       return;
@@ -7916,7 +7995,7 @@ export class GameScene extends Phaser.Scene {
     if (asteroid.hp <= 0 && index >= 0) {
       this.destroyBasicAsteroid(index);
     } else if (index >= 0) {
-      this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+      this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
     }
   }
 
@@ -8244,7 +8323,7 @@ export class GameScene extends Phaser.Scene {
     if (asteroid.hp <= 0 && index >= 0) {
       this.destroyBasicAsteroid(index);
     } else {
-      this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+      this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
       this.applyRammingShieldAsteroidImpulse(asteroid);
     }
   }
@@ -8378,7 +8457,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getAsteroidMass(tier: AsteroidTier): number {
-    return ASTEROID_TIER_CONFIG[tier].massBudget;
+    return tier;
   }
 
   private getCollisionNormal(offset: Phaser.Math.Vector2): Phaser.Math.Vector2 {
@@ -8949,11 +9028,11 @@ export class GameScene extends Phaser.Scene {
         this.damageAsteroid(asteroid, projectile.damage, 'enemy', true);
 
         if (asteroid.hp <= 0) {
-          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
           this.destroyBasicAsteroid(i, false);
         } else {
-          this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
-          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
           this.applyAsteroidImpactFromProjectile(asteroid, projectile);
         }
       }
@@ -8977,6 +9056,142 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.resolveAsteroidCollisions(this.time.now);
+    this.updateAsteroidOffscreenAges(this.time.now);
+    this.coalesceOffscreenAsteroids(this.time.now);
+  }
+
+  private updateAsteroidOffscreenAges(time: number): void {
+    for (const asteroid of this.basicAsteroids) {
+      if (this.sectorAsteroidIds.has(asteroid) || this.isAsteroidInCameraView(asteroid)) {
+        asteroid.offscreenSince = null;
+        continue;
+      }
+
+      asteroid.offscreenSince ??= time;
+    }
+  }
+
+  private coalesceOffscreenAsteroids(time: number): void {
+    if (time < this.nextAsteroidCoalesceAt || this.basicAsteroids.length <= ASTEROID_COALESCE_SOFT_LIMIT) {
+      return;
+    }
+
+    this.nextAsteroidCoalesceAt = time + ASTEROID_COALESCE_INTERVAL_MS;
+
+    const emergency = this.basicAsteroids.length >= ASTEROID_COALESCE_HARD_LIMIT;
+    const minimumOffscreenMs = emergency ? ASTEROID_COALESCE_EMERGENCY_OFFSCREEN_MS : ASTEROID_COALESCE_NORMAL_OFFSCREEN_MS;
+    const targetLimit = emergency ? ASTEROID_COALESCE_TARGET_LIMIT : ASTEROID_COALESCE_SOFT_LIMIT;
+    const maxTier = emergency ? ASTEROID_COALESCE_MAX_TIER_EMERGENCY : ASTEROID_COALESCE_MAX_TIER_NORMAL;
+    const candidates = this.basicAsteroids
+      .filter((asteroid) => this.canCoalesceAsteroid(asteroid, time, minimumOffscreenMs, maxTier))
+      .sort((first, second) => {
+        const firstAge = first.offscreenSince === null ? 0 : time - first.offscreenSince;
+        const secondAge = second.offscreenSince === null ? 0 : time - second.offscreenSince;
+        return secondAge - firstAge || first.tier - second.tier;
+      });
+
+    for (const source of candidates) {
+      if (this.basicAsteroids.length <= targetLimit || !this.basicAsteroids.includes(source)) {
+        continue;
+      }
+
+      const group = this.findAsteroidCoalesceGroup(source, candidates, emergency);
+      if (group.length < ASTEROID_COALESCE_RECIPE_COUNT) {
+        continue;
+      }
+
+      this.mergeAsteroidCoalesceGroup(group);
+    }
+  }
+
+  private canCoalesceAsteroid(
+    asteroid: BasicAsteroid,
+    time: number,
+    minimumOffscreenMs: number,
+    maxTier: AsteroidTier
+  ): boolean {
+    return (
+      asteroid.tier < 10 &&
+      asteroid.tier <= maxTier &&
+      !this.sectorAsteroidIds.has(asteroid) &&
+      asteroid.offscreenSince !== null &&
+      time - asteroid.offscreenSince >= minimumOffscreenMs
+    );
+  }
+
+  private findAsteroidCoalesceGroup(source: BasicAsteroid, candidates: BasicAsteroid[], emergency: boolean): BasicAsteroid[] {
+    const group = [source];
+    const radiusSq = emergency ? Number.POSITIVE_INFINITY : ASTEROID_COALESCE_NEAR_RADIUS * ASTEROID_COALESCE_NEAR_RADIUS;
+
+    for (const candidate of candidates) {
+      if (candidate === source || candidate.tier !== source.tier || !this.basicAsteroids.includes(candidate)) {
+        continue;
+      }
+
+      const distanceSq = this.getWrappedDirection(source.body.x, source.body.y, candidate.body.x, candidate.body.y).lengthSq();
+      if (distanceSq > radiusSq) {
+        continue;
+      }
+
+      group.push(candidate);
+
+      if (group.length >= ASTEROID_COALESCE_RECIPE_COUNT) {
+        break;
+      }
+    }
+
+    return group;
+  }
+
+  private mergeAsteroidCoalesceGroup(group: BasicAsteroid[]): void {
+    const source = group[0];
+    const nextTier = this.getNextAsteroidTier(source.tier);
+    const position = this.getAsteroidCoalescePosition(group);
+    const velocity = new Phaser.Math.Vector2(0, 0);
+
+    for (const asteroid of group) {
+      velocity.add(asteroid.velocity);
+    }
+    velocity.scale(1 / group.length);
+
+    const mergedAsteroid = this.createAsteroidInstance(position.x, position.y, nextTier, velocity);
+    mergedAsteroid.offscreenSince = source.offscreenSince;
+
+    for (const asteroid of group) {
+      const index = this.basicAsteroids.indexOf(asteroid);
+      if (index >= 0) {
+        this.basicAsteroids.splice(index, 1);
+      }
+      destroyAsteroidRenderObjects(asteroid);
+    }
+
+    this.basicAsteroids.push(mergedAsteroid);
+  }
+
+  private getNextAsteroidTier(tier: AsteroidTier): AsteroidTier {
+    return ASTEROID_TIERS[Math.min(ASTEROID_TIERS.indexOf(tier) + 1, ASTEROID_TIERS.length - 1)];
+  }
+
+  private getAsteroidCoalescePosition(group: BasicAsteroid[]): Phaser.Math.Vector2 {
+    const anchor = group[0];
+    let totalX = anchor.body.x;
+    let totalY = anchor.body.y;
+
+    for (let index = 1; index < group.length; index += 1) {
+      const offset = this.getWrappedDirection(anchor.body.x, anchor.body.y, group[index].body.x, group[index].body.y);
+      totalX += anchor.body.x + offset.x;
+      totalY += anchor.body.y + offset.y;
+    }
+
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(totalX / group.length, this.arena.width),
+      wrapCoordinate(totalY / group.length, this.arena.height)
+    );
+  }
+
+  private isAsteroidInCameraView(asteroid: BasicAsteroid): boolean {
+    const position = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
+    return this.isCircleInCameraView(position.x, position.y, this.getAsteroidCollisionRadius(asteroid));
   }
 
   private resolveAsteroidCollisions(time: number): void {
@@ -8986,7 +9201,6 @@ export class GameScene extends Phaser.Scene {
       time,
       asteroidCollisionImpulseScale: this.debugState.asteroidCollisionImpulseScale,
       getCollisionNormal: (offset) => this.getCollisionNormal(offset),
-      getAsteroidMass: (tier) => this.getAsteroidMass(tier),
       getAsteroidCollisionRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
       getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
       nudgeWrappedObject: (object, normal, distance) => this.nudgeWrappedObject(object, normal, distance),
@@ -8995,23 +9209,25 @@ export class GameScene extends Phaser.Scene {
         this.canApplyAsteroidCollisionDamage(first, second, collisionTime),
       markAsteroidCollisionDamageApplied: (first, second, collisionTime) =>
         this.markAsteroidCollisionDamageApplied(first, second, collisionTime),
-      calculateAsteroidImpactDamage: (firstMass, secondMass, closingSpeed) =>
-        this.calculatePhysicalImpactDamage({
-          source: 'asteroid',
-          baseDamage: 0,
-          attackerMass: firstMass,
-          targetMass: secondMass,
-          impactSpeed: closingSpeed
-        }),
+      rollAsteroidCollisionDamage: (tier) => this.rollAsteroidCollisionDamage(tier),
       damageAsteroid: (asteroid, damage) => this.damageAsteroid(asteroid, damage, 'asteroid', false),
       emitAsteroidImpactExplosion: (x, y, tier) => this.emitAsteroidImpactExplosion(x, y, tier),
-      flashDamageSprites: (...containers) => this.flashDamageSprites(...containers),
+      flashDamageSprites: (...containers) => this.flashAsteroidDamageSprites(...containers),
       destroyAsteroidsFromCollision: (destroyedAsteroids) => this.destroyAsteroidsFromCollision(destroyedAsteroids)
     });
   }
 
+  private rollAsteroidCollisionDamage(tier: AsteroidTier): number {
+    const damage = ASTEROID_COLLISION_DAMAGE_BY_TIER[tier];
+    return Phaser.Math.FloatBetween(damage.min, damage.max);
+  }
+
   private canApplyAsteroidCollisionDamage(first: BasicAsteroid, second: BasicAsteroid, time: number): boolean {
-    return time >= (this.asteroidCollisionCooldowns.get(first.body)?.get(second.body) ?? 0);
+    return (
+      time >= first.collisionInvulnerableUntil &&
+      time >= second.collisionInvulnerableUntil &&
+      time >= (this.asteroidCollisionCooldowns.get(first.body)?.get(second.body) ?? 0)
+    );
   }
 
   private markAsteroidCollisionDamageApplied(first: BasicAsteroid, second: BasicAsteroid, time: number): void {
@@ -9468,6 +9684,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private flashDamageSprites(...containers: Phaser.GameObjects.Container[]): void {
+    this.flashDamageSpritesWithTint(0xffffff, true, ...containers);
+  }
+
+  private flashAsteroidDamageSprites(...containers: Phaser.GameObjects.Container[]): void {
+    if (!this.debugState.asteroidDamageFlashEnabled) {
+      return;
+    }
+
+    this.flashDamageSpritesWithTint(0x9aa1a8, false, ...containers);
+  }
+
+  private flashDamageSpritesWithTint(tint: number, fill: boolean, ...containers: Phaser.GameObjects.Container[]): void {
     for (const container of containers) {
       if (!container.scene) {
         continue;
@@ -9475,13 +9703,17 @@ export class GameScene extends Phaser.Scene {
 
       for (const child of container.list) {
         if (child instanceof Phaser.GameObjects.Image) {
-          child.setTintFill(0xffffff);
+          if (fill) {
+            child.setTintFill(tint);
+          } else {
+            child.setTint(tint);
+          }
 
           this.tweens.add({
             targets: child,
-            alpha: 0.9,
+            alpha: fill ? 0.9 : 0.82,
             yoyo: true,
-            duration: DAMAGE_FLASH_MS * 0.5,
+            duration: fill ? DAMAGE_FLASH_MS * 0.5 : DAMAGE_FLASH_MS * 0.38,
             ease: 'Quad.easeOut',
             onComplete: () => {
               child.clearTint();
@@ -9568,16 +9800,21 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private emitAsteroidImpactExplosion(x: number, y: number, tier: AsteroidTier): void {
+  private emitAsteroidImpactExplosion(
+    x: number,
+    y: number,
+    _tier: AsteroidTier,
+    projectileHitRadius = PLAYER_PROJECTILE_HIT_RADIUS
+  ): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     x = effectPosition.x;
     y = effectPosition.y;
-    const tierConfig = ASTEROID_TIER_CONFIG[tier];
-    const particleCount = Phaser.Math.Clamp(tier * 2 + 5, 7, 15);
-    const flashRadius = Math.max(12, tierConfig.hitRadius * 0.34);
+    const impactScale = Phaser.Math.Clamp(projectileHitRadius / PLAYER_PROJECTILE_HIT_RADIUS, 0.75, 2.2);
+    const particleCount = Math.round(Phaser.Math.Clamp(8 * impactScale, 7, 16));
+    const flashRadius = 14 * impactScale;
     const flash = this.add.circle(x, y, flashRadius, 0xf2fbff, 0.18);
     const ring = this.add.circle(x, y, flashRadius * 0.78, 0xf2fbff, 0);
-    const dust = this.add.circle(x, y, Math.max(14, tierConfig.hitRadius * 0.38), 0xc2ad8f, 0.34);
+    const dust = this.add.circle(x, y, 16 * impactScale, 0xc2ad8f, 0.34);
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -9588,11 +9825,11 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(14, 28 + tier * 5);
+      const distance = Phaser.Math.FloatBetween(14, 34) * impactScale;
       const particle = this.add.circle(
         x,
         y,
-        Phaser.Math.FloatBetween(2.2, 4.8),
+        Phaser.Math.FloatBetween(2.2, 4.8) * impactScale,
         Phaser.Utils.Array.GetRandom([0x9b8b75, 0xc2ad8f, 0xe4d6bd, 0xfff2d2, 0xf2fbff]),
         0.92
       );
@@ -9677,6 +9914,62 @@ export class GameScene extends Phaser.Scene {
         duration: Phaser.Math.Between(220, ASTEROID_BREAKUP_FEEDBACK_MS),
         ease: 'Quad.easeOut',
         onComplete: () => particle.destroy()
+      });
+    }
+  }
+
+  private emitLargeAsteroidBreakupGhost(asteroid: BasicAsteroid, recentDestructionCount: number): void {
+    if (
+      asteroid.tier < ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER ||
+      recentDestructionCount > Math.max(2, this.debugState.asteroidFragmentBurstLimit * 2)
+    ) {
+      return;
+    }
+
+    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+    const position = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
+    const driftSeconds = ASTEROID_BREAKUP_GHOST_MS / 1000;
+    const ghost = this.add.image(position.x, position.y, asteroid.variant);
+
+    ghost.setOrigin(0.5, 0.5);
+    ghost.setDisplaySize(tierConfig.displaySize, tierConfig.displaySize);
+    ghost.setRotation(asteroid.body.rotation);
+    ghost.setTint(0x9aa1a8);
+    ghost.setAlpha(0.42);
+    ghost.setDepth(5.25);
+
+    this.tweens.add({
+      targets: ghost,
+      x: position.x + asteroid.velocity.x * driftSeconds * 0.38,
+      y: position.y + asteroid.velocity.y * driftSeconds * 0.38,
+      alpha: 0,
+      scaleX: ghost.scaleX * 1.08,
+      scaleY: ghost.scaleY * 1.08,
+      duration: ASTEROID_BREAKUP_GHOST_MS,
+      ease: 'Quad.easeOut',
+      onComplete: () => ghost.destroy()
+    });
+  }
+
+  private animateLargeAsteroidFragmentSpawn(asteroid: BasicAsteroid, parentTier: AsteroidTier): void {
+    if (parentTier < ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER) {
+      return;
+    }
+
+    const startScale = parentTier >= 8 ? 0.58 : 0.68;
+    const duration = ASTEROID_FRAGMENT_GROW_IN_MS + Math.max(0, parentTier - ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER) * 18;
+
+    for (const body of [asteroid.body, asteroid.wrapMirrorBody]) {
+      body.setAlpha(0.35);
+      body.setScale(startScale);
+
+      this.tweens.add({
+        targets: body,
+        alpha: 1,
+        scaleX: 1,
+        scaleY: 1,
+        duration,
+        ease: 'Cubic.easeOut'
       });
     }
   }
@@ -9876,7 +10169,7 @@ export class GameScene extends Phaser.Scene {
       if (asteroid.hp <= 0) {
         this.destroyBasicAsteroid(i);
       } else {
-        this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+        this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
       }
     }
 
@@ -10198,11 +10491,11 @@ export class GameScene extends Phaser.Scene {
         this.applyPulseProjectileHitEffects(projectile, asteroid.body, asteroid.body.x, asteroid.body.y, appliedDamage, destroyedAsteroid);
 
         if (destroyedAsteroid) {
-          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
           this.destroyBasicAsteroid(i);
         } else {
-          this.flashDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
-          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier);
+          this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+          this.emitAsteroidImpactExplosion(projectile.body.x, projectile.body.y, asteroid.tier, projectile.hitRadius);
           this.applyAsteroidImpact(asteroid, projectile);
         }
       }
@@ -10213,32 +10506,76 @@ export class GameScene extends Phaser.Scene {
     this.applyAsteroidImpactFromProjectile(asteroid, projectile);
   }
 
-  private applyAsteroidImpactFromProjectile(asteroid: BasicAsteroid, projectile: PlayerProjectile | EnemyProjectile): void {
-    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
-
-    addDirectionalImpulse(asteroid.velocity, projectile.velocity, tierConfig.impactImpulse, this.getGlobalMaxSpeed());
-  }
+  private applyAsteroidImpactFromProjectile(_asteroid: BasicAsteroid, _projectile: PlayerProjectile | EnemyProjectile): void {}
 
   private destroyBasicAsteroid(index: number, grantReward = true, shardStyle: DeathShardStyle = 'asteroid'): void {
     const asteroid = this.basicAsteroids[index];
     const x = asteroid.body.x;
     const y = asteroid.body.y;
     const velocity = asteroid.velocity.clone();
+    const destructionCount = this.recordAsteroidDestruction(this.time.now);
     const fragmentTiers = createAsteroidFragmentTiersSystem(asteroid.tier, asteroid.breakupProfile);
+    const breakupPlan = this.createAsteroidBreakupPlan(fragmentTiers, destructionCount);
 
     if (grantReward) {
       this.spawnScrapPickup('asteroid', SCRAP_PICKUP_VALUE_BY_ASTEROID_TIER[asteroid.tier], x, y, velocity);
     }
 
     this.emitAsteroidBreakupFeedback(x, y, asteroid.tier);
-    this.emitAsteroidDeathShards(asteroid, shardStyle);
+    this.emitLargeAsteroidBreakupGhost(asteroid, destructionCount);
+    if (this.shouldEmitAsteroidDeathShards(destructionCount)) {
+      this.emitAsteroidDeathShards(asteroid, shardStyle);
+    }
     this.markSectorAsteroidDestroyed(asteroid);
     destroyAsteroidRenderObjects(asteroid);
     this.basicAsteroids.splice(index, 1);
 
-    if (fragmentTiers.length > 0) {
-      this.spawnAsteroidFragments(x, y, velocity, asteroid.breakupProfile, fragmentTiers);
+    if (breakupPlan.fragmentTiers.length > 0) {
+      this.spawnAsteroidFragments(x, y, velocity, asteroid.breakupProfile, breakupPlan.fragmentTiers, asteroid.tier);
     }
+  }
+
+  private recordAsteroidDestruction(time: number): number {
+    const windowStart = time - ASTEROID_FRAGMENT_BURST_WINDOW_MS;
+    this.asteroidDestructionHistory = this.asteroidDestructionHistory.filter((destroyedAt) => destroyedAt >= windowStart);
+    this.asteroidDestructionHistory.push(time);
+
+    return this.asteroidDestructionHistory.length;
+  }
+
+  private createAsteroidBreakupPlan(
+    fragmentTiers: AsteroidTier[],
+    recentDestructionCount: number
+  ): { fragmentTiers: AsteroidTier[] } {
+    if (fragmentTiers.length === 0) {
+      return { fragmentTiers };
+    }
+
+    const activeAfterParent = Math.max(0, this.basicAsteroids.length - 1);
+    const hardCap = Math.max(0, this.debugState.asteroidFragmentHardCap);
+    const softCap = Math.min(this.debugState.asteroidFragmentSoftCap, hardCap);
+    const burstLimit = this.debugState.asteroidFragmentBurstLimit;
+    const availableHardSlots = Math.max(0, hardCap - activeAfterParent);
+    const isUnderPressure =
+      activeAfterParent >= softCap ||
+      recentDestructionCount > burstLimit ||
+      activeAfterParent + fragmentTiers.length > hardCap;
+    const maxSpawnedFragments = isUnderPressure
+      ? Math.min(availableHardSlots, ASTEROID_FRAGMENT_PRESSURE_MAX_SPAWNS)
+      : Math.min(availableHardSlots, fragmentTiers.length);
+    const spawnedFragmentTiers = [...fragmentTiers].sort((a, b) => b - a).slice(0, maxSpawnedFragments);
+
+    return {
+      fragmentTiers: spawnedFragmentTiers
+    };
+  }
+
+  private shouldEmitAsteroidDeathShards(recentDestructionCount: number): boolean {
+    return (
+      recentDestructionCount <= ASTEROID_DEATH_SHARD_BURST_LIMIT &&
+      this.basicAsteroids.length < Math.min(this.debugState.asteroidFragmentSoftCap, this.debugState.asteroidFragmentHardCap) &&
+      this.deathShards.length < DEATH_SHARD_MAX_ACTIVE * 0.75
+    );
   }
 
   private consumeBasicAsteroid(index: number): void {
@@ -10260,6 +10597,8 @@ export class GameScene extends Phaser.Scene {
     this.asteroidCameraViewCount = 0;
     this.asteroidWrappedViewCount = 0;
     this.asteroidWrapMirrorCount = 0;
+    this.asteroidDestructionHistory = [];
+    this.nextAsteroidCoalesceAt = 0;
   }
 
   private spawnAsteroidFragments(
@@ -10267,7 +10606,8 @@ export class GameScene extends Phaser.Scene {
     y: number,
     parentVelocity: Phaser.Math.Vector2,
     breakupProfile: AsteroidBreakupProfile,
-    fragmentTiers: AsteroidTier[]
+    fragmentTiers: AsteroidTier[],
+    parentTier: AsteroidTier
   ): void {
     spawnAsteroidFragmentsSystem({
       arena: this.arena,
@@ -10278,8 +10618,12 @@ export class GameScene extends Phaser.Scene {
       breakupProfile,
       fragmentTiers,
       getGlobalMaxSpeed: () => this.getGlobalMaxSpeed(),
-      createAsteroidInstance: (fragmentX, fragmentY, tier, velocity) =>
-        this.createAsteroidInstance(fragmentX, fragmentY, tier, velocity)
+      createAsteroidInstance: (fragmentX, fragmentY, tier, velocity) => {
+        const fragment = this.createAsteroidInstance(fragmentX, fragmentY, tier, velocity);
+        fragment.collisionInvulnerableUntil = this.time.now + ASTEROID_FRAGMENT_COLLISION_GRACE_MS;
+        this.animateLargeAsteroidFragmentSpawn(fragment, parentTier);
+        return fragment;
+      }
     });
   }
 

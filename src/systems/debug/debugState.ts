@@ -53,11 +53,19 @@ const DEFAULT_COLLISION_SHAPE_SCALES: DebugCollisionShapeScales = {
   global: 0.9,
   player: 0.75,
   enemy: 0.82,
-  asteroid: 0.88,
+  asteroid: 0.8,
   debris: 0.85
 };
 const DEBUG_COLLISION_SHAPE_SCALE_MIN = 0.35;
 const DEBUG_COLLISION_SHAPE_SCALE_MAX = 1.25;
+const DEFAULT_ASTEROID_FRAGMENT_SOFT_CAP = 500;
+const DEFAULT_ASTEROID_FRAGMENT_HARD_CAP = 500;
+const DEFAULT_ASTEROID_FRAGMENT_BURST_LIMIT = 250;
+const DEFAULT_DEBUG_ASTEROID_SPAWN_COUNT = 1;
+const DEBUG_ASTEROID_FRAGMENT_CAP_MIN = 0;
+const DEBUG_ASTEROID_FRAGMENT_CAP_MAX = 1000;
+const DEBUG_ASTEROID_SPAWN_COUNT_MIN = 1;
+const DEBUG_ASTEROID_SPAWN_COUNT_MAX = 1000;
 
 export type DebugImpactSourceType = 'player' | 'enemy' | 'asteroid' | 'debris';
 export type DebugCollisionShapeScaleKey = 'global' | 'player' | 'enemy' | 'asteroid' | 'debris';
@@ -198,8 +206,13 @@ export class DebugState {
   damageNumberScalePop = DEFAULT_DAMAGE_NUMBER_SCALE_POP;
   damageNumberFadeStart = DEFAULT_DAMAGE_NUMBER_FADE_START;
   damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
+  asteroidDamageFlashEnabled = true;
   collisionShapeScales: DebugCollisionShapeScales = { ...DEFAULT_COLLISION_SHAPE_SCALES };
   deathShardTuning: DeathShardTuningMap = structuredClone(DEFAULT_DEATH_SHARD_TUNING);
+  asteroidFragmentSoftCap = DEFAULT_ASTEROID_FRAGMENT_SOFT_CAP;
+  asteroidFragmentHardCap = DEFAULT_ASTEROID_FRAGMENT_HARD_CAP;
+  asteroidFragmentBurstLimit = DEFAULT_ASTEROID_FRAGMENT_BURST_LIMIT;
+  debugAsteroidSpawnCount = DEFAULT_DEBUG_ASTEROID_SPAWN_COUNT;
   readonly shipOverrides: Partial<Record<ShipId, DebugShipOverrides>> = {};
   readonly weaponOverrides: Partial<Record<WeaponId, DebugWeaponOverrides>> = {};
 
@@ -450,6 +463,7 @@ export class DebugState {
     this.damageNumberScalePop = DEFAULT_DAMAGE_NUMBER_SCALE_POP;
     this.damageNumberFadeStart = DEFAULT_DAMAGE_NUMBER_FADE_START;
     this.damageNumberAlpha = DEFAULT_DAMAGE_NUMBER_ALPHA;
+    this.asteroidDamageFlashEnabled = true;
   }
 
   adjustCollisionShapeScale(key: DebugCollisionShapeScaleKey, delta: number): void {
@@ -466,6 +480,48 @@ export class DebugState {
 
   resetCollisionShapeTuning(): void {
     this.collisionShapeScales = { ...DEFAULT_COLLISION_SHAPE_SCALES };
+  }
+
+  adjustAsteroidFragmentSoftCap(delta: number): void {
+    this.setAsteroidFragmentSoftCap(this.asteroidFragmentSoftCap + delta);
+  }
+
+  adjustAsteroidFragmentHardCap(delta: number): void {
+    this.setAsteroidFragmentHardCap(this.asteroidFragmentHardCap + delta);
+  }
+
+  adjustAsteroidFragmentBurstLimit(delta: number): void {
+    this.setAsteroidFragmentBurstLimit(this.asteroidFragmentBurstLimit + delta);
+  }
+
+  setAsteroidFragmentSoftCap(value: number): void {
+    this.asteroidFragmentSoftCap = this.clampAsteroidFragmentCap(value);
+  }
+
+  setAsteroidFragmentHardCap(value: number): void {
+    this.asteroidFragmentHardCap = this.clampAsteroidFragmentCap(value);
+  }
+
+  setAsteroidFragmentBurstLimit(value: number): void {
+    this.asteroidFragmentBurstLimit = this.clampAsteroidFragmentCap(value);
+  }
+
+  adjustDebugAsteroidSpawnCount(delta: number): void {
+    this.setDebugAsteroidSpawnCount(this.debugAsteroidSpawnCount + delta);
+  }
+
+  setDebugAsteroidSpawnCount(value: number): void {
+    this.debugAsteroidSpawnCount = this.clampDebugAsteroidSpawnCount(value);
+  }
+
+  resetDebugAsteroidSpawnCount(): void {
+    this.debugAsteroidSpawnCount = DEFAULT_DEBUG_ASTEROID_SPAWN_COUNT;
+  }
+
+  resetAsteroidFragmentTuning(): void {
+    this.asteroidFragmentSoftCap = DEFAULT_ASTEROID_FRAGMENT_SOFT_CAP;
+    this.asteroidFragmentHardCap = DEFAULT_ASTEROID_FRAGMENT_HARD_CAP;
+    this.asteroidFragmentBurstLimit = DEFAULT_ASTEROID_FRAGMENT_BURST_LIMIT;
   }
 
   getCollisionShapeTuningSummary(): string {
@@ -723,6 +779,10 @@ export class DebugState {
       autoDiagnosticsSummary: snapshot.autoDiagnosticsSummary,
       activeEnemies: snapshot.activeEnemies,
       activeAsteroids: snapshot.activeAsteroids,
+      asteroidFragmentSoftCap: this.asteroidFragmentSoftCap,
+      asteroidFragmentHardCap: this.asteroidFragmentHardCap,
+      asteroidFragmentBurstLimit: this.asteroidFragmentBurstLimit,
+      debugAsteroidSpawnCount: this.debugAsteroidSpawnCount,
       activeDebris: snapshot.activeDebris,
       activeScrapPickups: snapshot.activeScrapPickups,
       runScrapTotal: snapshot.runScrapTotal,
@@ -773,6 +833,7 @@ export class DebugState {
       damageNumberScalePop: this.damageNumberScalePop,
       damageNumberFadeStart: this.damageNumberFadeStart,
       damageNumberAlpha: this.damageNumberAlpha,
+      asteroidDamageFlashEnabled: this.asteroidDamageFlashEnabled,
       collisionShapeTuningSummary: this.getCollisionShapeTuningSummary(),
       rammingShieldHp: snapshot.rammingShieldHp,
       rammingShieldMaxHp: snapshot.rammingShieldMaxHp,
@@ -838,9 +899,16 @@ export class DebugState {
         damageNumberDrift: this.damageNumberDrift,
         damageNumberScalePop: this.damageNumberScalePop,
         damageNumberFadeStart: this.damageNumberFadeStart,
-        damageNumberAlpha: this.damageNumberAlpha
+        damageNumberAlpha: this.damageNumberAlpha,
+        asteroidDamageFlashEnabled: this.asteroidDamageFlashEnabled
       },
       collisionShapes: { ...this.collisionShapeScales },
+      asteroidFragmentTuning: {
+        softCap: this.asteroidFragmentSoftCap,
+        hardCap: this.asteroidFragmentHardCap,
+        burstLimit: this.asteroidFragmentBurstLimit,
+        spawnCount: this.debugAsteroidSpawnCount
+      },
       deathShardTuning: structuredClone(this.deathShardTuning),
       shipOverrides: structuredClone(this.shipOverrides),
       weaponOverrides: structuredClone(this.weaponOverrides)
@@ -907,9 +975,11 @@ export class DebugState {
     this.damageNumberScalePop = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberScalePop, this.damageNumberScalePop), 1, 2).toFixed(2));
     this.damageNumberFadeStart = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberFadeStart, this.damageNumberFadeStart), 0, 0.9).toFixed(2));
     this.damageNumberAlpha = Number(this.clampNumber(this.getNumber(combatFeedback.damageNumberAlpha, this.damageNumberAlpha), 0.25, 1).toFixed(2));
+    this.asteroidDamageFlashEnabled = this.getBoolean(combatFeedback.asteroidDamageFlashEnabled, this.asteroidDamageFlashEnabled);
 
     this.applyDeathShardPreset(preset.deathShardTuning);
     this.applyCollisionShapePreset(preset.collisionShapes);
+    this.applyAsteroidFragmentPreset(preset.asteroidFragmentTuning);
     this.applyShipOverridePreset(preset.shipOverrides);
     this.applyWeaponOverridePreset(preset.weaponOverrides);
   }
@@ -925,6 +995,8 @@ export class DebugState {
     this.resetPhysicsTuning();
     this.resetCombatFeedbackTuning();
     this.resetCollisionShapeTuning();
+    this.resetAsteroidFragmentTuning();
+    this.resetDebugAsteroidSpawnCount();
     this.resetDeathShardTuning();
     for (const key of Object.keys(this.shipOverrides)) {
       delete this.shipOverrides[key as ShipId];
@@ -1008,6 +1080,14 @@ export class DebugState {
     return Number(Math.min(DEBUG_COLLISION_SHAPE_SCALE_MAX, Math.max(DEBUG_COLLISION_SHAPE_SCALE_MIN, value)).toFixed(2));
   }
 
+  private clampAsteroidFragmentCap(value: number): number {
+    return Math.round(this.clampNumber(value, DEBUG_ASTEROID_FRAGMENT_CAP_MIN, DEBUG_ASTEROID_FRAGMENT_CAP_MAX));
+  }
+
+  private clampDebugAsteroidSpawnCount(value: number): number {
+    return Math.round(this.clampNumber(value, DEBUG_ASTEROID_SPAWN_COUNT_MIN, DEBUG_ASTEROID_SPAWN_COUNT_MAX));
+  }
+
   private clampNumber(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
   }
@@ -1032,6 +1112,14 @@ export class DebugState {
     for (const key of Object.keys(DEFAULT_COLLISION_SHAPE_SCALES) as DebugCollisionShapeScaleKey[]) {
       this.setCollisionShapeScale(key, this.getNumber(record[key], this.collisionShapeScales[key]));
     }
+  }
+
+  private applyAsteroidFragmentPreset(raw: unknown): void {
+    const record = this.getRecord(raw);
+    this.setAsteroidFragmentSoftCap(this.getNumber(record.softCap, this.asteroidFragmentSoftCap));
+    this.setAsteroidFragmentHardCap(this.getNumber(record.hardCap, this.asteroidFragmentHardCap));
+    this.setAsteroidFragmentBurstLimit(this.getNumber(record.burstLimit, this.asteroidFragmentBurstLimit));
+    this.setDebugAsteroidSpawnCount(this.getNumber(record.spawnCount, this.debugAsteroidSpawnCount));
   }
 
   private applyShipOverridePreset(raw: unknown): void {

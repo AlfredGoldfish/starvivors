@@ -49,15 +49,16 @@ All current logic lives in `src/scenes/GameScene.ts`.
 
 ### Asteroid Impact Explosion
 
-- `emitAsteroidImpactExplosion(x, y, tier)`
+- `emitAsteroidImpactExplosion(x, y, tier, projectileHitRadius?)`
 - Used for asteroid impacts.
 - Current triggers:
   - Player Pulse Cannon hits an asteroid.
   - Player physically collides with an asteroid.
 - Visual language:
   - Pale flash/ring with tan/gray chip and dust particles.
-  - Scales modestly by asteroid tier.
+  - Stays compact regardless of asteroid tier.
 - This is impact feedback, not asteroid destruction feedback.
+- Asteroid impact feedback stays compact and does not scale from asteroid tier size. Projectile hits can pass projectile hit radius to scale the spark from projectile size.
 
 ### Asteroid Breakup Feedback
 

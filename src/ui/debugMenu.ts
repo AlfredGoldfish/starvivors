@@ -85,7 +85,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'tab-spawns': 'Spawn and clear enemies, asteroids, debris, and scrap for encounter testing.',
   'tab-effects': 'Death shard effect tuning and quick effect tests.',
   'tab-blackHole': 'Black hole debug controls for radii, field forces, damage, and PNG lens layers.',
-  'tab-visuals': 'Background and parallax controls for visual testing.',
+  'tab-visuals': 'Combat feedback, background, and parallax controls for visual testing.',
   'run-state': 'Shows whether the debug pause toggle is currently stopping game updates.',
   player: 'Shows player hull and debug invulnerability state.',
   scrap: 'Shows active scrap pickups, current run scrap, and total credits.',
@@ -268,6 +268,17 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'spawn-carrier-group': 'Spawn a Carrier Group encounter near the play area.',
   'clear-enemies': 'Remove active enemies without granting rewards.',
   'asteroid-state': 'Shows active asteroids and asteroid spawner state.',
+  'asteroid-breakup': 'Controls when destroyed asteroids stop making smaller asteroids and convert excess fragment value into scrap instead.',
+  'asteroid-soft-cap-down': 'Decrease the active asteroid count where breakup starts reducing fragments.',
+  'asteroid-soft-cap-up': 'Increase the active asteroid count where breakup starts reducing fragments.',
+  'asteroid-hard-cap-down': 'Decrease the active asteroid count where breakup stops adding fragments.',
+  'asteroid-hard-cap-up': 'Increase the active asteroid count where breakup stops adding fragments.',
+  'asteroid-burst-limit-down': 'Decrease how many asteroid destructions can happen in 500ms before burst protection reduces fragments.',
+  'asteroid-burst-limit-up': 'Increase how many asteroid destructions can happen in 500ms before burst protection reduces fragments.',
+  'debug-asteroid-spawn-count-down': 'Decrease how many asteroids each tier button spawns per click.',
+  'debug-asteroid-spawn-count-up': 'Increase how many asteroids each tier button spawns per click.',
+  'asteroid-breakup-reset': 'Reset asteroid breakup caps and burst protection to Phase 10.6 defaults.',
+  'debug-asteroid-spawn-count-reset': 'Reset asteroid spawn amount to one asteroid per click.',
   'asteroid-1': 'Spawn a tier 1 asteroid.',
   'asteroid-2': 'Spawn a tier 2 asteroid.',
   'asteroid-3': 'Spawn a tier 3 asteroid.',
@@ -349,6 +360,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'damage-numbers': 'Floating damage number defaults for all damage sources.',
   'damage-numbers-toggle': 'Toggle floating damage numbers.',
   'damage-number-colors': 'Toggle source-colored damage text.',
+  'asteroid-damage-flash': 'Toggle the quick tint flash on damaged asteroids. Impact movement and collision response still run.',
   'damage-font-down': 'Decrease damage number text size.',
   'damage-font-up': 'Increase damage number text size.',
   'damage-life-down': 'Shorten damage number lifetime.',
@@ -953,8 +965,76 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('spawns', y, 'Asteroids');
     addValue('asteroid-state', 'spawns', y, VALUE_LINE_HEIGHT * 2);
     y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+    addValue('asteroid-breakup', 'spawns', y, VALUE_LINE_HEIGHT * 4);
+    y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
+    addButtonPair(
+      'spawns',
+      'asteroid-soft-cap',
+      y,
+      'Soft',
+      () => config.callbacks.adjustAsteroidFragmentSoftCap(-10),
+      () => config.callbacks.adjustAsteroidFragmentSoftCap(10),
+      {
+        getValue: (values) => values.asteroidFragmentSoftCap,
+        setValue: (value) => config.callbacks.setAsteroidFragmentSoftCap(value),
+        step: 1
+      }
+    );
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair(
+      'spawns',
+      'asteroid-hard-cap',
+      y,
+      'Hard',
+      () => config.callbacks.adjustAsteroidFragmentHardCap(-10),
+      () => config.callbacks.adjustAsteroidFragmentHardCap(10),
+      {
+        getValue: (values) => values.asteroidFragmentHardCap,
+        setValue: (value) => config.callbacks.setAsteroidFragmentHardCap(value),
+        step: 1
+      }
+    );
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair(
+      'spawns',
+      'asteroid-burst-limit',
+      y,
+      'Burst',
+      () => config.callbacks.adjustAsteroidFragmentBurstLimit(-10),
+      () => config.callbacks.adjustAsteroidFragmentBurstLimit(10),
+      {
+        getValue: (values) => values.asteroidFragmentBurstLimit,
+        setValue: (value) => config.callbacks.setAsteroidFragmentBurstLimit(value),
+        step: 1
+      }
+    );
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('spawns', 'asteroid-breakup-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset breakup caps', config.callbacks.resetAsteroidFragmentTuning);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair(
+      'spawns',
+      'debug-asteroid-spawn-count',
+      y,
+      'Spawn',
+      () => config.callbacks.adjustDebugAsteroidSpawnCount(-10),
+      () => config.callbacks.adjustDebugAsteroidSpawnCount(10),
+      {
+        getValue: (values) => values.debugAsteroidSpawnCount,
+        setValue: (value) => config.callbacks.setDebugAsteroidSpawnCount(value),
+        step: 1
+      }
+    );
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('spawns', 'debug-asteroid-spawn-count-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset spawn count', config.callbacks.resetDebugAsteroidSpawnCount);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
     for (let tier = 1; tier <= 5; tier += 1) {
       addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 1) * 63, y, 55, `T${tier}`, () =>
+        config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
+      );
+    }
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    for (let tier = 6; tier <= 10; tier += 1) {
+      addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 6) * 63, y, 55, `T${tier}`, () =>
         config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
       );
     }
@@ -1082,10 +1162,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('visuals', y, 'Damage Numbers');
-    addValue('damage-numbers', 'visuals', y, VALUE_LINE_HEIGHT * 5);
-    y += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
+    addValue('damage-numbers', 'visuals', y, VALUE_LINE_HEIGHT * 6);
+    y += VALUE_LINE_HEIGHT * 6 + BUTTON_GAP;
     addButton('visuals', 'damage-numbers-toggle', panelX + PANEL_PADDING, y, 154, 'Damage text', config.callbacks.toggleDamageNumbers);
     addButton('visuals', 'damage-number-colors', panelX + PANEL_PADDING + 162, y, 154, 'Source colors', config.callbacks.toggleDamageNumberSourceColors);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('visuals', 'asteroid-damage-flash', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Asteroid flash', config.callbacks.toggleAsteroidDamageFlash);
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButtonPair('visuals', 'damage-font', y, 'Font', () => config.callbacks.adjustDamageNumberFontSize(-1), () => config.callbacks.adjustDamageNumberFontSize(1));
     y += BUTTON_HEIGHT + BUTTON_GAP;
@@ -1596,126 +1678,160 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       pointer.y <= panelY + panelHeight,
     update: (values: DebugMenuValues) => {
       for (const input of numberInputs) {
-        if (typeof document !== 'undefined' && document.activeElement !== input.element) {
+        if (input.tabId === activeTab && typeof document !== 'undefined' && document.activeElement !== input.element) {
           const value = input.getValue(values);
           input.element.value = Number.isFinite(value) ? `${value}` : '';
         }
       }
       refreshNumberInputPositions();
       refreshNumberInputVisibility();
-      setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
-      setValue('profiler', values.performanceProfilerSummary);
-      setValue('diagnostics', values.autoDiagnosticsSummary);
-      setValue(
-        'player',
-        `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
-          values.playerInvulnerable ? 'on' : 'off'
-        }`
-      );
-      setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
-      setValue(
-        'ship-stats',
-        `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nThrust ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe ${formatIntegerDisplayUnits(values.playerStrafe)}`
-      );
-      setValue('ship-loadout-interceptor', values.shipTuningSummaries.interceptor);
-      setValue('ship-loadout-bulwark', values.shipTuningSummaries.bulwark);
-      setValue(
-        'shield-state',
-        values.rammingShieldMaxHp > 0
-          ? `HP ${Math.ceil(values.rammingShieldHp)} / ${values.rammingShieldMaxHp}\nDash ${values.rammingShieldDashCharges} / ${values.rammingShieldDashMaxCharges}`
-          : 'Not equipped'
-      );
-      setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
-      setValue(
-        'weapon',
-        `Damage x${values.weaponDamageMultiplier.toFixed(1)}\nFire x${values.weaponFireRateMultiplier.toFixed(1)}\nCooldown ${values.weaponCooldownSeconds.toFixed(2)}s`
-      );
-      setValue('weapon-loadout-pulse-cannon', values.weaponTuningSummaries['pulse-cannon']);
-      setValue('weapon-loadout-ramming-shield', values.weaponTuningSummaries['ramming-shield']);
-      setValue('death-ship', values.deathShardTuningSummaries.ship);
-      setValue('death-player', values.deathShardTuningSummaries.player);
-      setValue('death-asteroid', values.deathShardTuningSummaries.asteroid);
-      setValue('death-blackHoleShip', values.deathShardTuningSummaries.blackHoleShip);
-      setValue('death-blackHoleAsteroid', values.deathShardTuningSummaries.blackHoleAsteroid);
-      setValue(
-        'physics-global',
-        `Global max ${formatIntegerDisplayUnits(values.globalMaxSpeed)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
-          `Caps P/E/A/D ${values.playerImpactDamageCap.toFixed(0)}/${values.enemyImpactDamageCap.toFixed(0)}/${values.asteroidImpactDamageCap.toFixed(0)}/${values.debrisImpactDamageCap.toFixed(0)}\n` +
-          `Scale P/E/A/D ${values.playerImpactDamageScale.toFixed(3)}/${values.enemyImpactDamageScale.toFixed(3)}/${values.asteroidImpactDamageScale.toFixed(3)}/${values.debrisImpactDamageScale.toFixed(3)}`
-      );
-      setValue(
-        'physics-player',
-        `Speed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nMass ${values.playerMass.toFixed(2)}\nThrust x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}\nMass exponent ${values.playerControlMassExponent.toFixed(2)}`
-      );
-      setValue(
-        'physics-enemy',
-        `Speed x${values.enemySpeedScale.toFixed(2)}\nThrust/response x${values.enemyResponseScale.toFixed(2)}\nMass exponent ${values.enemyMassExponent.toFixed(2)}`
-      );
-      setValue(
-        'physics-asteroids',
-        `Collision damage x${values.asteroidCollisionDamageScale.toFixed(2)}\nCollision impulse x${values.asteroidCollisionImpulseScale.toFixed(2)}`
-      );
-      setValue('collision-shapes', values.collisionShapeTuningSummary);
-      setValue(
-        'health-bars',
-        `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
-          values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'
-        }\nSize x${values.healthBarWidthScale.toFixed(2)} / ${values.healthBarHeight}px\nOffset ${values.healthBarVerticalOffset}px / alpha ${values.healthBarAlpha.toFixed(2)}`
-      );
-      setValue(
-        'damage-numbers',
-        `Text: ${values.damageNumbersEnabled ? 'on' : 'off'} / colors ${
-          values.damageNumberSourceColorsEnabled ? 'source' : 'single'
-        }\nFont ${values.damageNumberFontSize}px / life ${values.damageNumberLifetimeMs}ms\nRise ${values.damageNumberRiseDistance}px / drift ${values.damageNumberDrift}px\nPop x${values.damageNumberScalePop.toFixed(2)} / fade ${(values.damageNumberFadeStart * 100).toFixed(0)}%\nAlpha ${values.damageNumberAlpha.toFixed(2)}`
-      );
-      setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
-      setValue(
-        'asteroid-state',
-        `Asteroids active: ${values.activeAsteroids}\nSpawner: ${
-          values.asteroidSpawningAvailable ? (values.asteroidSpawningEnabled ? 'on' : 'off') : 'not implemented'
-        }`
-      );
-      setValue('debris', `Active: ${values.activeDebris}`);
-      setValue(
-        'black-hole',
-        `Radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}\nDamage: ${
-          values.blackHoleFieldDamageEnabled ? 'on' : 'off'
-        } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
-      );
-      setValue(
-        'black-hole-field',
-        `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)} / max velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
-      );
       const pngLayer = values.blackHoleSelectedPngLayer;
-      setValue(
-        'black-hole-lenses',
-        pngLayer
-          ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
-              values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-            }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}`
-          : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}`
-      );
-      setValue(
-        'background',
-        `Stars: ${values.backgroundStarsVisible ? 'on' : 'off'}\nFar ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
-      );
-      setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
-      setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
-      setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
-      setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
-      setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
-      setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
-      setButtonLabel('background-stars', `Background stars: ${values.backgroundStarsVisible ? 'on' : 'off'}`);
-      setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
-      setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
-      setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
-      setButtonLabel('health-bars-toggle', `Health bars: ${values.healthBarsEnabled ? 'on' : 'off'}`);
-      setButtonLabel('player-health-bar', `Player bar: ${values.playerHealthBarEnabled ? 'on' : 'off'}`);
-      setButtonLabel('health-reveal', `Reveal: ${values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'}`);
-      setButtonLabel('damage-numbers-toggle', `Damage text: ${values.damageNumbersEnabled ? 'on' : 'off'}`);
-      setButtonLabel('damage-number-colors', `Colors: ${values.damageNumberSourceColorsEnabled ? 'source' : 'single'}`);
-      setButtonLabel('projection-lenses', `All: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
-      setButtonLabel('png-toggle-layer', `Layer: ${pngLayer?.enabled ? 'on' : 'off'}`);
+
+      if (activeTab === 'run') {
+        setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
+        setValue('profiler', values.performanceProfilerSummary);
+        setValue('diagnostics', values.autoDiagnosticsSummary);
+        setValue(
+          'player',
+          `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
+            values.playerInvulnerable ? 'on' : 'off'
+          }`
+        );
+        setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
+        setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
+        setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
+        setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
+        setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
+        setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
+      } else if (activeTab === 'ship') {
+        setValue(
+          'ship-stats',
+          `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nThrust ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe ${formatIntegerDisplayUnits(values.playerStrafe)}`
+        );
+        setValue('ship-loadout-interceptor', values.shipTuningSummaries.interceptor);
+        setValue('ship-loadout-bulwark', values.shipTuningSummaries.bulwark);
+        setValue(
+          'shield-state',
+          values.rammingShieldMaxHp > 0
+            ? `HP ${Math.ceil(values.rammingShieldHp)} / ${values.rammingShieldMaxHp}\nDash ${values.rammingShieldDashCharges} / ${values.rammingShieldDashMaxCharges}`
+            : 'Not equipped'
+        );
+        setValue('projectiles', `Player: ${values.playerProjectiles}\nEnemy: ${values.enemyProjectiles}`);
+      } else if (activeTab === 'weapons') {
+        setValue(
+          'weapon',
+          `Damage x${values.weaponDamageMultiplier.toFixed(1)}\nFire x${values.weaponFireRateMultiplier.toFixed(1)}\nCooldown ${values.weaponCooldownSeconds.toFixed(2)}s`
+        );
+        setValue('weapon-loadout-pulse-cannon', values.weaponTuningSummaries['pulse-cannon']);
+        setValue('weapon-loadout-ramming-shield', values.weaponTuningSummaries['ramming-shield']);
+      } else if (activeTab === 'physics') {
+        setValue(
+          'physics-global',
+          `Global max ${formatIntegerDisplayUnits(values.globalMaxSpeed)}\nImpact cap ${values.globalImpactDamageCap.toFixed(1)}\n` +
+            `Caps P/E/A/D ${values.playerImpactDamageCap.toFixed(0)}/${values.enemyImpactDamageCap.toFixed(0)}/${values.asteroidImpactDamageCap.toFixed(0)}/${values.debrisImpactDamageCap.toFixed(0)}\n` +
+            `Scale P/E/A/D ${values.playerImpactDamageScale.toFixed(3)}/${values.enemyImpactDamageScale.toFixed(3)}/${values.asteroidImpactDamageScale.toFixed(3)}/${values.debrisImpactDamageScale.toFixed(3)}`
+        );
+        setValue(
+          'physics-player',
+          `Speed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nMass ${values.playerMass.toFixed(2)}\nThrust x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}\nMass exponent ${values.playerControlMassExponent.toFixed(2)}`
+        );
+        setValue(
+          'physics-enemy',
+          `Speed x${values.enemySpeedScale.toFixed(2)}\nThrust/response x${values.enemyResponseScale.toFixed(2)}\nMass exponent ${values.enemyMassExponent.toFixed(2)}`
+        );
+        setValue(
+          'physics-asteroids',
+          `Collision damage x${values.asteroidCollisionDamageScale.toFixed(2)}\nCollision impulse x${values.asteroidCollisionImpulseScale.toFixed(2)}`
+        );
+      } else if (activeTab === 'collision') {
+        setValue('collision-shapes', values.collisionShapeTuningSummary);
+      } else if (activeTab === 'spawns') {
+        setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
+        setValue(
+          'asteroid-state',
+          `Asteroids active: ${values.activeAsteroids}\nSpawner: ${
+            values.asteroidSpawningAvailable ? (values.asteroidSpawningEnabled ? 'on' : 'off') : 'not implemented'
+          }`
+        );
+        setValue(
+          'asteroid-breakup',
+          `Breakup soft: ${values.asteroidFragmentSoftCap}\nBreakup hard: ${values.asteroidFragmentHardCap}\nBurst limit: ${values.asteroidFragmentBurstLimit} / 500ms\nSpawn/click: ${values.debugAsteroidSpawnCount}`
+        );
+        setValue('debris', `Active: ${values.activeDebris}`);
+        setButtonLabel('enemy-spawning', `Enemy spawning: ${values.enemySpawningEnabled ? 'on' : 'off'}`);
+      } else if (activeTab === 'effects') {
+        setValue('death-ship', values.deathShardTuningSummaries.ship);
+        setValue('death-player', values.deathShardTuningSummaries.player);
+        setValue('death-asteroid', values.deathShardTuningSummaries.asteroid);
+        setValue('death-blackHoleShip', values.deathShardTuningSummaries.blackHoleShip);
+        setValue('death-blackHoleAsteroid', values.deathShardTuningSummaries.blackHoleAsteroid);
+        setValue(
+          'health-bars',
+          `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
+            values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'
+          }\nSize x${values.healthBarWidthScale.toFixed(2)} / ${values.healthBarHeight}px\nOffset ${values.healthBarVerticalOffset}px / alpha ${values.healthBarAlpha.toFixed(2)}`
+        );
+        setValue(
+          'damage-numbers',
+          `Text: ${values.damageNumbersEnabled ? 'on' : 'off'} / colors ${
+            values.damageNumberSourceColorsEnabled ? 'source' : 'single'
+          }\nAsteroid flash: ${values.asteroidDamageFlashEnabled ? 'on' : 'off'}\nFont ${values.damageNumberFontSize}px / life ${values.damageNumberLifetimeMs}ms\nRise ${values.damageNumberRiseDistance}px / drift ${values.damageNumberDrift}px\nPop x${values.damageNumberScalePop.toFixed(2)} / fade ${(values.damageNumberFadeStart * 100).toFixed(0)}%\nAlpha ${values.damageNumberAlpha.toFixed(2)}`
+        );
+        setButtonLabel('health-bars-toggle', `Health bars: ${values.healthBarsEnabled ? 'on' : 'off'}`);
+        setButtonLabel('player-health-bar', `Player bar: ${values.playerHealthBarEnabled ? 'on' : 'off'}`);
+        setButtonLabel('health-reveal', `Reveal: ${values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'}`);
+        setButtonLabel('damage-numbers-toggle', `Damage text: ${values.damageNumbersEnabled ? 'on' : 'off'}`);
+        setButtonLabel('damage-number-colors', `Colors: ${values.damageNumberSourceColorsEnabled ? 'source' : 'single'}`);
+        setButtonLabel('asteroid-damage-flash', `Asteroid flash: ${values.asteroidDamageFlashEnabled ? 'on' : 'off'}`);
+      } else if (activeTab === 'blackHole') {
+        setValue(
+          'black-hole',
+          `Radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}\nDamage: ${
+            values.blackHoleFieldDamageEnabled ? 'on' : 'off'
+          } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+        );
+        setValue(
+          'black-hole-field',
+          `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)} / max velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
+        );
+        setValue(
+          'black-hole-lenses',
+          pngLayer
+            ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
+                values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
+              }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}`
+            : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}`
+        );
+        setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
+        setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
+        setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
+        setButtonLabel('projection-lenses', `All: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
+        setButtonLabel('png-toggle-layer', `Layer: ${pngLayer?.enabled ? 'on' : 'off'}`);
+      } else if (activeTab === 'visuals') {
+        setValue(
+          'health-bars',
+          `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
+            values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'
+          }\nSize x${values.healthBarWidthScale.toFixed(2)} / ${values.healthBarHeight}px\nOffset ${values.healthBarVerticalOffset}px / alpha ${values.healthBarAlpha.toFixed(2)}`
+        );
+        setValue(
+          'damage-numbers',
+          `Text: ${values.damageNumbersEnabled ? 'on' : 'off'} / colors ${
+            values.damageNumberSourceColorsEnabled ? 'source' : 'single'
+          }\nAsteroid flash: ${values.asteroidDamageFlashEnabled ? 'on' : 'off'}\nFont ${values.damageNumberFontSize}px / life ${values.damageNumberLifetimeMs}ms\nRise ${values.damageNumberRiseDistance}px / drift ${values.damageNumberDrift}px\nPop x${values.damageNumberScalePop.toFixed(2)} / fade ${(values.damageNumberFadeStart * 100).toFixed(0)}%\nAlpha ${values.damageNumberAlpha.toFixed(2)}`
+        );
+        setValue(
+          'background',
+          `Stars: ${values.backgroundStarsVisible ? 'on' : 'off'}\nFar ${values.starfieldFarParallax.toFixed(2)}\nMid ${values.starfieldMidParallax.toFixed(2)}\nNear ${values.starfieldNearParallax.toFixed(2)}`
+        );
+        setButtonLabel('health-bars-toggle', `Health bars: ${values.healthBarsEnabled ? 'on' : 'off'}`);
+        setButtonLabel('player-health-bar', `Player bar: ${values.playerHealthBarEnabled ? 'on' : 'off'}`);
+        setButtonLabel('health-reveal', `Reveal: ${values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'}`);
+        setButtonLabel('damage-numbers-toggle', `Damage text: ${values.damageNumbersEnabled ? 'on' : 'off'}`);
+        setButtonLabel('damage-number-colors', `Colors: ${values.damageNumberSourceColorsEnabled ? 'source' : 'single'}`);
+        setButtonLabel('asteroid-damage-flash', `Asteroid flash: ${values.asteroidDamageFlashEnabled ? 'on' : 'off'}`);
+        setButtonLabel('background-stars', `Background stars: ${values.backgroundStarsVisible ? 'on' : 'off'}`);
+      }
     },
     destroy: () => {
       panelBlocker.destroy();

@@ -12,7 +12,7 @@ import type {
 import type { DeathShardStyle, DeathShardTuningKey } from '../deathEffects';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
-export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5;
+export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface DebugMenuValues {
   selectedShipName: string;
@@ -62,6 +62,10 @@ export interface DebugMenuValues {
   autoDiagnosticsSummary: string;
   activeEnemies: number;
   activeAsteroids: number;
+  asteroidFragmentSoftCap: number;
+  asteroidFragmentHardCap: number;
+  asteroidFragmentBurstLimit: number;
+  debugAsteroidSpawnCount: number;
   activeDebris: number;
   activeScrapPickups: number;
   runScrapTotal: number;
@@ -112,6 +116,7 @@ export interface DebugMenuValues {
   damageNumberScalePop: number;
   damageNumberFadeStart: number;
   damageNumberAlpha: number;
+  asteroidDamageFlashEnabled: boolean;
   collisionShapeTuningSummary: string;
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
@@ -147,6 +152,16 @@ export interface DebugMenuCallbacks {
   toggleAsteroidSpawning: () => void;
   spawnAsteroid: (tier: DebugAsteroidTier) => void;
   clearAsteroids: () => void;
+  adjustAsteroidFragmentSoftCap: (delta: number) => void;
+  adjustAsteroidFragmentHardCap: (delta: number) => void;
+  adjustAsteroidFragmentBurstLimit: (delta: number) => void;
+  setAsteroidFragmentSoftCap: (value: number) => void;
+  setAsteroidFragmentHardCap: (value: number) => void;
+  setAsteroidFragmentBurstLimit: (value: number) => void;
+  adjustDebugAsteroidSpawnCount: (delta: number) => void;
+  setDebugAsteroidSpawnCount: (value: number) => void;
+  resetDebugAsteroidSpawnCount: () => void;
+  resetAsteroidFragmentTuning: () => void;
   spawnDebris: () => void;
   clearDebris: () => void;
   spawnScrap: () => void;
@@ -183,6 +198,7 @@ export interface DebugMenuCallbacks {
   adjustHealthBarAlpha: (delta: number) => void;
   toggleDamageNumbers: () => void;
   toggleDamageNumberSourceColors: () => void;
+  toggleAsteroidDamageFlash: () => void;
   adjustDamageNumberFontSize: (delta: number) => void;
   adjustDamageNumberLifetimeMs: (delta: number) => void;
   adjustDamageNumberRiseDistance: (delta: number) => void;

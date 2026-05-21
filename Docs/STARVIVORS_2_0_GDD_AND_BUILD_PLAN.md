@@ -1248,6 +1248,62 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
+### Phase 10.6: Asteroid and Debris Performance
+
+Goal:
+
+- Prevent large asteroid bursts and debris fields from locking the game while preserving hazard danger and scrap value.
+
+Design dialogue before coding:
+
+- Asteroids should break apart when the scene is calm, but mass destruction should stay inside active-count budgets instead of spawning unbounded fragments.
+- Suppressed asteroid fragments should not become extra scrap; asteroid rewards come from destroyed hazards, while offscreen asteroid clutter is handled through tier coalescing.
+- Asteroid-vs-asteroid damage should remain, but use simple tier attack rolls on cooldown instead of mass/velocity impact damage.
+- Weapons should damage asteroids without accelerating them.
+- Debris should be a deliberate world hazard, not a persistent loot drop from every enemy death.
+- Visual effects should scale down during large bursts before they threaten frame time.
+- Spatial filtering should be used before exact asteroid/debris collision checks.
+
+Tasks:
+
+- Remove persistent debris spawning from normal enemy deaths.
+- Keep debris as a destructible hazard that can reward scrap.
+- Add asteroid breakup soft/hard caps and burst protection. Defaults are 500 soft cap, 500 hard cap, and 250 destructions per 500ms for burst protection.
+- Add asteroid tiers 1-10 with increasing size, HP, contact damage, and collision attack damage.
+- Widen the upper-tier asteroid size curve so T10 reads as a giant hazard and T6-T9 step upward more clearly.
+- Replace asteroid-vs-asteroid mass/velocity damage with cooldown-gated randomized tier damage while preserving bounce/separation.
+- Use tier-weighted asteroid collision response so small tiers cannot shove large tiers around like equal bodies.
+- Untangle asteroid-to-player hull damage from generic momentum impact damage; use asteroid tier contact damage for hull/shield contact while keeping physics for bounce/separation.
+- Remove generic player-body momentum damage against asteroids so ramming shield remains the intentional ship ram damage path.
+- Update high-tier breakup recipes so T6-T10 skip adjacent-tier fragments and break into visibly smaller asteroids.
+- Keep normal asteroid breakup recipes at five or more fragments, with performance pressure still allowed to suppress actual spawned fragments.
+- Replace always-even radial fragment motion with cheap spawn-time breakup motion patterns: crumble, shear, split, and rare burst.
+- Lower default fragment burst speed and increase parent velocity inheritance so most breakups stay constrained.
+- Tune asteroid-vs-asteroid damage so same-tier collisions take multiple cooldowns, and give fresh fragments a short collision-damage grace period after breakup.
+- Add large-asteroid breakup smoothing with a fading parent ghost and fragment grow-in visuals for T5-T10.
+- Add a debug Visuals toggle for asteroid damage flashes so impact feedback can be tested with or without sprite flashing.
+- Keep asteroid hit impact feedback compact and independent from asteroid tier size; scale it only from projectile hit radius when applicable.
+- Stop projectile hits from accelerating asteroids.
+- Coalesce offscreen small asteroids with the recipe `10x Tn -> 1x T(n+1)`, with emergency cleanup under high asteroid pressure.
+- Throttle asteroid death shards under heavy pressure independently from fragment burst protection.
+- Add toroidal spatial collision filtering for asteroid/debris world impacts.
+- Add `?testHarness=phase10_6`.
+
+Do not:
+
+- Delete asteroid or scrap reward value as a performance fix.
+- Remove asteroid fragmentation entirely during normal play.
+- Make debris disappear as a hazard type.
+
+Acceptance:
+
+- Destroying many tier-5 asteroids quickly stays within the asteroid hard cap.
+- Suppressed fragments do not become bonus scrap.
+- Offscreen small asteroids coalesce into higher tiers over time.
+- Normal enemy deaths do not create persistent debris.
+- Build passes.
+- Commit and push.
+
 ### Phase 11: Mission Framework
 
 Goal:

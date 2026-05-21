@@ -32,6 +32,7 @@ import {
   getMassResponseShare,
   getRelativeVelocity
 } from './physics';
+import { buildSpatialHash, querySpatialHash, type SpatialHashGrid } from './spatialHash';
 
 type WorldEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
 type BodyImpactCollisionRequest = Pick<
@@ -118,9 +119,53 @@ export interface ResolveBodyImpactCollisionInput {
 }
 
 export function resolveWorldImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
-  resolveEnemyAsteroidImpactCollisions(input);
-  resolveEnemyDebrisImpactCollisions(input);
-  resolveAsteroidDebrisImpactCollisions(input);
+  const asteroidRadii = new Map<BasicAsteroid, number>();
+  const debrisRadii = new Map<EnemyWreckageDebris, number>();
+  let maxAsteroidRadius = 0;
+  let maxDebrisRadius = 0;
+
+  for (const asteroid of input.asteroids) {
+    const radius = input.getAsteroidCollisionRadius(asteroid);
+    asteroidRadii.set(asteroid, radius);
+    maxAsteroidRadius = Math.max(maxAsteroidRadius, radius);
+  }
+
+  for (const debris of input.debris) {
+    const radius = input.getDebrisCollisionRadius(debris);
+    debrisRadii.set(debris, radius);
+    maxDebrisRadius = Math.max(maxDebrisRadius, radius);
+  }
+
+  const asteroidSpatialHash = buildSpatialHash(
+    input.arena,
+    input.asteroids.map((asteroid) => ({
+      target: asteroid,
+      x: asteroid.body.x,
+      y: asteroid.body.y
+    })),
+    Math.max(240, maxAsteroidRadius * 2.5)
+  );
+  const debrisSpatialHash = buildSpatialHash(
+    input.arena,
+    input.debris.map((debris) => ({
+      target: debris,
+      x: debris.body.x,
+      y: debris.body.y
+    })),
+    Math.max(180, maxDebrisRadius * 4)
+  );
+  const spatialContext: WorldImpactSpatialContext = {
+    asteroidRadii,
+    debrisRadii,
+    maxAsteroidRadius,
+    maxDebrisRadius,
+    asteroidSpatialHash,
+    debrisSpatialHash
+  };
+
+  resolveEnemyAsteroidImpactCollisions(input, spatialContext);
+  resolveEnemyDebrisImpactCollisions(input, spatialContext);
+  resolveAsteroidDebrisImpactCollisions(input, spatialContext);
 }
 
 export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInput): void {
@@ -187,19 +232,38 @@ export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInpu
   }
 }
 
-function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
+interface WorldImpactSpatialContext {
+  asteroidRadii: Map<BasicAsteroid, number>;
+  debrisRadii: Map<EnemyWreckageDebris, number>;
+  maxAsteroidRadius: number;
+  maxDebrisRadius: number;
+  asteroidSpatialHash: SpatialHashGrid<BasicAsteroid>;
+  debrisSpatialHash: SpatialHashGrid<EnemyWreckageDebris>;
+}
+
+function resolveEnemyAsteroidImpactCollisions(
+  input: ResolveWorldImpactCollisionsInput,
+  spatialContext: WorldImpactSpatialContext
+): void {
   for (const enemy of input.enemies) {
     if (!isActiveWorldEnemy(enemy)) {
       continue;
     }
 
-    for (const asteroid of [...input.asteroids]) {
+    const enemyHitRadius = input.getEnemyHitRadius(enemy);
+    const nearbyAsteroids = querySpatialHash(
+      spatialContext.asteroidSpatialHash,
+      enemy.body.x,
+      enemy.body.y,
+      enemyHitRadius + spatialContext.maxAsteroidRadius
+    );
+
+    for (const asteroid of nearbyAsteroids) {
       if (!isActiveWorldEnemy(enemy)) {
         break;
       }
 
-      const enemyHitRadius = input.getEnemyHitRadius(enemy);
-      const asteroidRadius = input.getAsteroidCollisionRadius(asteroid);
+      const asteroidRadius = spatialContext.asteroidRadii.get(asteroid) ?? input.getAsteroidCollisionRadius(asteroid);
       const collision = getEnemyCircleCollision(input, enemy, asteroid.body.x, asteroid.body.y, asteroidRadius);
       if (
         !input.asteroids.includes(asteroid) ||
@@ -234,19 +298,29 @@ function resolveEnemyAsteroidImpactCollisions(input: ResolveWorldImpactCollision
   }
 }
 
-function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
+function resolveEnemyDebrisImpactCollisions(
+  input: ResolveWorldImpactCollisionsInput,
+  spatialContext: WorldImpactSpatialContext
+): void {
   for (const enemy of input.enemies) {
     if (!isActiveWorldEnemy(enemy)) {
       continue;
     }
 
-    for (const debris of [...input.debris]) {
+    const enemyHitRadius = input.getEnemyHitRadius(enemy);
+    const nearbyDebris = querySpatialHash(
+      spatialContext.debrisSpatialHash,
+      enemy.body.x,
+      enemy.body.y,
+      enemyHitRadius + spatialContext.maxDebrisRadius
+    );
+
+    for (const debris of nearbyDebris) {
       if (!isActiveWorldEnemy(enemy)) {
         break;
       }
 
-      const enemyHitRadius = input.getEnemyHitRadius(enemy);
-      const debrisRadius = input.getDebrisCollisionRadius(debris);
+      const debrisRadius = spatialContext.debrisRadii.get(debris) ?? input.getDebrisCollisionRadius(debris);
       const collision = getEnemyCircleCollision(input, enemy, debris.body.x, debris.body.y, debrisRadius);
       if (
         !input.debris.includes(debris) ||
@@ -281,11 +355,21 @@ function resolveEnemyDebrisImpactCollisions(input: ResolveWorldImpactCollisionsI
   }
 }
 
-function resolveAsteroidDebrisImpactCollisions(input: ResolveWorldImpactCollisionsInput): void {
-  for (const asteroid of [...input.asteroids]) {
-    for (const debris of [...input.debris]) {
-      const asteroidRadius = input.getAsteroidCollisionRadius(asteroid);
-      const debrisRadius = input.getDebrisCollisionRadius(debris);
+function resolveAsteroidDebrisImpactCollisions(
+  input: ResolveWorldImpactCollisionsInput,
+  spatialContext: WorldImpactSpatialContext
+): void {
+  for (const asteroid of input.asteroids) {
+    const asteroidRadius = spatialContext.asteroidRadii.get(asteroid) ?? input.getAsteroidCollisionRadius(asteroid);
+    const nearbyDebris = querySpatialHash(
+      spatialContext.debrisSpatialHash,
+      asteroid.body.x,
+      asteroid.body.y,
+      asteroidRadius + spatialContext.maxDebrisRadius
+    );
+
+    for (const debris of nearbyDebris) {
+      const debrisRadius = spatialContext.debrisRadii.get(debris) ?? input.getDebrisCollisionRadius(debris);
       const collision = getCircleCollision(
         input.arena,
         createCircleCollisionShape(asteroid.body, asteroidRadius),

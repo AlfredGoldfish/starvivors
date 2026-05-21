@@ -9,22 +9,24 @@ import {
   ASTEROID_COLLISION_MIN_IMPULSE,
   ASTEROID_COLLISION_RESTITUTION,
   ASTEROID_COLLISION_SEPARATION_PERCENT,
+  ASTEROID_COLLISION_WEIGHT_EXPONENT,
   ASTEROID_PARENT_VELOCITY_INHERITANCE,
   ASTEROID_TIER_CONFIG,
   ASTEROID_TIERS
 } from '../scenes/gameConstants';
 import type {
   AsteroidBreakupProfile,
+  AsteroidBreakupMotionMode,
   AsteroidBreakupProfileMode,
   AsteroidTier,
   BasicAsteroid
 } from '../scenes/gameTypes';
 import {
   applyCollisionImpulse,
-  getClosingSpeed,
   getMassResponseShare,
   getRelativeVelocity
 } from './physics';
+import { buildSpatialHash, querySpatialHash } from './spatialHash';
 
 export interface UpdateBasicAsteroidsInput {
   arena: ArenaSize;
@@ -47,14 +49,13 @@ export interface ResolveAsteroidCollisionsInput {
   time: number;
   asteroidCollisionImpulseScale: number;
   getCollisionNormal: (offset: Phaser.Math.Vector2) => Phaser.Math.Vector2;
-  getAsteroidMass: (tier: AsteroidTier) => number;
   getAsteroidCollisionRadius: (asteroid: BasicAsteroid) => number;
   getGlobalMaxSpeed: () => number;
   nudgeWrappedObject: (object: Phaser.GameObjects.Container, normal: Phaser.Math.Vector2, distance: number) => void;
   updateAsteroidWrapMirror: (asteroid: BasicAsteroid) => void;
   canApplyAsteroidCollisionDamage: (first: BasicAsteroid, second: BasicAsteroid, time: number) => boolean;
   markAsteroidCollisionDamageApplied: (first: BasicAsteroid, second: BasicAsteroid, time: number) => void;
-  calculateAsteroidImpactDamage: (firstMass: number, secondMass: number, closingSpeed: number) => number;
+  rollAsteroidCollisionDamage: (tier: AsteroidTier) => number;
   damageAsteroid: (asteroid: BasicAsteroid, damage: number) => void;
   emitAsteroidImpactExplosion: (x: number, y: number, tier: AsteroidTier) => void;
   flashDamageSprites: (...containers: Phaser.GameObjects.Container[]) => void;
@@ -91,6 +92,25 @@ export function updateBasicAsteroidRuntime(input: UpdateBasicAsteroidsInput): vo
 
 export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput): void {
   const destroyedAsteroids = new Set<BasicAsteroid>();
+  const asteroidRadii = new Map<BasicAsteroid, number>();
+  let maxAsteroidRadius = 0;
+
+  for (const asteroid of input.asteroids) {
+    const radius = input.getAsteroidCollisionRadius(asteroid);
+    asteroidRadii.set(asteroid, radius);
+    maxAsteroidRadius = Math.max(maxAsteroidRadius, radius);
+  }
+
+  const spatialHash = buildSpatialHash(
+    input.arena,
+    input.asteroids.map((asteroid) => ({
+      target: asteroid,
+      x: asteroid.body.x,
+      y: asteroid.body.y
+    })),
+    Math.max(240, maxAsteroidRadius * 2.5)
+  );
+  const asteroidIndexes = new Map(input.asteroids.map((asteroid, index) => [asteroid, index]));
 
   for (let i = 0; i < input.asteroids.length; i += 1) {
     const first = input.asteroids[i];
@@ -98,14 +118,17 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
       continue;
     }
 
-    for (let j = i + 1; j < input.asteroids.length; j += 1) {
-      const second = input.asteroids[j];
-      if (destroyedAsteroids.has(second)) {
+    const firstRadius = asteroidRadii.get(first) ?? input.getAsteroidCollisionRadius(first);
+    const nearbyAsteroids = querySpatialHash(spatialHash, first.body.x, first.body.y, firstRadius + maxAsteroidRadius);
+
+    for (const second of nearbyAsteroids) {
+      const secondIndex = asteroidIndexes.get(second) ?? -1;
+      if (secondIndex <= i || destroyedAsteroids.has(second)) {
         continue;
       }
 
       const offset = getWrappedDirection(input.arena, second.body.x, second.body.y, first.body.x, first.body.y);
-      const hitRadius = input.getAsteroidCollisionRadius(first) + input.getAsteroidCollisionRadius(second);
+      const hitRadius = firstRadius + (asteroidRadii.get(second) ?? input.getAsteroidCollisionRadius(second));
       const distance = offset.length();
 
       if (distance > hitRadius) {
@@ -114,27 +137,21 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
 
       const normal = input.getCollisionNormal(offset);
       const penetration = hitRadius - distance;
-      const firstMass = input.getAsteroidMass(first.tier);
-      const secondMass = input.getAsteroidMass(second.tier);
-      const firstShare = getMassResponseShare(secondMass, firstMass);
-      const secondShare = getMassResponseShare(firstMass, secondMass);
+      const firstMass = getAsteroidCollisionWeight(first.tier);
+      const secondMass = getAsteroidCollisionWeight(second.tier);
+      const firstSeparationShare = getMassResponseShare(secondMass, firstMass);
+      const secondSeparationShare = getMassResponseShare(firstMass, secondMass);
       const separation = Math.min(
         penetration * ASTEROID_COLLISION_SEPARATION_PERCENT,
         ASTEROID_COLLISION_MAX_SEPARATION
       );
 
-      input.nudgeWrappedObject(first.body, normal, separation * firstShare);
-      input.nudgeWrappedObject(second.body, normal, -separation * secondShare);
+      input.nudgeWrappedObject(first.body, normal, separation * firstSeparationShare);
+      input.nudgeWrappedObject(second.body, normal, -separation * secondSeparationShare);
       input.updateAsteroidWrapMirror(first);
       input.updateAsteroidWrapMirror(second);
 
-      if (!input.canApplyAsteroidCollisionDamage(first, second, input.time)) {
-        continue;
-      }
-
       const relativeVelocity = getRelativeVelocity(first.velocity, second.velocity);
-      const closingSpeed = getClosingSpeed(relativeVelocity, normal);
-      const impactDamage = input.calculateAsteroidImpactDamage(firstMass, secondMass, closingSpeed);
 
       applyCollisionImpulse({
         normal,
@@ -151,13 +168,12 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
         relativeVelocity
       });
 
-      if (impactDamage <= 0) {
-        input.markAsteroidCollisionDamageApplied(first, second, input.time);
+      if (!input.canApplyAsteroidCollisionDamage(first, second, input.time)) {
         continue;
       }
 
-      input.damageAsteroid(first, impactDamage);
-      input.damageAsteroid(second, impactDamage);
+      input.damageAsteroid(first, input.rollAsteroidCollisionDamage(second.tier));
+      input.damageAsteroid(second, input.rollAsteroidCollisionDamage(first.tier));
       input.emitAsteroidImpactExplosion(
         wrapCoordinate((first.body.x + second.body.x) * 0.5, input.arena.width),
         wrapCoordinate((first.body.y + second.body.y) * 0.5, input.arena.height),
@@ -187,12 +203,13 @@ export function createAsteroidBreakupProfile(tier: AsteroidTier): AsteroidBreaku
 
   return {
     mode,
+    motionMode: pickAsteroidBreakupMotionMode(),
     preferredTier:
       mode === 'single-tier' && lowerTiers.length > 0
         ? lowerTiers[Phaser.Math.Between(0, lowerTiers.length - 1)]
         : undefined,
-    burstMultiplier: Phaser.Math.FloatBetween(0.85, 1.22),
-    spreadMultiplier: Phaser.Math.FloatBetween(0.82, 1.28)
+    burstMultiplier: Phaser.Math.FloatBetween(0.72, 1.05),
+    spreadMultiplier: Phaser.Math.FloatBetween(0.72, 1.08)
   };
 }
 
@@ -205,56 +222,39 @@ export function createAsteroidFragmentTiers(
   }
 
   if (breakupProfile.mode === 'single-tier' && breakupProfile.preferredTier) {
-    return createSingleTierAsteroidFragments(parentTier, breakupProfile.preferredTier);
+    return createTierRecipeAsteroidFragments(parentTier, breakupProfile.preferredTier);
   }
 
   const mixedMode = breakupProfile.mode === 'single-tier' ? 'balanced' : breakupProfile.mode;
-  const fragments: AsteroidTier[] = [];
-  let remainingMass = ASTEROID_TIER_CONFIG[parentTier].massBudget;
-
-  while (remainingMass > 0) {
-    const validTiers = getLowerAsteroidTiers(parentTier).filter(
-      (tier) => ASTEROID_TIER_CONFIG[tier].massBudget <= remainingMass
-    );
-
-    if (validTiers.length === 0) {
-      break;
-    }
-
-    const tier = pickAsteroidFragmentTier(validTiers, mixedMode);
-    fragments.push(tier);
-    remainingMass -= ASTEROID_TIER_CONFIG[tier].massBudget;
-  }
+  const fragments = pickAsteroidBreakupRecipe(parentTier, mixedMode);
 
   return fragments;
 }
 
 export function spawnAsteroidFragments(input: SpawnAsteroidFragmentsInput): void {
-  const baseAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+  const motionPlan = createAsteroidBreakupMotionPlan(input.breakupProfile.motionMode);
 
   for (let i = 0; i < input.fragmentTiers.length; i += 1) {
     const fragmentTier = input.fragmentTiers[i];
     const fragmentConfig = ASTEROID_TIER_CONFIG[fragmentTier];
-    const angle =
-      baseAngle +
-      (Math.PI * 2 * i) / input.fragmentTiers.length +
-      Phaser.Math.FloatBetween(-0.22, 0.22);
+    const motion = getAsteroidFragmentMotion(input.breakupProfile.motionMode, motionPlan, i, input.fragmentTiers.length);
     const offsetDistance =
-      Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * 0.38) * input.breakupProfile.spreadMultiplier;
+      Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * motion.offsetScale) * input.breakupProfile.spreadMultiplier;
     const burstSpeed =
       Phaser.Math.FloatBetween(ASTEROID_FRAGMENT_BURST_MIN_SPEED, ASTEROID_FRAGMENT_BURST_MAX_SPEED) *
+      motion.speedScale *
       input.breakupProfile.burstMultiplier;
     const velocity = input.parentVelocity
       .clone()
       .scale(ASTEROID_PARENT_VELOCITY_INHERITANCE)
-      .add(new Phaser.Math.Vector2(Math.cos(angle) * burstSpeed, Math.sin(angle) * burstSpeed));
+      .add(new Phaser.Math.Vector2(Math.cos(motion.angle) * burstSpeed, Math.sin(motion.angle) * burstSpeed));
 
     velocity.limit(input.getGlobalMaxSpeed());
 
     input.asteroids.push(
       input.createAsteroidInstance(
-        wrapCoordinate(input.x + Math.cos(angle) * offsetDistance, input.arena.width),
-        wrapCoordinate(input.y + Math.sin(angle) * offsetDistance, input.arena.height),
+        wrapCoordinate(input.x + Math.cos(motion.angle) * offsetDistance, input.arena.width),
+        wrapCoordinate(input.y + Math.sin(motion.angle) * offsetDistance, input.arena.height),
         fragmentTier,
         velocity
       )
@@ -275,52 +275,158 @@ export function clearBasicAsteroids(asteroids: BasicAsteroid[]): BasicAsteroid[]
   return [];
 }
 
-function createSingleTierAsteroidFragments(parentTier: AsteroidTier, fragmentTier: AsteroidTier): AsteroidTier[] {
-  const parentMass = ASTEROID_TIER_CONFIG[parentTier].massBudget;
-  const fragmentMass = ASTEROID_TIER_CONFIG[fragmentTier].massBudget;
-  const fragmentCount = Math.floor(parentMass / fragmentMass);
+function createTierRecipeAsteroidFragments(parentTier: AsteroidTier, fragmentTier: AsteroidTier): AsteroidTier[] {
+  const highestFragmentTier = getHighestBreakupFragmentTier(parentTier);
+  const lowerTier = Math.min(highestFragmentTier, Math.max(1, fragmentTier)) as AsteroidTier;
+  const tierDrop = parentTier - lowerTier;
+  const fragmentCount = tierDrop <= 2 ? 5 : 7;
 
-  return Array.from({ length: fragmentCount }, () => fragmentTier);
+  return Array.from({ length: fragmentCount }, () => lowerTier);
 }
 
-function pickAsteroidFragmentTier(
-  validTiers: AsteroidTier[],
+function pickAsteroidBreakupRecipe(
+  parentTier: AsteroidTier,
   mode: Exclude<AsteroidBreakupProfileMode, 'single-tier'>
-): AsteroidTier {
-  const weightedTiers: AsteroidTier[] = [];
-
-  for (const tier of validTiers) {
-    const weight = getAsteroidFragmentTierWeight(tier, validTiers, mode);
-
-    for (let i = 0; i < weight; i += 1) {
-      weightedTiers.push(tier);
-    }
+): AsteroidTier[] {
+  const highTierRecipe = pickHighTierAsteroidBreakupRecipe(parentTier, mode);
+  if (highTierRecipe) {
+    return highTierRecipe;
   }
 
-  return weightedTiers[Phaser.Math.Between(0, weightedTiers.length - 1)];
-}
-
-function getAsteroidFragmentTierWeight(
-  tier: AsteroidTier,
-  validTiers: AsteroidTier[],
-  mode: Exclude<AsteroidBreakupProfileMode, 'single-tier'>
-): number {
-  const minTier = Math.min(...validTiers);
-  const maxTier = Math.max(...validTiers);
+  const oneLower = Math.max(1, parentTier - 1) as AsteroidTier;
+  const twoLower = Math.max(1, parentTier - 2) as AsteroidTier;
+  const threeLower = Math.max(1, parentTier - 3) as AsteroidTier;
 
   if (mode === 'many-small') {
-    return maxTier - tier + 1;
+    return [oneLower, twoLower, twoLower, threeLower, threeLower, threeLower];
   }
 
   if (mode === 'few-large') {
-    return tier - minTier + 1;
+    return [oneLower, oneLower, twoLower, twoLower, threeLower];
   }
 
-  return 1;
+  return [oneLower, oneLower, twoLower, twoLower, threeLower];
+}
+
+function pickHighTierAsteroidBreakupRecipe(
+  parentTier: AsteroidTier,
+  mode: Exclude<AsteroidBreakupProfileMode, 'single-tier'>
+): AsteroidTier[] | undefined {
+  if (parentTier < 6) {
+    return undefined;
+  }
+
+  if (mode === 'few-large') {
+    return getClampedAsteroidRecipe(parentTier, [2, 2, 3, 3, 4]);
+  }
+
+  if (mode === 'many-small') {
+    return getClampedAsteroidRecipe(parentTier, [3, 4, 4, 5, 5, 6]);
+  }
+
+  return getClampedAsteroidRecipe(parentTier, [3, 3, 4, 4, 5]);
+}
+
+function getClampedAsteroidRecipe(parentTier: AsteroidTier, tierDrops: number[]): AsteroidTier[] {
+  return tierDrops.map((tierDrop) => Math.max(1, parentTier - tierDrop) as AsteroidTier);
+}
+
+function getHighestBreakupFragmentTier(parentTier: AsteroidTier): AsteroidTier {
+  return Math.max(1, parentTier - (parentTier >= 6 ? 2 : 1)) as AsteroidTier;
 }
 
 function getLowerAsteroidTiers(tier: AsteroidTier): AsteroidTier[] {
-  return ASTEROID_TIERS.filter((candidateTier) => candidateTier < tier);
+  const highestFragmentTier = getHighestBreakupFragmentTier(tier);
+
+  return ASTEROID_TIERS.filter((candidateTier) => candidateTier <= highestFragmentTier);
+}
+
+function getAsteroidCollisionWeight(tier: AsteroidTier): number {
+  return Math.pow(Math.max(1, tier), ASTEROID_COLLISION_WEIGHT_EXPONENT);
+}
+
+function pickAsteroidBreakupMotionMode(): AsteroidBreakupMotionMode {
+  const roll = Phaser.Math.Between(1, 100);
+
+  if (roll <= 40) {
+    return 'crumble';
+  }
+
+  if (roll <= 70) {
+    return 'shear';
+  }
+
+  if (roll <= 90) {
+    return 'split';
+  }
+
+  return 'burst';
+}
+
+interface AsteroidBreakupMotionPlan {
+  baseAngle: number;
+  secondaryAngle: number;
+  dominantIndex: number;
+}
+
+interface AsteroidFragmentMotion {
+  angle: number;
+  speedScale: number;
+  offsetScale: number;
+}
+
+function createAsteroidBreakupMotionPlan(mode: AsteroidBreakupMotionMode): AsteroidBreakupMotionPlan {
+  const baseAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+  const secondaryAngle =
+    mode === 'split'
+      ? baseAngle + Math.PI + Phaser.Math.FloatBetween(-0.42, 0.42)
+      : baseAngle + Phaser.Math.FloatBetween(-0.8, 0.8);
+
+  return {
+    baseAngle,
+    secondaryAngle,
+    dominantIndex: Phaser.Math.Between(0, 100000)
+  };
+}
+
+function getAsteroidFragmentMotion(
+  mode: AsteroidBreakupMotionMode,
+  plan: AsteroidBreakupMotionPlan,
+  index: number,
+  fragmentCount: number
+): AsteroidFragmentMotion {
+  const dominant = index === plan.dominantIndex % Math.max(1, fragmentCount);
+
+  if (mode === 'crumble') {
+    return {
+      angle: plan.baseAngle + Phaser.Math.FloatBetween(-1.05, 1.05),
+      speedScale: Phaser.Math.FloatBetween(0.18, dominant ? 0.52 : 0.38),
+      offsetScale: Phaser.Math.FloatBetween(0.08, 0.22)
+    };
+  }
+
+  if (mode === 'shear') {
+    return {
+      angle: plan.baseAngle + Phaser.Math.FloatBetween(-0.38, 0.38),
+      speedScale: Phaser.Math.FloatBetween(0.3, dominant ? 0.9 : 0.62),
+      offsetScale: Phaser.Math.FloatBetween(0.12, 0.28)
+    };
+  }
+
+  if (mode === 'split') {
+    const lobeAngle = index % 2 === 0 ? plan.baseAngle : plan.secondaryAngle;
+    return {
+      angle: lobeAngle + Phaser.Math.FloatBetween(-0.44, 0.44),
+      speedScale: Phaser.Math.FloatBetween(0.35, dominant ? 0.96 : 0.72),
+      offsetScale: Phaser.Math.FloatBetween(0.14, 0.32)
+    };
+  }
+
+  return {
+    angle: plan.baseAngle + (Math.PI * 2 * index) / Math.max(1, fragmentCount) + Phaser.Math.FloatBetween(-0.38, 0.38),
+    speedScale: Phaser.Math.FloatBetween(0.55, dominant ? 1.16 : 0.9),
+    offsetScale: Phaser.Math.FloatBetween(0.18, 0.36)
+  };
 }
 
 function getWrappedDirection(
