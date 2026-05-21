@@ -1,6 +1,10 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { basicEnemyBalance, shooterEnemyBalance, tankEnemyBalance } from './balance';
-import { COMBAT_NUMBER_SCALE } from './combatScale';
+import {
+  ENEMY_CONTACT_DAMAGE_VARIANCE,
+  ENEMY_PROJECTILE_DAMAGE_VARIANCE,
+  type DamageVariance
+} from './damageVariance';
 
 export type EnemyId = 'basic-enemy' | 'shooter-enemy' | 'tank-enemy';
 
@@ -10,12 +14,13 @@ export interface EnemyStatProfile {
   moveSpeed: number;
   acceleration: number;
   turnRate: number;
-  mass: number;
   blackHoleResistance: number;
   blackHoleMaxSpeed: number;
   contactDamage: number;
+  contactDamageVariance?: DamageVariance;
   collisionKnockback: number;
   attackDamage: number;
+  attackDamageVariance?: DamageVariance;
   attackCooldown: number;
   projectileSpeed: number;
   projectileSize: number;
@@ -52,10 +57,10 @@ export const basicEnemy: EnemyRegistryEntry = {
     moveSpeed: basicEnemyBalance.moveSpeed,
     acceleration: basicEnemyBalance.moveSpeed,
     turnRate: 4.4,
-    mass: 2,
     blackHoleResistance: 0.34,
     blackHoleMaxSpeed: 440,
-    contactDamage: 15 * COMBAT_NUMBER_SCALE,
+    contactDamage: 6,
+    contactDamageVariance: ENEMY_CONTACT_DAMAGE_VARIANCE,
     collisionKnockback: 1,
     attackDamage: 0,
     attackCooldown: 0,
@@ -89,12 +94,13 @@ export const shooterEnemy: EnemyRegistryEntry = {
     moveSpeed: shooterEnemyBalance.moveSpeed,
     acceleration: shooterEnemyBalance.moveSpeed,
     turnRate: 3.2,
-    mass: 3.2,
     blackHoleResistance: 0.38,
     blackHoleMaxSpeed: 380,
-    contactDamage: 15 * COMBAT_NUMBER_SCALE,
+    contactDamage: 5,
+    contactDamageVariance: ENEMY_CONTACT_DAMAGE_VARIANCE,
     collisionKnockback: 0.85,
     attackDamage: shooterEnemyBalance.projectileDamage,
+    attackDamageVariance: ENEMY_PROJECTILE_DAMAGE_VARIANCE,
     attackCooldown: shooterEnemyBalance.fireCooldownSeconds,
     projectileSpeed: shooterEnemyBalance.projectileSpeed,
     projectileSize: 9,
@@ -126,10 +132,10 @@ export const tankEnemy: EnemyRegistryEntry = {
     moveSpeed: tankEnemyBalance.moveSpeed,
     acceleration: tankEnemyBalance.moveSpeed,
     turnRate: 2.1,
-    mass: tankEnemyBalance.mass,
     blackHoleResistance: 0.44,
     blackHoleMaxSpeed: 320,
     contactDamage: tankEnemyBalance.contactDamage,
+    contactDamageVariance: ENEMY_CONTACT_DAMAGE_VARIANCE,
     collisionKnockback: 1.25,
     attackDamage: 0,
     attackCooldown: 0,

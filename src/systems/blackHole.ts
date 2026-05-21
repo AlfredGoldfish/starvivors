@@ -19,9 +19,6 @@ const BLACK_HOLE_DRIFT_SPEED = 24;
 const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_DRIFT_RESPONSE = 0.18;
 const BLACK_HOLE_DRIFT_TURN_RATE = 0.055;
-const BLACK_HOLE_DRIFT_MASS = 18;
-const BLACK_HOLE_DRIFT_REFERENCE_MASS = 3;
-const BLACK_HOLE_DRIFT_MASS_EXPONENT = 0.28;
 const BLACK_HOLE_CORE_RADIUS = 82;
 const BLACK_HOLE_WARNING_RADIUS = 260;
 const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
@@ -209,9 +206,7 @@ export const BLACK_HOLE_PROJECTILE_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = 
   radialExtraAcceleration: 1850,
   swirlBaseAcceleration: 130,
   swirlExtraAcceleration: 1250,
-  maxSpeed: 1520,
-  mass: 0.6,
-  massResistance: 0.42
+  maxSpeed: 1520
 };
 
 export class BlackHoleSystem {
@@ -305,9 +300,6 @@ export class BlackHoleSystem {
         ),
         response: BLACK_HOLE_DRIFT_RESPONSE,
         deltaSeconds,
-        mass: BLACK_HOLE_DRIFT_MASS,
-        referenceMass: BLACK_HOLE_DRIFT_REFERENCE_MASS,
-        massExponent: BLACK_HOLE_DRIFT_MASS_EXPONENT,
         maxSpeed: BLACK_HOLE_DRIFT_SPEED
       });
       this.body.x = wrapCoordinate(this.body.x + this.velocity.x * deltaSeconds, arena.width);

@@ -1,5 +1,6 @@
 import type { ShipRegistryEntry } from '../data/ships';
-import { getWeaponDefinition, type WeaponRegistryEntry } from '../data/weapons';
+import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry } from '../data/weapons';
+import type { WeaponLoadoutState } from './progressionStorage';
 import type { RunUpgradeLevels } from './runUpgrades';
 
 export interface PlayerWeaponRuntimeState {
@@ -20,19 +21,39 @@ export interface PlayerWeaponDebugTuning {
   fireRateMultiplier: number;
 }
 
-export function createPlayerWeaponRuntimeState(ship: ShipRegistryEntry): PlayerWeaponRuntimeState {
-  const startingPrimaryWeaponId = ship.startingPrimaryWeaponId;
+export function createPlayerWeaponRuntimeState(ship: ShipRegistryEntry, loadout?: WeaponLoadoutState): PlayerWeaponRuntimeState {
+  const primaryWeaponIds = getCompatibleLoadoutWeapons(loadout?.primary, 'primary');
+  const secondaryWeaponIds = getCompatibleLoadoutWeapons(loadout?.secondary, 'secondary');
+  const autoWeaponIds = getCompatibleLoadoutWeapons(loadout?.auto, 'auto');
+  const startingPrimaryWeaponId = primaryWeaponIds[0] ?? ship.startingPrimaryWeaponId;
+  const startingSecondaryWeaponId = secondaryWeaponIds[0] ?? ship.startingSecondaryWeaponId;
 
   return {
-    activeAutoWeaponId: null,
+    activeAutoWeaponId: autoWeaponIds[0] ?? null,
     activePrimaryWeaponId: startingPrimaryWeaponId,
-    activeSecondaryWeaponId: null,
-    ownedAutoWeaponIds: [],
-    ownedManualWeaponIds: startingPrimaryWeaponId ? [startingPrimaryWeaponId] : [],
+    activeSecondaryWeaponId: startingSecondaryWeaponId,
+    ownedAutoWeaponIds: autoWeaponIds,
+    ownedManualWeaponIds: uniqueWeaponIds([...primaryWeaponIds, ...secondaryWeaponIds, ...(startingPrimaryWeaponId ? [startingPrimaryWeaponId] : [])]),
     nextAutoWeaponFireAt: 0,
     nextPrimaryWeaponFireAt: 0,
     nextSecondaryWeaponFireAt: 0
   };
+}
+
+function getCompatibleLoadoutWeapons(weaponIds: Array<WeaponId | null> | undefined, slot: 'auto' | 'primary' | 'secondary'): WeaponId[] {
+  return uniqueWeaponIds(
+    (weaponIds ?? []).filter((weaponId): weaponId is WeaponId => {
+      if (!weaponId) {
+        return false;
+      }
+
+      return getWeaponDefinition(weaponId).slotCompatibility.includes(slot);
+    })
+  );
+}
+
+function uniqueWeaponIds(weaponIds: WeaponId[]): WeaponId[] {
+  return [...new Set(weaponIds)];
 }
 
 export function getActiveAutoWeaponDefinition(state: PlayerWeaponRuntimeState): WeaponRegistryEntry | undefined {

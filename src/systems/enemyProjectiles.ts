@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
+import { ENEMY_PROJECTILE_DAMAGE_VARIANCE } from '../data/damageVariance';
 import { SHOOTER_ENEMY_DISPLAY_SIZE, SHOOTER_PROJECTILE_HIT_RADIUS } from '../scenes/gameConstants';
 import type { EnemyProjectile, ShooterEnemy } from '../scenes/gameTypes';
 import { clearRuntimeProjectiles, destroyRuntimeProjectile, updateProjectiles } from './projectiles';
@@ -44,6 +45,7 @@ export function fireShooterProjectile(input: FireShooterProjectileInput): EnemyP
     velocity: input.direction.clone().scale(input.enemy.stats.projectileSpeed),
     speed: input.enemy.stats.projectileSpeed,
     damage: input.enemy.stats.attackDamage,
+    damageVariance: input.enemy.stats.attackDamageVariance ?? ENEMY_PROJECTILE_DAMAGE_VARIANCE,
     hitRadius: input.enemy.stats.projectileSize,
     owner: 'enemy',
     pierceRemaining: 0,

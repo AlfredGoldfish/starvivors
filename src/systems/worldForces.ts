@@ -29,8 +29,6 @@ export interface BlackHoleWhirlpoolTuning {
   swirlBaseAcceleration: number;
   swirlExtraAcceleration: number;
   maxSpeed: number;
-  mass: number;
-  massResistance: number;
 }
 
 export interface BlackHoleFieldTuningConfig {
@@ -38,7 +36,6 @@ export interface BlackHoleFieldTuningConfig {
   radialCurve: number;
   swirlStrengthMultiplier: number;
   swirlCurve: number;
-  massResistanceMultiplier: number;
   maxVelocityMultiplier: number;
   viscosityStrength: number;
   viscosityCurve: number;
@@ -56,7 +53,6 @@ export const DEFAULT_BLACK_HOLE_FIELD_TUNING: BlackHoleFieldTuningConfig = {
   radialCurve: 2,
   swirlStrengthMultiplier: 1,
   swirlCurve: 2,
-  massResistanceMultiplier: 1,
   maxVelocityMultiplier: 1,
   viscosityStrength: 0,
   viscosityCurve: 2,
@@ -113,10 +109,6 @@ export function sampleWorldForce(
   };
 }
 
-export function getMassResistanceScale(mass: number, massResistance: number): number {
-  return 1 / (1 + Math.max(0, mass - 1) * Math.max(0, massResistance));
-}
-
 export function getProximityCurve(proximity: number, curve: number): number {
   return Math.pow(Phaser.Math.Clamp(proximity, 0, 1), Math.max(0, curve));
 }
@@ -143,9 +135,7 @@ export function applyBlackHoleFieldTuning(
     radialExtraAcceleration: tuning.radialExtraAcceleration * fieldTuning.radialStrengthMultiplier,
     swirlBaseAcceleration: tuning.swirlBaseAcceleration * fieldTuning.swirlStrengthMultiplier,
     swirlExtraAcceleration: tuning.swirlExtraAcceleration * fieldTuning.swirlStrengthMultiplier,
-    maxSpeed: tuning.maxSpeed * fieldTuning.maxVelocityMultiplier,
-    mass: tuning.mass,
-    massResistance: tuning.massResistance * fieldTuning.massResistanceMultiplier
+    maxSpeed: tuning.maxSpeed * fieldTuning.maxVelocityMultiplier
   };
 }
 
@@ -190,11 +180,10 @@ export function computeBlackHoleWhirlpoolForce(
   const orbitSign = velocity.lengthSq() > 0 && velocity.dot(tangent) < 0 ? -1 : 1;
   const radialCurve = getProximityCurve(sample.proximity, fieldTuning.radialCurve);
   const swirlCurve = getProximityCurve(sample.proximity, fieldTuning.swirlCurve);
-  const massScale = getMassResistanceScale(activeTuning.mass, activeTuning.massResistance);
   const radialAcceleration =
-    (activeTuning.radialBaseAcceleration + radialCurve * activeTuning.radialExtraAcceleration) * massScale;
+    activeTuning.radialBaseAcceleration + radialCurve * activeTuning.radialExtraAcceleration;
   const tangentialAcceleration =
-    (activeTuning.swirlBaseAcceleration + swirlCurve * activeTuning.swirlExtraAcceleration) * massScale;
+    activeTuning.swirlBaseAcceleration + swirlCurve * activeTuning.swirlExtraAcceleration;
 
   acceleration.set(
     inward.x * radialAcceleration + tangent.x * tangentialAcceleration * orbitSign,

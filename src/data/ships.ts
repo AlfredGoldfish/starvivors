@@ -1,6 +1,5 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
-import { COMBAT_NUMBER_SCALE } from './combatScale';
 import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
 import { pulseCannon, rammingShield, type RammingShieldStats, type WeaponId } from './weapons';
 
@@ -12,16 +11,20 @@ export interface ShipWeaponBonusDefinition {
 
 export interface ShipDisplayStatRatings {
   hull?: number;
-  shield?: number;
-  speed?: number;
-  handling?: number;
-  mass?: number;
-  primaryDamage?: number;
-  fireRate?: number;
-  ramDamage?: number;
-  shieldRegen?: number;
-  pickupRange?: number;
+  velocity?: number;
+  acceleration?: number;
+  control?: number;
+  tractorField?: number;
+  fuel?: number;
 }
+
+export const SHIP_HULL_HP_CAP = 9999;
+export const SHIP_STAT_CAP = 255;
+export const SHIP_VELOCITY_CAP_PX_PER_SECOND = 700;
+export const SHIP_ACCELERATION_CAP_PX_PER_SECOND_SQUARED = 1200;
+export const SHIP_CONTROL_ROTATION_CAP = 5;
+export const SHIP_TRACTOR_FIELD_CAP_RADIUS = 180;
+export const SHIP_STARTING_FUEL_STAT = 58;
 
 export interface ShipMasteryPreviewDefinition {
   level: number;
@@ -33,23 +36,29 @@ export interface ShipDisplayDefinition {
   shortDescription: string;
   tags: string[];
   statRatings: ShipDisplayStatRatings;
+  fantasy?: string;
+  passiveTitle?: string;
+  passiveDescription?: string;
+  strengths?: string[];
+  weaknesses?: string[];
   exampleUpgradeIds?: string[];
   masteryPreview?: ShipMasteryPreviewDefinition[];
 }
 
+export interface ShipSkinDefinition {
+  id: string;
+  displayName: string;
+  tint?: number;
+  unlockedByDefault?: boolean;
+}
+
 export interface ShipLevelGrowthWeights {
   hull?: number;
-  shieldCapacity?: number;
-  shieldRegen?: number;
   moveSpeed?: number;
-  handling?: number;
-  mass?: number;
-  primaryDamage?: number;
-  primaryFireRate?: number;
-  projectileSpeed?: number;
-  projectileSize?: number;
-  ramDamage?: number;
-  pickupRange?: number;
+  acceleration?: number;
+  control?: number;
+  tractorField?: number;
+  fuel?: number;
   luck?: number;
 }
 
@@ -60,6 +69,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   description: string;
   role: string;
   display: ShipDisplayDefinition;
+  skins?: ShipSkinDefinition[];
   levelGrowthWeights?: ShipLevelGrowthWeights;
   baseStats: PlayerBaseStats;
   hitRadius: number;
@@ -101,15 +111,19 @@ export const shipRegistry: ShipRegistryEntry[] = [
     display: {
       roleTitle: 'Agile Ranged Striker',
       shortDescription: 'Fast, responsive, and tuned for evasive Pulse Cannon runs.',
+      fantasy: 'Fast precision striker',
+      passiveTitle: 'Vector Tuning',
+      passiveDescription: 'Starts with crisp control thrusters and strong pickup utility.',
+      strengths: ['High velocity', 'Responsive control', 'Reliable manual fire'],
+      weaknesses: ['Fragile hull', 'Lower fuel margin', 'Mistakes are costly'],
       tags: ['Ranged', 'Agile', 'Projectile', 'Beginner Friendly'],
       statRatings: {
-        hull: 4,
-        speed: 9,
-        handling: 8,
-        mass: 3,
-        primaryDamage: 6,
-        fireRate: 7,
-        pickupRange: 5
+        hull: 40,
+        velocity: 182,
+        acceleration: 119,
+        control: 210,
+        tractorField: 65,
+        fuel: SHIP_STARTING_FUEL_STAT
       },
       exampleUpgradeIds: ['Multishot', 'Pierce', 'Rapid Fire', 'Explosive Pulse'],
       masteryPreview: [
@@ -121,17 +135,14 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     levelGrowthWeights: {
       moveSpeed: 1,
-      handling: 1,
-      primaryDamage: 0.9,
-      primaryFireRate: 0.85,
-      projectileSpeed: 0.75,
-      projectileSize: 0.45,
-      pickupRange: 0.35
+      acceleration: 1,
+      control: 1,
+      tractorField: 0.35,
+      fuel: 0.35
     },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
-      maxHull: 40 * COMBAT_NUMBER_SCALE,
-      mass: 3,
+      maxHull: 40,
       moveSpeed: interceptorMovement.maxSpeed,
       thrust: interceptorMovement.thrustAcceleration,
       brake: interceptorMovement.reverseThrustAcceleration,
@@ -142,6 +153,11 @@ export const shipRegistry: ShipRegistryEntry[] = [
     startingWeaponNotes: `${pulseCannon.displayName} primary starter`,
     startingPrimaryWeaponId: pulseCannon.id,
     startingSecondaryWeaponId: null,
+    skins: [
+      { id: 'interceptor-cyan', displayName: 'Cyan', unlockedByDefault: true },
+      { id: 'interceptor-amber', displayName: 'Amber', tint: 0xffc857, unlockedByDefault: true },
+      { id: 'interceptor-ghost', displayName: 'Ghost', tint: 0xd6f7ff }
+    ],
     speedRating: 'Fast',
     handlingRating: 'Responsive',
     textureKey: 'player-ship-spaceship-1',
@@ -154,21 +170,24 @@ export const shipRegistry: ShipRegistryEntry[] = [
     displayName: 'Bulwark',
     status: 'MVP',
     selectable: true,
-    description: 'Heavy ramming ship. Tough hull, slower handling, and a forward Ramming Shield.',
+    description: 'Heavy ramming ship. Tough hull, slower control, and a forward Ramming Shield.',
     role: 'Heavy rammer',
     display: {
       roleTitle: 'Heavy Impact Defender',
       shortDescription: 'Tough shielded hull built for committed rams and close-range impact control.',
+      fantasy: 'Heavy shield rammer',
+      passiveTitle: 'Impact Bracing',
+      passiveDescription: 'Carries shield charge support for committed close-range hits.',
+      strengths: ['High hull', 'Shield pressure', 'Ramming control'],
+      weaknesses: ['Slow control', 'Wide target', 'Risky recovery'],
       tags: ['Melee', 'Heavy', 'Shield', 'High Risk'],
       statRatings: {
-        hull: 9,
-        shield: 8,
-        speed: 5,
-        handling: 3,
-        mass: 9,
-        ramDamage: 8,
-        shieldRegen: 7,
-        pickupRange: 4
+        hull: 95,
+        velocity: 155,
+        acceleration: 42,
+        control: 45,
+        tractorField: 58,
+        fuel: SHIP_STARTING_FUEL_STAT
       },
       exampleUpgradeIds: ['Shield Capacity', 'Ram Damage', 'Impact Radius', 'Shockwave Ram'],
       masteryPreview: [
@@ -180,27 +199,29 @@ export const shipRegistry: ShipRegistryEntry[] = [
     },
     levelGrowthWeights: {
       hull: 1,
-      shieldCapacity: 1,
-      shieldRegen: 0.85,
-      mass: 0.9,
-      ramDamage: 1,
-      handling: 0.35,
-      pickupRange: 0.25
+      acceleration: 0.35,
+      control: 0.35,
+      tractorField: 0.25,
+      fuel: 0.85
     },
     baseStats: {
       ...DEFAULT_PLAYER_BASE_STATS,
-      maxHull: 60 * COMBAT_NUMBER_SCALE,
-      mass: 5.5,
+      maxHull: 95,
       moveSpeed: Math.round(interceptorMovement.maxSpeed * 0.85),
       thrust: Math.round(interceptorMovement.thrustAcceleration * 0.35),
       brake: Math.round(interceptorMovement.reverseThrustAcceleration * 0.45),
       strafe: Math.round(interceptorMovement.strafeThrustAcceleration * 0.3)
     },
     hitRadius: 35,
-    movementNotes: 'Heavier thrust response, lower top speed, stronger knockback resistance.',
+    movementNotes: 'Lower thrust response, lower top speed, stronger hull margin.',
     startingWeaponNotes: `${rammingShield.displayName} primary starter`,
     startingPrimaryWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
+    skins: [
+      { id: 'bulwark-teal', displayName: 'Teal', unlockedByDefault: true },
+      { id: 'bulwark-red', displayName: 'Redline', tint: 0xff5964, unlockedByDefault: true },
+      { id: 'bulwark-gold', displayName: 'Gold', tint: 0xffc857 }
+    ],
     defaultPrimaryWeaponBonuses: {
       'ramming-shield': {
         rammingShield: {
@@ -233,5 +254,35 @@ export function getShipDefinition(shipId: ShipId): ShipRegistryEntry {
 }
 
 export function getShipDisplayStats(ship: ShipRegistryEntry): ShipDisplayStatRatings {
-  return ship.display.statRatings;
+  return {
+    hull: Math.round(ship.baseStats.maxHull),
+    velocity: normalizeShipStat(ship.movement.maxSpeed, SHIP_VELOCITY_CAP_PX_PER_SECOND),
+    acceleration: normalizeShipStat(ship.movement.thrustAcceleration, SHIP_ACCELERATION_CAP_PX_PER_SECOND_SQUARED),
+    control: getShipControlStat(ship),
+    tractorField: ship.display.statRatings.tractorField ?? normalizeShipStat(46 * ship.baseStats.magnet, SHIP_TRACTOR_FIELD_CAP_RADIUS),
+    fuel: ship.display.statRatings.fuel ?? SHIP_STARTING_FUEL_STAT
+  };
+}
+
+function getShipControlStat(ship: ShipRegistryEntry): number {
+  const thrust = Math.max(1, ship.movement.thrustAcceleration);
+  const strafeScore = normalizeShipStat(ship.movement.strafeThrustAcceleration / thrust, 1);
+  const brakeScore = normalizeShipStat(ship.movement.reverseThrustAcceleration / thrust, 1);
+  const turnScore = normalizeShipStat(ship.movement.rotationSpeed, SHIP_CONTROL_ROTATION_CAP);
+  const driftCorrectionScore = ship.display.statRatings.control ?? 128;
+
+  return Math.round(
+    strafeScore * 0.35 +
+      brakeScore * 0.3 +
+      turnScore * 0.2 +
+      clamp(driftCorrectionScore, 0, SHIP_STAT_CAP) * 0.15
+  );
+}
+
+function normalizeShipStat(value: number, cap: number): number {
+  return Math.round(clamp(value / Math.max(1, cap), 0, 1) * SHIP_STAT_CAP);
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

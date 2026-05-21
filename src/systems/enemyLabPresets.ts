@@ -22,7 +22,6 @@ export interface EnemyLabStatOverrides {
   hp?: number;
   speed?: number;
   contactDamage?: number;
-  mass?: number;
   radius?: number;
 }
 
@@ -162,7 +161,6 @@ export function createVariantFromDefinition(definition: EnemyLabDefinition): Ene
       hp: definition.stats.hp,
       speed: definition.stats.speed,
       contactDamage: definition.stats.contactDamage,
-      mass: definition.stats.mass ?? 1,
       radius: definition.stats.radius
     },
     behaviorParamOverrides: { ...(definition.behavior.params ?? {}) }
@@ -208,7 +206,6 @@ export function applyVariantToDefinition(
       hp: sanitizePositiveNumber(variant.statOverrides.hp, definition.stats.hp),
       speed: sanitizePositiveNumber(variant.statOverrides.speed, definition.stats.speed),
       contactDamage: sanitizePositiveNumber(variant.statOverrides.contactDamage, definition.stats.contactDamage),
-      mass: sanitizePositiveNumber(variant.statOverrides.mass, definition.stats.mass ?? 1),
       radius: sanitizePositiveNumber(variant.statOverrides.radius, definition.stats.radius)
     },
     behavior: {

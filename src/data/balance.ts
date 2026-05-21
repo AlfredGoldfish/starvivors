@@ -1,5 +1,3 @@
-import { COMBAT_NUMBER_SCALE } from './combatScale';
-
 export const interceptorMovement = {
   thrustAcceleration: 560,
   reverseThrustAcceleration: 335,
@@ -12,7 +10,7 @@ export const interceptorMovement = {
 };
 
 export const pulseCannonBalance = {
-  damage: 9,
+  damage: 4,
   cooldownSeconds: 0.18,
   projectileSpeed: 900,
   projectileLifetimeSeconds: 1.4,
@@ -20,9 +18,9 @@ export const pulseCannonBalance = {
 };
 
 export const rammingShieldBalance = {
-  shieldMaxHp: 180 * COMBAT_NUMBER_SCALE,
+  shieldMaxHp: 180,
   shieldRegenDelaySeconds: 3,
-  shieldRegenRatePerSecond: 10 * COMBAT_NUMBER_SCALE,
+  shieldRegenRatePerSecond: 10,
   dashMaxCharges: 3,
   dashChargeRechargeSeconds: 6,
   dashImpulse: 520,
@@ -32,30 +30,29 @@ export const rammingShieldBalance = {
   frontArcDegrees: 108,
   range: 72,
   width: 184,
-  baseDamage: 1.2 * COMBAT_NUMBER_SCALE,
-  speedDamageMultiplier: 0.018 * COMBAT_NUMBER_SCALE,
+  baseDamage: 1.2,
+  speedDamageMultiplier: 0.018,
   strongRamSpeed: 160,
-  maxDamage: 6 * COMBAT_NUMBER_SCALE,
+  maxDamage: 6,
   contactCooldownMs: 450,
   brokenDamageMultiplier: 0.35
 };
 
-// Temporary durability for damage-feedback visibility; revisit during balance/polish.
 export const basicEnemyBalance = {
   moveSpeed: 95,
-  hp: 4 * COMBAT_NUMBER_SCALE,
+  hp: 12,
   hitHalfWidth: 19,
   hitHalfLength: 25
 };
 
 export const shooterEnemyBalance = {
   moveSpeed: 72,
-  hp: 5 * COMBAT_NUMBER_SCALE,
+  hp: 18,
   preferredRange: 620,
   tooCloseRange: 360,
   fireCooldownSeconds: 2.35,
   projectileSpeed: 360,
-  projectileDamage: 12 * COMBAT_NUMBER_SCALE,
+  projectileDamage: 8,
   projectileLifetimeSeconds: 3.2,
   projectileRange: 1150,
   hitHalfWidth: 28,
@@ -65,10 +62,9 @@ export const shooterEnemyBalance = {
 
 export const tankEnemyBalance = {
   moveSpeed: 42,
-  hp: 10 * COMBAT_NUMBER_SCALE,
+  hp: 45,
   hitHalfWidth: 36,
   hitHalfLength: 42,
-  contactDamage: 24 * COMBAT_NUMBER_SCALE,
-  mass: 9,
+  contactDamage: 15,
   xpReward: 32
 };

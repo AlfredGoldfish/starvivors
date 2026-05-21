@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { PERMANENT_UPGRADE_DEFINITIONS, type PermanentUpgradeDefinition, type PermanentUpgradeId } from '../data/permanentUpgrades';
 import type { ShopBackTarget } from '../scenes/gameTypes';
+import { addPreRunNav, type PreRunNavConfig } from './preRunHubScreen';
 import { addScreenButton, type ScreenHandle } from './screenUi';
 
 export interface ShopScreenConfig {
@@ -17,6 +18,7 @@ export interface ShopScreenConfig {
   getPermanentUpgradeCost: (upgrade: PermanentUpgradeDefinition) => number;
   isActionActive: () => boolean;
   resetCursor: () => void;
+  nav?: Omit<PreRunNavConfig, 'scene' | 'container' | 'actionZones' | 'activeTab'>;
   onPurchasePermanentUpgrade: (upgrade: PermanentUpgradeDefinition) => void;
   onAdjustActivePermanentUpgradeLevel: (id: PermanentUpgradeId, delta: number) => void;
   onPurchaseSectorScanner: () => void;
@@ -259,21 +261,25 @@ export function createShopScreen(config: ShopScreenConfig): ScreenHandle {
     });
   }
 
-  addScreenButton({
-    scene: config.scene,
-    container,
-    actionZones,
-    screenCenterX: centerX,
-    screenCenterY: centerY,
-    x: 0,
-    y: panelY + panelHeight - 58,
-    width: 180,
-    height: 38,
-    label: 'Back',
-    callback: config.onBack,
-    isActionActive: config.isActionActive,
-    resetCursor: config.resetCursor
-  });
+  if (config.nav && config.backTarget === 'mainMenu') {
+    addPreRunNav({ ...config.nav, scene: config.scene, container, actionZones, activeTab: 'shop' });
+  } else {
+    addScreenButton({
+      scene: config.scene,
+      container,
+      actionZones,
+      screenCenterX: centerX,
+      screenCenterY: centerY,
+      x: 0,
+      y: panelY + panelHeight - 58,
+      width: 180,
+      height: 38,
+      label: 'Back',
+      callback: config.onBack,
+      isActionActive: config.isActionActive,
+      resetCursor: config.resetCursor
+    });
+  }
 
   return { container, actionZones };
 }

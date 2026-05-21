@@ -36,7 +36,6 @@ export interface SavedBlackHoleFieldTuningPreset {
   radialCurve?: unknown;
   swirlStrengthMultiplier?: unknown;
   swirlCurve?: unknown;
-  massResistanceMultiplier?: unknown;
   maxVelocityMultiplier?: unknown;
   viscosityStrength?: unknown;
   viscosityCurve?: unknown;
@@ -66,7 +65,7 @@ export type AsteroidBreakupMotionMode = 'crumble' | 'shear' | 'split' | 'burst';
 export type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 export type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
 export type PlayerPickupKind = 'scrap' | 'banked-upgrade' | 'special-upgrade';
-export type GameFlowState = 'mainMenu' | 'running' | 'results' | 'shop' | 'shipSelect';
+export type GameFlowState = 'splash' | 'command' | 'running' | 'results' | 'shop' | 'shipSelect' | 'settings';
 export type ShopBackTarget = 'mainMenu' | 'results';
 export type DamageFeedbackSource = 'player' | 'enemy' | 'asteroid' | 'debris' | 'blackHole' | 'shield' | 'environment';
 
@@ -313,7 +312,6 @@ export interface EnemyWreckageDebris {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
   velocity: Phaser.Math.Vector2;
-  mass: number;
   hp: number;
   damage: number;
   hitRadius: number;
@@ -346,7 +344,6 @@ export interface ScrapPickup {
   velocity: Phaser.Math.Vector2;
   kind: PlayerPickupKind;
   value: number;
-  mass: number;
   source: ScrapSourceType;
   pickupRadius: number;
   magnetRadius: number;
@@ -371,7 +368,6 @@ export interface PlayerEnemyContact {
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;
-  mass: number;
   hitRammingShield?: boolean;
 }
 

@@ -1,5 +1,4 @@
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
-import { COMBAT_NUMBER_SCALE } from '../data/combatScale';
 import {
   BLACK_HOLE_FULL_TEXTURE_KEY,
   type BlackHolePngTextureKey,
@@ -46,9 +45,11 @@ export const PLAYER_SHIP_VISUAL_ROTATION = Math.PI;
 export const THRUSTER_FADE_MS = 170;
 export const FORWARD_THRUSTER_INTERVAL_MS = 26;
 export const SECONDARY_THRUSTER_INTERVAL_MS = 42;
-export const RUN_FUEL_MAX = 120;
-export const RUN_FUEL_BASE_DRAIN_PER_SECOND = 1;
-export const RUN_FUEL_THRUST_DRAIN_PER_SECOND = 0.16;
+export const RUN_FUEL_MAX = 58;
+export const RUN_FUEL_MAX_STAT = 255;
+export const RUN_FUEL_FULL_THRUST_SECONDS_AT_CAP = 35 * 60;
+export const RUN_FUEL_MAIN_THRUST_DRAIN_PER_SECOND = RUN_FUEL_MAX_STAT / RUN_FUEL_FULL_THRUST_SECONDS_AT_CAP;
+export const RUN_FUEL_SUPPORT_THRUST_DRAIN_PER_SECOND = RUN_FUEL_MAIN_THRUST_DRAIN_PER_SECOND * 0.5;
 export const RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER = 0.1;
 export const EXTRACTION_ZONE_RADIUS = 88;
 
@@ -116,28 +117,28 @@ export const ASTEROID_PARENT_VELOCITY_INHERITANCE = 0.76;
 export const ASTEROID_FRAGMENT_BURST_MIN_SPEED = 18;
 export const ASTEROID_FRAGMENT_BURST_MAX_SPEED = 88;
 export const ASTEROID_CONTACT_DAMAGE_BY_TIER: Record<AsteroidTier, number> = {
-  1: 8 * COMBAT_NUMBER_SCALE,
-  2: 12 * COMBAT_NUMBER_SCALE,
-  3: 16 * COMBAT_NUMBER_SCALE,
-  4: 22 * COMBAT_NUMBER_SCALE,
-  5: 28 * COMBAT_NUMBER_SCALE,
-  6: 36 * COMBAT_NUMBER_SCALE,
-  7: 45 * COMBAT_NUMBER_SCALE,
-  8: 56 * COMBAT_NUMBER_SCALE,
-  9: 68 * COMBAT_NUMBER_SCALE,
-  10: 82 * COMBAT_NUMBER_SCALE
+  1: 4,
+  2: 6,
+  3: 8,
+  4: 11,
+  5: 14,
+  6: 18,
+  7: 23,
+  8: 28,
+  9: 34,
+  10: 41
 };
 export const ASTEROID_COLLISION_DAMAGE_BY_TIER: Record<AsteroidTier, { min: number; max: number }> = {
-  1: { min: 0.25 * COMBAT_NUMBER_SCALE, max: 0.45 * COMBAT_NUMBER_SCALE },
-  2: { min: 0.45 * COMBAT_NUMBER_SCALE, max: 0.8 * COMBAT_NUMBER_SCALE },
-  3: { min: 0.75 * COMBAT_NUMBER_SCALE, max: 1.3 * COMBAT_NUMBER_SCALE },
-  4: { min: 1.1 * COMBAT_NUMBER_SCALE, max: 2 * COMBAT_NUMBER_SCALE },
-  5: { min: 1.6 * COMBAT_NUMBER_SCALE, max: 2.9 * COMBAT_NUMBER_SCALE },
-  6: { min: 2.4 * COMBAT_NUMBER_SCALE, max: 4.2 * COMBAT_NUMBER_SCALE },
-  7: { min: 3.5 * COMBAT_NUMBER_SCALE, max: 6.1 * COMBAT_NUMBER_SCALE },
-  8: { min: 5.2 * COMBAT_NUMBER_SCALE, max: 9 * COMBAT_NUMBER_SCALE },
-  9: { min: 7.6 * COMBAT_NUMBER_SCALE, max: 13.2 * COMBAT_NUMBER_SCALE },
-  10: { min: 11 * COMBAT_NUMBER_SCALE, max: 19 * COMBAT_NUMBER_SCALE }
+  1: { min: 1, max: 2 },
+  2: { min: 2, max: 3 },
+  3: { min: 3, max: 5 },
+  4: { min: 4, max: 7 },
+  5: { min: 6, max: 10 },
+  6: { min: 8, max: 14 },
+  7: { min: 11, max: 19 },
+  8: { min: 16, max: 27 },
+  9: { min: 23, max: 40 },
+  10: { min: 33, max: 57 }
 };
 export const ASTEROID_XP_REWARD_BY_TIER: Record<AsteroidTier, number> = {
   1: 4,
@@ -162,7 +163,7 @@ export const ASTEROID_BREAKUP_GHOST_MS = 280;
 export const ASTEROID_FRAGMENT_GROW_IN_MS = 240;
 export const ASTEROID_LARGE_BREAKUP_VISUAL_MIN_TIER: AsteroidTier = 5;
 export const PLAYER_PROJECTILE_HIT_RADIUS = 8;
-export const PLAYER_MAX_HULL = 40 * COMBAT_NUMBER_SCALE;
+export const PLAYER_MAX_HULL = 40;
 export const PLAYER_HIT_RADIUS = 32;
 export const PLAYER_DAMAGE_INVULNERABILITY_MS = 1000;
 export const PLAYER_DAMAGE_FLASH_MS = 130;
@@ -171,7 +172,6 @@ export const BASIC_ENEMY_XP_REWARD = basicEnemy.stats.xpValue;
 export const INITIAL_XP_THRESHOLD = 100;
 export const XP_THRESHOLD_GROWTH = 1.2;
 export const GAMEPLAY_MAX_VELOCITY = 1000;
-export const PLAYER_MASS = 3;
 export const PLAYER_CONTACT_IMPULSE_COOLDOWN_MS = 140;
 export const PLAYER_CONTACT_MIN_IMPULSE = 120;
 export const PLAYER_CONTACT_MAX_IMPULSE = 460;
@@ -185,16 +185,8 @@ export const PLAYER_ENEMY_CONTACT_RELATIVE_SPEED_SCALE = 0.22;
 export const PLAYER_ENEMY_CONTACT_SEPARATION_PERCENT = 1.05;
 export const PLAYER_ENEMY_CONTACT_MAX_SEPARATION = 46;
 export const CONTACT_IMPACT_MIN_DAMAGE_SPEED = 90;
-export const CONTACT_IMPACT_SPEED_DAMAGE_SCALE = 0.018 * COMBAT_NUMBER_SCALE;
-export const CONTACT_IMPACT_MASS_DAMAGE_SCALE = 0.08 * COMBAT_NUMBER_SCALE;
+export const CONTACT_IMPACT_SPEED_DAMAGE_SCALE = 0.018;
 export const CONTACT_IMPACT_MAX_DAMAGE_MULTIPLIER = 1.35;
-export const RAMMING_SHIELD_IMPACT_MASS_DAMAGE_SCALE = 0.08 * COMBAT_NUMBER_SCALE;
-export const IMPACT_MASS_DAMAGE_SCALE_BY_SOURCE: Record<DebugImpactSourceType, number> = {
-  player: 0.08 * COMBAT_NUMBER_SCALE,
-  enemy: 0.08 * COMBAT_NUMBER_SCALE,
-  asteroid: 0.2 * COMBAT_NUMBER_SCALE,
-  debris: 0.1 * COMBAT_NUMBER_SCALE
-};
 export const IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE: Record<DebugImpactSourceType, number> = {
   player: 90,
   enemy: 90,
@@ -241,97 +233,70 @@ export const DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH = 176;
 export const DEBUG_BLACK_HOLE_LENS_SLIDER_GAP = 62;
 export const BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS = 650;
 export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS = 900;
-export const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE = 0.8 * COMBAT_NUMBER_SCALE;
-export const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA = 2.2 * COMBAT_NUMBER_SCALE;
-export const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE = 0.75 * COMBAT_NUMBER_SCALE;
-export const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA = 1.7 * COMBAT_NUMBER_SCALE;
-export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE = 0.5 * COMBAT_NUMBER_SCALE;
-export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA = 5 * COMBAT_NUMBER_SCALE;
+export const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE = 1;
+export const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA = 3;
+export const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE = 1;
+export const BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA = 2;
+export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE = 1;
+export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA = 4;
 export const BLACK_HOLE_ENEMY_FIELD_DAMPING = 0.988;
-export const BLACK_HOLE_PLAYER_FIELD_MASS = 4.8;
 export const BLACK_HOLE_ZONE_CENTER_EXCLUSION_RATIO = 0.16;
-export const BLACK_HOLE_ASTEROID_FIELD_MASS_BY_TIER: Record<number, number> = {
-  1: 1,
-  2: 2.6,
-  3: 4.8,
-  4: 8.4,
-  5: 13,
-  6: 18.5,
-  7: 25,
-  8: 32.5,
-  9: 41,
-  10: 50
-};
 export const BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 110,
   radialExtraAcceleration: 1160,
   swirlBaseAcceleration: 95,
   swirlExtraAcceleration: 1020,
-  maxSpeed: 620,
-  mass: 1,
-  massResistance: 0.42
+  maxSpeed: 620
 };
 export const BLACK_HOLE_CHASER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 125,
   radialExtraAcceleration: 1220,
   swirlBaseAcceleration: 105,
   swirlExtraAcceleration: 1080,
-  maxSpeed: basicEnemy.stats.blackHoleMaxSpeed,
-  mass: basicEnemy.stats.mass,
-  massResistance: basicEnemy.stats.blackHoleResistance
+  maxSpeed: basicEnemy.stats.blackHoleMaxSpeed
 };
 export const BLACK_HOLE_SHOOTER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 115,
   radialExtraAcceleration: 1040,
   swirlBaseAcceleration: 95,
   swirlExtraAcceleration: 920,
-  maxSpeed: shooterEnemy.stats.blackHoleMaxSpeed,
-  mass: shooterEnemy.stats.mass,
-  massResistance: shooterEnemy.stats.blackHoleResistance
+  maxSpeed: shooterEnemy.stats.blackHoleMaxSpeed
 };
 export const BLACK_HOLE_TANK_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 95,
   radialExtraAcceleration: 880,
   swirlBaseAcceleration: 76,
   swirlExtraAcceleration: 720,
-  maxSpeed: tankEnemy.stats.blackHoleMaxSpeed,
-  mass: tankEnemy.stats.mass,
-  massResistance: tankEnemy.stats.blackHoleResistance
+  maxSpeed: tankEnemy.stats.blackHoleMaxSpeed
 };
 export const BLACK_HOLE_PLAYER_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 72,
   radialExtraAcceleration: 720,
   swirlBaseAcceleration: 64,
   swirlExtraAcceleration: 650,
-  maxSpeed: 640,
-  mass: BLACK_HOLE_PLAYER_FIELD_MASS,
-  massResistance: 0.42
+  maxSpeed: 640
 };
 export const BLACK_HOLE_DEBRIS_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 130,
   radialExtraAcceleration: 1240,
   swirlBaseAcceleration: 112,
   swirlExtraAcceleration: 1120,
-  maxSpeed: 620,
-  mass: 1,
-  massResistance: 0.34
+  maxSpeed: 620
 };
 export const BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING: BlackHoleWhirlpoolTuning = {
   radialBaseAcceleration: 150,
   radialExtraAcceleration: 1380,
   swirlBaseAcceleration: 132,
   swirlExtraAcceleration: 1280,
-  maxSpeed: 680,
-  mass: 0.55,
-  massResistance: 0.28
+  maxSpeed: 680
 };
 
 export const ENEMY_WRECKAGE_DEBRIS_DISPLAY_SIZE = 34;
 export const ENEMY_WRECKAGE_DEBRIS_HIT_RADIUS = 15;
 export const ENEMY_WRECKAGE_DEBRIS_LIFETIME_MS = 45000;
 export const ENEMY_WRECKAGE_DEBRIS_MAX_ACTIVE = 90;
-export const ENEMY_WRECKAGE_DEBRIS_HP = 2 * COMBAT_NUMBER_SCALE;
-export const ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE = 8 * COMBAT_NUMBER_SCALE;
+export const ENEMY_WRECKAGE_DEBRIS_HP = 6;
+export const ENEMY_WRECKAGE_DEBRIS_CONTACT_DAMAGE = 5;
 export const ENEMY_WRECKAGE_DEBRIS_MIN_SPEED = 42;
 export const ENEMY_WRECKAGE_DEBRIS_MAX_SPEED = 156;
 export const ENEMY_WRECKAGE_DEBRIS_INHERITED_VELOCITY = 0.38;
@@ -342,17 +307,11 @@ export const ENEMY_WRECKAGE_DEBRIS_COUNT_BY_ENEMY: Record<EnemySpawnType, number
   shooter: 3,
   tank: 6
 };
-export const ENEMY_WRECKAGE_DEBRIS_MASS_BY_ENEMY: Record<EnemySpawnType, number> = {
-  chaser: 0.75,
-  shooter: 1.05,
-  tank: 1.75
-};
 export const SCRAP_PICKUP_DISPLAY_SIZE = 24;
 export const SCRAP_PICKUP_RADIUS = 18;
 export const SCRAP_PICKUP_COLLECT_RADIUS = 46;
 export const SCRAP_PICKUP_LIFETIME_MS = 60000;
 export const SCRAP_PICKUP_MAX_ACTIVE = 160;
-export const SCRAP_PICKUP_MASS = 0.55;
 export const SCRAP_PICKUP_MIN_SPEED = 24;
 export const SCRAP_PICKUP_MAX_SPEED = 100;
 export const SCRAP_PICKUP_INHERITED_VELOCITY = 0.25;
@@ -377,7 +336,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   1: {
     displaySize: 52,
     hitRadius: 18,
-    hp: 2 * COMBAT_NUMBER_SCALE,
+    hp: 8,
     minSpeed: 92,
     maxSpeed: 160,
     impactImpulse: 12,
@@ -386,7 +345,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   2: {
     displaySize: 76,
     hitRadius: 26,
-    hp: 4 * COMBAT_NUMBER_SCALE,
+    hp: 14,
     minSpeed: 76,
     maxSpeed: 138,
     impactImpulse: 10,
@@ -395,7 +354,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   3: {
     displaySize: 108,
     hitRadius: 37,
-    hp: 6 * COMBAT_NUMBER_SCALE,
+    hp: 22,
     minSpeed: 54,
     maxSpeed: 112,
     impactImpulse: 8,
@@ -404,7 +363,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   4: {
     displaySize: 154,
     hitRadius: 52,
-    hp: 9 * COMBAT_NUMBER_SCALE,
+    hp: 34,
     minSpeed: 34,
     maxSpeed: 78,
     impactImpulse: 6,
@@ -413,7 +372,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   5: {
     displaySize: 196,
     hitRadius: 66,
-    hp: 13 * COMBAT_NUMBER_SCALE,
+    hp: 50,
     minSpeed: 22,
     maxSpeed: 56,
     impactImpulse: 5,
@@ -422,7 +381,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   6: {
     displaySize: 268,
     hitRadius: 90,
-    hp: 19 * COMBAT_NUMBER_SCALE,
+    hp: 75,
     minSpeed: 18,
     maxSpeed: 48,
     impactImpulse: 4,
@@ -431,7 +390,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   7: {
     displaySize: 336,
     hitRadius: 114,
-    hp: 28 * COMBAT_NUMBER_SCALE,
+    hp: 110,
     minSpeed: 15,
     maxSpeed: 42,
     impactImpulse: 3,
@@ -440,7 +399,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   8: {
     displaySize: 420,
     hitRadius: 142,
-    hp: 42 * COMBAT_NUMBER_SCALE,
+    hp: 160,
     minSpeed: 12,
     maxSpeed: 36,
     impactImpulse: 2,
@@ -449,7 +408,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   9: {
     displaySize: 560,
     hitRadius: 188,
-    hp: 62 * COMBAT_NUMBER_SCALE,
+    hp: 230,
     minSpeed: 10,
     maxSpeed: 30,
     impactImpulse: 1,
@@ -458,7 +417,7 @@ export const ASTEROID_TIER_CONFIG: Record<AsteroidTier, AsteroidTierConfig> = {
   10: {
     displaySize: 992,
     hitRadius: 332,
-    hp: 90 * COMBAT_NUMBER_SCALE,
+    hp: 330,
     minSpeed: 8,
     maxSpeed: 24,
     impactImpulse: 0,

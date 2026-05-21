@@ -1,4 +1,5 @@
 import type { ShipRegistryEntry } from '../data/ships';
+import type { DamageVariance } from '../data/damageVariance';
 import type { PlayerStats } from '../data/stats';
 import { UPGRADE_CHOICES, type PulseProjectileEffectModifier, type PulseProjectilePatternModifier } from '../data/upgrades';
 import type { RammingShieldStats, WeaponRegistryEntry, WeaponSlotType } from '../data/weapons';
@@ -44,6 +45,7 @@ export interface ResolvedProjectileEffectStats {
 
 export interface ResolvedProjectileWeaponStats {
   damage: number;
+  damageVariance?: DamageVariance;
   cooldownMs: number;
   baseCooldownMs: number;
   projectileSpeed: number;
@@ -99,6 +101,7 @@ export function resolveProjectileStats(input: ResolveWeaponStatsInput): Resolved
 
   return {
     damage: ((weapon.damage ?? 0) + flatDamage) * getWeaponDamageMultiplier(input.upgrades, weapon) * input.playerStats.damage * input.debugTuning.damageMultiplier,
+    damageVariance: weapon.damageVariance,
     cooldownMs: baseCooldownMs / (input.playerStats.attackSpeed * input.debugTuning.fireRateMultiplier),
     baseCooldownMs,
     projectileSpeed,

@@ -1,5 +1,4 @@
 import type { WeaponBehaviorType, WeaponId, WeaponTag } from './weapons';
-import { COMBAT_NUMBER_SCALE } from './combatScale';
 
 export type UpgradeCategory = 'projectile' | 'pulse' | 'ramming' | 'passive' | 'utility';
 export type UpgradeRarity = 'common' | 'uncommon' | 'rare' | 'epic';
@@ -433,7 +432,7 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     description: 'Pulse damage restores a small amount of shield or hull, capped per second.',
     maxLevel: 2,
     target: { weaponIds: ['pulse-cannon'] },
-    projectileEffects: { lifestealPercent: 0.035, lifestealCapPerSecond: 4 * COMBAT_NUMBER_SCALE }
+    projectileEffects: { lifestealPercent: 0.035, lifestealCapPerSecond: 4 }
   },
   {
     id: 'pulse_ionized',

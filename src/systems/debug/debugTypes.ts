@@ -41,7 +41,6 @@ export interface DebugMenuValues {
   blackHoleRadialCurve: number;
   blackHoleSwirlStrengthMultiplier: number;
   blackHoleSwirlCurve: number;
-  blackHoleMassResistanceMultiplier: number;
   blackHoleMaxVelocityMultiplier: number;
   blackHoleViscosityStrength: number;
   blackHoleViscosityCurve: number;
@@ -81,7 +80,6 @@ export interface DebugMenuValues {
   fuelMax: number;
   fuelDrainEnabled: boolean;
   fuelDrainMode: string;
-  playerMass: number;
   playerSpeed: number;
   playerMaxSpeed: number;
   playerThrust: number;
@@ -91,10 +89,8 @@ export interface DebugMenuValues {
   playerBrakeScale: number;
   playerStrafeScale: number;
   playerInertiaScale: number;
-  playerControlMassExponent: number;
   enemySpeedScale: number;
   enemyResponseScale: number;
-  enemyMassExponent: number;
   asteroidCollisionDamageScale: number;
   asteroidCollisionImpulseScale: number;
   globalMaxSpeed: number;
@@ -189,10 +185,8 @@ export interface DebugMenuCallbacks {
   adjustPlayerBrakeScale: (delta: number) => void;
   adjustPlayerStrafeScale: (delta: number) => void;
   adjustPlayerInertiaScale: (delta: number) => void;
-  adjustPlayerControlMassExponent: (delta: number) => void;
   adjustEnemySpeedScale: (delta: number) => void;
   adjustEnemyResponseScale: (delta: number) => void;
-  adjustEnemyMassExponent: (delta: number) => void;
   adjustAsteroidCollisionDamageScale: (delta: number) => void;
   adjustAsteroidCollisionImpulseScale: (delta: number) => void;
   adjustGlobalMaxSpeed: (delta: number) => void;
@@ -256,7 +250,6 @@ export interface DebugMenuCallbacks {
   adjustBlackHoleRadialCurve: (delta: number) => void;
   adjustBlackHoleSwirlStrength: (delta: number) => void;
   adjustBlackHoleSwirlCurve: (delta: number) => void;
-  adjustBlackHoleMassResistance: (delta: number) => void;
   adjustBlackHoleMaxVelocity: (delta: number) => void;
   adjustBlackHoleViscosityStrength: (delta: number) => void;
   adjustBlackHoleViscosityCurve: (delta: number) => void;

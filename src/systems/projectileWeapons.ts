@@ -94,6 +94,7 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
       velocity: projectileDirection.scale(projectileConfig.projectileSpeed),
       speed: projectileConfig.projectileSpeed,
       damage: projectileConfig.damage * damageMultiplier,
+      damageVariance: projectileConfig.damageVariance,
       hitRadius: PLAYER_PROJECTILE_HIT_RADIUS * projectileAreaScale,
       owner: 'player',
       pierceRemaining: projectileConfig.pierce,

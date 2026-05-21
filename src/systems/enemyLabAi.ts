@@ -275,9 +275,7 @@ function addVelocityNudge(nudges: Map<string, Phaser.Math.Vector2>, enemyId: str
 }
 
 function getDeconflictionShare(self: EnemyLabInstance, other: EnemyLabInstance): number {
-  const selfMass = Math.max(0.25, self.definition.stats.mass ?? 1);
-  const otherMass = Math.max(0.25, other.definition.stats.mass ?? 1);
-  return otherMass / (selfMass + otherMass);
+  return 0.5;
 }
 
 function getEnemyDeconflictionMultiplier(enemy: EnemyLabInstance): number {

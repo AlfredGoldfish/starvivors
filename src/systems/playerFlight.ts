@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
-import { applyAccelerationWithMass, dampVelocityChannel } from './physics';
+import { applyAcceleration, dampVelocityChannel } from './physics';
 
 export interface PlayerFlightControls {
   strafeLeft: boolean;
@@ -12,7 +12,6 @@ export interface PlayerFlightControls {
 }
 
 export interface PlayerFlightStats {
-  mass: number;
   thrust: number;
   brake: number;
   strafe: number;
@@ -61,8 +60,6 @@ export function applyPlayerFlightAcceleration(input: {
   controls: PlayerFlightControls;
   stats: PlayerFlightStats;
   deltaSeconds: number;
-  referenceMass: number;
-  massExponent?: number;
   accelerationScale?: number;
 }): void {
   const shipForward = getForwardDirection(input.player.rotation);
@@ -95,13 +92,10 @@ export function applyPlayerFlightAcceleration(input: {
     return;
   }
 
-  applyAccelerationWithMass({
+  applyAcceleration({
     velocity: input.velocity,
     acceleration,
-    mass: input.stats.mass,
     deltaSeconds: input.deltaSeconds,
-    referenceMass: input.referenceMass,
-    massExponent: input.massExponent,
     accelerationScale: input.accelerationScale
   });
 }
@@ -169,15 +163,6 @@ export function updatePlayerFlightCameraLead(input: {
 
 export function getForwardDirection(rotation: number): Phaser.Math.Vector2 {
   return new Phaser.Math.Vector2(Math.sin(rotation), -Math.cos(rotation));
-}
-
-export function calculatePlayerOverspeedDamping(input: {
-  baselineMass: number;
-  currentMass: number;
-  baseOverspeedDamping: number;
-}): number {
-  const massScale = Math.sqrt(input.baselineMass / Math.max(0.001, input.currentMass));
-  return Math.max(0, input.baseOverspeedDamping * massScale);
 }
 
 export function applyPlayerFlightCoastDamping(

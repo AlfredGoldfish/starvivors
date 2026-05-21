@@ -10,7 +10,6 @@ import {
   CAMERA_LEAD_MAX_DISTANCE,
   CAMERA_LEAD_MIN_SPEED,
   FORWARD_THRUSTER_INTERVAL_MS,
-  PLAYER_MASS,
   PLAYER_SHIP_DISPLAY_SIZE,
   PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
@@ -20,7 +19,6 @@ import {
 import { StarfieldSystem } from '../systems/starfield';
 import {
   applyPlayerFlightAcceleration,
-  calculatePlayerOverspeedDamping,
   dampPlayerFlightVelocity,
   integratePlayerFlightPosition,
   resolvePlayerFlightControls,
@@ -153,7 +151,6 @@ interface EnemyLabOverlayRefs {
   statHp: HTMLInputElement;
   statSpeed: HTMLInputElement;
   statRadius: HTMLInputElement;
-  statMass: HTMLInputElement;
   statContactDamage: HTMLInputElement;
   behaviorParams: HTMLDivElement;
   squadSelect: HTMLSelectElement;
@@ -395,8 +392,7 @@ export class EnemyLabScene extends Phaser.Scene {
       velocity: this.playerVelocity,
       controls,
       stats: flightStats,
-      deltaSeconds,
-      referenceMass: PLAYER_MASS
+      deltaSeconds
     });
 
     this.updateThrusterEffects(time, controls.thrustForward, controls.thrustReverse, controls.strafeLeft, controls.strafeRight);
@@ -411,10 +407,6 @@ export class EnemyLabScene extends Phaser.Scene {
       velocity: this.playerVelocity,
       deltaSeconds
     });
-  }
-
-  private getPlayerMass(): number {
-    return LAB_PLAYER_SHIP.baseStats.mass;
   }
 
   private getPlayerThrustAcceleration(): number {
@@ -438,16 +430,11 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private getPlayerOverspeedDamping(): number {
-    return calculatePlayerOverspeedDamping({
-      baselineMass: PLAYER_MASS,
-      currentMass: this.getPlayerMass(),
-      baseOverspeedDamping: LAB_PLAYER_SHIP.movement.overspeedDamping
-    });
+    return LAB_PLAYER_SHIP.movement.overspeedDamping;
   }
 
   private getPlayerFlightStats(): PlayerFlightStats {
     return {
-      mass: this.getPlayerMass(),
       thrust: this.getPlayerThrustAcceleration(),
       brake: this.getPlayerReverseThrustAcceleration(),
       strafe: this.getPlayerStrafeThrustAcceleration(),
@@ -942,7 +929,6 @@ export class EnemyLabScene extends Phaser.Scene {
           <label>Hit R <input data-field="statRadius" type="number" min="4" max="9999" step="1"></label>
           <label>HP <input data-field="statHp" type="number" min="1" max="9999" step="1"></label>
           <label>Speed <input data-field="statSpeed" type="number" min="1" max="9999" step="1"></label>
-          <label>Mass <input data-field="statMass" type="number" min="0.1" max="9999" step="0.1"></label>
           <label>Contact <input data-field="statContactDamage" type="number" min="0" max="9999" step="1"></label>
         </div>
         <div class="enemy-lab-row enemy-lab-primary-row">
@@ -1018,7 +1004,6 @@ export class EnemyLabScene extends Phaser.Scene {
     const statHp = root.querySelector<HTMLInputElement>('[data-field="statHp"]');
     const statSpeed = root.querySelector<HTMLInputElement>('[data-field="statSpeed"]');
     const statRadius = root.querySelector<HTMLInputElement>('[data-field="statRadius"]');
-    const statMass = root.querySelector<HTMLInputElement>('[data-field="statMass"]');
     const statContactDamage = root.querySelector<HTMLInputElement>('[data-field="statContactDamage"]');
     const behaviorParams = root.querySelector<HTMLDivElement>('[data-field="behaviorParams"]');
     const squadSelect = root.querySelector<HTMLSelectElement>('[data-field="squad"]');
@@ -1051,7 +1036,6 @@ export class EnemyLabScene extends Phaser.Scene {
       !statHp ||
       !statSpeed ||
       !statRadius ||
-      !statMass ||
       !statContactDamage ||
       !behaviorParams ||
       !squadSelect ||
@@ -1099,7 +1083,6 @@ export class EnemyLabScene extends Phaser.Scene {
       statHp,
       statSpeed,
       statRadius,
-      statMass,
       statContactDamage,
       behaviorParams,
       squadSelect,
@@ -1127,7 +1110,7 @@ export class EnemyLabScene extends Phaser.Scene {
       this.selectedVariantId = variantSelect.value;
       this.syncVariantControlsFromState();
     });
-    for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statMass, statContactDamage]) {
+    for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statContactDamage]) {
       input.addEventListener('input', () => this.persistVariantFromControls(false));
       input.addEventListener('change', () => this.persistVariantFromControls(true));
     }
@@ -1327,7 +1310,6 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.statHp.value = String(variant?.statOverrides.hp ?? definition.stats.hp);
     this.overlay.statSpeed.value = String(variant?.statOverrides.speed ?? definition.stats.speed);
     this.overlay.statRadius.value = String(variant?.statOverrides.radius ?? definition.stats.radius);
-    this.overlay.statMass.value = String(variant?.statOverrides.mass ?? definition.stats.mass ?? 1);
     this.overlay.statContactDamage.value = String(variant?.statOverrides.contactDamage ?? definition.stats.contactDamage);
     for (const input of [
       this.overlay.visualScale,
@@ -1338,7 +1320,6 @@ export class EnemyLabScene extends Phaser.Scene {
       this.overlay.statHp,
       this.overlay.statSpeed,
       this.overlay.statRadius,
-      this.overlay.statMass,
       this.overlay.statContactDamage
     ]) {
       input.disabled = false;
@@ -1391,7 +1372,6 @@ export class EnemyLabScene extends Phaser.Scene {
       hp: this.readNumberInput(this.overlay.statHp, variant.statOverrides.hp ?? 1, clampNumbers),
       speed: this.readNumberInput(this.overlay.statSpeed, variant.statOverrides.speed ?? 1, clampNumbers),
       radius: this.readNumberInput(this.overlay.statRadius, variant.statOverrides.radius ?? 1, clampNumbers),
-      mass: this.readNumberInput(this.overlay.statMass, variant.statOverrides.mass ?? 1, clampNumbers),
       contactDamage: this.readNumberInput(this.overlay.statContactDamage, variant.statOverrides.contactDamage ?? 0, clampNumbers)
     };
     const behaviorParamInputs = this.overlay.behaviorParams.querySelectorAll<HTMLInputElement>('[data-behavior-param]');

@@ -9,7 +9,6 @@ import {
   ASTEROID_COLLISION_MIN_IMPULSE,
   ASTEROID_COLLISION_RESTITUTION,
   ASTEROID_COLLISION_SEPARATION_PERCENT,
-  ASTEROID_COLLISION_WEIGHT_EXPONENT,
   ASTEROID_PARENT_VELOCITY_INHERITANCE,
   ASTEROID_TIER_CONFIG,
   ASTEROID_TIERS
@@ -23,7 +22,6 @@ import type {
 } from '../scenes/gameTypes';
 import {
   applyCollisionImpulse,
-  getMassResponseShare,
   getRelativeVelocity
 } from './physics';
 import { buildSpatialHash, querySpatialHash } from './spatialHash';
@@ -137,17 +135,13 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
 
       const normal = input.getCollisionNormal(offset);
       const penetration = hitRadius - distance;
-      const firstMass = getAsteroidCollisionWeight(first.tier);
-      const secondMass = getAsteroidCollisionWeight(second.tier);
-      const firstSeparationShare = getMassResponseShare(secondMass, firstMass);
-      const secondSeparationShare = getMassResponseShare(firstMass, secondMass);
       const separation = Math.min(
         penetration * ASTEROID_COLLISION_SEPARATION_PERCENT,
         ASTEROID_COLLISION_MAX_SEPARATION
       );
 
-      input.nudgeWrappedObject(first.body, normal, separation * firstSeparationShare);
-      input.nudgeWrappedObject(second.body, normal, -separation * secondSeparationShare);
+      input.nudgeWrappedObject(first.body, normal, separation * 0.5);
+      input.nudgeWrappedObject(second.body, normal, -separation * 0.5);
       input.updateAsteroidWrapMirror(first);
       input.updateAsteroidWrapMirror(second);
 
@@ -157,8 +151,6 @@ export function resolveAsteroidCollisions(input: ResolveAsteroidCollisionsInput)
         normal,
         firstVelocity: first.velocity,
         secondVelocity: second.velocity,
-        firstMass,
-        secondMass,
         minImpulse: ASTEROID_COLLISION_MIN_IMPULSE * input.asteroidCollisionImpulseScale,
         maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE * input.asteroidCollisionImpulseScale,
         relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE * input.asteroidCollisionImpulseScale,
@@ -339,10 +331,6 @@ function getLowerAsteroidTiers(tier: AsteroidTier): AsteroidTier[] {
   const highestFragmentTier = getHighestBreakupFragmentTier(tier);
 
   return ASTEROID_TIERS.filter((candidateTier) => candidateTier <= highestFragmentTier);
-}
-
-function getAsteroidCollisionWeight(tier: AsteroidTier): number {
-  return Math.pow(Math.max(1, tier), ASTEROID_COLLISION_WEIGHT_EXPONENT);
 }
 
 function pickAsteroidBreakupMotionMode(): AsteroidBreakupMotionMode {

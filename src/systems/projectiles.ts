@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
+import type { DamageVariance } from '../data/damageVariance';
 import type { BlackHoleCapturedProjectileState } from './blackHole';
 
 export type ProjectileOwner = 'player' | 'enemy' | 'world';
@@ -23,6 +24,7 @@ export interface RuntimeProjectile extends BlackHoleCapturedProjectileState {
   velocity: Phaser.Math.Vector2;
   speed: number;
   damage: number;
+  damageVariance?: DamageVariance;
   hitRadius: number;
   owner: ProjectileOwner;
   pierceRemaining: number;

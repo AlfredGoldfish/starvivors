@@ -63,9 +63,6 @@ export function normalizeBlackHoleFieldTuning(
       getFiniteNumber(rawTuning.swirlStrengthMultiplier, fallback.swirlStrengthMultiplier)
     ),
     swirlCurve: clampBlackHoleForceMultiplier(getFiniteNumber(rawTuning.swirlCurve, fallback.swirlCurve)),
-    massResistanceMultiplier: clampBlackHoleForceMultiplier(
-      getFiniteNumber(rawTuning.massResistanceMultiplier, fallback.massResistanceMultiplier)
-    ),
     maxVelocityMultiplier: Number(getFiniteNumber(rawTuning.maxVelocityMultiplier, fallback.maxVelocityMultiplier).toFixed(1)),
     viscosityStrength: clampBlackHoleForceMultiplier(getFiniteNumber(rawTuning.viscosityStrength, fallback.viscosityStrength)),
     viscosityCurve: clampBlackHoleForceMultiplier(getFiniteNumber(rawTuning.viscosityCurve, fallback.viscosityCurve)),
@@ -184,7 +181,6 @@ export function createBlackHoleFieldTuningMarkdown(state: BlackHoleFieldTuningDe
     `- Radial curve: ${tuning.radialCurve.toFixed(1)}`,
     `- Swirl strength: ${tuning.swirlStrengthMultiplier.toFixed(1)}`,
     `- Swirl curve: ${tuning.swirlCurve.toFixed(1)}`,
-    `- Mass resistance: ${tuning.massResistanceMultiplier.toFixed(1)}`,
     `- Max velocity: ${tuning.maxVelocityMultiplier.toFixed(1)}`,
     `- Viscosity strength: ${tuning.viscosityStrength.toFixed(1)}`,
     `- Viscosity curve: ${tuning.viscosityCurve.toFixed(1)}`,

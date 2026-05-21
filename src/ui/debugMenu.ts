@@ -120,11 +120,9 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'add-credits': 'Add 100 permanent credits for shop and economy testing.',
   'ship-stats': 'Live player ship stats after ship selection, upgrades, and debug physics tuning.',
   'ship-loadout-interceptor': 'Editable Interceptor defaults for live movement and hull tuning. Save useful values as markdown before converting them into source defaults.',
-  'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, mass, hull, and hit-radius tuning. Save useful values as markdown before converting them into source defaults.',
+  'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, hull, and hit-radius tuning. Save useful values as markdown before converting them into source defaults.',
   'interceptor-hull-down': 'Decrease Interceptor base hull for loadout testing.',
   'interceptor-hull-up': 'Increase Interceptor base hull for loadout testing.',
-  'interceptor-mass-down': 'Decrease Interceptor mass. Lower mass improves control response and reduces impact weight.',
-  'interceptor-mass-up': 'Increase Interceptor mass. Higher mass makes impacts heavier and movement harder to control.',
   'interceptor-speed-down': 'Decrease Interceptor max movement speed.',
   'interceptor-speed-up': 'Increase Interceptor max movement speed.',
   'interceptor-thrust-down': 'Decrease Interceptor forward thrust acceleration.',
@@ -140,8 +138,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'interceptor-reset': 'Clear Interceptor debug loadout overrides.',
   'bulwark-hull-down': 'Decrease Bulwark base hull for loadout testing.',
   'bulwark-hull-up': 'Increase Bulwark base hull for loadout testing.',
-  'bulwark-mass-down': 'Decrease Bulwark mass. Lower mass improves control response and reduces impact weight.',
-  'bulwark-mass-up': 'Increase Bulwark mass. Higher mass makes dash rams heavier and normal movement harder to control.',
   'bulwark-speed-down': 'Decrease Bulwark max movement speed.',
   'bulwark-speed-up': 'Increase Bulwark max movement speed.',
   'bulwark-thrust-down': 'Decrease Bulwark forward thruster output.',
@@ -233,15 +229,11 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'player-strafe-up': 'Increase side thrust.',
   'player-inertia-down': 'Decrease control inertia scaling. Lower values make control more sluggish.',
   'player-inertia-up': 'Increase control inertia scaling. Higher values make control more responsive.',
-  'player-mass-exp-down': 'Decrease how strongly mass reduces player control.',
-  'player-mass-exp-up': 'Increase how strongly mass reduces player control.',
   'physics-enemy': 'Current enemy movement tuning multipliers used by active enemy steering.',
   'enemy-speed-down': 'Decrease enemy target movement speed.',
   'enemy-speed-up': 'Increase enemy target movement speed.',
   'enemy-response-down': 'Decrease enemy steering response/thrust.',
   'enemy-response-up': 'Increase enemy steering response/thrust.',
-  'enemy-mass-exp-down': 'Decrease how strongly mass slows enemy steering response.',
-  'enemy-mass-exp-up': 'Increase how strongly mass slows enemy steering response.',
   'physics-asteroids': 'Current asteroid collision damage and impulse tuning.',
   'asteroid-damage-down': 'Decrease asteroid-vs-asteroid collision damage scaling.',
   'asteroid-damage-up': 'Increase asteroid-vs-asteroid collision damage scaling.',
@@ -318,8 +310,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'field-drag-up': 'Increase extra inner drag near the core.',
   'field-player-down': 'Decrease player resistance to black hole forces.',
   'field-player-up': 'Increase player resistance to black hole forces.',
-  'field-mass-down': 'Decrease mass-based resistance to black hole forces.',
-  'field-mass-up': 'Increase mass-based resistance to black hole forces.',
   'field-vel-down': 'Decrease black hole force velocity cap.',
   'field-vel-up': 'Increase black hole force velocity cap.',
   'field-visual-down': 'Decrease black hole visual radius scale.',
@@ -630,20 +620,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 5
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-mass`, y, 'Mass', () => config.callbacks.adjustShipLoadoutStat(shipId, 'mass', -0.25), () => config.callbacks.adjustShipLoadoutStat(shipId, 'mass', 0.25), {
-      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Mass ([\d.]+)/),
-      setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'mass', value),
-      step: 0.25
-    });
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-speed`, y, 'Speed', () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', 1), {
-      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Speed ([\d.]+)/),
+    addButtonPair('ship', `${shipId}-speed`, y, 'Velocity', () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'moveSpeed', 1), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Velocity ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'moveSpeed', value),
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-thrust`, y, 'Thrust', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 1), {
-      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Thrust ([\d.]+)/),
+    addButtonPair('ship', `${shipId}-thrust`, y, 'Accel', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 1), {
+      getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Accel ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'thrust', value),
       step: 1
     });
@@ -869,12 +853,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.05
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-mass-exp', y, 'MassExp', () => config.callbacks.adjustPlayerControlMassExponent(-0.05), () => config.callbacks.adjustPlayerControlMassExponent(0.05), {
-      getValue: (values) => values.playerControlMassExponent,
-      setValue: (value) => config.callbacks.setPhysicsTuning('playerControlMassExponent', value),
-      step: 0.05
-    });
-    y += BUTTON_HEIGHT + ROW_GAP;
+    y += ROW_GAP;
 
     y = addSection('physics', y, 'Enemy Physics');
     addValue('physics-enemy', 'physics', y, VALUE_LINE_HEIGHT * 3);
@@ -891,12 +870,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.05
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-mass-exp', y, 'MassExp', () => config.callbacks.adjustEnemyMassExponent(-0.05), () => config.callbacks.adjustEnemyMassExponent(0.05), {
-      getValue: (values) => values.enemyMassExponent,
-      setValue: (value) => config.callbacks.setPhysicsTuning('enemyMassExponent', value),
-      step: 0.05
-    });
-    y += BUTTON_HEIGHT + ROW_GAP;
+    y += ROW_GAP;
 
     y = addSection('physics', y, 'Asteroid Collisions');
     addValue('physics-asteroids', 'physics', y, VALUE_LINE_HEIGHT * 2);
@@ -1244,10 +1218,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton(tabId, 'field-player-down', panelX + PANEL_PADDING + 162, y, 74, 'PRes -', () => config.callbacks.adjustBlackHolePlayerResistance(-0.1));
     addButton(tabId, 'field-player-up', panelX + PANEL_PADDING + 242, y, 74, 'PRes +', () => config.callbacks.adjustBlackHolePlayerResistance(0.1));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'field-mass-down', panelX + PANEL_PADDING, y, 74, 'Mass -', () => config.callbacks.adjustBlackHoleMassResistance(-0.1));
-    addButton(tabId, 'field-mass-up', panelX + PANEL_PADDING + 80, y, 74, 'Mass +', () => config.callbacks.adjustBlackHoleMassResistance(0.1));
-    addButton(tabId, 'field-vel-down', panelX + PANEL_PADDING + 162, y, 74, 'Vel -', () => config.callbacks.adjustBlackHoleMaxVelocity(-0.1));
-    addButton(tabId, 'field-vel-up', panelX + PANEL_PADDING + 242, y, 74, 'Vel +', () => config.callbacks.adjustBlackHoleMaxVelocity(0.1));
+    addButton(tabId, 'field-vel-down', panelX + PANEL_PADDING, y, 154, 'Vel -', () => config.callbacks.adjustBlackHoleMaxVelocity(-0.1));
+    addButton(tabId, 'field-vel-up', panelX + PANEL_PADDING + 162, y, 154, 'Vel +', () => config.callbacks.adjustBlackHoleMaxVelocity(0.1));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton(tabId, 'field-visual-down', panelX + PANEL_PADDING, y, 74, 'Vis -', () => config.callbacks.adjustBlackHoleVisualScale(-0.5));
     addButton(tabId, 'field-visual-up', panelX + PANEL_PADDING + 80, y, 74, 'Vis +', () => config.callbacks.adjustBlackHoleVisualScale(0.5));
@@ -1731,7 +1703,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       } else if (activeTab === 'ship') {
         setValue(
           'ship-stats',
-          `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nMass ${values.playerMass.toFixed(2)}\nSpeed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nThrust ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe ${formatIntegerDisplayUnits(values.playerStrafe)}`
+          `Ship: ${values.selectedShipName}\nHull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nVelocity ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nAcceleration ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe ${formatIntegerDisplayUnits(values.playerStrafe)}`
         );
         setValue('ship-loadout-interceptor', values.shipTuningSummaries.interceptor);
         setValue('ship-loadout-bulwark', values.shipTuningSummaries.bulwark);
@@ -1758,11 +1730,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         );
         setValue(
           'physics-player',
-          `Speed ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nMass ${values.playerMass.toFixed(2)}\nThrust x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}\nMass exponent ${values.playerControlMassExponent.toFixed(2)}`
+          `Velocity ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nAccel x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}`
         );
         setValue(
           'physics-enemy',
-          `Speed x${values.enemySpeedScale.toFixed(2)}\nThrust/response x${values.enemyResponseScale.toFixed(2)}\nMass exponent ${values.enemyMassExponent.toFixed(2)}`
+          `Speed x${values.enemySpeedScale.toFixed(2)}\nThrust/response x${values.enemyResponseScale.toFixed(2)}`
         );
         setValue(
           'physics-asteroids',
@@ -1817,7 +1789,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         );
         setValue(
           'black-hole-field',
-          `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMass resist x${values.blackHoleMassResistanceMultiplier.toFixed(1)} / max velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
+          `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMax velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
         );
         setValue(
           'black-hole-lenses',

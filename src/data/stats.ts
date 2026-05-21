@@ -10,7 +10,6 @@ import {
   SALVAGE_TRAINING_CREDIT_MULTIPLIER,
   type PermanentUpgradeId
 } from './permanentUpgrades';
-import { COMBAT_NUMBER_SCALE } from './combatScale';
 
 export type PlayerStatKey =
   | 'maxHull'
@@ -20,7 +19,6 @@ export type PlayerStatKey =
   | 'thrust'
   | 'brake'
   | 'strafe'
-  | 'mass'
   | 'damage'
   | 'attackSpeed'
   | 'projectileSpeed'
@@ -55,14 +53,13 @@ export interface ResolvePlayerStatsInput {
 }
 
 export const DEFAULT_PLAYER_BASE_STATS: PlayerBaseStats = {
-  maxHull: 40 * COMBAT_NUMBER_SCALE,
+  maxHull: 40,
   defense: 0,
   recovery: 0,
   moveSpeed: 500,
   thrust: 560,
   brake: 335,
   strafe: 225,
-  mass: 3,
   damage: 1,
   attackSpeed: 1,
   projectileSpeed: 1,
@@ -76,12 +73,13 @@ export const DEFAULT_PLAYER_BASE_STATS: PlayerBaseStats = {
   greed: 1
 };
 
-export const HULL_PLATING_MAX_HULL_BONUS = 15 * COMBAT_NUMBER_SCALE;
+export const HULL_PLATING_MAX_HULL_BONUS = 15;
 export const ENGINE_TUNING_ACCELERATION_MULTIPLIER = 0.08;
 export const ENGINE_TUNING_MAX_SPEED_MULTIPLIER = 0.04;
 export const DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS = 150;
-export const DAMAGE_CONTROL_REPAIR = 10 * COMBAT_NUMBER_SCALE;
-export const HULL_PLATING_REPAIR = 15 * COMBAT_NUMBER_SCALE;
+export const DAMAGE_CONTROL_REPAIR = 10;
+export const HULL_PLATING_REPAIR = 15;
+export const PLAYER_HULL_HP_CAP = 9999;
 export const PERMANENT_PLAYER_DAMAGE_MULTIPLIER = 0.05;
 export const RUN_AMOUNT_BONUS = 1;
 export const RUN_MAGNET_RADIUS_MULTIPLIER = 0.18;
@@ -98,10 +96,12 @@ export function resolvePlayerStats(input: ResolvePlayerStatsInput): PlayerStats 
 
   return {
     ...input.baseStats,
-    maxHull:
+    maxHull: Math.min(
+      PLAYER_HULL_HP_CAP,
       input.baseStats.maxHull +
-      input.passiveLevels.hullPlating * HULL_PLATING_MAX_HULL_BONUS +
-      input.permanentLevels['hull-reinforcement'] * HULL_REINFORCEMENT_MAX_HULL_BONUS,
+        input.passiveLevels.hullPlating * HULL_PLATING_MAX_HULL_BONUS +
+        input.permanentLevels['hull-reinforcement'] * HULL_REINFORCEMENT_MAX_HULL_BONUS
+    ),
     moveSpeed: Math.round(input.baseStats.moveSpeed * engineSpeedMultiplier),
     thrust: input.baseStats.thrust * engineAccelerationMultiplier,
     brake: input.baseStats.brake * engineAccelerationMultiplier,

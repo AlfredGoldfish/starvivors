@@ -1,5 +1,4 @@
 import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
-import { COMBAT_NUMBER_SCALE } from '../../data/combatScale';
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
 import type { RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import type { DebugMenuValues } from './debugTypes';
@@ -18,24 +17,20 @@ const DEBUG_WEAPON_FIRE_RATE_MULTIPLIER_MIN = 0.1;
 const DEBUG_WEAPON_COOLDOWN_MIN_SECONDS = 0.01;
 const DEBUG_PHYSICS_SCALE_MIN = 0.05;
 const DEBUG_PHYSICS_SCALE_MAX = 3;
-const DEBUG_PHYSICS_EXPONENT_MIN = 0;
-const DEBUG_PHYSICS_EXPONENT_MAX = 1.5;
 const DEFAULT_PLAYER_THRUST_SCALE = 0.82;
 const DEFAULT_PLAYER_BRAKE_SCALE = 0.88;
 const DEFAULT_PLAYER_STRAFE_SCALE = 0.88;
 const DEFAULT_PLAYER_INERTIA_SCALE = 0.72;
-const DEFAULT_PLAYER_CONTROL_MASS_EXPONENT = 0.45;
 const DEFAULT_ENEMY_SPEED_SCALE = 1.08;
 const DEFAULT_ENEMY_RESPONSE_SCALE = 1.18;
-const DEFAULT_ENEMY_MASS_EXPONENT = 0.38;
 const DEFAULT_ASTEROID_COLLISION_DAMAGE_SCALE = 1;
 const DEFAULT_ASTEROID_COLLISION_IMPULSE_SCALE = 1;
 const DEFAULT_GLOBAL_MAX_SPEED = 500;
-const DEFAULT_GLOBAL_IMPACT_DAMAGE_CAP = 600 * COMBAT_NUMBER_SCALE;
+const DEFAULT_GLOBAL_IMPACT_DAMAGE_CAP = 600;
 const DEBUG_GLOBAL_MAX_SPEED_MIN = 1;
 const DEBUG_GLOBAL_MAX_SPEED_MAX = 10000;
 const DEBUG_IMPACT_CAP_MIN = 0;
-const DEBUG_IMPACT_CAP_MAX = 10000 * COMBAT_NUMBER_SCALE;
+const DEBUG_IMPACT_CAP_MAX = 10000;
 const DEBUG_IMPACT_SCALE_MIN = 0;
 const DEBUG_IMPACT_SCALE_MAX = 10;
 const DEFAULT_HEALTH_BAR_WIDTH_SCALE = 1;
@@ -85,14 +80,12 @@ export type DebugPhysicsTuningKey =
   | 'playerBrakeScale'
   | 'playerStrafeScale'
   | 'playerInertiaScale'
-  | 'playerControlMassExponent'
   | 'enemySpeedScale'
   | 'enemyResponseScale'
-  | 'enemyMassExponent'
   | 'asteroidCollisionDamageScale'
   | 'asteroidCollisionImpulseScale';
 
-export type DebugShipStatKey = 'maxHull' | 'mass' | 'moveSpeed' | 'thrust' | 'brake' | 'strafe' | 'hitRadius';
+export type DebugShipStatKey = 'maxHull' | 'moveSpeed' | 'thrust' | 'brake' | 'strafe' | 'hitRadius';
 export type DebugWeaponStatKey =
   | 'damage'
   | 'cooldownSeconds'
@@ -122,7 +115,6 @@ export type DebugPresetState = ReturnType<DebugState['createDebugPresetState']>;
 
 const SHIP_STAT_MIN: Record<DebugShipStatKey, number> = {
   maxHull: 1,
-  mass: 0.1,
   moveSpeed: 1,
   thrust: 0,
   brake: 0,
@@ -170,10 +162,8 @@ export class DebugState {
   playerBrakeScale = DEFAULT_PLAYER_BRAKE_SCALE;
   playerStrafeScale = DEFAULT_PLAYER_STRAFE_SCALE;
   playerInertiaScale = DEFAULT_PLAYER_INERTIA_SCALE;
-  playerControlMassExponent = DEFAULT_PLAYER_CONTROL_MASS_EXPONENT;
   enemySpeedScale = DEFAULT_ENEMY_SPEED_SCALE;
   enemyResponseScale = DEFAULT_ENEMY_RESPONSE_SCALE;
-  enemyMassExponent = DEFAULT_ENEMY_MASS_EXPONENT;
   asteroidCollisionDamageScale = DEFAULT_ASTEROID_COLLISION_DAMAGE_SCALE;
   asteroidCollisionImpulseScale = DEFAULT_ASTEROID_COLLISION_IMPULSE_SCALE;
   globalMaxSpeed = DEFAULT_GLOBAL_MAX_SPEED;
@@ -266,20 +256,12 @@ export class DebugState {
     this.playerInertiaScale = this.clampScale(this.playerInertiaScale + delta);
   }
 
-  adjustPlayerControlMassExponent(delta: number): void {
-    this.playerControlMassExponent = this.clampExponent(this.playerControlMassExponent + delta);
-  }
-
   adjustEnemySpeedScale(delta: number): void {
     this.enemySpeedScale = this.clampScale(this.enemySpeedScale + delta);
   }
 
   adjustEnemyResponseScale(delta: number): void {
     this.enemyResponseScale = this.clampScale(this.enemyResponseScale + delta);
-  }
-
-  adjustEnemyMassExponent(delta: number): void {
-    this.enemyMassExponent = this.clampExponent(this.enemyMassExponent + delta);
   }
 
   adjustAsteroidCollisionDamageScale(delta: number): void {
@@ -354,17 +336,11 @@ export class DebugState {
       case 'playerInertiaScale':
         this.playerInertiaScale = this.clampScale(value);
         break;
-      case 'playerControlMassExponent':
-        this.playerControlMassExponent = this.clampExponent(value);
-        break;
       case 'enemySpeedScale':
         this.enemySpeedScale = this.clampScale(value);
         break;
       case 'enemyResponseScale':
         this.enemyResponseScale = this.clampScale(value);
-        break;
-      case 'enemyMassExponent':
-        this.enemyMassExponent = this.clampExponent(value);
         break;
       case 'asteroidCollisionDamageScale':
         this.asteroidCollisionDamageScale = this.clampScale(value);
@@ -380,10 +356,8 @@ export class DebugState {
     this.playerBrakeScale = DEFAULT_PLAYER_BRAKE_SCALE;
     this.playerStrafeScale = DEFAULT_PLAYER_STRAFE_SCALE;
     this.playerInertiaScale = DEFAULT_PLAYER_INERTIA_SCALE;
-    this.playerControlMassExponent = DEFAULT_PLAYER_CONTROL_MASS_EXPONENT;
     this.enemySpeedScale = DEFAULT_ENEMY_SPEED_SCALE;
     this.enemyResponseScale = DEFAULT_ENEMY_RESPONSE_SCALE;
-    this.enemyMassExponent = DEFAULT_ENEMY_MASS_EXPONENT;
     this.asteroidCollisionDamageScale = DEFAULT_ASTEROID_COLLISION_DAMAGE_SCALE;
     this.asteroidCollisionImpulseScale = DEFAULT_ASTEROID_COLLISION_IMPULSE_SCALE;
     this.globalMaxSpeed = DEFAULT_GLOBAL_MAX_SPEED;
@@ -591,7 +565,6 @@ export class DebugState {
     return {
       ...ship.baseStats,
       maxHull: overrides?.maxHull ?? ship.baseStats.maxHull,
-      mass: overrides?.mass ?? ship.baseStats.mass,
       moveSpeed: overrides?.moveSpeed ?? ship.baseStats.moveSpeed,
       thrust: overrides?.thrust ?? ship.baseStats.thrust,
       brake: overrides?.brake ?? ship.baseStats.brake,
@@ -607,7 +580,7 @@ export class DebugState {
     const stats = this.getEffectiveShipBaseStats(ship);
     const marker = this.shipOverrides[ship.id] ? ' *' : '';
 
-    return `${ship.displayName}${marker}\nHull ${stats.maxHull}  Mass ${stats.mass.toFixed(2)}  Hit ${formatDisplayUnits(this.getEffectiveShipHitRadius(ship), 1)}\nSpeed ${formatIntegerDisplayUnits(stats.moveSpeed)}  Thrust ${formatIntegerDisplayUnits(stats.thrust)}\nBrake ${formatIntegerDisplayUnits(stats.brake)}  Strafe ${formatIntegerDisplayUnits(stats.strafe)}`;
+    return `${ship.displayName}${marker}\nHull ${stats.maxHull}  Hit ${formatDisplayUnits(this.getEffectiveShipHitRadius(ship), 1)}\nVelocity ${formatIntegerDisplayUnits(stats.moveSpeed)}  Accel ${formatIntegerDisplayUnits(stats.thrust)}\nBrake ${formatIntegerDisplayUnits(stats.brake)}  Strafe ${formatIntegerDisplayUnits(stats.strafe)}`;
   }
 
   adjustWeaponStat(weapon: WeaponRegistryEntry, key: DebugWeaponStatKey, delta: number): void {
@@ -688,7 +661,6 @@ export class DebugState {
     blackHoleRadialCurve: number;
     blackHoleSwirlStrengthMultiplier: number;
     blackHoleSwirlCurve: number;
-    blackHoleMassResistanceMultiplier: number;
     blackHoleMaxVelocityMultiplier: number;
     blackHoleViscosityStrength: number;
     blackHoleViscosityCurve: number;
@@ -724,7 +696,6 @@ export class DebugState {
     fuelMax: number;
     fuelDrainEnabled: boolean;
     fuelDrainMode: string;
-    playerMass: number;
     playerSpeed: number;
     playerMaxSpeed: number;
     playerThrust: number;
@@ -765,7 +736,6 @@ export class DebugState {
       blackHoleRadialCurve: snapshot.blackHoleRadialCurve,
       blackHoleSwirlStrengthMultiplier: snapshot.blackHoleSwirlStrengthMultiplier,
       blackHoleSwirlCurve: snapshot.blackHoleSwirlCurve,
-      blackHoleMassResistanceMultiplier: snapshot.blackHoleMassResistanceMultiplier,
       blackHoleMaxVelocityMultiplier: snapshot.blackHoleMaxVelocityMultiplier,
       blackHoleViscosityStrength: snapshot.blackHoleViscosityStrength,
       blackHoleViscosityCurve: snapshot.blackHoleViscosityCurve,
@@ -805,7 +775,6 @@ export class DebugState {
       fuelMax: snapshot.fuelMax,
       fuelDrainEnabled: snapshot.fuelDrainEnabled,
       fuelDrainMode: snapshot.fuelDrainMode,
-      playerMass: snapshot.playerMass,
       playerSpeed: snapshot.playerSpeed,
       playerMaxSpeed: snapshot.playerMaxSpeed,
       playerThrust: snapshot.playerThrust,
@@ -815,10 +784,8 @@ export class DebugState {
       playerBrakeScale: this.playerBrakeScale,
       playerStrafeScale: this.playerStrafeScale,
       playerInertiaScale: this.playerInertiaScale,
-      playerControlMassExponent: this.playerControlMassExponent,
       enemySpeedScale: this.enemySpeedScale,
       enemyResponseScale: this.enemyResponseScale,
-      enemyMassExponent: this.enemyMassExponent,
       asteroidCollisionDamageScale: this.asteroidCollisionDamageScale,
       asteroidCollisionImpulseScale: this.asteroidCollisionImpulseScale,
       globalMaxSpeed: this.globalMaxSpeed,
@@ -886,10 +853,8 @@ export class DebugState {
         playerBrakeScale: this.playerBrakeScale,
         playerStrafeScale: this.playerStrafeScale,
         playerInertiaScale: this.playerInertiaScale,
-        playerControlMassExponent: this.playerControlMassExponent,
         enemySpeedScale: this.enemySpeedScale,
         enemyResponseScale: this.enemyResponseScale,
-        enemyMassExponent: this.enemyMassExponent,
         asteroidCollisionDamageScale: this.asteroidCollisionDamageScale,
         asteroidCollisionImpulseScale: this.asteroidCollisionImpulseScale,
         globalMaxSpeed: this.globalMaxSpeed,
@@ -953,10 +918,8 @@ export class DebugState {
       'playerBrakeScale',
       'playerStrafeScale',
       'playerInertiaScale',
-      'playerControlMassExponent',
       'enemySpeedScale',
       'enemyResponseScale',
-      'enemyMassExponent',
       'asteroidCollisionDamageScale',
       'asteroidCollisionImpulseScale',
       'globalMaxSpeed',
@@ -1062,7 +1025,7 @@ export class DebugState {
   }
 
   private clampShipStat(key: DebugShipStatKey, value: number): number {
-    return Number(Math.max(SHIP_STAT_MIN[key], value).toFixed(key === 'mass' || key === 'hitRadius' ? 2 : 1));
+    return Number(Math.max(SHIP_STAT_MIN[key], value).toFixed(key === 'hitRadius' ? 2 : 1));
   }
 
   private clampWeaponStat(key: DebugWeaponStatKey, value: number): number {
@@ -1072,10 +1035,6 @@ export class DebugState {
 
   private clampScale(value: number): number {
     return Number(Math.min(DEBUG_PHYSICS_SCALE_MAX, Math.max(DEBUG_PHYSICS_SCALE_MIN, value)).toFixed(2));
-  }
-
-  private clampExponent(value: number): number {
-    return Number(Math.min(DEBUG_PHYSICS_EXPONENT_MAX, Math.max(DEBUG_PHYSICS_EXPONENT_MIN, value)).toFixed(2));
   }
 
   private clampGlobalMaxSpeed(value: number): number {
@@ -1144,7 +1103,7 @@ export class DebugState {
     for (const [shipId, rawOverrides] of Object.entries(record)) {
       const overrides = this.getRecord(rawOverrides);
       const next: DebugShipOverrides = {};
-      for (const stat of ['maxHull', 'mass', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'] as DebugShipStatKey[]) {
+      for (const stat of ['maxHull', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'] as DebugShipStatKey[]) {
         if (typeof overrides[stat] === 'number' && Number.isFinite(overrides[stat])) {
           next[stat] = this.clampShipStat(stat, overrides[stat]);
         }

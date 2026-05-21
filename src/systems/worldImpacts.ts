@@ -29,7 +29,6 @@ import {
 import {
   applyCollisionImpulse,
   getClosingSpeed,
-  getMassResponseShare,
   getRelativeVelocity
 } from './physics';
 import { buildSpatialHash, querySpatialHash, type SpatialHashGrid } from './spatialHash';
@@ -43,8 +42,6 @@ type BodyImpactCollisionRequest = Pick<
   | 'secondVelocity'
   | 'firstTotalVelocity'
   | 'secondTotalVelocity'
-  | 'firstMass'
-  | 'secondMass'
   | 'firstRadius'
   | 'secondRadius'
   | 'firstSource'
@@ -70,7 +67,6 @@ export interface ResolveWorldImpactCollisionsInput {
   getAsteroidCollisionRadius: (asteroid: BasicAsteroid) => number;
   getDebrisCollisionRadius: (debris: EnemyWreckageDebris) => number;
   getEnemyTotalVelocity: (enemy: WorldEnemy) => Phaser.Math.Vector2;
-  getAsteroidMass: (tier: BasicAsteroid['tier']) => number;
   getGlobalMaxSpeed: () => number;
   resolveBodyImpactCollision: (input: BodyImpactCollisionRequest) => void;
   damageEnemyFromAsteroid: (enemy: WorldEnemy, damage: number) => void;
@@ -89,8 +85,6 @@ export interface ResolveBodyImpactCollisionInput {
   secondVelocity: Phaser.Math.Vector2;
   firstTotalVelocity: Phaser.Math.Vector2;
   secondTotalVelocity: Phaser.Math.Vector2;
-  firstMass: number;
-  secondMass: number;
   firstRadius: number;
   secondRadius: number;
   firstSource: DebugImpactSourceType;
@@ -106,8 +100,6 @@ export interface ResolveBodyImpactCollisionInput {
   calculatePhysicalImpactDamage: (input: {
     source: DebugImpactSourceType;
     baseDamage: number;
-    attackerMass: number;
-    targetMass: number;
     impactSpeed: number;
   }) => number;
   damageFirst: (damage: number) => void;
@@ -182,17 +174,13 @@ export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInpu
   const hitRadius = input.firstRadius + input.secondRadius;
   const penetration = input.collisionPenetration ?? Math.max(0, hitRadius - offset.length());
   const separation = Math.min(penetration * ASTEROID_COLLISION_SEPARATION_PERCENT, ASTEROID_COLLISION_MAX_SEPARATION);
-  const firstShare = getMassResponseShare(input.secondMass, input.firstMass);
-  const secondShare = getMassResponseShare(input.firstMass, input.secondMass);
 
-  input.nudgeWrappedObject(input.firstBody, normal, separation * firstShare);
-  input.nudgeWrappedObject(input.secondBody, normal, -separation * secondShare);
+  input.nudgeWrappedObject(input.firstBody, normal, separation * 0.5);
+  input.nudgeWrappedObject(input.secondBody, normal, -separation * 0.5);
   applyCollisionImpulse({
     normal,
     firstVelocity: input.firstVelocity,
     secondVelocity: input.secondVelocity,
-    firstMass: input.firstMass,
-    secondMass: input.secondMass,
     minImpulse: ASTEROID_COLLISION_MIN_IMPULSE * input.asteroidCollisionImpulseScale,
     maxImpulse: ASTEROID_COLLISION_MAX_IMPULSE * input.asteroidCollisionImpulseScale,
     relativeSpeedScale: ASTEROID_COLLISION_IMPULSE_SPEED_SCALE * input.asteroidCollisionImpulseScale,
@@ -205,15 +193,11 @@ export function resolveBodyImpactCollision(input: ResolveBodyImpactCollisionInpu
   const damageToFirst = input.calculatePhysicalImpactDamage({
     source: input.secondSource,
     baseDamage: 0,
-    attackerMass: input.secondMass,
-    targetMass: input.firstMass,
     impactSpeed: closingSpeed
   });
   const damageToSecond = input.calculatePhysicalImpactDamage({
     source: input.firstSource,
     baseDamage: 0,
-    attackerMass: input.firstMass,
-    targetMass: input.secondMass,
     impactSpeed: closingSpeed
   });
 
@@ -279,8 +263,6 @@ function resolveEnemyAsteroidImpactCollisions(
         secondVelocity: asteroid.velocity,
         firstTotalVelocity: input.getEnemyTotalVelocity(enemy),
         secondTotalVelocity: asteroid.velocity,
-        firstMass: getEnemyMass(enemy),
-        secondMass: input.getAsteroidMass(asteroid.tier),
         firstRadius: enemyHitRadius,
         secondRadius: asteroidRadius,
         firstSource: 'enemy',
@@ -336,8 +318,6 @@ function resolveEnemyDebrisImpactCollisions(
         secondVelocity: debris.velocity,
         firstTotalVelocity: input.getEnemyTotalVelocity(enemy),
         secondTotalVelocity: debris.velocity,
-        firstMass: getEnemyMass(enemy),
-        secondMass: debris.mass,
         firstRadius: enemyHitRadius,
         secondRadius: debrisRadius,
         firstSource: 'enemy',
@@ -390,8 +370,6 @@ function resolveAsteroidDebrisImpactCollisions(
         secondVelocity: debris.velocity,
         firstTotalVelocity: asteroid.velocity,
         secondTotalVelocity: debris.velocity,
-        firstMass: input.getAsteroidMass(asteroid.tier),
-        secondMass: debris.mass,
         firstRadius: asteroidRadius,
         secondRadius: debrisRadius,
         firstSource: 'asteroid',
@@ -439,10 +417,6 @@ function getEnemyCircleCollision(
       radius: circleRadius
     }
   );
-}
-
-function getEnemyMass(enemy: WorldEnemy): number {
-  return isLiveEnemy(enemy) ? enemy.definition.stats.mass ?? 1 : enemy.stats.mass;
 }
 
 function isLiveEnemy(enemy: WorldEnemy): enemy is EnemyLabInstance {

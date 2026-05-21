@@ -1,6 +1,6 @@
 import { INITIAL_PERMANENT_UPGRADE_LEVELS, type PermanentUpgradeId } from '../data/permanentUpgrades';
 import { DEFAULT_SHIP_ID, type ShipId } from '../data/ships';
-import type { WeaponId } from '../data/weapons';
+import { getWeaponDefinition, type WeaponId, type WeaponSlotType } from '../data/weapons';
 
 export type RewardHookId =
   | 'mission.survey-signal'
@@ -13,16 +13,25 @@ export type RewardHookId =
   | 'sector-scanner.hunter-swarm';
 
 export type SectorScannerLevel = 0 | 1 | 2 | 3;
+export type WeaponLoadoutState = Record<WeaponSlotType, Array<WeaponId | null>>;
+export type WeaponMkLevels = Partial<Record<WeaponId, number>>;
+
+export const WEAPON_LOADOUT_SLOT_COUNT = 3;
+const DEFAULT_UNLOCKED_WEAPON_IDS: WeaponId[] = ['pulse-cannon', 'test1-weapon', 'test2-weapon', 'test3-weapon', 'test4-weapon'];
 
 export interface ProgressionState {
   schemaVersion: 1;
   totalCredits: number;
+  selectedShipId: ShipId;
+  selectedSkinIds: Partial<Record<ShipId, string>>;
   unlockedShipIds: ShipId[];
   permanentUpgradeLevels: Record<PermanentUpgradeId, number>;
   activePermanentUpgradeLevels: Record<PermanentUpgradeId, number>;
   unlockedRewardHooks: RewardHookId[];
   sectorScannerLevel: SectorScannerLevel;
   unlockedWeaponIds: WeaponId[];
+  weaponLoadout: WeaponLoadoutState;
+  weaponMkLevels: WeaponMkLevels;
 }
 
 const STORAGE_KEY = 'starvivors.progression.v1';
@@ -37,12 +46,31 @@ export function createDefaultProgressionState(): ProgressionState {
   return {
     schemaVersion: 1,
     totalCredits: 0,
+    selectedShipId: DEFAULT_SHIP_ID,
+    selectedSkinIds: {},
     unlockedShipIds: [DEFAULT_SHIP_ID],
     permanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
     activePermanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
     unlockedRewardHooks: [],
     sectorScannerLevel: 0,
-    unlockedWeaponIds: []
+    unlockedWeaponIds: [...DEFAULT_UNLOCKED_WEAPON_IDS],
+    weaponLoadout: createDefaultWeaponLoadout(),
+    weaponMkLevels: {
+      'pulse-cannon': 1,
+      'ramming-shield': 1,
+      'test1-weapon': 1,
+      'test2-weapon': 1,
+      'test3-weapon': 1,
+      'test4-weapon': 1
+    }
+  };
+}
+
+export function createDefaultWeaponLoadout(): WeaponLoadoutState {
+  return {
+    primary: ['pulse-cannon', null, null],
+    secondary: [null, null, null],
+    auto: [null, null, null]
   };
 }
 
@@ -86,12 +114,16 @@ export function normalizeProgressionState(value: unknown): ProgressionState {
   return {
     schemaVersion: 1,
     totalCredits: Math.max(0, Math.floor(Number(record.totalCredits ?? base.totalCredits))),
+    selectedShipId: typeof record.selectedShipId === 'string' ? (record.selectedShipId as ShipId) : base.selectedShipId,
+    selectedSkinIds: normalizeSelectedSkinIds(record.selectedSkinIds),
     unlockedShipIds: normalizeUniqueArray(record.unlockedShipIds, base.unlockedShipIds) as ShipId[],
     permanentUpgradeLevels,
     activePermanentUpgradeLevels: clampActiveUpgradeLevels(activePermanentUpgradeLevels, permanentUpgradeLevels),
     unlockedRewardHooks: normalizeUniqueArray(record.unlockedRewardHooks, []) as RewardHookId[],
     sectorScannerLevel: normalizeScannerLevel(record.sectorScannerLevel),
-    unlockedWeaponIds: normalizeUniqueArray(record.unlockedWeaponIds, []) as WeaponId[]
+    unlockedWeaponIds: normalizeUnlockedWeaponIds(record.unlockedWeaponIds, base.unlockedWeaponIds),
+    weaponLoadout: normalizeWeaponLoadout(record.weaponLoadout),
+    weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels)
   };
 }
 
@@ -142,6 +174,83 @@ function clampActiveUpgradeLevels(
 function normalizeUniqueArray(value: unknown, fallback: string[]): string[] {
   const source = Array.isArray(value) ? value : fallback;
   return [...new Set(source.filter((item): item is string => typeof item === 'string'))];
+}
+
+function normalizeSelectedSkinIds(value: unknown): Partial<Record<ShipId, string>> {
+  const source = isRecord(value) ? value : {};
+  const skins: Partial<Record<ShipId, string>> = {};
+
+  for (const [shipId, skinId] of Object.entries(source)) {
+    if (typeof skinId === 'string') {
+      skins[shipId as ShipId] = skinId;
+    }
+  }
+
+  return skins;
+}
+
+function normalizeWeaponLoadout(value: unknown): WeaponLoadoutState {
+  const defaults = createDefaultWeaponLoadout();
+  const source = isRecord(value) ? value : {};
+  const usedWeaponIds = new Set<WeaponId>();
+
+  return {
+    primary: normalizeWeaponLoadoutSlots(source.primary, defaults.primary, 'primary', usedWeaponIds),
+    secondary: normalizeWeaponLoadoutSlots(source.secondary, defaults.secondary, 'secondary', usedWeaponIds),
+    auto: normalizeWeaponLoadoutSlots(source.auto, defaults.auto, 'auto', usedWeaponIds)
+  };
+}
+
+function normalizeWeaponLoadoutSlots(
+  value: unknown,
+  fallback: Array<WeaponId | null>,
+  slot: WeaponSlotType,
+  usedWeaponIds: Set<WeaponId>
+): Array<WeaponId | null> {
+  const source = Array.isArray(value) ? value : fallback;
+  const slots: Array<WeaponId | null> = [];
+
+  for (let index = 0; index < WEAPON_LOADOUT_SLOT_COUNT; index += 1) {
+    const weaponId = source[index];
+    if (typeof weaponId !== 'string') {
+      slots.push(null);
+      continue;
+    }
+
+    const typedWeaponId = weaponId as WeaponId;
+    if (usedWeaponIds.has(typedWeaponId) || !getWeaponDefinition(typedWeaponId).slotCompatibility.includes(slot)) {
+      slots.push(null);
+      continue;
+    }
+
+    usedWeaponIds.add(typedWeaponId);
+    slots.push(typedWeaponId);
+  }
+
+  return slots;
+}
+
+function normalizeWeaponMkLevels(value: unknown): WeaponMkLevels {
+  const source = isRecord(value) ? value : {};
+  const levels: WeaponMkLevels = {
+    'pulse-cannon': 1,
+    'ramming-shield': 1,
+    'test1-weapon': 1,
+    'test2-weapon': 1,
+    'test3-weapon': 1,
+    'test4-weapon': 1
+  };
+
+  for (const [weaponId, level] of Object.entries(source)) {
+    levels[weaponId as WeaponId] = Math.max(1, Math.floor(Number(level ?? 1)));
+  }
+
+  return levels;
+}
+
+function normalizeUnlockedWeaponIds(value: unknown, fallback: WeaponId[]): WeaponId[] {
+  const source = Array.isArray(value) ? [...fallback, ...value] : fallback;
+  return normalizeUniqueArray(source, fallback) as WeaponId[];
 }
 
 function normalizeScannerLevel(value: unknown): SectorScannerLevel {

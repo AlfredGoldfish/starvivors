@@ -6,7 +6,7 @@ import type { SavedDebugShipLoadout, SavedDebugWeaponLoadout } from '../../scene
 import type { DebugState } from './debugState';
 import { getDesktopBridge, type DesktopFileCategory } from '../desktopBridge';
 
-const DEBUG_SHIP_STAT_KEYS: DebugShipStatKey[] = ['maxHull', 'mass', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'];
+const DEBUG_SHIP_STAT_KEYS: DebugShipStatKey[] = ['maxHull', 'moveSpeed', 'thrust', 'brake', 'strafe', 'hitRadius'];
 const DEBUG_WEAPON_STAT_KEYS: DebugWeaponStatKey[] = [
   'damage',
   'cooldownSeconds',
@@ -209,9 +209,8 @@ export function createDebugShipLoadoutMarkdown(debugState: DebugState, ship: Shi
     '## Effective Stats',
     '',
     `- Max hull: ${effectiveStats.maxHull}`,
-    `- Mass: ${effectiveStats.mass}`,
-    `- Move speed: ${formatIntegerDisplayUnits(effectiveStats.moveSpeed)}`,
-    `- Thrust: ${formatIntegerDisplayUnits(effectiveStats.thrust)}`,
+    `- Velocity: ${formatIntegerDisplayUnits(effectiveStats.moveSpeed)}`,
+    `- Acceleration: ${formatIntegerDisplayUnits(effectiveStats.thrust)}`,
     `- Brake: ${formatIntegerDisplayUnits(effectiveStats.brake)}`,
     `- Strafe: ${formatIntegerDisplayUnits(effectiveStats.strafe)}`,
     `- Hit radius: ${formatDisplayUnits(debugState.getEffectiveShipHitRadius(ship), 1)}`,
