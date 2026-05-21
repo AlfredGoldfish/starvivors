@@ -43,6 +43,7 @@ import {
   type MissionDefinition,
   type MissionDefinitionId
 } from '../data/missions';
+import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
@@ -309,6 +310,7 @@ import {
   type SectorRegion
 } from '../systems/sectorGeneration';
 import { generateMissionObjective, type MissionObjective } from '../systems/missionGeneration';
+import { generateWorldEvents, type GeneratedWorldEvent } from '../systems/worldEventGeneration';
 import {
   PerformanceProfilerSystem,
   type PerformanceProfilerCounts,
@@ -617,6 +619,25 @@ interface MissionRuntimeState {
   completedAt: number | null;
   failedAt: number | null;
   failureReason: MissionFailureReason | null;
+  targetWorldEventId: string | null;
+}
+
+type WorldEventStatus = 'active' | 'destroyed';
+
+interface WorldEventInstance {
+  id: string;
+  definition: WorldEventDefinition;
+  x: number;
+  y: number;
+  regionId: string;
+  source: GeneratedWorldEvent['source'];
+  body: Phaser.GameObjects.Container;
+  wrapMirrorBody: Phaser.GameObjects.Container;
+  hp: number;
+  maxHp: number;
+  status: WorldEventStatus;
+  guardSquadsSpawned: boolean;
+  rewardDropped: boolean;
 }
 
 type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
@@ -659,6 +680,7 @@ export class GameScene extends Phaser.Scene {
   private missionObjectiveBeacon?: Phaser.GameObjects.Container;
   private missionObjectiveBeaconRing?: Phaser.GameObjects.Arc;
   private missionObjectiveBeaconCore?: Phaser.GameObjects.Arc;
+  private worldEvents: WorldEventInstance[] = [];
   private nextScrapRollupAt = 0;
   private nextAsteroidCoalesceAt = 0;
   private asteroidDestructionHistory: number[] = [];
@@ -929,6 +951,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('player-movement', () => this.updatePlayerMovement(time, this.isPlayerDead ? 0 : deltaSeconds));
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
       this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
+      this.profileStep('world-events', () => this.updateWorldEvents(time));
       this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
       this.profileStep('sector-streaming', () => this.updateSectorStreaming());
       this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
@@ -1573,6 +1596,15 @@ export class GameScene extends Phaser.Scene {
 
         return this.getTestHarnessState();
       },
+      destroyFirstWorldEvent: () => {
+        const event = this.worldEvents.find((candidate) => candidate.status === 'active');
+        if (event && !this.isPlayerDead) {
+          this.destroyWorldEvent(event);
+          this.updateMission(this.time.now + 1);
+        }
+
+        return this.getTestHarnessState();
+      },
       collectAllScrap: () => {
         for (const scrap of [...this.scrapPickups]) {
           if (scrap.kind !== 'scrap') {
@@ -1691,6 +1723,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase11();
     }
 
+    if (query.get('testHarness') === 'phase12') {
+      this.runTestHarnessPhase12();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1716,6 +1752,7 @@ export class GameScene extends Phaser.Scene {
 
   private getTestHarnessState(): StarvivorsTestHarnessState {
     const selectedShip = this.getSelectedShipDefinition();
+    const firstWorldEvent = this.worldEvents[0];
 
     return {
       selectedShipId: selectedShip.id,
@@ -1726,6 +1763,12 @@ export class GameScene extends Phaser.Scene {
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
       missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
       missionObjectiveRegionId: this.missionRuntime?.objective.regionId ?? null,
+      worldEventCount: this.worldEvents.length,
+      activeWorldEventCount: this.worldEvents.filter((event) => event.status === 'active').length,
+      destroyedWorldEventCount: this.worldEvents.filter((event) => event.status === 'destroyed').length,
+      firstWorldEventName: firstWorldEvent?.definition.displayName ?? null,
+      firstWorldEventHp: firstWorldEvent?.hp ?? 0,
+      firstWorldEventMaxHp: firstWorldEvent?.maxHp ?? 0,
       unlockedShipIds: [...this.unlockedShipIds],
       rammingShieldHp: this.rammingShieldState.hp,
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
@@ -2900,6 +2943,53 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase12(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase12-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase12-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.selectMission('mothership-contract');
+    this.startRun();
+    const initial = harness.getState();
+    const event = this.worldEvents[0];
+
+    if (event) {
+      this.player.setPosition(event.x, event.y);
+      this.playerVelocity.set(0, 0);
+      this.updateWorldEvents(this.time.now + 1000);
+    }
+
+    const afterApproach = harness.getState();
+    const destroyed = harness.destroyFirstWorldEvent();
+    const rewardsDropped = this.scrapPickups.some((pickup) => pickup.kind === 'scrap' && pickup.value >= 100) &&
+      this.scrapPickups.some((pickup) => pickup.kind === 'banked-upgrade');
+    const worldEventPass =
+      initial.selectedMissionId === 'mothership-contract' &&
+      initial.worldEventCount >= 1 &&
+      initial.firstWorldEventName === 'Prototype Mothership' &&
+      initial.firstWorldEventHp === initial.firstWorldEventMaxHp &&
+      afterApproach.liveEnemies > initial.liveEnemies &&
+      destroyed.destroyedWorldEventCount >= 1 &&
+      destroyed.missionStatus === 'completed';
+    const pass = worldEventPass && rewardsDropped;
+
+    document.body.setAttribute('data-starvivors-phase12-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase12-harness-details',
+      JSON.stringify({
+        initial,
+        afterApproach,
+        destroyed,
+        rewardsDropped,
+        worldEventPass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -3076,6 +3166,7 @@ export class GameScene extends Phaser.Scene {
     this.missionObjectiveBeacon = undefined;
     this.missionObjectiveBeaconRing = undefined;
     this.missionObjectiveBeaconCore = undefined;
+    this.worldEvents = [];
     this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
@@ -3170,6 +3261,7 @@ export class GameScene extends Phaser.Scene {
       startX: center.x,
       startY: center.y
     });
+    this.createWorldEvents(center);
     this.createMissionRuntime(center);
     this.createExtractionBeacon(center);
     this.createMissionObjectiveBeacon();
@@ -3684,16 +3776,101 @@ export class GameScene extends Phaser.Scene {
     return ship;
   }
 
-  private createMissionRuntime(center: Phaser.Math.Vector2): void {
-    const definition = this.getSelectedMissionDefinition();
-    const objective = generateMissionObjective({
+  private createWorldEvents(center: Phaser.Math.Vector2): void {
+    const generatedEvents = generateWorldEvents({
       arena: this.arena,
       sector: this.sectorLayout,
-      mission: definition,
       seed: this.sectorSeed,
       startX: center.x,
-      startY: center.y
+      startY: center.y,
+      guaranteedEventIds: this.getGuaranteedWorldEventIds()
     });
+
+    this.worldEvents = generatedEvents.map((event) => this.createWorldEventInstance(event));
+  }
+
+  private getGuaranteedWorldEventIds(): WorldEventDefinitionId[] {
+    const mission = this.getSelectedMissionDefinition();
+
+    return mission.guaranteedWorldEventId ? [mission.guaranteedWorldEventId] : [];
+  }
+
+  private createWorldEventInstance(event: GeneratedWorldEvent): WorldEventInstance {
+    const definition = getWorldEventDefinition(event.definitionId);
+    const body = this.createWorldEventBody(event.x, event.y, definition, false);
+    const wrapMirrorBody = this.createWorldEventBody(event.x, event.y, definition, true);
+    wrapMirrorBody.setVisible(false);
+
+    return {
+      id: event.id,
+      definition,
+      x: event.x,
+      y: event.y,
+      regionId: event.regionId,
+      source: event.source,
+      body,
+      wrapMirrorBody,
+      hp: definition.hp,
+      maxHp: definition.hp,
+      status: 'active',
+      guardSquadsSpawned: false,
+      rewardDropped: false
+    };
+  }
+
+  private createWorldEventBody(
+    x: number,
+    y: number,
+    definition: WorldEventDefinition,
+    isMirror: boolean
+  ): Phaser.GameObjects.Container {
+    const dangerRing = this.add.circle(0, 0, definition.dangerRadius, 0xff5964, isMirror ? 0 : 0.025);
+    dangerRing.setStrokeStyle(2, 0xff5964, isMirror ? 0.18 : 0.22);
+    const hullGlow = this.add.ellipse(0, 0, definition.hitRadius * 2.6, definition.hitRadius * 1.44, 0xff5964, 0.12);
+    const hull = this.add.ellipse(0, 0, definition.hitRadius * 2.1, definition.hitRadius * 1.08, 0x182436, 0.96);
+    hull.setStrokeStyle(3, 0xffc857, 0.86);
+    const core = this.add.circle(0, 0, definition.hitRadius * 0.34, 0xffc857, 0.72);
+    const bayLeft = this.add.rectangle(-definition.hitRadius * 0.58, 0, definition.hitRadius * 0.34, definition.hitRadius * 0.42, 0x25354d, 0.95);
+    const bayRight = this.add.rectangle(definition.hitRadius * 0.58, 0, definition.hitRadius * 0.34, definition.hitRadius * 0.42, 0x25354d, 0.95);
+    bayLeft.setStrokeStyle(1, 0x73f2ff, 0.48);
+    bayRight.setStrokeStyle(1, 0x73f2ff, 0.48);
+    const label = this.add
+      .text(0, -definition.hitRadius - 38, definition.shortName.toUpperCase(), {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '14px',
+        color: '#ffc857',
+        align: 'center'
+      })
+      .setOrigin(0.5);
+
+    const body = this.add.container(x, y, [dangerRing, hullGlow, hull, bayLeft, bayRight, core, label]);
+    body.setDepth(isMirror ? 5 : 6);
+    body.setSize(definition.hitRadius * 2, definition.hitRadius * 2);
+    return body;
+  }
+
+  private createMissionRuntime(center: Phaser.Math.Vector2): void {
+    const definition = this.getSelectedMissionDefinition();
+    const targetWorldEvent = definition.guaranteedWorldEventId
+      ? this.worldEvents.find((event) => event.definition.id === definition.guaranteedWorldEventId)
+      : undefined;
+    const objective = targetWorldEvent
+      ? {
+          id: `${targetWorldEvent.id}-objective`,
+          label: targetWorldEvent.definition.shortName,
+          x: targetWorldEvent.x,
+          y: targetWorldEvent.y,
+          radius: targetWorldEvent.definition.hitRadius + 58,
+          regionId: targetWorldEvent.regionId
+        }
+      : generateMissionObjective({
+          arena: this.arena,
+          sector: this.sectorLayout,
+          mission: definition,
+          seed: this.sectorSeed,
+          startX: center.x,
+          startY: center.y
+        });
 
     this.missionRuntime = {
       definition,
@@ -3701,7 +3878,8 @@ export class GameScene extends Phaser.Scene {
       status: 'active',
       completedAt: null,
       failedAt: null,
-      failureReason: null
+      failureReason: null,
+      targetWorldEventId: targetWorldEvent?.id ?? null
     };
   }
 
@@ -3867,6 +4045,40 @@ export class GameScene extends Phaser.Scene {
       if (this.getDistanceFromPlayer(squad.x, squad.y) <= WORLD_SQUAD_ACTIVATION_RANGE) {
         this.activateWorldSquad(squad, time);
       }
+    }
+  }
+
+  private updateWorldEvents(time: number): void {
+    for (const event of this.worldEvents) {
+      if (event.status === 'destroyed') {
+        event.body.setAlpha(0.42);
+        event.wrapMirrorBody.setAlpha(0.28);
+        continue;
+      }
+
+      const pulse = 0.5 + Math.sin(time * 0.0026 + event.x * 0.01) * 0.5;
+      event.body.setRotation(Math.sin(time * 0.00025 + event.y * 0.002) * 0.04);
+      event.wrapMirrorBody.setRotation(event.body.rotation);
+      event.body.setScale(1 + pulse * 0.012);
+      event.wrapMirrorBody.setScale(event.body.scaleX, event.body.scaleY);
+      this.updateToroidalRenderMirror(event.body, event.wrapMirrorBody, event.definition.hitRadius + event.definition.dangerRadius);
+
+      if (!event.guardSquadsSpawned && this.getDistanceFromPlayer(event.x, event.y) <= event.definition.dangerRadius) {
+        this.spawnWorldEventGuards(event, time);
+      }
+    }
+  }
+
+  private spawnWorldEventGuards(event: WorldEventInstance, time: number): void {
+    event.guardSquadsSpawned = true;
+
+    for (let index = 0; index < event.definition.guardSquadIds.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, event.definition.guardSquadIds.length) + Math.PI / 5;
+      const distance = event.definition.hitRadius + 260 + index * 90;
+      const x = wrapCoordinate(event.x + Math.cos(angle) * distance, this.arena.width);
+      const y = wrapCoordinate(event.y + Math.sin(angle) * distance, this.arena.height);
+
+      this.spawnLiveEnemySquad(event.definition.guardSquadIds[index], x, y, time);
     }
   }
 
@@ -6059,6 +6271,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.missionRuntime.definition.objectiveType === 'destroy-world-event') {
+      const target = this.getMissionTargetWorldEvent();
+      if (target?.status === 'destroyed') {
+        this.completeMission(time);
+      }
+      return;
+    }
+
     if (this.getMissionObjectiveDistance() <= this.missionRuntime.objective.radius) {
       this.completeMission(time);
     }
@@ -6083,12 +6303,25 @@ export class GameScene extends Phaser.Scene {
       return 0;
     }
 
+    const target = this.getMissionTargetWorldEvent();
+    if (target) {
+      return this.getWrappedDirection(this.player.x, this.player.y, target.x, target.y).length();
+    }
+
     return this.getWrappedDirection(
       this.player.x,
       this.player.y,
       this.missionRuntime.objective.x,
       this.missionRuntime.objective.y
     ).length();
+  }
+
+  private getMissionTargetWorldEvent(): WorldEventInstance | undefined {
+    if (!this.missionRuntime?.targetWorldEventId) {
+      return undefined;
+    }
+
+    return this.worldEvents.find((event) => event.id === this.missionRuntime?.targetWorldEventId);
   }
 
   private completeMission(time: number): void {
@@ -9907,6 +10140,7 @@ export class GameScene extends Phaser.Scene {
       steerProjectile: (projectile, homingDeltaSeconds) => this.steerPulseProjectile(projectile, homingDeltaSeconds),
       tryHitTarget: (projectile) =>
         this.tryHitLiveEnemy(projectile) ||
+        this.tryHitWorldEvent(projectile) ||
         this.tryHitEnemyWreckageDebris(projectile) ||
         this.tryHitBasicAsteroid(projectile)
     });
@@ -10613,6 +10847,108 @@ export class GameScene extends Phaser.Scene {
     return false;
   }
 
+  private tryHitWorldEvent(projectile: PlayerProjectile): boolean {
+    for (const event of this.worldEvents) {
+      if (event.status !== 'active' || projectile.piercedTargets.has(event.body)) {
+        continue;
+      }
+
+      const offset = this.getWrappedDirection(event.body.x, event.body.y, projectile.body.x, projectile.body.y);
+      const hitRadius = event.definition.hitRadius + projectile.hitRadius;
+      if (offset.lengthSq() > hitRadius * hitRadius) {
+        continue;
+      }
+
+      projectile.piercedTargets.add(event.body);
+      const appliedDamage = this.damageWorldEvent(event, this.rollPlayerDamage(projectile.damage));
+      const destroyed = event.hp <= 0;
+      this.applyPulseProjectileHitEffects(projectile, event.body, projectile.body.x, projectile.body.y, appliedDamage, destroyed);
+
+      if (destroyed) {
+        this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+      } else {
+        this.flashDamageSprites(event.body, event.wrapMirrorBody);
+        this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
+      }
+
+      return true;
+    }
+
+    return false;
+  }
+
+  private damageWorldEvent(event: WorldEventInstance, damage: number): number {
+    if (event.status !== 'active') {
+      return 0;
+    }
+
+    const appliedDamage = Math.max(1, Math.round(damage));
+    event.hp = Math.max(0, event.hp - appliedDamage);
+    this.emitFloatingDamageNumber(event.body.x, event.body.y, appliedDamage, 'player');
+
+    if (event.hp <= 0) {
+      this.destroyWorldEvent(event);
+    }
+
+    return appliedDamage;
+  }
+
+  private destroyWorldEvent(event: WorldEventInstance): void {
+    if (event.status === 'destroyed') {
+      return;
+    }
+
+    event.status = 'destroyed';
+    event.hp = 0;
+    event.body.setAlpha(0.42);
+    event.wrapMirrorBody.setAlpha(0.28);
+    this.emitWorldEventDestroyedFeedback(event);
+    this.dropWorldEventRewards(event);
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private emitWorldEventDestroyedFeedback(event: WorldEventInstance): void {
+    this.emitLiveEnemyBurst(event.x, event.y, 0xffc857, 28);
+    this.emitShipBulletImpactExplosion(event.x, event.y);
+    const position = this.getNearestWrappedRenderPosition(event.x, event.y - event.definition.hitRadius);
+    const text = this.add
+      .text(position.x, position.y, `${event.definition.shortName} destroyed`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#ffc857',
+        stroke: '#02040a',
+        strokeThickness: 4
+      })
+      .setOrigin(0.5)
+      .setDepth(24);
+
+    this.tweens.add({
+      targets: text,
+      y: position.y - 54,
+      alpha: 0,
+      duration: 900,
+      ease: 'Quad.easeOut',
+      onComplete: () => text.destroy()
+    });
+  }
+
+  private dropWorldEventRewards(event: WorldEventInstance): void {
+    if (event.rewardDropped) {
+      return;
+    }
+
+    event.rewardDropped = true;
+    const baseVelocity = new Phaser.Math.Vector2(0, 0);
+    this.spawnScrapPickup('enemy', event.definition.rewardScrap, event.x, event.y, baseVelocity);
+
+    for (let i = 0; i < event.definition.rewardUpgradeCrates; i += 1) {
+      const angle = (Math.PI * 2 * i) / Math.max(1, event.definition.rewardUpgradeCrates);
+      const x = wrapCoordinate(event.x + Math.cos(angle) * 84, this.arena.width);
+      const y = wrapCoordinate(event.y + Math.sin(angle) * 84, this.arena.height);
+      this.spawnRewardPickup('banked-upgrade', 'enemy', 0, x, y, baseVelocity);
+    }
+  }
+
   private tryReflectLiveProjectile(projectile: PlayerProjectile, enemy: LiveGameEnemy): boolean {
     if (enemy.definition.behavior.id !== 'reflectorPulse' || enemy.stateData.reflecting !== true) {
       return false;
@@ -11092,6 +11428,13 @@ export class GameScene extends Phaser.Scene {
             status: this.missionRuntime.status
           }
         : undefined,
+      worldEvents: this.worldEvents.map((event) => ({
+        x: event.x,
+        y: event.y,
+        radius: event.definition.hitRadius,
+        dangerRadius: event.definition.dangerRadius,
+        status: event.status
+      })),
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
       basicEnemies: [],
@@ -11400,6 +11743,7 @@ export class GameScene extends Phaser.Scene {
         `Debris: ${this.enemyWreckageDebris.length} active\n` +
         `Enemies: ${this.liveEnemies.length} live (${this.getLiveEnemyLegacyCount('chaser')} chaser / ${this.getLiveEnemyLegacyCount('shooter')} shooter / ${this.getLiveEnemyLegacyCount('tank')} tank)\n` +
         `World squads: ${this.worldSquads.filter((squad) => squad.state === 'pursue').length}/${this.worldSquads.length} active, ${this.worldSquads.filter((squad) => squad.state === 'defeated').length} defeated\n` +
+        `World events: ${this.worldEvents.filter((event) => event.status === 'active').length}/${this.worldEvents.length} active\n` +
         spawnDirectorLine +
         `Asteroids: ${this.basicAsteroids.length} active\n` +
         `Debug menu: Z ${this.debugMenuHost?.isOpen() ? 'open' : 'closed'} / pause ${this.debugState.debugGamePaused ? 'on' : 'off'} / enemy spawning ${this.debugState.enemySpawningEnabled ? 'on' : 'off'} / invuln ${this.debugState.playerInvulnerable ? 'on' : 'off'}\n` +

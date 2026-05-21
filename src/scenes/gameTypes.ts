@@ -88,6 +88,12 @@ export interface StarvivorsTestHarnessState {
   missionObjectiveDistance: number;
   missionObjectiveRadius: number;
   missionObjectiveRegionId: string | null;
+  worldEventCount: number;
+  activeWorldEventCount: number;
+  destroyedWorldEventCount: number;
+  firstWorldEventName: string | null;
+  firstWorldEventHp: number;
+  firstWorldEventMaxHp: number;
   unlockedShipIds: ShipId[];
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
@@ -175,6 +181,7 @@ export interface StarvivorsTestHarness {
   placeAsteroidOnPlayer: (tier?: AsteroidTier) => StarvivorsTestHarnessState;
   destroyFirstEnemy: () => StarvivorsTestHarnessState;
   destroyFirstAsteroid: () => StarvivorsTestHarnessState;
+  destroyFirstWorldEvent: () => StarvivorsTestHarnessState;
   collectAllScrap: () => StarvivorsTestHarnessState;
   killPlayer: () => StarvivorsTestHarnessState;
   restartRun: () => StarvivorsTestHarnessState;

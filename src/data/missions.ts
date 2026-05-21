@@ -1,8 +1,9 @@
 import type { SectorRegionType } from '../systems/sectorGeneration';
+import type { WorldEventDefinitionId } from './worldEvents';
 
-export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe';
+export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe' | 'mothership-contract';
 export type MissionDifficulty = 'Low' | 'Medium' | 'High';
-export type MissionObjectiveType = 'reach-location';
+export type MissionObjectiveType = 'reach-location' | 'destroy-world-event';
 
 export interface MissionDefinition {
   id: MissionDefinitionId;
@@ -15,6 +16,7 @@ export interface MissionDefinition {
   rewardPreview: string;
   preferredRegionTypes: SectorRegionType[];
   objectiveRadius: number;
+  guaranteedWorldEventId?: WorldEventDefinitionId;
 }
 
 export const DEFAULT_MISSION_ID: MissionDefinitionId = 'survey-signal';
@@ -55,6 +57,19 @@ export const missionRegistry: MissionDefinition[] = [
     rewardPreview: 'Credits + threat intel',
     preferredRegionTypes: ['enemy-territory', 'anomaly-signal'],
     objectiveRadius: 104
+  },
+  {
+    id: 'mothership-contract',
+    displayName: 'Mothership Contract',
+    shortName: 'Mothership',
+    description: 'Destroy a prototype mothership generated with the sector.',
+    objectiveType: 'destroy-world-event',
+    objectiveLabel: 'Mothership',
+    difficulty: 'High',
+    rewardPreview: 'Scrap + weapon lead',
+    preferredRegionTypes: ['enemy-territory', 'anomaly-signal'],
+    objectiveRadius: 180,
+    guaranteedWorldEventId: 'mothership-prototype'
   }
 ];
 
