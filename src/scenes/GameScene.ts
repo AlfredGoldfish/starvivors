@@ -841,6 +841,7 @@ export class GameScene extends Phaser.Scene {
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.permanentUpgradeLevels };
   private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.activePermanentUpgradeLevels };
   private sectorScannerRuntime: SectorScannerRuntime = createSectorScannerRuntime();
+  private upgradeOverlayBlocker!: Phaser.GameObjects.Zone;
   private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
   private upgradeOverlayText!: Phaser.GameObjects.Text;
   private upgradeOverlayPromptText!: Phaser.GameObjects.Text;
@@ -982,6 +983,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.isPauseMenuOpen) {
+      this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('background', () => this.updateBackgroundTiles(time));
+      this.profileStep('hud', () => this.updateGameplayHud(time));
+      this.profileStep('minimap', () => this.updateMinimap());
+      this.profileStep('debug-text', () => this.updateDebugText(time));
+      this.endPerformanceFrame();
+      return;
+    }
+
+    if (this.gameFlowState === 'results') {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
       this.profileStep('background', () => this.updateBackgroundTiles(time));
       this.profileStep('hud', () => this.updateGameplayHud(time));
@@ -7742,6 +7753,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.normalUpgradeOverlayChoices = null;
     this.specialUpgradeOverlayChoices = null;
+    this.upgradeOverlayBlocker.setVisible(false).disableInteractive();
     this.upgradeOverlayGraphics.setVisible(false);
     this.upgradeOverlayText.setVisible(false);
     this.upgradeOverlayPromptText.setVisible(false);
@@ -8697,6 +8709,14 @@ export class GameScene extends Phaser.Scene {
     const cardWidth = panelWidth - 56;
     const cardHeight = 54;
 
+    this.upgradeOverlayBlocker = this.add
+      .zone(0, 0, width, height)
+      .setOrigin(0, 0)
+      .setScrollFactor(0)
+      .setDepth(1199)
+      .setVisible(false)
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
     this.upgradeOverlayGraphics = this.add.graphics().setScrollFactor(0).setDepth(1200);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
@@ -8734,7 +8754,12 @@ export class GameScene extends Phaser.Scene {
         .setDepth(1202)
         .setVisible(false);
 
-      hitZone.on('pointerdown', () => this.selectUpgradeOverlayChoiceAt(i, this.time.now));
+      hitZone
+        .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+          pointer.event?.stopPropagation();
+          this.selectUpgradeOverlayChoiceAt(i, this.time.now);
+        });
       this.upgradeOverlayChoiceHitZones.push(hitZone);
     }
 
@@ -8764,6 +8789,7 @@ export class GameScene extends Phaser.Scene {
       .setDepth(1201);
 
     this.upgradeOverlayGraphics.setVisible(false);
+    this.upgradeOverlayBlocker.disableInteractive();
     this.upgradeOverlayText.setVisible(false);
     this.upgradeOverlayPromptText.setVisible(false);
     for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts]) {
@@ -8834,6 +8860,19 @@ export class GameScene extends Phaser.Scene {
     const cardWidth = panelWidth - 56;
     const cardHeight = 54;
 
+    this.upgradeOverlayBlocker
+      .setPosition(0, 0)
+      .setSize(width, height)
+      .setVisible(this.isUpgradeOverlayOpen);
+    if (this.isUpgradeOverlayOpen) {
+      this.upgradeOverlayBlocker.setInteractive({
+        hitArea: new Phaser.Geom.Rectangle(0, 0, width, height),
+        hitAreaCallback: Phaser.Geom.Rectangle.Contains
+      });
+    } else {
+      this.upgradeOverlayBlocker.disableInteractive();
+    }
+
     this.upgradeOverlayGraphics.clear();
     this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
     this.upgradeOverlayGraphics.fillRect(0, 0, width, height);
@@ -8857,7 +8896,11 @@ export class GameScene extends Phaser.Scene {
 
       hitZone.setPosition(cardX, cardY).setSize(cardWidth, cardHeight).setVisible(Boolean(choice));
       if (choice && this.isUpgradeOverlayOpen) {
-        hitZone.setInteractive({ useHandCursor: true });
+        hitZone.setInteractive({
+          hitArea: new Phaser.Geom.Rectangle(0, 0, cardWidth, cardHeight),
+          hitAreaCallback: Phaser.Geom.Rectangle.Contains,
+          useHandCursor: true
+        });
       } else {
         hitZone.disableInteractive();
       }
@@ -10217,6 +10260,7 @@ export class GameScene extends Phaser.Scene {
 
   private showResultsScreen(): void {
     this.gameFlowState = 'results';
+    this.sectorScannerArrow?.setVisible(false);
     this.destroyResultsScreen();
 
     const elapsedSeconds = Math.max(0, Math.floor(this.lastRunSurvivalMs / 1000));
