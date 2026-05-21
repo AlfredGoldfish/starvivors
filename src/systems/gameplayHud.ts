@@ -33,6 +33,10 @@ export interface GameplayHudSnapshot {
   isFuelEmergency: boolean;
   extractionDistance: number;
   extractionRadius: number;
+  missionName: string;
+  missionStatus: string;
+  missionObjectiveDistance: number;
+  missionObjectiveRadius: number;
   runScrapTotal: number;
   bankedUpgrades: number;
   autoWeaponName: string;
@@ -159,6 +163,7 @@ export class GameplayHudSystem {
           shieldStatus +
           `Fuel ${Math.ceil(snapshot.fuel)} / ${snapshot.maxFuel}${snapshot.isFuelEmergency ? '  EMERGENCY' : ''}\n` +
           `Extract ${Math.max(0, Math.round(snapshot.extractionDistance - snapshot.extractionRadius))}m\n` +
+          `Mission ${snapshot.missionName} ${snapshot.missionStatus} ${Math.max(0, Math.round(snapshot.missionObjectiveDistance - snapshot.missionObjectiveRadius))}m\n` +
           `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
           `Scrap ${snapshot.runScrapTotal}\n` +
           `Banked upgrades ${snapshot.bankedUpgrades}\n` +

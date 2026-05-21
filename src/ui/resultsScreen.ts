@@ -7,6 +7,8 @@ export interface ResultsScreenConfig {
   scrapCollected: number;
   creditsEarned: number;
   totalCredits: number;
+  missionName: string;
+  missionStatus: string;
   scrapToCreditRate: number;
   scrapCreditMultiplier: number;
   isActionActive: () => boolean;
@@ -44,6 +46,7 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
         `Scrap collected      ${config.scrapCollected}\n` +
         `Credits earned       ${config.creditsEarned}\n` +
         `Total credits        ${config.totalCredits}\n\n` +
+        `Mission              ${config.missionName} ${config.missionStatus}\n\n` +
         `Conversion: ${config.scrapToCreditRate} scrap = ${config.scrapToCreditRate} credit x${config.scrapCreditMultiplier.toFixed(2)}\n` +
         `Press R to restart`,
       {

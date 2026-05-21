@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { PermanentUpgradeId } from '../data/permanentUpgrades';
+import type { MissionDefinitionId } from '../data/missions';
 import type { ShipId } from '../data/ships';
 import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
@@ -81,6 +82,12 @@ export type UpgradeOverlayChoice = UpgradeDefinition | SecondaryWeaponChoice;
 export interface StarvivorsTestHarnessState {
   selectedShipId: ShipId;
   selectedShipName: string;
+  selectedMissionId: MissionDefinitionId;
+  selectedMissionName: string;
+  missionStatus: string;
+  missionObjectiveDistance: number;
+  missionObjectiveRadius: number;
+  missionObjectiveRegionId: string | null;
   unlockedShipIds: ShipId[];
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
@@ -160,6 +167,7 @@ export interface StarvivorsTestHarness {
   adjustActivePermanentUpgrade: (upgradeId: PermanentUpgradeId, delta: number) => StarvivorsTestHarnessState;
   unlockShip: (shipId: ShipId) => StarvivorsTestHarnessState;
   selectShip: (shipId: ShipId) => StarvivorsTestHarnessState;
+  selectMission: (missionId: MissionDefinitionId) => StarvivorsTestHarnessState;
   grantXp: (amount: number) => StarvivorsTestHarnessState;
   damagePlayer: (damage?: number) => StarvivorsTestHarnessState;
   expireInvulnerability: () => StarvivorsTestHarnessState;

@@ -35,6 +35,14 @@ import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../d
 import { COMBAT_NUMBER_SCALE, COMBAT_VARIANCE } from '../data/combatScale';
 import { interceptorMovement } from '../data/balance';
 import { getEncounterDefinition, type EncounterDefinitionId } from '../data/encounters';
+import {
+  DEFAULT_MISSION_ID,
+  getMissionDefinition,
+  isMissionDefinitionId,
+  missionRegistry,
+  type MissionDefinition,
+  type MissionDefinitionId
+} from '../data/missions';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
@@ -300,6 +308,7 @@ import {
   type SectorLayout,
   type SectorRegion
 } from '../systems/sectorGeneration';
+import { generateMissionObjective, type MissionObjective } from '../systems/missionGeneration';
 import {
   PerformanceProfilerSystem,
   type PerformanceProfilerCounts,
@@ -598,6 +607,18 @@ interface SectorSignalSpawn {
   region: SectorRegion;
 }
 
+type MissionStatus = 'active' | 'completed' | 'failed';
+type MissionFailureReason = 'player-death' | 'extracted-early';
+
+interface MissionRuntimeState {
+  definition: MissionDefinition;
+  objective: MissionObjective;
+  status: MissionStatus;
+  completedAt: number | null;
+  failedAt: number | null;
+  failureReason: MissionFailureReason | null;
+}
+
 type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
 
 interface WorldSquadInstance {
@@ -633,6 +654,11 @@ export class GameScene extends Phaser.Scene {
   private sectorScrapIds = new WeakMap<ScrapPickup, string>();
   private sectorSignalBeacons: SectorSignalBeacon[] = [];
   private worldSquads: WorldSquadInstance[] = [];
+  private selectedMissionId: MissionDefinitionId = DEFAULT_MISSION_ID;
+  private missionRuntime?: MissionRuntimeState;
+  private missionObjectiveBeacon?: Phaser.GameObjects.Container;
+  private missionObjectiveBeaconRing?: Phaser.GameObjects.Arc;
+  private missionObjectiveBeaconCore?: Phaser.GameObjects.Arc;
   private nextScrapRollupAt = 0;
   private nextAsteroidCoalesceAt = 0;
   private asteroidDestructionHistory: number[] = [];
@@ -914,6 +940,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.isPlayerDead) {
         this.profileStep('player-wrap', () => this.wrapPlayer());
         this.profileStep('camera-lead', () => this.updateCameraLead());
+        this.profileStep('mission', () => this.updateMission(time));
         this.profileStep('extraction', () => this.updateExtraction(time));
       }
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
@@ -1484,6 +1511,13 @@ export class GameScene extends Phaser.Scene {
 
         return this.getTestHarnessState();
       },
+      selectMission: (missionId: MissionDefinitionId) => {
+        if (isMissionDefinitionId(missionId)) {
+          this.selectedMissionId = missionId;
+        }
+
+        return this.getTestHarnessState();
+      },
       grantXp: (amount: number) => {
         this.grantXp(amount);
         return this.getTestHarnessState();
@@ -1653,6 +1687,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase10_6();
     }
 
+    if (query.get('testHarness') === 'phase11') {
+      this.runTestHarnessPhase11();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1682,6 +1720,12 @@ export class GameScene extends Phaser.Scene {
     return {
       selectedShipId: selectedShip.id,
       selectedShipName: selectedShip.displayName,
+      selectedMissionId: this.selectedMissionId,
+      selectedMissionName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
+      missionStatus: this.missionRuntime?.status ?? 'ready',
+      missionObjectiveDistance: this.getMissionObjectiveDistance(),
+      missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
+      missionObjectiveRegionId: this.missionRuntime?.objective.regionId ?? null,
       unlockedShipIds: [...this.unlockedShipIds],
       rammingShieldHp: this.rammingShieldState.hp,
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
@@ -1703,8 +1747,8 @@ export class GameScene extends Phaser.Scene {
       worldSquadCount: this.worldSquads.length,
       activeWorldSquadCount: this.worldSquads.filter((squad) => squad.state === 'pursue').length,
       defeatedWorldSquadCount: this.worldSquads.filter((squad) => squad.state === 'defeated').length,
-      arenaWidth: this.arena.width,
-      arenaHeight: this.arena.height,
+      arenaWidth: this.arena?.width ?? 0,
+      arenaHeight: this.arena?.height ?? 0,
       cameraFollowOffsetX: -this.cameraLead.x,
       cameraFollowOffsetY: -this.cameraLead.y,
       fuel: this.fuel,
@@ -2816,6 +2860,46 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase11(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase11-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase11-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.selectMission('survey-signal');
+    this.startRun();
+    const initial = harness.getState();
+    const objectiveExistsPass =
+      initial.selectedMissionId === 'survey-signal' &&
+      initial.missionStatus === 'active' &&
+      initial.missionObjectiveRadius > 0 &&
+      initial.missionObjectiveRegionId !== null;
+
+    if (this.missionRuntime) {
+      this.player.setPosition(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
+      this.playerVelocity.set(0, 0);
+      this.updateMission(this.time.now + 1000);
+    }
+
+    const completed = harness.getState();
+    const completionPass = completed.missionStatus === 'completed' && completed.missionObjectiveDistance <= completed.missionObjectiveRadius;
+    const pass = objectiveExistsPass && completionPass;
+
+    document.body.setAttribute('data-starvivors-phase11-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase11-harness-details',
+      JSON.stringify({
+        initial,
+        completed,
+        objectiveExistsPass,
+        completionPass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -2988,6 +3072,10 @@ export class GameScene extends Phaser.Scene {
     this.extractionBeacon = undefined;
     this.extractionBeaconRing = undefined;
     this.extractionBeaconCore = undefined;
+    this.missionRuntime = undefined;
+    this.missionObjectiveBeacon = undefined;
+    this.missionObjectiveBeaconRing = undefined;
+    this.missionObjectiveBeaconCore = undefined;
     this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
@@ -3082,7 +3170,9 @@ export class GameScene extends Phaser.Scene {
       startX: center.x,
       startY: center.y
     });
+    this.createMissionRuntime(center);
     this.createExtractionBeacon(center);
+    this.createMissionObjectiveBeacon();
     this.createInitialLiveEnemies(center);
     this.createSectorAsteroidSpawns(center);
     this.createSectorScrapSpawns();
@@ -3136,6 +3226,15 @@ export class GameScene extends Phaser.Scene {
       : `sector-${Math.round(this.runStartedAt)}-${this.sectorScale}`;
   }
 
+  private getConfiguredMissionId(): MissionDefinitionId {
+    const query = new URLSearchParams(window.location.search);
+    const requestedMissionId = query.get('missionId');
+
+    return requestedMissionId && isMissionDefinitionId(requestedMissionId)
+      ? requestedMissionId
+      : this.selectedMissionId;
+  }
+
   private startRun(): void {
     if (this.autoRunDiagnostics.isActive()) {
       this.autoRunDiagnostics.endRun('restart');
@@ -3147,6 +3246,7 @@ export class GameScene extends Phaser.Scene {
       this.selectedShipId = DEFAULT_SHIP_ID;
     }
 
+    this.selectedMissionId = this.getConfiguredMissionId();
     this.destroyMainMenuScreen();
     this.destroyShipSelectScreen();
     this.destroyShopScreen();
@@ -3178,13 +3278,30 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       totalCredits: this.totalCredits,
       selectedShipDisplayName: this.getSelectedShipDefinition().displayName,
+      selectedMissionDisplayName: this.getSelectedMissionDefinition().displayName,
+      selectedMissionDescription: this.getSelectedMissionDefinition().description,
+      selectedMissionDifficulty: this.getSelectedMissionDefinition().difficulty,
+      selectedMissionRewardPreview: this.getSelectedMissionDefinition().rewardPreview,
       isActionActive: () => this.gameFlowState === 'mainMenu',
       resetCursor: () => this.resetUiCursor(),
       onStartRun: () => this.startRun(),
+      onCycleMission: () => this.cycleSelectedMission(),
       onShipSelect: () => this.showShipSelect(),
       onShop: () => this.showShop('mainMenu')
     });
     this.createDebugMenu();
+  }
+
+  private getSelectedMissionDefinition(): MissionDefinition {
+    return getMissionDefinition(this.selectedMissionId);
+  }
+
+  private cycleSelectedMission(): void {
+    const currentIndex = missionRegistry.findIndex((mission) => mission.id === this.selectedMissionId);
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % missionRegistry.length : 0;
+
+    this.selectedMissionId = missionRegistry[nextIndex].id;
+    this.showMainMenu();
   }
 
   private showShipSelect(): void {
@@ -3565,6 +3682,53 @@ export class GameScene extends Phaser.Scene {
     ship.setDepth(10);
 
     return ship;
+  }
+
+  private createMissionRuntime(center: Phaser.Math.Vector2): void {
+    const definition = this.getSelectedMissionDefinition();
+    const objective = generateMissionObjective({
+      arena: this.arena,
+      sector: this.sectorLayout,
+      mission: definition,
+      seed: this.sectorSeed,
+      startX: center.x,
+      startY: center.y
+    });
+
+    this.missionRuntime = {
+      definition,
+      objective,
+      status: 'active',
+      completedAt: null,
+      failedAt: null,
+      failureReason: null
+    };
+  }
+
+  private createMissionObjectiveBeacon(): void {
+    if (!this.missionRuntime) {
+      return;
+    }
+
+    const objective = this.missionRuntime.objective;
+    const outer = this.add.circle(0, 0, objective.radius, 0xffc857, 0.05);
+    outer.setStrokeStyle(2, 0xffc857, 0.62);
+    const ring = this.add.circle(0, 0, objective.radius * 0.54, 0x000000, 0);
+    ring.setStrokeStyle(2, 0xf2fbff, 0.84);
+    const core = this.add.circle(0, 0, 7, 0xffc857, 0.9);
+    const label = this.add
+      .text(0, -objective.radius - 28, this.missionRuntime.definition.shortName.toUpperCase(), {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#ffc857',
+        align: 'center'
+      })
+      .setOrigin(0.5);
+
+    this.missionObjectiveBeacon = this.add.container(objective.x, objective.y, [outer, ring, core, label]);
+    this.missionObjectiveBeacon.setDepth(8);
+    this.missionObjectiveBeaconRing = ring;
+    this.missionObjectiveBeaconCore = core;
   }
 
   private createExtractionBeacon(center: Phaser.Math.Vector2): void {
@@ -5888,6 +6052,102 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private updateMission(time: number): void {
+    this.updateMissionObjectiveBeaconVisual(time);
+
+    if (!this.missionRuntime || this.missionRuntime.status !== 'active') {
+      return;
+    }
+
+    if (this.getMissionObjectiveDistance() <= this.missionRuntime.objective.radius) {
+      this.completeMission(time);
+    }
+  }
+
+  private updateMissionObjectiveBeaconVisual(time: number): void {
+    if (!this.missionObjectiveBeacon || !this.missionObjectiveBeaconRing || !this.missionObjectiveBeaconCore || !this.missionRuntime) {
+      return;
+    }
+
+    const pulse = 0.5 + Math.sin(time * 0.0052) * 0.5;
+    const isComplete = this.missionRuntime.status === 'completed';
+    const isFailed = this.missionRuntime.status === 'failed';
+    this.missionObjectiveBeacon.setAlpha(isFailed ? 0.38 : 1);
+    this.missionObjectiveBeaconRing.setScale(1 + pulse * (isComplete ? 0.05 : 0.16));
+    this.missionObjectiveBeaconRing.setAlpha(isComplete ? 0.42 : 0.62 + pulse * 0.28);
+    this.missionObjectiveBeaconCore.setFillStyle(isComplete ? 0x52ff9a : isFailed ? 0x52627f : 0xffc857, isFailed ? 0.56 : 0.9);
+  }
+
+  private getMissionObjectiveDistance(): number {
+    if (!this.player || !this.missionRuntime) {
+      return 0;
+    }
+
+    return this.getWrappedDirection(
+      this.player.x,
+      this.player.y,
+      this.missionRuntime.objective.x,
+      this.missionRuntime.objective.y
+    ).length();
+  }
+
+  private completeMission(time: number): void {
+    if (!this.missionRuntime || this.missionRuntime.status !== 'active') {
+      return;
+    }
+
+    this.missionRuntime.status = 'completed';
+    this.missionRuntime.completedAt = time;
+    this.missionRuntime.failedAt = null;
+    this.missionRuntime.failureReason = null;
+    this.updateGameplayHud(time);
+  }
+
+  private failMission(reason: MissionFailureReason, time: number): void {
+    if (!this.missionRuntime || this.missionRuntime.status !== 'active') {
+      return;
+    }
+
+    this.missionRuntime.status = 'failed';
+    this.missionRuntime.failedAt = time;
+    this.missionRuntime.failureReason = reason;
+  }
+
+  private getMissionHudStatus(): string {
+    if (!this.missionRuntime) {
+      return 'READY';
+    }
+
+    switch (this.missionRuntime.status) {
+      case 'completed':
+        return 'DONE';
+      case 'failed':
+        return 'FAILED';
+      case 'active':
+        return 'ACTIVE';
+    }
+  }
+
+  private getMissionResultStatus(): string {
+    if (!this.missionRuntime) {
+      return 'not started';
+    }
+
+    if (this.missionRuntime.status === 'completed') {
+      return 'completed';
+    }
+
+    if (this.missionRuntime.failureReason === 'player-death') {
+      return 'failed';
+    }
+
+    if (this.missionRuntime.failureReason === 'extracted-early') {
+      return 'incomplete';
+    }
+
+    return this.missionRuntime.status;
+  }
+
   private updateExtraction(time: number): void {
     this.updateExtractionBeaconVisual(time);
 
@@ -5927,6 +6187,7 @@ export class GameScene extends Phaser.Scene {
     this.isPlayerDead = true;
     this.hasExtracted = true;
     this.gameFlowState = 'results';
+    this.failMission('extracted-early', this.time.now);
     this.lastRunScrapTotal = this.runScrapTotal;
     this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
     this.payRunCredits();
@@ -8640,6 +8901,7 @@ export class GameScene extends Phaser.Scene {
     this.isPlayerDead = true;
     this.hasExtracted = false;
     this.gameFlowState = 'results';
+    this.failMission('player-death', this.time.now);
     this.playerHull = 0;
     this.lastRunScrapTotal = this.runScrapTotal;
     this.lastRunSurvivalMs = this.getSurvivalElapsedMs(this.time.now);
@@ -8711,6 +8973,8 @@ export class GameScene extends Phaser.Scene {
       scrapCollected: this.lastRunScrapTotal,
       creditsEarned: this.lastRunCreditsEarned,
       totalCredits: this.totalCredits,
+      missionName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
+      missionStatus: this.getMissionResultStatus(),
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
       scrapCreditMultiplier: this.getScrapCreditMultiplier(),
       isActionActive: () => this.gameFlowState === 'results',
@@ -10820,6 +11084,14 @@ export class GameScene extends Phaser.Scene {
         y: this.extractionPosition.y,
         radius: EXTRACTION_ZONE_RADIUS
       },
+      missionObjective: this.missionRuntime
+        ? {
+            x: this.missionRuntime.objective.x,
+            y: this.missionRuntime.objective.y,
+            radius: this.missionRuntime.objective.radius,
+            status: this.missionRuntime.status
+          }
+        : undefined,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
       basicEnemies: [],
@@ -10875,6 +11147,10 @@ export class GameScene extends Phaser.Scene {
       isFuelEmergency: this.fuel <= 0,
       extractionDistance: this.getExtractionDistance(),
       extractionRadius: EXTRACTION_ZONE_RADIUS,
+      missionName: this.missionRuntime?.definition.shortName ?? this.getSelectedMissionDefinition().shortName,
+      missionStatus: this.getMissionHudStatus(),
+      missionObjectiveDistance: this.getMissionObjectiveDistance(),
+      missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
       runScrapTotal: this.runScrapTotal,
       bankedUpgrades: this.bankedUpgrades,
       autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',

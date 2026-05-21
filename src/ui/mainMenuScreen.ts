@@ -5,9 +5,14 @@ export interface MainMenuScreenConfig {
   scene: Phaser.Scene;
   totalCredits: number;
   selectedShipDisplayName: string;
+  selectedMissionDisplayName: string;
+  selectedMissionDescription: string;
+  selectedMissionDifficulty: string;
+  selectedMissionRewardPreview: string;
   isActionActive: () => boolean;
   resetCursor: () => void;
   onStartRun: () => void;
+  onCycleMission: () => void;
   onShipSelect: () => void;
   onShop: () => void;
 }
@@ -18,9 +23,10 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
   const centerX = width / 2;
   const centerY = height / 2;
   const panelWidth = Math.min(width - 48, 520);
-  const panelHeight = 374;
+  const panelHeight = Math.min(height - 28, 466);
   const panelX = -panelWidth / 2;
   const panelY = -panelHeight / 2;
+  const buttonStartY = panelY + panelHeight - 192;
   const actionZones: Phaser.GameObjects.Zone[] = [];
   const background = config.scene.add.graphics();
   background.fillStyle(0x02040a, 1);
@@ -54,9 +60,27 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
       align: 'center'
     })
     .setOrigin(0.5, 0);
+  const selectedMission = config.scene.add
+    .text(
+      0,
+      panelY + 162,
+      `Contract ${config.selectedMissionDisplayName}\n` +
+        `${config.selectedMissionDifficulty} risk  ${config.selectedMissionRewardPreview}\n` +
+        config.selectedMissionDescription,
+      {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '13px',
+        color: '#c8f7ff',
+        align: 'center',
+        fixedWidth: panelWidth - 64,
+        lineSpacing: 4,
+        wordWrap: { width: panelWidth - 64, useAdvancedWrap: true }
+      }
+    )
+    .setOrigin(0.5, 0);
 
   const container = config.scene.add
-    .container(centerX, centerY, [background, title, credits, selectedShip])
+    .container(centerX, centerY, [background, title, credits, selectedShip, selectedMission])
     .setScrollFactor(0)
     .setDepth(1300);
 
@@ -67,7 +91,7 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + 184,
+    y: buttonStartY,
     width: 240,
     height: 42,
     label: 'Start Run',
@@ -82,7 +106,22 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + 238,
+    y: buttonStartY + 50,
+    width: 240,
+    height: 42,
+    label: 'Change Contract',
+    callback: config.onCycleMission,
+    isActionActive: config.isActionActive,
+    resetCursor: config.resetCursor
+  });
+  addScreenButton({
+    scene: config.scene,
+    container,
+    actionZones,
+    screenCenterX: centerX,
+    screenCenterY: centerY,
+    x: 0,
+    y: buttonStartY + 100,
     width: 240,
     height: 42,
     label: 'Ship Select',
@@ -97,7 +136,7 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
     screenCenterX: centerX,
     screenCenterY: centerY,
     x: 0,
-    y: panelY + 292,
+    y: buttonStartY + 150,
     width: 240,
     height: 42,
     label: 'Shop',

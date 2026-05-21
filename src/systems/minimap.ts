@@ -20,6 +20,12 @@ export interface MinimapSnapshot {
     y: number;
     radius: number;
   };
+  missionObjective?: {
+    x: number;
+    y: number;
+    radius: number;
+    status: 'active' | 'completed' | 'failed';
+  };
   isUpgradeOverlayOpen: boolean;
   basicAsteroids: BasicAsteroid[];
   basicEnemies: BasicEnemy[];
@@ -97,6 +103,23 @@ export class MinimapSystem {
       this.graphics.strokeCircle(position.x, position.y, markerRadius);
       this.graphics.fillStyle(0xf2fbff, 0.95);
       this.graphics.fillRect(position.x - 1.4, position.y - 1.4, 2.8, 2.8);
+    }
+
+    if (snapshot.missionObjective) {
+      const position = this.getPosition(snapshot.missionObjective.x, snapshot.missionObjective.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      const markerRadius = Phaser.Math.Clamp((snapshot.missionObjective.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 3.5, 6.8);
+      const color = snapshot.missionObjective.status === 'completed'
+        ? 0x52ff9a
+        : snapshot.missionObjective.status === 'failed'
+          ? 0x52627f
+          : 0xffc857;
+
+      this.graphics.fillStyle(color, snapshot.missionObjective.status === 'failed' ? 0.14 : 0.24);
+      this.graphics.fillCircle(position.x, position.y, markerRadius + 2);
+      this.graphics.lineStyle(1, color, snapshot.missionObjective.status === 'failed' ? 0.42 : 0.92);
+      this.graphics.strokeCircle(position.x, position.y, markerRadius);
+      this.graphics.fillStyle(color, 0.96);
+      this.graphics.fillTriangle(position.x, position.y - 5, position.x - 4.6, position.y + 4, position.x + 4.6, position.y + 4);
     }
 
     for (const region of snapshot.sectorRegions ?? []) {
