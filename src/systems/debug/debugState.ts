@@ -717,6 +717,10 @@ export class DebugState {
     enemyProjectiles: number;
     playerHull: number;
     playerMaxHull: number;
+    fuel: number;
+    fuelMax: number;
+    fuelDrainEnabled: boolean;
+    fuelDrainMode: string;
     playerMass: number;
     playerSpeed: number;
     playerMaxSpeed: number;
@@ -791,6 +795,10 @@ export class DebugState {
       enemyProjectiles: snapshot.enemyProjectiles,
       playerHull: snapshot.playerHull,
       playerMaxHull: snapshot.playerMaxHull,
+      fuel: snapshot.fuel,
+      fuelMax: snapshot.fuelMax,
+      fuelDrainEnabled: snapshot.fuelDrainEnabled,
+      fuelDrainMode: snapshot.fuelDrainMode,
       playerMass: snapshot.playerMass,
       playerSpeed: snapshot.playerSpeed,
       playerMaxSpeed: snapshot.playerMaxSpeed,

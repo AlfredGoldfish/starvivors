@@ -611,6 +611,8 @@ interface SectorSignalSpawn {
 
 type MissionStatus = 'active' | 'completed' | 'failed';
 type MissionFailureReason = 'player-death' | 'extracted-early';
+type DebugFuelDrainMode = 'timer-plus-thrust' | 'thrust-only';
+type RunEndReason = 'none' | 'death' | 'extraction' | 'mission';
 
 interface MissionRuntimeState {
   definition: MissionDefinition;
@@ -690,6 +692,8 @@ export class GameScene extends Phaser.Scene {
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
   private cameraLead = new Phaser.Math.Vector2(0, 0);
   private fuel = RUN_FUEL_MAX;
+  private debugFuelDrainEnabled = true;
+  private debugFuelDrainMode: DebugFuelDrainMode = 'timer-plus-thrust';
   private extractionPosition = new Phaser.Math.Vector2(0, 0);
   private extractionBeacon?: Phaser.GameObjects.Container;
   private extractionBeaconRing?: Phaser.GameObjects.Arc;
@@ -753,6 +757,7 @@ export class GameScene extends Phaser.Scene {
   private rammingShieldDashBurstDirection = new Phaser.Math.Vector2(0, 0);
   private isPlayerDead = false;
   private hasExtracted = false;
+  private runEndReason: RunEndReason = 'none';
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
   private bankedUpgrades = 0;
@@ -1145,6 +1150,14 @@ export class GameScene extends Phaser.Scene {
           }
         }),
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
+        refillFuel: () => this.runDebugMenuAction(() => this.refillFuel()),
+        emptyFuel: () => this.runDebugMenuAction(() => this.emptyFuel()),
+        toggleFuelDrain: () => this.runDebugMenuAction(() => {
+          this.debugFuelDrainEnabled = !this.debugFuelDrainEnabled;
+        }),
+        toggleFuelDrainMode: () => this.runDebugMenuAction(() => {
+          this.debugFuelDrainMode = this.debugFuelDrainMode === 'timer-plus-thrust' ? 'thrust-only' : 'timer-plus-thrust';
+        }),
         adjustPlayerThrustScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerThrustScale(delta)),
         adjustPlayerBrakeScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerBrakeScale(delta)),
         adjustPlayerStrafeScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerStrafeScale(delta)),
@@ -1471,6 +1484,10 @@ export class GameScene extends Phaser.Scene {
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
       playerMaxHull: this.getPlayerMaxHull(),
+      fuel: this.fuel,
+      fuelMax: RUN_FUEL_MAX,
+      fuelDrainEnabled: this.debugFuelDrainEnabled,
+      fuelDrainMode: this.debugFuelDrainMode,
       playerMass: this.getPlayerMass(),
       playerSpeed: this.playerVelocity.length(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
@@ -1627,6 +1644,26 @@ export class GameScene extends Phaser.Scene {
         });
         return this.getTestHarnessState();
       },
+      continueRun: () => {
+        this.continueCurrentRun();
+        return this.getTestHarnessState();
+      },
+      refillFuel: () => {
+        this.refillFuel();
+        return this.getTestHarnessState();
+      },
+      emptyFuel: () => {
+        this.emptyFuel();
+        return this.getTestHarnessState();
+      },
+      toggleFuelDrain: () => {
+        this.debugFuelDrainEnabled = !this.debugFuelDrainEnabled;
+        return this.getTestHarnessState();
+      },
+      toggleFuelDrainMode: () => {
+        this.debugFuelDrainMode = this.debugFuelDrainMode === 'timer-plus-thrust' ? 'thrust-only' : 'timer-plus-thrust';
+        return this.getTestHarnessState();
+      },
       restartRun: () => {
         this.startRun();
         return this.getTestHarnessState();
@@ -1727,6 +1764,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase12();
     }
 
+    if (query.get('testHarness') === 'resultsContinueFuel') {
+      this.runTestHarnessResultsContinueFuel();
+    }
+
     if (query.get('testHarness') === 'enemyContactBalance') {
       this.runTestHarnessEnemyContactBalance();
     }
@@ -1778,6 +1819,8 @@ export class GameScene extends Phaser.Scene {
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
       hasExtracted: this.hasExtracted,
+      runEndReason: this.runEndReason,
+      canContinueRun: this.runEndReason !== 'death',
       sectorScale: this.sectorScale,
       sectorSeed: this.sectorSeed,
       sectorRegionCount: this.sectorLayout.regions.length,
@@ -1796,6 +1839,8 @@ export class GameScene extends Phaser.Scene {
       cameraFollowOffsetY: -this.cameraLead.y,
       fuel: this.fuel,
       maxFuel: RUN_FUEL_MAX,
+      fuelDrainEnabled: this.debugFuelDrainEnabled,
+      fuelDrainMode: this.debugFuelDrainMode,
       extractionDistance: this.getExtractionDistance(),
       playerXp: this.playerXp,
       runScrapTotal: this.runScrapTotal,
@@ -2990,6 +3035,69 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessResultsContinueFuel(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-results-continue-fuel-harness', 'fail');
+      document.body.setAttribute('data-starvivors-results-continue-fuel-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    const initial = harness.getState();
+    const emptyFuel = harness.emptyFuel();
+    const refilledFuel = harness.refillFuel();
+    const drainToggled = harness.toggleFuelDrain();
+    const modeToggled = harness.toggleFuelDrainMode();
+    const dead = harness.killPlayer();
+    const deathContinueBlocked = harness.continueRun();
+    harness.restartRun();
+    if (this.missionRuntime) {
+      this.player.setPosition(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
+      this.playerVelocity.set(0, 0);
+      this.updateMission(this.time.now + 1000);
+    }
+    const missionComplete = harness.getState();
+    const continued = harness.continueRun();
+    const fuelControlsPass =
+      emptyFuel.fuel === 0 &&
+      refilledFuel.fuel === refilledFuel.maxFuel &&
+      drainToggled.fuelDrainEnabled === !initial.fuelDrainEnabled &&
+      modeToggled.fuelDrainMode !== initial.fuelDrainMode;
+    const continuePass =
+      dead.isPlayerDead &&
+      dead.isResultsScreenOpen &&
+      deathContinueBlocked.isPlayerDead &&
+      deathContinueBlocked.isResultsScreenOpen &&
+      !deathContinueBlocked.canContinueRun &&
+      missionComplete.runEndReason === 'mission' &&
+      missionComplete.canContinueRun &&
+      !continued.isPlayerDead &&
+      !continued.isResultsScreenOpen &&
+      continued.hull === continued.maxHull &&
+      continued.missionStatus === 'completed';
+    const pass = fuelControlsPass && continuePass;
+
+    document.body.setAttribute('data-starvivors-results-continue-fuel-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-results-continue-fuel-harness-details',
+      JSON.stringify({
+        initial,
+        emptyFuel,
+        refilledFuel,
+        drainToggled,
+        modeToggled,
+        dead,
+        deathContinueBlocked,
+        missionComplete,
+        continued,
+        fuelControlsPass,
+        continuePass
+      })
+    );
+  }
+
   private runTestHarnessEnemyContactBalance(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -3175,6 +3283,7 @@ export class GameScene extends Phaser.Scene {
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
     this.hasExtracted = false;
+    this.runEndReason = 'none';
     this.playerXp = 0;
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
@@ -6237,14 +6346,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateFuel(deltaSeconds: number, isThrusting: boolean): void {
-    if (this.isPlayerDead || deltaSeconds <= 0) {
+    if (this.isPlayerDead || deltaSeconds <= 0 || !this.debugFuelDrainEnabled) {
       return;
     }
 
-    const drain =
-      RUN_FUEL_BASE_DRAIN_PER_SECOND +
-      (isThrusting && this.fuel > 0 ? RUN_FUEL_THRUST_DRAIN_PER_SECOND : 0);
+    const timerDrain = this.debugFuelDrainMode === 'timer-plus-thrust' ? RUN_FUEL_BASE_DRAIN_PER_SECOND : 0;
+    const thrustDrain = isThrusting && this.fuel > 0
+      ? (this.debugFuelDrainMode === 'thrust-only'
+          ? RUN_FUEL_BASE_DRAIN_PER_SECOND + RUN_FUEL_THRUST_DRAIN_PER_SECOND
+          : RUN_FUEL_THRUST_DRAIN_PER_SECOND)
+      : 0;
+    const drain = timerDrain + thrustDrain;
     this.fuel = Math.max(0, this.fuel - drain * deltaSeconds);
+  }
+
+  private refillFuel(): void {
+    this.fuel = RUN_FUEL_MAX;
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private emptyFuel(): void {
+    this.fuel = 0;
+    this.updateGameplayHud(this.time.now);
   }
 
   private getFuelThrustMultiplier(): number {
@@ -6334,6 +6457,32 @@ export class GameScene extends Phaser.Scene {
     this.missionRuntime.failedAt = null;
     this.missionRuntime.failureReason = null;
     this.updateGameplayHud(time);
+    this.completeMissionRun(time);
+  }
+
+  private completeMissionRun(time: number): void {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead) {
+      return;
+    }
+
+    this.isPlayerDead = true;
+    this.hasExtracted = false;
+    this.runEndReason = 'mission';
+    this.gameFlowState = 'results';
+    this.lastRunScrapTotal = this.runScrapTotal;
+    this.lastRunSurvivalMs = this.getSurvivalElapsedMs(time);
+    this.payRunCredits();
+    this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
+    if (this.isUpgradeOverlayOpen) {
+      this.closeUpgradeOverlay(time);
+    }
+    if (this.isPauseMenuOpen) {
+      this.closePauseMenu(time);
+    }
+    this.updateGameplayHud(time);
+    this.showResultsScreen();
+    this.autoRunDiagnostics.endRun('mission-complete');
   }
 
   private failMission(reason: MissionFailureReason, time: number): void {
@@ -6419,6 +6568,7 @@ export class GameScene extends Phaser.Scene {
 
     this.isPlayerDead = true;
     this.hasExtracted = true;
+    this.runEndReason = 'extraction';
     this.gameFlowState = 'results';
     this.failMission('extracted-early', this.time.now);
     this.lastRunScrapTotal = this.runScrapTotal;
@@ -9133,6 +9283,7 @@ export class GameScene extends Phaser.Scene {
 
     this.isPlayerDead = true;
     this.hasExtracted = false;
+    this.runEndReason = 'death';
     this.gameFlowState = 'results';
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
@@ -9164,6 +9315,7 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
     this.hasExtracted = false;
+    this.runEndReason = 'none';
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -9210,8 +9362,10 @@ export class GameScene extends Phaser.Scene {
       missionStatus: this.getMissionResultStatus(),
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
       scrapCreditMultiplier: this.getScrapCreditMultiplier(),
+      canContinueRun: this.runEndReason !== 'death',
       isActionActive: () => this.gameFlowState === 'results',
       resetCursor: () => this.resetUiCursor(),
+      onContinueRun: () => this.continueCurrentRun(),
       onRestartRun: () => this.startRun(),
       onMainMenu: () => this.showMainMenu(),
       onShop: () => this.showShop('results')
@@ -9220,6 +9374,39 @@ export class GameScene extends Phaser.Scene {
     if (!this.debugMenuHost?.isCreated()) {
       this.createDebugMenu();
     }
+  }
+
+  private continueCurrentRun(): void {
+    if (!this.player || this.runEndReason === 'death') {
+      return;
+    }
+
+    this.destroyResultsScreen();
+    this.gameFlowState = 'running';
+    this.isPlayerDead = false;
+    this.hasExtracted = false;
+    this.runEndReason = 'none';
+    this.playerHull = Math.max(this.playerHull, this.getPlayerMaxHull());
+    this.player.setVisible(true);
+    this.playerSprite.clearTint();
+    this.playerSprite.setAlpha(1);
+    this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
+    this.playerInvulnerableUntil = this.time.now + this.getPlayerDamageInvulnerabilityMs();
+    this.reactivateFailedMissionForContinue();
+    this.updateGameplayHud(this.time.now);
+    this.updateResultsButton();
+    this.autoRunDiagnostics.startRun(`${this.getSelectedShipDefinition().displayName} continued`);
+  }
+
+  private reactivateFailedMissionForContinue(): void {
+    if (!this.missionRuntime || this.missionRuntime.status !== 'failed') {
+      return;
+    }
+
+    this.missionRuntime.status = 'active';
+    this.missionRuntime.failedAt = null;
+    this.missionRuntime.failureReason = null;
   }
 
   private updateBasicEnemies(deltaSeconds: number): void {
@@ -11730,7 +11917,7 @@ export class GameScene extends Phaser.Scene {
         `Sector: ${this.sectorSeed} / regions ${this.sectorLayout.regions.length} / active ${this.activeSectorAsteroids.size}/${this.sectorAsteroidSpawns.length} asteroids, ${this.activeSectorScrapPickups.size}/${this.sectorScrapSpawns.length} scrap, ${this.activeSectorSignals.size}/${this.sectorSignalSpawns.length} signals\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
-        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +
+        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, drain ${this.debugFuelDrainEnabled ? this.debugFuelDrainMode : 'paused'}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} F${

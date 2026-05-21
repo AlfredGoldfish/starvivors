@@ -93,6 +93,11 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'restore-hull': 'Restore the player hull to full for survival and collision testing.',
   'player-invuln': 'Toggle debug invulnerability. Useful for testing hazards without ending the run.',
   'kill-player': 'Immediately defeat the player to test death, results, and restart behavior.',
+  fuel: 'Shows current run fuel and debug drain settings. Default fuel behavior is timer drain with a small thrust surcharge.',
+  'fuel-refill': 'Refill fuel to maximum for route, extraction, and emergency-thrust testing.',
+  'fuel-empty': 'Set fuel to zero to test emergency thrust behavior.',
+  'fuel-drain-toggle': 'Pause or resume fuel drain without changing current fuel.',
+  'fuel-mode-toggle': 'Switch fuel drain between current timer-plus-thrust mode and thrust-only testing mode.',
   'preset-save': 'Save all debug tuning settings to one markdown preset.',
   'preset-load': 'Load all debug tuning settings from one markdown preset.',
   'preset-reset': 'Reset all debug tuning settings to source defaults.',
@@ -553,6 +558,15 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('run', 'restore-hull', panelX + PANEL_PADDING, y, 101, 'Restore', config.callbacks.restorePlayerHull);
     addButton('run', 'player-invuln', panelX + PANEL_PADDING + 108, y, 101, 'Invuln', config.callbacks.togglePlayerInvulnerability);
     addButton('run', 'kill-player', panelX + PANEL_PADDING + 216, y, 100, 'Kill', config.callbacks.killPlayer);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('run', y, 'Fuel');
+    addValue('fuel', 'run', y, VALUE_LINE_HEIGHT * 3);
+    y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
+    addButton('run', 'fuel-refill', panelX + PANEL_PADDING, y, 74, 'Full', config.callbacks.refillFuel);
+    addButton('run', 'fuel-empty', panelX + PANEL_PADDING + 80, y, 74, 'Empty', config.callbacks.emptyFuel);
+    addButton('run', 'fuel-drain-toggle', panelX + PANEL_PADDING + 162, y, 74, 'Drain', config.callbacks.toggleFuelDrain);
+    addButton('run', 'fuel-mode-toggle', panelX + PANEL_PADDING + 242, y, 74, 'Mode', config.callbacks.toggleFuelDrainMode);
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('run', y, 'Economy');
@@ -1697,12 +1711,20 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
             values.playerInvulnerable ? 'on' : 'off'
           }`
         );
+        setValue(
+          'fuel',
+          `Fuel: ${Math.ceil(values.fuel)} / ${values.fuelMax}\nDrain: ${
+            values.fuelDrainEnabled ? 'on' : 'paused'
+          }\nMode: ${values.fuelDrainMode}`
+        );
         setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal}\nCredits: ${values.totalCredits}`);
         setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
         setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
         setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
         setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
         setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
+        setButtonLabel('fuel-drain-toggle', `Drain: ${values.fuelDrainEnabled ? 'on' : 'paused'}`);
+        setButtonLabel('fuel-mode-toggle', values.fuelDrainMode === 'timer-plus-thrust' ? 'Timer mode' : 'Thrust mode');
       } else if (activeTab === 'ship') {
         setValue(
           'ship-stats',

@@ -11,8 +11,10 @@ export interface ResultsScreenConfig {
   missionStatus: string;
   scrapToCreditRate: number;
   scrapCreditMultiplier: number;
+  canContinueRun: boolean;
   isActionActive: () => boolean;
   resetCursor: () => void;
+  onContinueRun: () => void;
   onRestartRun: () => void;
   onMainMenu: () => void;
   onShop: () => void;
@@ -65,6 +67,23 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     .setScrollFactor(0)
     .setDepth(1250);
 
+  if (config.canContinueRun) {
+    addScreenButton({
+      scene: config.scene,
+      container,
+      actionZones,
+      screenCenterX: centerX,
+      screenCenterY: centerY,
+      x: 0,
+      y: panelY + panelHeight - 196,
+      width: 220,
+      height: 38,
+      label: 'Continue Run',
+      callback: config.onContinueRun,
+      isActionActive: config.isActionActive,
+      resetCursor: config.resetCursor
+    });
+  }
   addScreenButton({
     scene: config.scene,
     container,

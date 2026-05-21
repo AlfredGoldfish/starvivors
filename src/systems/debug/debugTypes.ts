@@ -74,6 +74,10 @@ export interface DebugMenuValues {
   enemyProjectiles: number;
   playerHull: number;
   playerMaxHull: number;
+  fuel: number;
+  fuelMax: number;
+  fuelDrainEnabled: boolean;
+  fuelDrainMode: string;
   playerMass: number;
   playerSpeed: number;
   playerMaxSpeed: number;
@@ -173,6 +177,10 @@ export interface DebugMenuCallbacks {
   restorePlayerHull: () => void;
   togglePlayerInvulnerability: () => void;
   killPlayer: () => void;
+  refillFuel: () => void;
+  emptyFuel: () => void;
+  toggleFuelDrain: () => void;
+  toggleFuelDrainMode: () => void;
   adjustPlayerThrustScale: (delta: number) => void;
   adjustPlayerBrakeScale: (delta: number) => void;
   adjustPlayerStrafeScale: (delta: number) => void;
