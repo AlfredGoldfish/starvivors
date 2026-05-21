@@ -4,6 +4,7 @@ import { MINIMAP_HEIGHT, MINIMAP_MARGIN, MINIMAP_PADDING, MINIMAP_WIDTH } from '
 import type { BasicAsteroid, BasicEnemy, ScrapPickup, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
 import type { BlackHoleSystem } from './blackHole';
 import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { RareEventMinimapMarker } from './rareEventRuntime';
 import { getSectorRegionColor, type SectorRegion } from './sectorGeneration';
 
 export interface MinimapSnapshot {
@@ -33,6 +34,7 @@ export interface MinimapSnapshot {
     dangerRadius: number;
     status: 'active' | 'destroyed';
   }>;
+  rareEvents?: RareEventMinimapMarker[];
   isUpgradeOverlayOpen: boolean;
   basicAsteroids: BasicAsteroid[];
   basicEnemies: BasicEnemy[];
@@ -141,6 +143,40 @@ export class MinimapSystem {
       this.graphics.strokeCircle(position.x, position.y, markerRadius);
       this.graphics.fillStyle(0xffc857, alpha);
       this.graphics.fillRect(position.x - 3.4, position.y - 3.4, 6.8, 6.8);
+    }
+
+    for (const event of snapshot.rareEvents ?? []) {
+      const position = this.getPosition(event.x, event.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
+      const dangerRadius = Phaser.Math.Clamp((event.dangerRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 8, 20);
+      const objectiveRadius = Phaser.Math.Clamp((event.objectiveRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 4.8, 8.8);
+      const signalRadius = Phaser.Math.Clamp((event.signalRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 11, 24);
+      const color = event.kind === 'black-hole' ? 0xb88cff : 0xff5964;
+      const accent = event.kind === 'black-hole' ? 0x73f2ff : 0xffc857;
+      const alpha = event.status === 'completed' ? 0.32 : 0.88;
+
+      this.graphics.lineStyle(1, color, event.status === 'completed' ? 0.18 : 0.28);
+      this.graphics.strokeCircle(position.x, position.y, signalRadius);
+      this.graphics.fillStyle(color, event.status === 'completed' ? 0.05 : 0.1);
+      this.graphics.fillCircle(position.x, position.y, dangerRadius);
+      this.graphics.lineStyle(1, accent, alpha);
+      this.graphics.strokeCircle(position.x, position.y, objectiveRadius);
+
+      if (event.kind === 'black-hole') {
+        this.graphics.fillStyle(0x05030a, 0.94);
+        this.graphics.fillCircle(position.x, position.y, 4.8);
+        this.graphics.lineStyle(1, accent, alpha);
+        this.graphics.strokeCircle(position.x, position.y, 6);
+      } else {
+        this.graphics.fillStyle(accent, alpha);
+        this.graphics.fillTriangle(
+          position.x,
+          position.y - 5.2,
+          position.x - 5,
+          position.y + 4.2,
+          position.x + 5,
+          position.y + 4.2
+        );
+      }
     }
 
     for (const region of snapshot.sectorRegions ?? []) {

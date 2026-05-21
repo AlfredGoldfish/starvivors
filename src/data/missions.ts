@@ -1,9 +1,10 @@
 import type { SectorRegionType } from '../systems/sectorGeneration';
+import type { RareEventDefinitionId } from './rareEvents';
 import type { WorldEventDefinitionId } from './worldEvents';
 
-export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe' | 'mothership-contract';
+export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe' | 'mothership-contract' | 'rift-cache-contract';
 export type MissionDifficulty = 'Low' | 'Medium' | 'High';
-export type MissionObjectiveType = 'reach-location' | 'destroy-world-event';
+export type MissionObjectiveType = 'reach-location' | 'destroy-world-event' | 'complete-rare-event';
 
 export interface MissionDefinition {
   id: MissionDefinitionId;
@@ -17,6 +18,7 @@ export interface MissionDefinition {
   preferredRegionTypes: SectorRegionType[];
   objectiveRadius: number;
   guaranteedWorldEventId?: WorldEventDefinitionId;
+  guaranteedRareEventId?: RareEventDefinitionId;
 }
 
 export const DEFAULT_MISSION_ID: MissionDefinitionId = 'survey-signal';
@@ -70,6 +72,19 @@ export const missionRegistry: MissionDefinition[] = [
     preferredRegionTypes: ['enemy-territory', 'anomaly-signal'],
     objectiveRadius: 180,
     guaranteedWorldEventId: 'mothership-prototype'
+  },
+  {
+    id: 'rift-cache-contract',
+    displayName: 'Rift Cache Contract',
+    shortName: 'Rift Cache',
+    description: 'Investigate a rare black-hole cache generated with the sector.',
+    objectiveType: 'complete-rare-event',
+    objectiveLabel: 'Rift cache',
+    difficulty: 'High',
+    rewardPreview: 'Scrap + scanner lead',
+    preferredRegionTypes: ['anomaly-signal', 'salvage-field'],
+    objectiveRadius: 360,
+    guaranteedRareEventId: 'unstable-black-hole-cache'
   }
 ];
 

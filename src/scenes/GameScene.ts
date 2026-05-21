@@ -43,6 +43,7 @@ import {
   type MissionDefinition,
   type MissionDefinitionId
 } from '../data/missions';
+import { getRareEventDefinition, isRareEventDefinitionId, type RareEventDefinitionId } from '../data/rareEvents';
 import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
@@ -310,6 +311,14 @@ import {
   type SectorRegion
 } from '../systems/sectorGeneration';
 import { generateMissionObjective, type MissionObjective } from '../systems/missionGeneration';
+import { generateRareEvents, type GeneratedRareEvent } from '../systems/rareEventGeneration';
+import {
+  createRareEventMinimapMarkers,
+  getRareEventProgress,
+  updateRareEventInvestigationProgress,
+  type RareEventInstance
+} from '../systems/rareEventRuntime';
+import { createRareEventBody as createRareEventBodySystem } from '../systems/rareEventVisuals';
 import { generateWorldEvents, type GeneratedWorldEvent } from '../systems/worldEventGeneration';
 import {
   PerformanceProfilerSystem,
@@ -622,6 +631,7 @@ interface MissionRuntimeState {
   failedAt: number | null;
   failureReason: MissionFailureReason | null;
   targetWorldEventId: string | null;
+  targetRareEventId: string | null;
 }
 
 type WorldEventStatus = 'active' | 'destroyed';
@@ -683,6 +693,7 @@ export class GameScene extends Phaser.Scene {
   private missionObjectiveBeaconRing?: Phaser.GameObjects.Arc;
   private missionObjectiveBeaconCore?: Phaser.GameObjects.Arc;
   private worldEvents: WorldEventInstance[] = [];
+  private rareEvents: RareEventInstance[] = [];
   private nextScrapRollupAt = 0;
   private nextAsteroidCoalesceAt = 0;
   private asteroidDestructionHistory: number[] = [];
@@ -958,6 +969,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
       this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
       this.profileStep('world-events', () => this.updateWorldEvents(time));
+      this.profileStep('rare-events', () => this.updateRareEvents(time, deltaSeconds));
       this.profileStep('live-enemies', () => this.updateLiveEnemies(time, deltaSeconds));
       this.profileStep('sector-streaming', () => this.updateSectorStreaming());
       this.profileStep('asteroids', () => this.updateBasicAsteroids(deltaSeconds));
@@ -1765,6 +1777,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase12();
     }
 
+    if (query.get('testHarness') === 'phase13') {
+      this.runTestHarnessPhase13();
+    }
+
     if (query.get('testHarness') === 'resultsContinueFuel') {
       this.runTestHarnessResultsContinueFuel();
     }
@@ -1799,6 +1815,7 @@ export class GameScene extends Phaser.Scene {
   private getTestHarnessState(): StarvivorsTestHarnessState {
     const selectedShip = this.getSelectedShipDefinition();
     const firstWorldEvent = this.worldEvents[0];
+    const firstRareEvent = this.rareEvents[0];
 
     return {
       selectedShipId: selectedShip.id,
@@ -1815,6 +1832,12 @@ export class GameScene extends Phaser.Scene {
       firstWorldEventName: firstWorldEvent?.definition.displayName ?? null,
       firstWorldEventHp: firstWorldEvent?.hp ?? 0,
       firstWorldEventMaxHp: firstWorldEvent?.maxHp ?? 0,
+      rareEventCount: this.rareEvents.length,
+      activeRareEventCount: this.rareEvents.filter((event) => event.status === 'active').length,
+      completedRareEventCount: this.rareEvents.filter((event) => event.status === 'completed').length,
+      firstRareEventName: firstRareEvent?.definition.displayName ?? null,
+      firstRareEventStatus: firstRareEvent?.status ?? null,
+      firstRareEventProgress: firstRareEvent ? getRareEventProgress(firstRareEvent) : 0,
       unlockedShipIds: [...this.unlockedShipIds],
       rammingShieldHp: this.rammingShieldState.hp,
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
@@ -3040,6 +3063,95 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase13(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase13-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase13-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.selectMission('rift-cache-contract');
+    this.startRun();
+    const initial = harness.getState();
+    const blackHoleEvent = this.rareEvents.find((event) => event.definition.id === 'unstable-black-hole-cache');
+
+    if (blackHoleEvent) {
+      this.player.setPosition(
+        wrapCoordinate(blackHoleEvent.x + blackHoleEvent.definition.objectiveRadius * 0.82, this.arena.width),
+        blackHoleEvent.y
+      );
+      this.playerVelocity.set(0, 0);
+
+      for (let i = 0; i < 6; i += 1) {
+        this.updateRareEvents(this.time.now + i * 1000, 1);
+      }
+    }
+
+    const afterBlackHole = harness.getState();
+    const continued = harness.continueRun();
+    const hunterEvent = this.createRareEventInstance({
+      id: 'hunter-swarm-debug-harness',
+      definitionId: 'hunter-swarm',
+      x: wrapCoordinate(this.player.x + 820, this.arena.width),
+      y: wrapCoordinate(this.player.y + 360, this.arena.height),
+      regionId: this.sectorLayout.regions[0]?.id ?? 'debug',
+      source: 'debug'
+    });
+    this.rareEvents.push(hunterEvent);
+    this.player.setPosition(
+      wrapCoordinate(hunterEvent.x + hunterEvent.definition.objectiveRadius * 0.35, this.arena.width),
+      hunterEvent.y
+    );
+    this.playerVelocity.set(0, 0);
+    this.updateRareEvents(this.time.now + 7000, 1);
+    const hunterSpawnedEnemyIds = [...hunterEvent.activeEnemyIds];
+
+    for (const enemyId of hunterSpawnedEnemyIds) {
+      const enemy = this.liveEnemies.find((candidate) => candidate.id === enemyId);
+      const enemyIndex = enemy ? this.liveEnemies.indexOf(enemy) : -1;
+      if (enemy && enemyIndex >= 0) {
+        this.destroyLiveEnemyWithRewards(enemy, enemyIndex);
+      }
+    }
+
+    this.updateRareEvents(this.time.now + 8000, 1);
+    const afterHunter = harness.getState();
+    const rewardsDropped =
+      this.scrapPickups.some((pickup) => pickup.kind === 'scrap' && pickup.value >= 96) &&
+      this.scrapPickups.some((pickup) => pickup.kind === 'banked-upgrade');
+    const contractPass =
+      initial.selectedMissionId === 'rift-cache-contract' &&
+      initial.rareEventCount >= 1 &&
+      initial.firstRareEventName === 'Unstable Black-Hole Cache' &&
+      afterBlackHole.completedRareEventCount >= 1 &&
+      afterBlackHole.missionStatus === 'completed' &&
+      afterBlackHole.runEndReason === 'mission' &&
+      continued.canContinueRun;
+    const hunterPass =
+      hunterSpawnedEnemyIds.length > 0 &&
+      hunterEvent.status === 'completed' &&
+      afterHunter.completedRareEventCount >= 2 &&
+      afterHunter.firstRareEventProgress === 1;
+    const pass = contractPass && hunterPass && rewardsDropped;
+
+    document.body.setAttribute('data-starvivors-phase13-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase13-harness-details',
+      JSON.stringify({
+        initial,
+        afterBlackHole,
+        continued,
+        afterHunter,
+        hunterSpawnedEnemyIds,
+        rewardsDropped,
+        contractPass,
+        hunterPass
+      })
+    );
+  }
+
   private runTestHarnessResultsContinueFuel(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -3358,6 +3470,7 @@ export class GameScene extends Phaser.Scene {
     this.missionObjectiveBeaconRing = undefined;
     this.missionObjectiveBeaconCore = undefined;
     this.worldEvents = [];
+    this.rareEvents = [];
     this.clearRammingShieldDashBurst();
     this.runScrapTotal = 0;
     this.lastRunCreditsEarned = 0;
@@ -3454,6 +3567,7 @@ export class GameScene extends Phaser.Scene {
       startY: center.y
     });
     this.createWorldEvents(center);
+    this.createRareEvents(center);
     this.createMissionRuntime(center);
     this.createExtractionBeacon(center);
     this.createMissionObjectiveBeacon();
@@ -3463,7 +3577,7 @@ export class GameScene extends Phaser.Scene {
     this.createSectorSignalSpawns();
     this.createWorldSquads(center);
     this.updateSectorStreaming();
-    this.blackHole = new BlackHoleSystem(this, this.getRandomBlackHoleZoneSpawnPosition(viewport, center));
+    this.blackHole = new BlackHoleSystem(this, this.getBlackHoleSpawnPosition(viewport, center));
     this.cameras.main.startFollow(this.player, true, 1, 1);
     this.cameras.main.setFollowOffset(0, 0);
     this.cameras.main.centerOn(center.x, center.y);
@@ -3941,6 +4055,18 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private getBlackHoleSpawnPosition(viewport: ViewportSize, playerStart: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    const blackHoleRareEvent = this.rareEvents.find(
+      (event) => event.status === 'active' && event.definition.kind === 'black-hole'
+    );
+
+    if (blackHoleRareEvent) {
+      return new Phaser.Math.Vector2(blackHoleRareEvent.x, blackHoleRareEvent.y);
+    }
+
+    return this.getRandomBlackHoleZoneSpawnPosition(viewport, playerStart);
+  }
+
   private createBackgroundTextures(): void {
     this.starfield.createTextures();
   }
@@ -3981,10 +4107,66 @@ export class GameScene extends Phaser.Scene {
     this.worldEvents = generatedEvents.map((event) => this.createWorldEventInstance(event));
   }
 
+  private createRareEvents(center: Phaser.Math.Vector2): void {
+    const generatedEvents = generateRareEvents({
+      arena: this.arena,
+      sector: this.sectorLayout,
+      seed: this.sectorSeed,
+      startX: center.x,
+      startY: center.y,
+      guaranteedEventIds: this.getGuaranteedRareEventIds(),
+      forcedEventIds: this.getForcedRareEventIds()
+    });
+
+    this.rareEvents = generatedEvents.map((event) => this.createRareEventInstance(event));
+  }
+
   private getGuaranteedWorldEventIds(): WorldEventDefinitionId[] {
     const mission = this.getSelectedMissionDefinition();
 
     return mission.guaranteedWorldEventId ? [mission.guaranteedWorldEventId] : [];
+  }
+
+  private getGuaranteedRareEventIds(): RareEventDefinitionId[] {
+    const mission = this.getSelectedMissionDefinition();
+
+    return mission.guaranteedRareEventId ? [mission.guaranteedRareEventId] : [];
+  }
+
+  private getForcedRareEventIds(): RareEventDefinitionId[] {
+    const forced = new URLSearchParams(window.location.search).get('forceRareEvent');
+    if (!forced) {
+      return [];
+    }
+
+    return forced
+      .split(',')
+      .map((value) => value.trim())
+      .filter(isRareEventDefinitionId);
+  }
+
+  private createRareEventInstance(event: GeneratedRareEvent): RareEventInstance {
+    const definition = getRareEventDefinition(event.definitionId);
+    const body = createRareEventBodySystem(this, event.x, event.y, definition, false);
+    const wrapMirrorBody = createRareEventBodySystem(this, event.x, event.y, definition, true);
+    wrapMirrorBody.setVisible(false);
+
+    return {
+      id: event.id,
+      definition,
+      x: event.x,
+      y: event.y,
+      regionId: event.regionId,
+      source: event.source,
+      body,
+      wrapMirrorBody,
+      status: 'active',
+      investigationProgressMs: 0,
+      activeEnemyIds: [],
+      squadSpawned: false,
+      rewardDropped: false,
+      unlockHooksResolved: false
+    };
   }
 
   private createWorldEventInstance(event: GeneratedWorldEvent): WorldEventInstance {
@@ -4046,6 +4228,9 @@ export class GameScene extends Phaser.Scene {
     const targetWorldEvent = definition.guaranteedWorldEventId
       ? this.worldEvents.find((event) => event.definition.id === definition.guaranteedWorldEventId)
       : undefined;
+    const targetRareEvent = definition.guaranteedRareEventId
+      ? this.rareEvents.find((event) => event.definition.id === definition.guaranteedRareEventId)
+      : undefined;
     const objective = targetWorldEvent
       ? {
           id: `${targetWorldEvent.id}-objective`,
@@ -4055,6 +4240,15 @@ export class GameScene extends Phaser.Scene {
           radius: targetWorldEvent.definition.hitRadius + 58,
           regionId: targetWorldEvent.regionId
         }
+      : targetRareEvent
+        ? {
+            id: `${targetRareEvent.id}-objective`,
+            label: targetRareEvent.definition.shortName,
+            x: targetRareEvent.x,
+            y: targetRareEvent.y,
+            radius: targetRareEvent.definition.objectiveRadius,
+            regionId: targetRareEvent.regionId
+          }
       : generateMissionObjective({
           arena: this.arena,
           sector: this.sectorLayout,
@@ -4071,7 +4265,8 @@ export class GameScene extends Phaser.Scene {
       completedAt: null,
       failedAt: null,
       failureReason: null,
-      targetWorldEventId: targetWorldEvent?.id ?? null
+      targetWorldEventId: targetWorldEvent?.id ?? null,
+      targetRareEventId: targetRareEvent?.id ?? null
     };
   }
 
@@ -4259,6 +4454,130 @@ export class GameScene extends Phaser.Scene {
         this.spawnWorldEventGuards(event, time);
       }
     }
+  }
+
+  private updateRareEvents(time: number, deltaSeconds: number): void {
+    for (const event of this.rareEvents) {
+      const completed = event.status === 'completed';
+      const pulse = 0.5 + Math.sin(time * 0.0034 + event.x * 0.006) * 0.5;
+      event.body.setAlpha(completed ? 0.48 : 0.9);
+      event.wrapMirrorBody.setAlpha(completed ? 0.28 : 0.76);
+      event.body.setRotation(event.definition.kind === 'black-hole' ? time * 0.00022 : Math.sin(time * 0.0018) * 0.08);
+      event.wrapMirrorBody.setRotation(event.body.rotation);
+      event.body.setScale(completed ? 0.96 : 1 + pulse * 0.018);
+      event.wrapMirrorBody.setScale(event.body.scaleX, event.body.scaleY);
+      this.updateToroidalRenderMirror(event.body, event.wrapMirrorBody, event.definition.signalRadius);
+
+      if (completed || this.isPlayerDead) {
+        continue;
+      }
+
+      const playerDistance = this.getDistanceFromPlayer(event.x, event.y);
+      if (playerDistance <= event.definition.dangerRadius && !event.squadSpawned) {
+        this.spawnRareEventSquads(event, time);
+      }
+
+      if (event.definition.completionType === 'investigate') {
+        if (updateRareEventInvestigationProgress(event, playerDistance, deltaSeconds)) {
+          this.completeRareEvent(event);
+        }
+        continue;
+      }
+
+      if (event.definition.completionType === 'defeat-squad' && event.squadSpawned) {
+        this.pruneRareEventActiveEnemies(event);
+        if (event.activeEnemyIds.length === 0) {
+          this.completeRareEvent(event);
+        }
+      }
+    }
+  }
+
+  private spawnRareEventSquads(event: RareEventInstance, time: number): void {
+    event.squadSpawned = true;
+
+    for (let index = 0; index < event.definition.squadIds.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, event.definition.squadIds.length) + Math.PI / 7;
+      const distance = event.definition.objectiveRadius + 220 + index * 100;
+      const x = wrapCoordinate(event.x + Math.cos(angle) * distance, this.arena.width);
+      const y = wrapCoordinate(event.y + Math.sin(angle) * distance, this.arena.height);
+      const spawned = this.spawnLiveEnemySquad(event.definition.squadIds[index], x, y, time, event.id);
+      event.activeEnemyIds.push(...spawned.map((enemy) => enemy.id));
+    }
+  }
+
+  private pruneRareEventActiveEnemies(event: RareEventInstance): void {
+    if (event.activeEnemyIds.length <= 0) {
+      return;
+    }
+
+    const liveIds = new Set(this.liveEnemies.map((enemy) => enemy.id));
+    event.activeEnemyIds = event.activeEnemyIds.filter((id) => liveIds.has(id));
+  }
+
+  private completeRareEvent(event: RareEventInstance): void {
+    if (event.status === 'completed') {
+      return;
+    }
+
+    event.status = 'completed';
+    event.investigationProgressMs = event.definition.investigationMs;
+    this.emitRareEventCompleteFeedback(event);
+    this.dropRareEventRewards(event);
+    this.resolveRareEventUnlockHooks(event);
+    this.updateMission(this.time.now);
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private emitRareEventCompleteFeedback(event: RareEventInstance): void {
+    const color = event.definition.kind === 'black-hole' ? 0xb88cff : 0xffc857;
+    this.emitLiveEnemyBurst(event.x, event.y, color, 24);
+    const position = this.getNearestWrappedRenderPosition(event.x, event.y - event.definition.objectiveRadius * 0.35);
+    const text = this.add
+      .text(position.x, position.y, `${event.definition.shortName} secured`, {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: event.definition.kind === 'black-hole' ? '#b88cff' : '#ffc857',
+        stroke: '#02040a',
+        strokeThickness: 4
+      })
+      .setOrigin(0.5)
+      .setDepth(24);
+
+    this.tweens.add({
+      targets: text,
+      y: position.y - 54,
+      alpha: 0,
+      duration: 950,
+      ease: 'Quad.easeOut',
+      onComplete: () => text.destroy()
+    });
+  }
+
+  private dropRareEventRewards(event: RareEventInstance): void {
+    if (event.rewardDropped) {
+      return;
+    }
+
+    event.rewardDropped = true;
+    const baseVelocity = new Phaser.Math.Vector2(0, 0);
+    this.spawnScrapPickup('enemy', event.definition.rewardScrap, event.x, event.y, baseVelocity);
+
+    for (let i = 0; i < event.definition.rewardUpgradeCrates; i += 1) {
+      const angle = (Math.PI * 2 * i) / Math.max(1, event.definition.rewardUpgradeCrates);
+      const x = wrapCoordinate(event.x + Math.cos(angle) * 76, this.arena.width);
+      const y = wrapCoordinate(event.y + Math.sin(angle) * 76, this.arena.height);
+      this.spawnRewardPickup('banked-upgrade', 'enemy', 0, x, y, baseVelocity);
+    }
+  }
+
+  private resolveRareEventUnlockHooks(event: RareEventInstance): void {
+    if (event.unlockHooksResolved) {
+      return;
+    }
+
+    event.unlockHooksResolved = true;
+    // Phase 14 will resolve these hook ids into actual unlock storage and shop inventory.
   }
 
   private spawnWorldEventGuards(event: WorldEventInstance, time: number): void {
@@ -4646,7 +4965,7 @@ export class GameScene extends Phaser.Scene {
     centerY: number,
     time: number,
     worldSquadId?: string
-  ): void {
+  ): LiveGameEnemy[] {
     const scaling = this.getEnemyTimeScaling(time);
     const squad = ENEMY_LAB_SQUADS.find((candidate) => candidate.id === squadId);
     const spawned = spawnLiveEnemySquadSystem({
@@ -4670,6 +4989,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.liveEnemies.push(...spawned);
+    return spawned;
   }
 
   private getLiveEnemyDefinitionIdForSpawnType(enemyType: EnemySpawnType): string {
@@ -6485,6 +6805,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (this.missionRuntime.definition.objectiveType === 'complete-rare-event') {
+      const target = this.getMissionTargetRareEvent();
+      if (target?.status === 'completed') {
+        this.completeMission(time);
+      }
+      return;
+    }
+
     if (this.getMissionObjectiveDistance() <= this.missionRuntime.objective.radius) {
       this.completeMission(time);
     }
@@ -6528,6 +6856,14 @@ export class GameScene extends Phaser.Scene {
     }
 
     return this.worldEvents.find((event) => event.id === this.missionRuntime?.targetWorldEventId);
+  }
+
+  private getMissionTargetRareEvent(): RareEventInstance | undefined {
+    if (!this.missionRuntime?.targetRareEventId) {
+      return undefined;
+    }
+
+    return this.rareEvents.find((event) => event.id === this.missionRuntime?.targetRareEventId);
   }
 
   private completeMission(time: number): void {
@@ -11738,6 +12074,7 @@ export class GameScene extends Phaser.Scene {
         dangerRadius: event.definition.dangerRadius,
         status: event.status
       })),
+      rareEvents: createRareEventMinimapMarkers(this.rareEvents),
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
       basicEnemies: [],

@@ -94,6 +94,12 @@ export interface StarvivorsTestHarnessState {
   firstWorldEventName: string | null;
   firstWorldEventHp: number;
   firstWorldEventMaxHp: number;
+  rareEventCount: number;
+  activeRareEventCount: number;
+  completedRareEventCount: number;
+  firstRareEventName: string | null;
+  firstRareEventStatus: string | null;
+  firstRareEventProgress: number;
   unlockedShipIds: ShipId[];
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
