@@ -432,7 +432,7 @@ Use this section to record extraction progress.
 - Phase 4: complete. Pre-run decision/config helpers for navigation, ship availability, play disabled reasons, unlock checks, hangar weapon availability, and lock labels moved to `src/scenes/gameScenePreRunFlow.ts`.
 - Phase 5: complete. Mission runtime creation and sector scanner target shaping moved to systems; scene-owned visuals, rewards, and completion side effects remain in `GameScene`.
 - Phase 6: complete. Upgrade overlay button, layout, card drawing, hit zones, text refresh, rarity colors, and weapon summary formatting moved to `src/ui/upgradeOverlay.ts`; `GameScene` remains the conductor for open/close timing, rerolls, choice generation, and applying selections.
-- Phase 7: pending
+- Phase 7: complete. Hotbar assignment rules moved to `src/systems/playerWeapons.ts`; active weapon firing cadence and beam heat/tick runtime moved to `src/systems/playerWeaponRuntime.ts`; `GameScene` remains the conductor for input, projectile spawning, ramming shield effects, beam visuals, damage, and rewards.
 - Phase 8: pending
 - Phase 9: pending
 - Phase 10: pending

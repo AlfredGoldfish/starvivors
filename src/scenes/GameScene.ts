@@ -70,14 +70,21 @@ import {
 import { getWeaponDefinition, type RammingShieldStats, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import {
   createPlayerWeaponRuntimeState,
+  assignWeaponHotbarSlot as assignWeaponHotbarSlotSystem,
   getActiveAutoWeaponDefinition,
   getActivePrimaryWeaponDefinition,
   getActiveSecondaryWeaponDefinition,
+  getEffectiveAutoWeaponDefinition,
   getOwnedAutoWeaponDefinitions,
   getOwnedManualWeaponDefinitions,
   type PlayerWeaponRuntimeState,
   type PlayerWeaponUpgradeState
 } from '../systems/playerWeapons';
+import {
+  coolBeamSlotRuntime,
+  updateActivePlayerWeaponRuntime,
+  updateBeamWeaponRuntime
+} from '../systems/playerWeaponRuntime';
 import {
   clearPlayerProjectiles as clearPlayerProjectilesSystem,
   destroyPlayerProjectile as destroyPlayerProjectileSystem,
@@ -11532,8 +11539,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEffectiveAutoWeaponDefinition(): WeaponRegistryEntry | undefined {
-    const weapon = this.getActiveAutoWeaponDefinition();
-    return weapon && weapon.autoFire !== false ? weapon : undefined;
+    return getEffectiveAutoWeaponDefinition(this.playerWeapons);
   }
 
   private getActivePrimaryWeaponDefinition(): WeaponRegistryEntry | undefined {
@@ -11553,56 +11559,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private assignWeaponHotbarSlot(slot: WeaponSlotType, weaponId: WeaponId): void {
-    const weapon = getWeaponDefinition(weaponId);
-    if (slot === 'auto') {
-      if (!weapon.slotCompatibility.includes('auto') || !this.playerWeapons.ownedAutoWeaponIds.includes(weaponId)) {
-        return;
-      }
-
-      this.playerWeapons.activeAutoWeaponId = weaponId;
-      this.playerWeapons.nextAutoWeaponFireAt = 0;
-      this.updateGameplayHud(this.time.now);
+    if (!assignWeaponHotbarSlotSystem(this.playerWeapons, slot, weaponId)) {
       return;
     }
 
-    if (!this.canAssignManualWeaponToSlot(weaponId, slot)) {
-      return;
+    if (slot !== 'auto') {
+      this.ensureRammingShieldRuntime();
     }
 
-    if (slot === 'primary') {
-      const previousPrimaryWeaponId = this.playerWeapons.activePrimaryWeaponId;
-      if (this.playerWeapons.activeSecondaryWeaponId === weaponId) {
-        this.playerWeapons.activeSecondaryWeaponId = this.canAssignManualWeaponToSlot(previousPrimaryWeaponId, 'secondary')
-          ? previousPrimaryWeaponId
-          : null;
-      } else if (!this.playerWeapons.activeSecondaryWeaponId && this.canAssignManualWeaponToSlot(previousPrimaryWeaponId, 'secondary')) {
-        this.playerWeapons.activeSecondaryWeaponId = previousPrimaryWeaponId;
-      }
-      this.playerWeapons.activePrimaryWeaponId = weaponId;
-      this.playerWeapons.nextPrimaryWeaponFireAt = 0;
-    } else if (slot === 'secondary') {
-      const previousSecondaryWeaponId = this.playerWeapons.activeSecondaryWeaponId;
-      if (this.playerWeapons.activePrimaryWeaponId === weaponId) {
-        this.playerWeapons.activePrimaryWeaponId = this.canAssignManualWeaponToSlot(previousSecondaryWeaponId, 'primary')
-          ? previousSecondaryWeaponId
-          : null;
-      } else if (!this.playerWeapons.activePrimaryWeaponId && this.canAssignManualWeaponToSlot(previousSecondaryWeaponId, 'primary')) {
-        this.playerWeapons.activePrimaryWeaponId = previousSecondaryWeaponId;
-      }
-      this.playerWeapons.activeSecondaryWeaponId = weaponId;
-      this.playerWeapons.nextSecondaryWeaponFireAt = 0;
-    }
-
-    this.ensureRammingShieldRuntime();
     this.updateGameplayHud(this.time.now);
-  }
-
-  private canAssignManualWeaponToSlot(weaponId: WeaponId | null, slot: Exclude<WeaponSlotType, 'auto'>): weaponId is WeaponId {
-    if (!weaponId || !this.playerWeapons.ownedManualWeaponIds.includes(weaponId)) {
-      return false;
-    }
-
-    return getWeaponDefinition(weaponId).slotCompatibility.includes(slot);
   }
 
   private getPlayerWeaponUpgradeState(): PlayerWeaponUpgradeState {
@@ -11668,55 +11633,29 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateActiveMainWeapon(time: number, deltaSeconds: number): void {
-    if (this.isPlayerDead || this.isUpgradeOverlayOpen) {
-      this.updateBeamSlotsInactive(deltaSeconds);
-      return;
-    }
-
     const pointer = this.input.activePointer;
     const isPointerBlockedByDebugMenu =
       (this.debugMenuHost?.containsPointer(pointer) ?? false) ||
       (this.secretControlOverlay?.containsPointer(pointer) ?? false);
-    const activeAutoWeapon = this.getEffectiveAutoWeaponDefinition();
-    if (activeAutoWeapon?.behaviorType === 'beam') {
-      this.updateBeamWeapon(activeAutoWeapon, 'auto', true, time, deltaSeconds);
-    } else {
-      this.updateBeamSlotInactive('auto', deltaSeconds);
-    }
-    if (activeAutoWeapon && activeAutoWeapon.behaviorType !== 'beam' && time >= this.playerWeapons.nextAutoWeaponFireAt) {
-      const result = this.usePlayerWeapon(activeAutoWeapon, 'auto', time);
-      this.playerWeapons.nextAutoWeaponFireAt = time + result.cooldownMs;
-    }
 
-    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
-    const isPrimaryFiring = this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
-    if (primaryWeapon?.behaviorType === 'beam') {
-      this.updateBeamWeapon(primaryWeapon, 'primary', isPrimaryFiring, time, deltaSeconds);
-    } else {
-      this.updateBeamSlotInactive('primary', deltaSeconds);
-    }
-    if (primaryWeapon && primaryWeapon.behaviorType !== 'beam' && isPrimaryFiring && time >= this.playerWeapons.nextPrimaryWeaponFireAt) {
-      const result = this.usePlayerWeapon(primaryWeapon, 'primary', time);
-      this.playerWeapons.nextPrimaryWeaponFireAt = time + result.cooldownMs;
-    }
-
-    const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
-    const isSecondaryFiring = Boolean(secondaryWeapon && !isPointerBlockedByDebugMenu && pointer.rightButtonDown());
-    if (secondaryWeapon?.behaviorType === 'beam') {
-      this.updateBeamWeapon(secondaryWeapon, 'secondary', isSecondaryFiring, time, deltaSeconds);
-    } else {
-      this.updateBeamSlotInactive('secondary', deltaSeconds);
-    }
-    if (
-      secondaryWeapon &&
-      secondaryWeapon.behaviorType !== 'beam' &&
-      !isPointerBlockedByDebugMenu &&
-      pointer.rightButtonDown() &&
-      time >= this.playerWeapons.nextSecondaryWeaponFireAt
-    ) {
-      const result = this.usePlayerWeapon(secondaryWeapon, 'secondary', time);
-      this.playerWeapons.nextSecondaryWeaponFireAt = time + result.cooldownMs;
-    }
+    updateActivePlayerWeaponRuntime({
+      state: this.playerWeapons,
+      time,
+      deltaSeconds,
+      isPlayerDead: this.isPlayerDead,
+      isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
+      isPrimaryFiring: this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown()),
+      isSecondaryFiring: pointer.rightButtonDown(),
+      isSecondaryBlocked: isPointerBlockedByDebugMenu,
+      getActiveAutoWeapon: () => this.getEffectiveAutoWeaponDefinition(),
+      getActivePrimaryWeapon: () => this.getActivePrimaryWeaponDefinition(),
+      getActiveSecondaryWeapon: () => this.getActiveSecondaryWeaponDefinition(),
+      updateBeamSlotsInactive: (inactiveDeltaSeconds) => this.updateBeamSlotsInactive(inactiveDeltaSeconds),
+      updateBeamSlotInactive: (slot, inactiveDeltaSeconds) => this.updateBeamSlotInactive(slot, inactiveDeltaSeconds),
+      updateBeamWeapon: (weapon, slot, isFiring, weaponTime, weaponDeltaSeconds) =>
+        this.updateBeamWeapon(weapon, slot, isFiring, weaponTime, weaponDeltaSeconds),
+      useWeapon: (weapon, slot, weaponTime) => this.usePlayerWeapon(weapon, slot, weaponTime)
+    });
   }
 
   private usePlayerWeapon(weapon: WeaponRegistryEntry, slot: 'auto' | 'primary' | 'secondary', time: number): { cooldownMs: number } {
@@ -11761,7 +11700,7 @@ export class GameScene extends Phaser.Scene {
     if (weapon) {
       const beam = this.getResolvedWeaponStats(weapon, slot).beam;
       if (beam) {
-        this.coolBeamSlot(runtime, beam, deltaSeconds);
+        coolBeamSlotRuntime(runtime, beam, deltaSeconds);
       }
     }
 
@@ -11777,53 +11716,22 @@ export class GameScene extends Phaser.Scene {
     deltaSeconds: number
   ): void {
     const resolved = this.getResolvedWeaponStats(weapon, slot);
-    const beam = resolved.beam;
     const runtime = this.beamSlots[slot];
 
-    if (!beam) {
-      this.updateBeamSlotInactive(slot, deltaSeconds);
-      return;
-    }
-
-    if (!isFiring || runtime.overheated) {
-      runtime.isActive = false;
-      this.coolBeamSlot(runtime, beam, deltaSeconds);
-      runtime.visualLength = Math.max(0, runtime.visualLength - beam.range * deltaSeconds * 8);
-      this.hideBeam(slot);
-      return;
-    }
-
-    if (!runtime.isActive) {
-      runtime.activationStartedAt = time;
-      runtime.nextTickAt = time;
-      this.emitBeamIgnitionBurst(beam);
-    }
-
-    runtime.isActive = true;
-    runtime.heat = Math.min(beam.heatMax, runtime.heat + beam.heatGainPerSecond * deltaSeconds);
-    if (runtime.heat >= beam.heatMax) {
-      runtime.overheated = true;
-      runtime.isActive = false;
-      runtime.lastVentAt = time;
-      this.hideBeam(slot);
-      this.emitBeamOverheatVent();
-      return;
-    }
-
-    runtime.visualLength = this.getBeamVisualLength(runtime, beam, time);
-    this.drawBeam(slot, beam, time);
-    while (time >= runtime.nextTickAt) {
-      this.applyBeamTick(beam, runtime.visualLength, slot, time);
-      runtime.nextTickAt = Math.max(runtime.nextTickAt + beam.tickIntervalMs, time + beam.tickIntervalMs);
-    }
-  }
-
-  private coolBeamSlot(runtime: BeamSlotRuntime, beam: ResolvedBeamWeaponStats, deltaSeconds: number): void {
-    const cooling = runtime.overheated ? beam.overheatCoolingPerSecond : beam.coolingPerSecond;
-    runtime.heat = Math.max(0, runtime.heat - cooling * deltaSeconds);
-    if (runtime.heat <= 0) {
-      runtime.overheated = false;
-    }
+    updateBeamWeaponRuntime({
+      runtime,
+      beam: resolved.beam,
+      isFiring,
+      time,
+      deltaSeconds,
+      ignitionDurationMs: BEAM_IGNITION_MS,
+      coolBeamSlot: (beamRuntime, beam, beamDeltaSeconds) => coolBeamSlotRuntime(beamRuntime, beam, beamDeltaSeconds),
+      hideBeam: () => this.hideBeam(slot),
+      emitIgnitionBurst: (beam) => this.emitBeamIgnitionBurst(beam),
+      drawBeam: (beam, beamTime) => this.drawBeam(slot, beam, beamTime),
+      applyBeamTick: (beam, activeRange, beamTime) => this.applyBeamTick(beam, activeRange, slot, beamTime),
+      emitOverheatVent: () => this.emitBeamOverheatVent()
+    });
   }
 
   private applyBeamTick(beam: ResolvedBeamWeaponStats, activeRange: number, slot: WeaponRuntimeSlot, time: number): void {
@@ -12016,12 +11924,6 @@ export class GameScene extends Phaser.Scene {
       this.beamSlots[slot].graphics?.destroy();
       this.beamSlots[slot] = createBeamSlotRuntime();
     }
-  }
-
-  private getBeamVisualLength(runtime: BeamSlotRuntime, beam: ResolvedBeamWeaponStats, time: number): number {
-    const progress = Phaser.Math.Clamp((time - runtime.activationStartedAt) / BEAM_IGNITION_MS, 0, 1);
-    const eased = 1 - Math.pow(1 - progress, 3);
-    return beam.range * eased;
   }
 
   private getBeamEmitterPosition(forward: Phaser.Math.Vector2): Phaser.Math.Vector2 {
