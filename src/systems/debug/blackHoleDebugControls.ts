@@ -312,6 +312,7 @@ export class BlackHoleDebugControls {
   }
 
   private isVisible(state: BlackHoleDebugControlsState): boolean {
-    return state.collisionDebugEnabled && !state.isUpgradeOverlayOpen && !state.isDebugMenuOpen && !state.isPlayerDead;
+    void state;
+    return false;
   }
 }

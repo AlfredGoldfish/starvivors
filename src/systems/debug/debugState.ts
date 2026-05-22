@@ -671,6 +671,28 @@ export class DebugState {
     blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
     blackHoleAddPngTextureKey: BlackHolePngTextureKey;
     blackHoleAddPngTextureLabel: string;
+    blackHoleActive: boolean;
+    blackHoleX: number;
+    blackHoleY: number;
+    blackHoleRunAgeSeconds: number;
+    blackHoleEventHorizonRadius: number;
+    blackHoleCaptureRadius: number;
+    blackHoleWarningRadius: number;
+    blackHoleGrowthPercent: number;
+    blackHolePlayerCaptured: boolean;
+    blackHoleCaptureTimerRemainingMs: number;
+    blackHoleConsumedObjects: number;
+    blackHolePlayerCaptureEnabled: boolean;
+    blackHoleObjectConsumptionEnabled: boolean;
+    blackHoleWarningVisualsEnabled: boolean;
+    blackHoleBaseEventHorizonRadius: number;
+    blackHoleMaxEventHorizonRadius: number;
+    blackHoleGrowthPerMinute: number;
+    blackHoleCaptureMargin: number;
+    blackHoleWarningMargin: number;
+    blackHolePlayerCaptureDurationMs: number;
+    blackHolePlayerPullStrength: number;
+    blackHoleObjectPullStrength: number;
     debugGamePaused: boolean;
     performanceProfilerEnabled: boolean;
     performanceProfilerManualActive: boolean;
@@ -691,6 +713,15 @@ export class DebugState {
     enemyProjectiles: number;
     playerHull: number;
     playerMaxHull: number;
+    playerAlive: boolean;
+    playerX: number;
+    playerY: number;
+    playerVelocityX: number;
+    playerVelocityY: number;
+    playerCollisionDamageImmune: boolean;
+    missionObjectiveDistance: number;
+    extractionDistance: number;
+    secretControlUnlocked: boolean;
     fuel: number;
     fuelMax: number;
     fuelDrainEnabled: boolean;
@@ -751,6 +782,28 @@ export class DebugState {
       blackHoleSelectedPngLayer: snapshot.blackHoleSelectedPngLayer,
       blackHoleAddPngTextureKey: snapshot.blackHoleAddPngTextureKey,
       blackHoleAddPngTextureLabel: snapshot.blackHoleAddPngTextureLabel,
+      blackHoleActive: snapshot.blackHoleActive,
+      blackHoleX: snapshot.blackHoleX,
+      blackHoleY: snapshot.blackHoleY,
+      blackHoleRunAgeSeconds: snapshot.blackHoleRunAgeSeconds,
+      blackHoleEventHorizonRadius: snapshot.blackHoleEventHorizonRadius,
+      blackHoleCaptureRadius: snapshot.blackHoleCaptureRadius,
+      blackHoleWarningRadius: snapshot.blackHoleWarningRadius,
+      blackHoleGrowthPercent: snapshot.blackHoleGrowthPercent,
+      blackHolePlayerCaptured: snapshot.blackHolePlayerCaptured,
+      blackHoleCaptureTimerRemainingMs: snapshot.blackHoleCaptureTimerRemainingMs,
+      blackHoleConsumedObjects: snapshot.blackHoleConsumedObjects,
+      blackHolePlayerCaptureEnabled: snapshot.blackHolePlayerCaptureEnabled,
+      blackHoleObjectConsumptionEnabled: snapshot.blackHoleObjectConsumptionEnabled,
+      blackHoleWarningVisualsEnabled: snapshot.blackHoleWarningVisualsEnabled,
+      blackHoleBaseEventHorizonRadius: snapshot.blackHoleBaseEventHorizonRadius,
+      blackHoleMaxEventHorizonRadius: snapshot.blackHoleMaxEventHorizonRadius,
+      blackHoleGrowthPerMinute: snapshot.blackHoleGrowthPerMinute,
+      blackHoleCaptureMargin: snapshot.blackHoleCaptureMargin,
+      blackHoleWarningMargin: snapshot.blackHoleWarningMargin,
+      blackHolePlayerCaptureDurationMs: snapshot.blackHolePlayerCaptureDurationMs,
+      blackHolePlayerPullStrength: snapshot.blackHolePlayerPullStrength,
+      blackHoleObjectPullStrength: snapshot.blackHoleObjectPullStrength,
       debugGamePaused: snapshot.debugGamePaused,
       performanceProfilerEnabled: snapshot.performanceProfilerEnabled,
       performanceProfilerManualActive: snapshot.performanceProfilerManualActive,
@@ -775,6 +828,15 @@ export class DebugState {
       enemyProjectiles: snapshot.enemyProjectiles,
       playerHull: snapshot.playerHull,
       playerMaxHull: snapshot.playerMaxHull,
+      playerAlive: snapshot.playerAlive,
+      playerX: snapshot.playerX,
+      playerY: snapshot.playerY,
+      playerVelocityX: snapshot.playerVelocityX,
+      playerVelocityY: snapshot.playerVelocityY,
+      playerCollisionDamageImmune: snapshot.playerCollisionDamageImmune,
+      missionObjectiveDistance: snapshot.missionObjectiveDistance,
+      extractionDistance: snapshot.extractionDistance,
+      secretControlUnlocked: snapshot.secretControlUnlocked,
       fuel: snapshot.fuel,
       fuelMax: snapshot.fuelMax,
       fuelDrainEnabled: snapshot.fuelDrainEnabled,

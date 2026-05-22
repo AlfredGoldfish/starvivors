@@ -359,18 +359,16 @@ export class CollisionDebugOverlaySystem {
 
     const blackHolePosition = this.getNearestWrappedRenderPosition(snapshot.blackHole.body.x, snapshot.blackHole.body.y);
 
-    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.influenceRadius)) {
+    if (!this.isCircleInCameraView(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.warningRadius)) {
       return;
     }
 
     this.graphics.lineStyle(2, 0xff5964, 0.9);
     this.graphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.eventHorizonRadius);
-    this.graphics.lineStyle(1, 0xffc857, 0.44);
-    this.graphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.damageRadius);
-    this.graphics.lineStyle(1, 0x42f5d7, 0.42);
+    this.graphics.lineStyle(1, 0x42f5d7, 0.56);
     this.graphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.captureRadius);
-    this.graphics.lineStyle(1, 0x9fd8ff, 0.22);
-    this.graphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.influenceRadius);
+    this.graphics.lineStyle(1, 0x9fd8ff, 0.24);
+    this.graphics.strokeCircle(blackHolePosition.x, blackHolePosition.y, snapshot.blackHole.warningRadius);
   }
 
   private drawProjectileCollision(snapshot: CollisionDebugOverlaySnapshot): void {

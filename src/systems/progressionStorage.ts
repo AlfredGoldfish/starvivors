@@ -32,6 +32,7 @@ export interface ProgressionState {
   unlockedWeaponIds: WeaponId[];
   weaponLoadout: WeaponLoadoutState;
   weaponMkLevels: WeaponMkLevels;
+  secretControlUnlocked: boolean;
 }
 
 const STORAGE_KEY = 'starvivors.progression.v1';
@@ -62,7 +63,8 @@ export function createDefaultProgressionState(): ProgressionState {
       'test2-weapon': 1,
       'test3-weapon': 1,
       'test4-weapon': 1
-    }
+    },
+    secretControlUnlocked: false
   };
 }
 
@@ -123,7 +125,8 @@ export function normalizeProgressionState(value: unknown): ProgressionState {
     sectorScannerLevel: normalizeScannerLevel(record.sectorScannerLevel),
     unlockedWeaponIds: normalizeUnlockedWeaponIds(record.unlockedWeaponIds, base.unlockedWeaponIds),
     weaponLoadout: normalizeWeaponLoadout(record.weaponLoadout),
-    weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels)
+    weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels),
+    secretControlUnlocked: record.secretControlUnlocked === true
   };
 }
 

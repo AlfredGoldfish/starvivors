@@ -161,9 +161,11 @@ import {
   BLACK_HOLE_FULL_TEXTURE_KEYS,
   BLACK_HOLE_PNG_TEXTURE_KEYS,
   BLACK_HOLE_PNG_TEXTURE_LABELS,
+  DEFAULT_BLACK_HOLE_VACUUM_TUNING,
   BlackHoleSystem,
   type BlackHoleFieldTuningConfig,
   type BlackHolePngTextureKey,
+  type BlackHoleVacuumTuning,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
 import {
@@ -197,7 +199,7 @@ import {
   parseBlackHoleFieldTuningMarkdown,
   parseBlackHolePngSetupMarkdown
 } from '../systems/debug/blackHoleDebugTuning';
-import type { DebugAsteroidTier, DebugEnemyType } from '../systems/debug/debugTypes';
+import type { DebugAsteroidTier, DebugEnemyType, DebugPlayerTeleportTarget } from '../systems/debug/debugTypes';
 import { BlackHoleDebugControls } from '../systems/debug/blackHoleDebugControls';
 import { DebugMenuHost } from '../systems/debug/debugMenuHost';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
@@ -268,6 +270,7 @@ import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
 import { destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
+import { createSecretControlOverlay, type SecretControlOverlayController, type SecretControlOverlayValues } from '../ui/secretControlOverlay';
 import type {
   AsteroidBreakupProfile,
   AsteroidTier,
@@ -757,6 +760,7 @@ export class GameScene extends Phaser.Scene {
   private controlKeys = new Map<string, Phaser.Input.Keyboard.Key>();
   private awaitingBinding?: { action: RunControlAction; slot: BindingSlot };
   private debugMenuKey!: Phaser.Input.Keyboard.Key;
+  private secretControlKey!: Phaser.Input.Keyboard.Key;
   private escapeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
   private playerProjectiles: PlayerProjectile[] = [];
@@ -793,6 +797,7 @@ export class GameScene extends Phaser.Scene {
   private hasPaidRunCredits = false;
   private lastRunSurvivalMs = 0;
   private playerInvulnerableUntil = 0;
+  private debugPlayerCollisionDamageImmune = false;
   private rammingShieldDashBurstRemaining = 0;
   private rammingShieldDashBurstSpeed = 0;
   private rammingShieldDashBurstDirection = new Phaser.Math.Vector2(0, 0);
@@ -841,6 +846,7 @@ export class GameScene extends Phaser.Scene {
   private upgradeOverlayOpenedAt = 0;
   private totalUpgradePauseMs = 0;
   private debugMenuHost?: DebugMenuHost;
+  private secretControlOverlay?: SecretControlOverlayController;
   private blackHoleDebugControls!: BlackHoleDebugControls;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
@@ -868,6 +874,13 @@ export class GameScene extends Phaser.Scene {
   private debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleCoreScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleFieldTuning: BlackHoleFieldTuningConfig = { ...DEFAULT_BLACK_HOLE_FIELD_TUNING };
+  private debugBlackHoleVacuumTuning: BlackHoleVacuumTuning = { ...DEFAULT_BLACK_HOLE_VACUUM_TUNING };
+  private isBlackHolePlayerCaptureEnabled = true;
+  private isBlackHoleObjectConsumptionEnabled = true;
+  private areBlackHoleWarningVisualsEnabled = true;
+  private blackHolePlayerCaptureStartedAt: number | null = null;
+  private blackHoleConsumedObjectsThisRun = 0;
+  private debugBlackHoleGrowthOffsetMs = 0;
   private areDebugBlackHoleProjectionLensLayersEnabled = true;
   private debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
   private debugAddBlackHolePngTextureKey: BlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
@@ -968,9 +981,11 @@ export class GameScene extends Phaser.Scene {
   update(time: number, delta: number): void {
     this.beginPerformanceFrame(time, delta);
     this.profileStep('debug-menu-input', () => this.updateDebugMenuInput(time));
+    this.profileStep('secret-control-input', () => this.updateSecretControlInput(time));
 
     if (this.isPreRunFlowState()) {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('secret-control-refresh', () => this.refreshSecretControlOverlay());
       this.endPerformanceFrame();
       return;
     }
@@ -980,6 +995,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isUpgradeOverlayOpen) {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('secret-control-refresh', () => this.refreshSecretControlOverlay());
       this.profileStep('background', () => this.updateBackgroundTiles(time));
       this.profileStep('hud', () => this.updateGameplayHud(time));
       this.profileStep('minimap', () => this.updateMinimap());
@@ -990,6 +1006,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.isPauseMenuOpen) {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('secret-control-refresh', () => this.refreshSecretControlOverlay());
       this.profileStep('background', () => this.updateBackgroundTiles(time));
       this.profileStep('hud', () => this.updateGameplayHud(time));
       this.profileStep('minimap', () => this.updateMinimap());
@@ -1000,6 +1017,7 @@ export class GameScene extends Phaser.Scene {
 
     if (this.gameFlowState === 'results') {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+      this.profileStep('secret-control-refresh', () => this.refreshSecretControlOverlay());
       this.profileStep('background', () => this.updateBackgroundTiles(time));
       this.profileStep('hud', () => this.updateGameplayHud(time));
       this.profileStep('minimap', () => this.updateMinimap());
@@ -1051,6 +1069,7 @@ export class GameScene extends Phaser.Scene {
     this.profileStep('hud', () => this.updateGameplayHud(time));
     this.profileStep('minimap', () => this.updateMinimap());
     this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
+    this.profileStep('secret-control-refresh', () => this.refreshSecretControlOverlay());
     this.profileStep('debug-text', () => this.updateDebugText(time));
     this.endPerformanceFrame();
   }
@@ -1073,6 +1092,7 @@ export class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.rebuildControlKeys();
     this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.secretControlKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F10);
     this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.upgradeChoiceKeys = [
       this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
@@ -1216,6 +1236,8 @@ export class GameScene extends Phaser.Scene {
         clearPlayerProjectiles: () => this.runDebugMenuAction(() => this.clearPlayerProjectiles()),
         clearEnemyProjectiles: () => this.runDebugMenuAction(() => this.clearEnemyProjectiles()),
         restorePlayerHull: () => this.runDebugMenuAction(() => this.restorePlayerHull()),
+        healPlayer: (amount) => this.runDebugMenuAction(() => this.debugHealPlayer(amount)),
+        damagePlayerForDebug: (amount) => this.runDebugMenuAction(() => this.debugDamagePlayer(amount)),
         togglePlayerInvulnerability: () => this.runDebugMenuAction(() => {
           this.debugState.playerInvulnerable = !this.debugState.playerInvulnerable;
           if (this.debugState.playerInvulnerable) {
@@ -1224,7 +1246,23 @@ export class GameScene extends Phaser.Scene {
             this.playerInvulnerableUntil = 0;
           }
         }),
+        togglePlayerCollisionDamageImmunity: () => this.runDebugMenuAction(() => {
+          this.debugPlayerCollisionDamageImmune = !this.debugPlayerCollisionDamageImmune;
+        }),
         killPlayer: () => this.runDebugMenuAction(() => this.killPlayer()),
+        stopPlayerVelocity: () => this.runDebugMenuAction(() => this.debugStopPlayerVelocity()),
+        teleportPlayer: (target) => this.runDebugMenuAction(() => this.debugTeleportPlayer(target)),
+        nudgePlayer: (dx, dy) => this.runDebugMenuAction(() => this.debugNudgePlayer(dx, dy)),
+        addPlayerXp: (amount) => this.runDebugMenuAction(() => this.grantXp(amount)),
+        addBankedUpgrade: (amount) => this.runDebugMenuAction(() => this.debugAddBankedUpgrade(amount)),
+        clearBankedUpgrades: () => this.runDebugMenuAction(() => {
+          this.bankedUpgrades = 0;
+          this.updateGameplayHud(this.time.now);
+          this.updateUpgradeButton();
+        }),
+        resetWeaponCooldowns: () => this.runDebugMenuAction(() => this.debugResetWeaponCooldowns()),
+        refillRammingShield: () => this.runDebugMenuAction(() => this.debugRefillRammingShield()),
+        unlockSecretControls: () => this.runDebugMenuAction(() => this.unlockSecretControls()),
         refillFuel: () => this.runDebugMenuAction(() => this.refillFuel()),
         emptyFuel: () => this.runDebugMenuAction(() => this.emptyFuel()),
         toggleFuelDrain: () => this.runDebugMenuAction(() => {
@@ -1339,6 +1377,35 @@ export class GameScene extends Phaser.Scene {
         toggleCollisionDebug: () => this.runDebugMenuAction(() => {
           this.debugState.collisionDebugEnabled = !this.debugState.collisionDebugEnabled;
         }),
+        toggleBlackHolePlayerCapture: () => this.runDebugMenuAction(() => {
+          this.isBlackHolePlayerCaptureEnabled = !this.isBlackHolePlayerCaptureEnabled;
+          if (!this.isBlackHolePlayerCaptureEnabled) {
+            this.blackHolePlayerCaptureStartedAt = null;
+          }
+        }),
+        toggleBlackHoleObjectConsumption: () => this.runDebugMenuAction(() => {
+          this.isBlackHoleObjectConsumptionEnabled = !this.isBlackHoleObjectConsumptionEnabled;
+        }),
+        toggleBlackHoleWarningVisuals: () => this.runDebugMenuAction(() => {
+          this.areBlackHoleWarningVisualsEnabled = !this.areBlackHoleWarningVisualsEnabled;
+        }),
+        moveBlackHoleToPlayer: () => this.runDebugMenuAction(() => this.moveBlackHoleNearPlayer(0)),
+        moveBlackHoleAwayFromPlayer: () => this.runDebugMenuAction(() => this.moveBlackHoleNearPlayer(720)),
+        resetBlackHoleGrowth: () => this.runDebugMenuAction(() => {
+          this.debugBlackHoleGrowthOffsetMs = -this.getSurvivalElapsedMs(this.time.now);
+        }),
+        addBlackHoleGrowthMinutes: (minutes) => this.runDebugMenuAction(() => {
+          this.debugBlackHoleGrowthOffsetMs += minutes * 60 * 1000;
+        }),
+        forceBlackHoleCaptureTest: () => this.runDebugMenuAction(() => {
+          this.moveBlackHoleNearPlayer(this.blackHole?.captureRadius ? this.blackHole.captureRadius - 18 : 150);
+          this.blackHolePlayerCaptureStartedAt = this.time.now;
+        }),
+        forceBlackHoleEscapeTest: () => this.runDebugMenuAction(() => {
+          this.blackHolePlayerCaptureStartedAt = null;
+          this.moveBlackHoleNearPlayer((this.blackHole?.captureRadius ?? 200) + 80);
+        }),
+        adjustBlackHoleVacuumTuning: (key, delta) => this.runDebugMenuAction(() => this.adjustBlackHoleVacuumTuning(key, delta)),
         adjustBlackHoleLensOrbit: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensOrbitSpeed(delta)),
         adjustBlackHoleLensLength: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensLength(delta)),
         adjustBlackHoleInfluenceRadius: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleInfluenceRadius(delta)),
@@ -1382,6 +1449,7 @@ export class GameScene extends Phaser.Scene {
     action();
     this.isDebugMenuRefreshDirty = true;
     this.refreshDebugMenu(this.time.now, true);
+    this.refreshSecretControlOverlay();
     this.updateCollisionDebugOverlay();
   }
 
@@ -1543,6 +1611,28 @@ export class GameScene extends Phaser.Scene {
       blackHoleSelectedPngLayer: this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex),
       blackHoleAddPngTextureKey: this.debugAddBlackHolePngTextureKey,
       blackHoleAddPngTextureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey],
+      blackHoleActive: Boolean(this.blackHole),
+      blackHoleX: this.blackHole?.body.x ?? 0,
+      blackHoleY: this.blackHole?.body.y ?? 0,
+      blackHoleRunAgeSeconds: this.getBlackHoleGrowthElapsedSeconds(time),
+      blackHoleEventHorizonRadius: this.blackHole?.eventHorizonRadius ?? this.debugBlackHoleVacuumTuning.baseEventHorizonRadius,
+      blackHoleCaptureRadius: this.blackHole?.captureRadius ?? this.debugBlackHoleVacuumTuning.baseEventHorizonRadius + this.debugBlackHoleVacuumTuning.captureMargin,
+      blackHoleWarningRadius: this.blackHole?.warningRadius ?? this.debugBlackHoleVacuumTuning.baseEventHorizonRadius + this.debugBlackHoleVacuumTuning.captureMargin + this.debugBlackHoleVacuumTuning.warningMargin,
+      blackHoleGrowthPercent: this.blackHole?.growthPercent ?? 0,
+      blackHolePlayerCaptured: this.blackHolePlayerCaptureStartedAt !== null,
+      blackHoleCaptureTimerRemainingMs: this.getBlackHoleCaptureTimerRemainingMs(time),
+      blackHoleConsumedObjects: this.blackHoleConsumedObjectsThisRun,
+      blackHolePlayerCaptureEnabled: this.isBlackHolePlayerCaptureEnabled,
+      blackHoleObjectConsumptionEnabled: this.isBlackHoleObjectConsumptionEnabled,
+      blackHoleWarningVisualsEnabled: this.areBlackHoleWarningVisualsEnabled,
+      blackHoleBaseEventHorizonRadius: this.debugBlackHoleVacuumTuning.baseEventHorizonRadius,
+      blackHoleMaxEventHorizonRadius: this.debugBlackHoleVacuumTuning.maxEventHorizonRadius,
+      blackHoleGrowthPerMinute: this.debugBlackHoleVacuumTuning.growthPerMinute,
+      blackHoleCaptureMargin: this.debugBlackHoleVacuumTuning.captureMargin,
+      blackHoleWarningMargin: this.debugBlackHoleVacuumTuning.warningMargin,
+      blackHolePlayerCaptureDurationMs: this.debugBlackHoleVacuumTuning.playerCaptureDurationMs,
+      blackHolePlayerPullStrength: this.debugBlackHoleVacuumTuning.playerPullStrength,
+      blackHoleObjectPullStrength: this.debugBlackHoleVacuumTuning.objectPullStrength,
       debugGamePaused: this.debugState.debugGamePaused,
       performanceProfilerEnabled: this.performanceProfiler.isEnabled(),
       performanceProfilerManualActive: this.performanceProfiler.isManualCaptureActive(),
@@ -1563,6 +1653,15 @@ export class GameScene extends Phaser.Scene {
       enemyProjectiles: this.enemyProjectiles.length,
       playerHull: this.playerHull,
       playerMaxHull: this.getPlayerMaxHull(),
+      playerAlive: !this.isPlayerDead,
+      playerX: this.player?.x ?? 0,
+      playerY: this.player?.y ?? 0,
+      playerVelocityX: this.playerVelocity.x,
+      playerVelocityY: this.playerVelocity.y,
+      playerCollisionDamageImmune: this.debugPlayerCollisionDamageImmune,
+      missionObjectiveDistance: this.getMissionObjectiveDistance(),
+      extractionDistance: this.getExtractionDistance(),
+      secretControlUnlocked: this.progressionState.secretControlUnlocked,
       fuel: this.fuel,
       fuelMax: RUN_FUEL_MAX,
       fuelDrainEnabled: this.debugFuelDrainEnabled,
@@ -3672,10 +3771,12 @@ export class GameScene extends Phaser.Scene {
     const center = getArenaCenter(this.arena);
 
     this.debugMenuHost?.destroy();
+    this.secretControlOverlay?.destroy();
     this.deathShards = clearDeathShardsSystem(this.deathShards);
     this.children.removeAll(true);
     this.combatFeedback.clear();
     this.debugMenuHost = undefined;
+    this.secretControlOverlay = undefined;
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
@@ -3787,6 +3888,13 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleCoreScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleFieldTuning = { ...DEFAULT_BLACK_HOLE_FIELD_TUNING };
+    this.debugBlackHoleVacuumTuning = { ...DEFAULT_BLACK_HOLE_VACUUM_TUNING };
+    this.isBlackHolePlayerCaptureEnabled = true;
+    this.isBlackHoleObjectConsumptionEnabled = true;
+    this.areBlackHoleWarningVisualsEnabled = true;
+    this.blackHolePlayerCaptureStartedAt = null;
+    this.blackHoleConsumedObjectsThisRun = 0;
+    this.debugBlackHoleGrowthOffsetMs = 0;
     this.areDebugBlackHoleProjectionLensLayersEnabled = true;
     this.debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
     this.debugAddBlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
@@ -3838,6 +3946,7 @@ export class GameScene extends Phaser.Scene {
     this.createUpgradeOverlay();
     this.blackHoleDebugControls.create();
     this.createDebugMenu();
+    this.createSecretControlOverlay();
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateDebugText(0);
@@ -3897,6 +4006,7 @@ export class GameScene extends Phaser.Scene {
     this.progressionState.weaponMkLevels = { ...this.weaponMkLevels };
     this.progressionState.permanentUpgradeLevels = { ...this.permanentUpgradeLevels };
     this.progressionState.activePermanentUpgradeLevels = { ...this.activePermanentUpgradeLevels };
+    this.progressionState.secretControlUnlocked = this.progressionState.secretControlUnlocked === true;
     saveProgressionState(this.progressionState);
   }
 
@@ -3941,8 +4051,10 @@ export class GameScene extends Phaser.Scene {
 
   private showSplashScreen(): void {
     this.gameFlowState = 'splash';
+    this.secretControlOverlay?.destroy();
     this.children.removeAll(true);
     this.debugMenuHost = undefined;
+    this.secretControlOverlay = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
     this.shipSelectScreen = undefined;
@@ -3960,6 +4072,21 @@ export class GameScene extends Phaser.Scene {
     this.createDebugMenu();
   }
 
+  private createSecretControlOverlay(): void {
+    this.secretControlOverlay?.destroy();
+    this.secretControlOverlay = createSecretControlOverlay(this, {
+      close: () => this.closeSecretControlOverlay(),
+      restoreHull: () => this.restorePlayerHull(),
+      refillFuel: () => this.refillFuel(),
+      emergencyTeleport: () => this.debugEmergencyTeleportSafe(),
+      spawnScrapBurst: () => this.debugSpawnSecretScrapBurst(),
+      toggleTrainingInvulnerability: () => this.toggleSecretTrainingInvulnerability(),
+      spawnEnemyWave: () => this.debugSpawnSecretEnemyWave(),
+      moveBlackHoleNear: () => this.moveBlackHoleNearPlayer((this.blackHole?.captureRadius ?? 200) + 80),
+      moveBlackHoleFar: () => this.moveBlackHoleNearPlayer(720)
+    });
+  }
+
   private showMainMenu(): void {
     if (this.autoRunDiagnostics.isActive()) {
       this.autoRunDiagnostics.endRun('main-menu');
@@ -3967,8 +4094,10 @@ export class GameScene extends Phaser.Scene {
 
     this.gameFlowState = 'command';
     this.deathShards = clearDeathShardsSystem(this.deathShards);
+    this.secretControlOverlay?.destroy();
     this.children.removeAll(true);
     this.debugMenuHost = undefined;
+    this.secretControlOverlay = undefined;
     this.mainMenuScreen = undefined;
     this.shopScreen = undefined;
     this.shipSelectScreen = undefined;
@@ -6132,7 +6261,9 @@ export class GameScene extends Phaser.Scene {
       this.debugBlackHoleDamageRadiusScale,
       this.debugBlackHoleVisualScale,
       this.debugBlackHoleCoreScale,
-      shouldMove
+      shouldMove,
+      this.getBlackHoleGrowthElapsedSeconds(time),
+      this.getActiveBlackHoleVacuumTuning()
     );
     this.updateToroidalRenderMirror(
       blackHole.body,
@@ -6156,38 +6287,49 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const playerWhirlpoolTuning = this.getPlayerBlackHoleWhirlpoolTuning();
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    const result = this.blackHole.applyVacuumToVelocity(
       this.player.x,
       this.player.y,
       this.playerVelocity,
       deltaSeconds,
-      {
-        ...playerWhirlpoolTuning,
-        maxSpeed: this.getPlayerOverspeedSafetyLimit()
-      },
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning(true)
+      this.debugBlackHoleVacuumTuning.playerPullStrength
     );
 
     if (result.isInsideEventHorizon) {
+      this.blackHolePlayerCaptureStartedAt = null;
+      this.killPlayer();
       return;
     }
 
-    if (
-      this.debugState.blackHoleFieldDamageEnabled &&
-      result.isInsideDamage &&
-      time >= this.nextBlackHolePlayerDamageAt
-    ) {
-      const damage = this.getBlackHoleTidalDamage(
-        result.proximity,
-        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_BASE,
-        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_EXTRA,
-        BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS
-      );
+    if (!this.isBlackHolePlayerCaptureEnabled) {
+      this.blackHolePlayerCaptureStartedAt = null;
+      return;
+    }
 
-      this.damagePlayer(damage, time, this.player.x, this.player.y, { source: 'blackHole' });
-      this.nextBlackHolePlayerDamageAt = time + BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS;
+    const escapeRadius = this.blackHole.captureRadius + 30;
+    if (this.blackHolePlayerCaptureStartedAt !== null && result.distance > escapeRadius) {
+      this.blackHolePlayerCaptureStartedAt = null;
+      return;
+    }
+
+    if (!result.isInsideCapture) {
+      return;
+    }
+
+    this.blackHolePlayerCaptureStartedAt ??= time;
+    const captureAge = time - this.blackHolePlayerCaptureStartedAt;
+    const captureProgress = Phaser.Math.Clamp(
+      captureAge / this.debugBlackHoleVacuumTuning.playerCaptureDurationMs,
+      0,
+      1
+    );
+    const brake = Phaser.Math.Linear(0.96, 0.78, captureProgress);
+    this.playerVelocity.scale(brake);
+
+    if (captureAge >= this.debugBlackHoleVacuumTuning.playerCaptureDurationMs) {
+      this.blackHolePlayerCaptureStartedAt = null;
+      this.killPlayer();
     }
   }
 
@@ -6196,44 +6338,24 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    void time;
+    if (!this.isBlackHoleObjectConsumptionEnabled) {
+      return false;
+    }
+
+    const result = this.blackHole.applyVacuumToVelocity(
       asteroid.body.x,
       asteroid.body.y,
       asteroid.velocity,
       deltaSeconds,
-      {
-        ...BLACK_HOLE_ASTEROID_WHIRLPOOL_TUNING,
-        maxSpeed: this.getGlobalMaxSpeed()
-      },
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning()
+      this.debugBlackHoleVacuumTuning.objectPullStrength
     );
 
     if (result.isInsideEventHorizon) {
       this.consumeBasicAsteroid(index);
+      this.blackHoleConsumedObjectsThisRun += 1;
       return true;
-    }
-
-    if (
-      this.debugState.blackHoleFieldDamageEnabled &&
-      result.isInsideDamage &&
-      time >= asteroid.nextBlackHoleDamageAt
-    ) {
-      this.damageAsteroid(asteroid, this.getBlackHoleTidalDamage(
-        result.proximity,
-        BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE,
-        BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_EXTRA,
-        BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
-      ), 'blackHole', false);
-      asteroid.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
-
-      if (asteroid.hp <= 0) {
-        this.destroyBasicAsteroid(index, false, 'blackHoleAsteroid');
-        return true;
-      }
-
-      this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
     }
 
     return false;
@@ -6277,18 +6399,18 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const tuning = this.getLiveEnemyBlackHoleTuning(enemy);
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    void time;
+    if (!this.isBlackHoleObjectConsumptionEnabled) {
+      return false;
+    }
+
+    const result = this.blackHole.applyVacuumToVelocity(
       enemy.body.x,
       enemy.body.y,
       enemy.blackHoleVelocity,
       deltaSeconds,
-      {
-        ...tuning,
-        maxSpeed: this.getGlobalMaxSpeed()
-      },
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning()
+      this.debugBlackHoleVacuumTuning.objectPullStrength
     );
 
     dampVelocityChannel(enemy.blackHoleVelocity, BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds);
@@ -6296,34 +6418,8 @@ export class GameScene extends Phaser.Scene {
     if (result.isInsideEventHorizon) {
       this.destroyLiveEnemyWithoutRewards(enemy);
       this.liveEnemies.splice(index, 1);
+      this.blackHoleConsumedObjectsThisRun += 1;
       return true;
-    }
-
-    if (
-      this.debugState.blackHoleFieldDamageEnabled &&
-      result.isInsideDamage &&
-      time >= enemy.nextBlackHoleDamageAt
-    ) {
-      this.damageLiveEnemy(
-        enemy,
-        this.getBlackHoleTidalDamage(
-          result.proximity,
-          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
-          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
-          BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
-        ),
-        'blackHole',
-        false
-      );
-      enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
-
-      if (enemy.hp <= 0) {
-        this.destroyLiveEnemyWithoutRewards(enemy);
-        this.liveEnemies.splice(index, 1);
-        return true;
-      }
-
-      this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
     }
 
     return false;
@@ -6354,17 +6450,19 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    void time;
+    void tuning;
+    if (!this.isBlackHoleObjectConsumptionEnabled) {
+      return false;
+    }
+
+    const result = this.blackHole.applyVacuumToVelocity(
       enemy.body.x,
       enemy.body.y,
       enemy.blackHoleVelocity,
       deltaSeconds,
-      {
-        ...tuning,
-        maxSpeed: this.getGlobalMaxSpeed()
-      },
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning()
+      this.debugBlackHoleVacuumTuning.objectPullStrength
     );
 
     dampVelocityChannel(enemy.blackHoleVelocity, BLACK_HOLE_ENEMY_FIELD_DAMPING, deltaSeconds);
@@ -6372,34 +6470,8 @@ export class GameScene extends Phaser.Scene {
     if (result.isInsideEventHorizon) {
       this.destroyEnemyWithoutRewards(enemy);
       enemies.splice(index, 1);
+      this.blackHoleConsumedObjectsThisRun += 1;
       return true;
-    }
-
-    if (
-      this.debugState.blackHoleFieldDamageEnabled &&
-      result.isInsideDamage &&
-      time >= enemy.nextBlackHoleDamageAt
-    ) {
-      this.damageEnemy(
-        enemy,
-        this.getBlackHoleTidalDamage(
-          result.proximity,
-          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_BASE,
-          BLACK_HOLE_ENEMY_TIDAL_DAMAGE_EXTRA,
-          BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS
-        ),
-        'blackHole',
-        false
-      );
-      enemy.nextBlackHoleDamageAt = time + BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS;
-
-      if (enemy.hp <= 0) {
-        this.destroyEnemyWithoutRewards(enemy);
-        enemies.splice(index, 1);
-        return true;
-      }
-
-      this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
     }
 
     return false;
@@ -6699,21 +6771,22 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    if (!this.isBlackHoleObjectConsumptionEnabled) {
+      return false;
+    }
+
+    const result = this.blackHole.applyVacuumToVelocity(
       debris.body.x,
       debris.body.y,
       debris.velocity,
       deltaSeconds,
-      {
-        ...BLACK_HOLE_DEBRIS_WHIRLPOOL_TUNING,
-        maxSpeed: this.getGlobalMaxSpeed()
-      },
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning()
+      this.debugBlackHoleVacuumTuning.objectPullStrength
     );
 
     if (result.isInsideEventHorizon) {
       this.destroyEnemyWreckageDebris(debris);
+      this.blackHoleConsumedObjectsThisRun += 1;
       return true;
     }
 
@@ -7055,18 +7128,22 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    const result = this.blackHole.applyWhirlpoolToVelocity(
+    if (!this.isBlackHoleObjectConsumptionEnabled) {
+      return false;
+    }
+
+    const result = this.blackHole.applyVacuumToVelocity(
       scrap.body.x,
       scrap.body.y,
       scrap.velocity,
       deltaSeconds,
-      BLACK_HOLE_SCRAP_WHIRLPOOL_TUNING,
       this.arena,
-      this.getActiveDebugBlackHoleFieldTuning()
+      this.debugBlackHoleVacuumTuning.objectPullStrength
     );
 
     if (result.isInsideEventHorizon) {
       this.destroyScrapPickup(scrap);
+      this.blackHoleConsumedObjectsThisRun += 1;
       return true;
     }
 
@@ -7622,6 +7699,26 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private updateSecretControlInput(_time: number): void {
+    if (!this.secretControlOverlay || !this.progressionState.secretControlUnlocked) {
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.secretControlKey)) {
+      if (!this.isSecretControlOverlayAvailable()) {
+        this.closeSecretControlOverlay();
+        return;
+      }
+
+      this.secretControlOverlay.toggle();
+      this.refreshSecretControlOverlay();
+    }
+
+    if (this.secretControlOverlay.isOpen() && !this.isSecretControlOverlayAvailable()) {
+      this.closeSecretControlOverlay();
+    }
+  }
+
   private isDebugMenuAvailable(): boolean {
     return import.meta.env.DEV || this.debugState.collisionDebugEnabled;
   }
@@ -7630,11 +7727,35 @@ export class GameScene extends Phaser.Scene {
     return this.gameFlowState === 'running' || this.gameFlowState === 'results';
   }
 
+  private isSecretControlOverlayAvailable(): boolean {
+    return (
+      this.gameFlowState === 'running' &&
+      !this.isUpgradeOverlayOpen &&
+      !this.isPauseMenuOpen &&
+      !(this.debugMenuHost?.isOpen() ?? false) &&
+      !this.isPlayerDead &&
+      Boolean(this.player)
+    );
+  }
+
+  private closeSecretControlOverlay(): void {
+    this.secretControlOverlay?.close();
+  }
+
+  private refreshSecretControlOverlay(): void {
+    if (!this.secretControlOverlay?.isOpen()) {
+      return;
+    }
+
+    this.secretControlOverlay.update(this.getSecretControlOverlayValues());
+  }
+
   private openDebugMenu(time: number): void {
     if (!this.debugMenuHost?.isCreated() || this.debugMenuHost.isOpen() || this.isUpgradeOverlayOpen) {
       return;
     }
 
+    this.closeSecretControlOverlay();
     this.debugMenuHost.open();
     this.isDebugMenuRefreshDirty = true;
     this.refreshDebugMenu(time, true);
@@ -7856,6 +7977,25 @@ export class GameScene extends Phaser.Scene {
 
   private getActiveDebugBlackHoleProjectionLensLayerState(): boolean {
     return this.areDebugBlackHoleProjectionLensLayersEnabled;
+  }
+
+  private getBlackHoleGrowthElapsedSeconds(time = this.time.now): number {
+    return Math.max(0, this.getSurvivalElapsedMs(time) + this.debugBlackHoleGrowthOffsetMs) / 1000;
+  }
+
+  private getActiveBlackHoleVacuumTuning(): BlackHoleVacuumTuning {
+    return {
+      ...this.debugBlackHoleVacuumTuning,
+      warningMargin: this.areBlackHoleWarningVisualsEnabled ? this.debugBlackHoleVacuumTuning.warningMargin : 0
+    };
+  }
+
+  private getBlackHoleCaptureTimerRemainingMs(time = this.time.now): number {
+    if (this.blackHolePlayerCaptureStartedAt === null) {
+      return 0;
+    }
+
+    return Math.max(0, this.debugBlackHoleVacuumTuning.playerCaptureDurationMs - (time - this.blackHolePlayerCaptureStartedAt));
   }
 
   private getActiveDebugBlackHoleFieldTuning(isPlayer = false): BlackHoleFieldTuningConfig {
@@ -8244,6 +8384,41 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerDamageInvulnerabilityMs(): number {
     return PLAYER_DAMAGE_INVULNERABILITY_MS + this.getResolvedPlayerStats().recovery;
+  }
+
+  private moveBlackHoleNearPlayer(distance: number): void {
+    if (!this.blackHole || !this.player) {
+      return;
+    }
+
+    const angle = this.player.rotation - Math.PI / 2;
+    this.blackHole.body.x = wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width);
+    this.blackHole.body.y = wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height);
+  }
+
+  private adjustBlackHoleVacuumTuning(key: keyof BlackHoleVacuumTuning, delta: number): void {
+    const current = this.debugBlackHoleVacuumTuning[key];
+    const next = current + delta;
+    const minimums: Record<keyof BlackHoleVacuumTuning, number> = {
+      baseEventHorizonRadius: 1,
+      maxEventHorizonRadius: 1,
+      growthPerMinute: 0,
+      captureMargin: 0,
+      warningMargin: 0,
+      playerCaptureDurationMs: 250,
+      playerPullStrength: 0,
+      objectPullStrength: 0
+    };
+    const value = Math.max(minimums[key], next);
+
+    this.debugBlackHoleVacuumTuning = {
+      ...this.debugBlackHoleVacuumTuning,
+      [key]: Number(value.toFixed(key.endsWith('Ms') ? 0 : 1))
+    };
+
+    if (this.debugBlackHoleVacuumTuning.maxEventHorizonRadius < this.debugBlackHoleVacuumTuning.baseEventHorizonRadius) {
+      this.debugBlackHoleVacuumTuning.maxEventHorizonRadius = this.debugBlackHoleVacuumTuning.baseEventHorizonRadius;
+    }
   }
 
   private adjustBlackHoleLensOrbitSpeed(delta: number): void {
@@ -9528,7 +9703,7 @@ export class GameScene extends Phaser.Scene {
 
     this.applyPlayerBodyImpactDamageToEnemy(contact.enemy, contact.normal, time);
 
-    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (!this.debugPlayerCollisionDamageImmune && impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
       this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'enemy' });
@@ -9544,7 +9719,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (contactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (!this.debugPlayerCollisionDamageImmune && contactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitAsteroidImpactExplosion(impact.x, impact.y, contact.asteroid.tier);
       this.damagePlayer(contactDamage, time, impact.x, impact.y, { source: 'asteroid' });
@@ -9562,7 +9737,7 @@ export class GameScene extends Phaser.Scene {
 
     this.applyPlayerBodyImpactDamageToDebris(contact.debris, contact.normal, time);
 
-    if (impactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (!this.debugPlayerCollisionDamageImmune && impactDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
       this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'debris' });
@@ -10600,6 +10775,158 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
   }
 
+  private debugHealPlayer(amount: number): void {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead || amount <= 0) {
+      return;
+    }
+
+    this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + amount);
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private debugDamagePlayer(amount: number): void {
+    if (!this.isGameplayWorldActive() || this.isPlayerDead || amount <= 0) {
+      return;
+    }
+
+    const previousDebugInvulnerable = this.debugState.playerInvulnerable;
+    const previousInvulnerableUntil = this.playerInvulnerableUntil;
+    this.debugState.playerInvulnerable = false;
+    this.playerInvulnerableUntil = 0;
+    this.damagePlayer(amount, this.time.now, this.player.x, this.player.y, {
+      bypassShield: true,
+      bypassDefense: true,
+      source: 'enemy'
+    });
+    this.debugState.playerInvulnerable = previousDebugInvulnerable;
+    this.playerInvulnerableUntil = previousDebugInvulnerable ? Number.MAX_SAFE_INTEGER : previousInvulnerableUntil;
+  }
+
+  private debugStopPlayerVelocity(): void {
+    this.playerVelocity.set(0, 0);
+    this.clearRammingShieldDashBurst();
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private debugTeleportPlayer(target: DebugPlayerTeleportTarget): void {
+    if (!this.player) {
+      return;
+    }
+
+    if (target === 'mission' && this.missionRuntime) {
+      this.debugTeleportPlayerTo(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
+      return;
+    }
+
+    if (target === 'extraction') {
+      this.debugTeleportPlayerTo(this.extractionPosition.x, this.extractionPosition.y);
+      return;
+    }
+
+    if (target === 'blackHole' && this.blackHole) {
+      const distance = (this.blackHole.captureRadius || this.blackHole.eventHorizonRadius) + 80;
+      this.debugTeleportPlayerTo(this.blackHole.body.x + distance, this.blackHole.body.y);
+      return;
+    }
+
+    const center = getArenaCenter(this.arena);
+    this.debugTeleportPlayerTo(center.x, center.y);
+  }
+
+  private debugNudgePlayer(dx: number, dy: number): void {
+    if (!this.player) {
+      return;
+    }
+
+    this.debugTeleportPlayerTo(this.player.x + dx, this.player.y + dy, false);
+  }
+
+  private debugTeleportPlayerTo(x: number, y: number, stopVelocity = true): void {
+    if (!this.player) {
+      return;
+    }
+
+    this.player.setPosition(wrapCoordinate(x, this.arena.width), wrapCoordinate(y, this.arena.height));
+    if (stopVelocity) {
+      this.debugStopPlayerVelocity();
+    }
+    this.resetBackgroundPlayerTracking();
+    this.cameras.main.centerOn(this.player.x, this.player.y);
+    this.updateGameplayHud(this.time.now);
+    this.updateMinimap();
+  }
+
+  private debugAddBankedUpgrade(amount: number): void {
+    if (amount <= 0) {
+      return;
+    }
+
+    this.bankedUpgrades += Math.floor(amount);
+    this.updateGameplayHud(this.time.now);
+    this.updateUpgradeButton();
+  }
+
+  private debugResetWeaponCooldowns(): void {
+    this.playerWeapons.nextAutoWeaponFireAt = 0;
+    this.playerWeapons.nextPrimaryWeaponFireAt = 0;
+    this.playerWeapons.nextSecondaryWeaponFireAt = 0;
+  }
+
+  private debugRefillRammingShield(): void {
+    if (!this.hasRammingShield()) {
+      return;
+    }
+
+    this.ensureRammingShieldRuntime();
+    this.rammingShieldState.hp = this.getRammingShieldMaxHp();
+    this.rammingShieldState.dashCharges = this.getRammingShieldStats().dashMaxCharges;
+    this.rammingShieldState.nextDashChargeAt = 0;
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private unlockSecretControls(): void {
+    if (this.progressionState.secretControlUnlocked) {
+      return;
+    }
+
+    this.progressionState.secretControlUnlocked = true;
+    this.saveProgression();
+  }
+
+  private toggleSecretTrainingInvulnerability(): void {
+    this.debugState.playerInvulnerable = !this.debugState.playerInvulnerable;
+    this.playerInvulnerableUntil = this.debugState.playerInvulnerable ? Number.MAX_SAFE_INTEGER : 0;
+    this.refreshSecretControlOverlay();
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private debugEmergencyTeleportSafe(): void {
+    this.debugTeleportPlayer('center');
+  }
+
+  private debugSpawnSecretScrapBurst(): void {
+    this.addRunScrap(100);
+    for (let i = 0; i < 4; i += 1) {
+      this.spawnDebugScrapPickup();
+    }
+  }
+
+  private debugSpawnSecretEnemyWave(): void {
+    this.spawnDebugEncounter('strike-wing');
+  }
+
+  private getSecretControlOverlayValues(): SecretControlOverlayValues {
+    return {
+      hull: this.playerHull,
+      maxHull: this.getPlayerMaxHull(),
+      fuel: this.fuel,
+      maxFuel: RUN_FUEL_MAX,
+      runScrapTotal: this.runScrapTotal,
+      trainingInvulnerable: this.debugState.playerInvulnerable,
+      blackHoleActive: Boolean(this.blackHole)
+    };
+  }
+
   private payRunCredits(): void {
     if (this.hasPaidRunCredits) {
       return;
@@ -11487,7 +11814,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     const pointer = this.input.activePointer;
-    const isPointerBlockedByDebugMenu = this.debugMenuHost?.containsPointer(pointer) ?? false;
+    const isPointerBlockedByDebugMenu =
+      (this.debugMenuHost?.containsPointer(pointer) ?? false) ||
+      (this.secretControlOverlay?.containsPointer(pointer) ?? false);
     const activeAutoWeapon = this.getEffectiveAutoWeaponDefinition();
     if (activeAutoWeapon && time >= this.playerWeapons.nextAutoWeaponFireAt) {
       const result = this.usePlayerWeapon(activeAutoWeapon, 'auto', time);
@@ -11648,7 +11977,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private applyProjectileGravity(projectile: PlayerProjectile | EnemyProjectile, deltaSeconds: number): void {
-    if (!this.blackHole) {
+    if (!this.blackHole || !this.isBlackHoleObjectConsumptionEnabled) {
       return;
     }
 
@@ -11660,11 +11989,14 @@ export class GameScene extends Phaser.Scene {
     deltaSeconds: number,
     mirrorViewRadius: number
   ): boolean {
-    if (!this.blackHole) {
+    if (!this.blackHole || !this.isBlackHoleObjectConsumptionEnabled) {
       return false;
     }
 
     const isConsumed = this.blackHole.updateCapturedProjectile(projectile, deltaSeconds, this.arena);
+    if (isConsumed) {
+      this.blackHoleConsumedObjectsThisRun += 1;
+    }
     this.updateToroidalRenderMirror(projectile.body, projectile.wrapMirrorBody, mirrorViewRadius);
 
     return isConsumed;

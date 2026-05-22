@@ -17,7 +17,7 @@ export interface DebugMenuController {
   destroy: () => void;
 }
 
-type DebugTabId = 'run' | 'ship' | 'weapons' | 'physics' | 'collision' | 'spawns' | 'effects' | 'blackHole' | 'visuals';
+type DebugTabId = 'run' | 'player' | 'ship' | 'weapons' | 'physics' | 'collision' | 'spawns' | 'effects' | 'blackHole' | 'visuals';
 
 interface DebugTab {
   id: DebugTabId;
@@ -49,15 +49,15 @@ interface DebugNumberInputConfig {
   step?: number;
 }
 
-const PANEL_WIDTH = 344;
+const PANEL_WIDTH = 560;
 const PANEL_PADDING = 14;
-const COLUMN_WIDTH = 316;
+const COLUMN_WIDTH = 532;
 const BUTTON_HEIGHT = 24;
 const BUTTON_GAP = 6;
 const ROW_GAP = 8;
 const VALUE_LINE_HEIGHT = 15;
 const SECTION_TITLE_HEIGHT = 20;
-const TOOLTIP_WIDTH = 304;
+const TOOLTIP_WIDTH = 420;
 const TOOLTIP_PADDING = 8;
 const TOOLTIP_GAP = 10;
 const TAB_HEIGHT = 22;
@@ -65,6 +65,7 @@ const TAB_GAP = 5;
 const CONTENT_TOP = 102;
 const TABS: DebugTab[] = [
   { id: 'run', label: 'Overview' },
+  { id: 'player', label: 'Player' },
   { id: 'ship', label: 'Ship' },
   { id: 'weapons', label: 'Weapons' },
   { id: 'physics', label: 'Physics' },
@@ -77,23 +78,45 @@ const TABS: DebugTab[] = [
 
 const DEBUG_TOOLTIPS: Record<string, string> = {
   close: 'Close the debug panel. Current debug tuning values remain active.',
-  'tab-run': 'Live run overview, diagnostics, player controls, fuel, and economy tools.',
+  'tab-run': 'Live run overview, diagnostics, economy, and tuning reset tools.',
+  'tab-player': 'Direct player controls for hull, fuel, movement, teleports, progression, and secret-control testing.',
   'tab-ship': 'Ship readouts for current hull, movement stats, shields, and projectiles.',
   'tab-weapons': 'Weapon tuning controls for temporary damage, fire-rate, and cooldown testing.',
   'tab-physics': 'Physics tuning for player control, enemy movement, and asteroid collision feel.',
   'tab-collision': 'Simple gameplay hitbox scales for player, enemies, asteroids, and debris.',
   'tab-spawns': 'Spawn and clear enemies, asteroids, debris, and scrap for encounter testing.',
   'tab-effects': 'Death shard effect tuning and quick effect tests.',
-  'tab-blackHole': 'Black hole debug controls for radii, field forces, damage, and PNG lens layers.',
+  'tab-blackHole': 'Black hole death-vacuum controls for growth, capture, consumption, and radius diagnostics.',
   'tab-visuals': 'Combat feedback, background, and parallax controls for visual testing.',
   'run-overview': 'Current run summary: ship, weapon, hull, fuel, XP, entities, projectiles, and time.',
   'run-state': 'Shows whether the debug pause toggle is currently stopping game updates.',
   player: 'Shows player hull and debug invulnerability state.',
+  'player-state': 'Full player state: hull, position, velocity, mission/extraction distance, debug immunity, and secret-control unlock state.',
   scrap: 'Shows active scrap pickups, current run scrap, and total credits.',
   'debug-pause': 'Toggle debug pause. Use it to freeze gameplay while inspecting state.',
   'restore-hull': 'Restore the player hull to full for survival and collision testing.',
+  'heal-player-small': 'Add a small hull repair without exceeding maximum hull.',
+  'damage-player-small': 'Apply a small debug damage hit that bypasses defense.',
+  'damage-player-large': 'Apply a larger debug damage hit that bypasses defense.',
   'player-invuln': 'Toggle debug invulnerability. Useful for testing hazards without ending the run.',
+  'player-collision-immune': 'Toggle contact damage immunity while keeping collision movement and knockback active.',
   'kill-player': 'Immediately defeat the player to test death, results, and restart behavior.',
+  'player-stop': 'Set player velocity to zero and cancel active dash burst movement.',
+  'teleport-center': 'Teleport the player to arena center.',
+  'teleport-mission': 'Teleport the player to the active mission objective.',
+  'teleport-extraction': 'Teleport the player to the extraction beacon.',
+  'teleport-black-hole': 'Teleport the player near the black hole capture radius.',
+  'nudge-up': 'Move the player upward without changing velocity.',
+  'nudge-down': 'Move the player downward without changing velocity.',
+  'nudge-left': 'Move the player left without changing velocity.',
+  'nudge-right': 'Move the player right without changing velocity.',
+  'add-xp-small': 'Grant a small amount of run XP.',
+  'add-xp-large': 'Grant enough XP to quickly test upgrades.',
+  'add-banked-upgrade': 'Add one banked upgrade choice to the current run.',
+  'clear-banked-upgrades': 'Remove all banked upgrade choices from the current run.',
+  'reset-weapon-cooldowns': 'Make auto, left-click, and right-click weapon slots ready immediately.',
+  'refill-ramming-shield': 'Restore Ramming Shield HP and dash charges when the shield is equipped.',
+  'secret-controls-unlock': 'Unlock the late-game secret controls overlay in local progression for testing.',
   fuel: 'Shows current run fuel and debug drain settings. Default fuel behavior is timer drain with a small thrust surcharge.',
   'fuel-refill': 'Refill fuel to maximum for route, extraction, and emergency-thrust testing.',
   'fuel-empty': 'Set fuel to zero to test emergency thrust behavior.',
@@ -117,6 +140,8 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'clear-scrap': 'Remove active scrap pickups from the scene.',
   'add-scrap': 'Add 100 run scrap without spawning pickups.',
   'add-credits': 'Add 100 permanent credits for shop and economy testing.',
+  'player-add-scrap': 'Add 100 run scrap from the player controls tab.',
+  'player-add-credits': 'Add 100 permanent credits from the player controls tab.',
   'ship-stats': 'Live player ship stats after ship selection, upgrades, and debug physics tuning.',
   'ship-loadout-interceptor': 'Editable Interceptor defaults for live movement and hull tuning.',
   'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, hull, and hit-radius tuning.',
@@ -150,6 +175,8 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   projectiles: 'Shows active player and enemy projectile counts.',
   'clear-player-projectiles': 'Remove active player projectiles without changing enemies or rewards.',
   'clear-enemy-projectiles': 'Remove active enemy projectiles without changing enemies.',
+  'player-clear-player-projectiles': 'Remove active player projectiles from the player controls tab.',
+  'player-clear-enemy-projectiles': 'Remove active enemy projectiles from the player controls tab.',
   weapon: 'Current temporary weapon tuning multipliers.',
   'damage-down': 'Decrease weapon damage multiplier for debug testing.',
   'damage-up': 'Increase weapon damage multiplier for debug testing.',
@@ -276,11 +303,11 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   debris: 'Shows active debris count.',
   'spawn-debris': 'Spawn debris for collision and cleanup testing.',
   'clear-debris': 'Remove active debris.',
-  'black-hole': 'Shows black hole radii, field damage, and collision visualization state.',
+  'black-hole': 'Shows the current death-vacuum state, growth, capture timer, and consumption count.',
   'black-hole-radii': 'Toggle black hole radius guide rendering.',
-  'black-hole-field-damage': 'Toggle damage from the black hole field.',
+  'black-hole-field-damage': 'Legacy field damage toggle. The death-vacuum model no longer uses tidal field damage.',
   'collision-debug': 'Toggle collision debug visuals, including black hole collision guides.',
-  'black-hole-field': 'Current black hole field force, radius, drag, and visual tuning.',
+  'black-hole-field': 'Current black hole vacuum radius, growth, capture, and pull tuning.',
   'field-influence-down': 'Decrease black hole influence radius.',
   'field-influence-up': 'Increase black hole influence radius.',
   'field-damage-down': 'Decrease black hole damage radius.',
@@ -446,6 +473,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   createTabButtons();
   buildRunTab();
+  buildPlayerTab();
   buildShipTab();
   buildWeaponsTab();
   buildPhysicsTab();
@@ -473,7 +501,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   function createTabButtons(): void {
     const tabX = panelX + PANEL_PADDING;
     const tabY = panelY + 42;
-    const widths = [72, 45, 76, 67, 72, 62, 66, 91, 62];
+    const widths = [72, 62, 45, 76, 67, 72, 62, 66, 91, 62];
     let x = tabX;
     let y = tabY;
 
@@ -529,23 +557,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('run', 'preset-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset all debug tuning', config.callbacks.resetDebugTuning);
     y += BUTTON_HEIGHT + ROW_GAP;
 
-    y = addSection('run', y, 'Player');
-    addValue('player', 'run', y, VALUE_LINE_HEIGHT * 2);
-    y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-    addButton('run', 'restore-hull', panelX + PANEL_PADDING, y, 101, 'Restore', config.callbacks.restorePlayerHull);
-    addButton('run', 'player-invuln', panelX + PANEL_PADDING + 108, y, 101, 'Invuln', config.callbacks.togglePlayerInvulnerability);
-    addButton('run', 'kill-player', panelX + PANEL_PADDING + 216, y, 100, 'Kill', config.callbacks.killPlayer);
-    y += BUTTON_HEIGHT + ROW_GAP;
-
-    y = addSection('run', y, 'Fuel');
-    addValue('fuel', 'run', y, VALUE_LINE_HEIGHT * 3);
-    y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-    addButton('run', 'fuel-refill', panelX + PANEL_PADDING, y, 74, 'Full', config.callbacks.refillFuel);
-    addButton('run', 'fuel-empty', panelX + PANEL_PADDING + 80, y, 74, 'Empty', config.callbacks.emptyFuel);
-    addButton('run', 'fuel-drain-toggle', panelX + PANEL_PADDING + 162, y, 74, 'Drain', config.callbacks.toggleFuelDrain);
-    addButton('run', 'fuel-mode-toggle', panelX + PANEL_PADDING + 242, y, 74, 'Mode', config.callbacks.toggleFuelDrainMode);
-    y += BUTTON_HEIGHT + ROW_GAP;
-
     y = addSection('run', y, 'Economy');
     addValue('scrap', 'run', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
@@ -557,6 +568,66 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('run', 'reroll-cost-mode', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reroll cost mode', config.callbacks.toggleRerollDebugCost);
     setTabContentHeight('run', y + BUTTON_HEIGHT + PANEL_PADDING);
+  }
+
+  function buildPlayerTab(): void {
+    let y = CONTENT_TOP;
+    y = addSection('player', y, 'Player State');
+    addValue('player-state', 'player', y, VALUE_LINE_HEIGHT * 8);
+    y += VALUE_LINE_HEIGHT * 8 + ROW_GAP;
+
+    y = addSection('player', y, 'Survival');
+    addButton('player', 'restore-hull', panelX + PANEL_PADDING, y, 101, 'Restore hull', config.callbacks.restorePlayerHull);
+    addButton('player', 'heal-player-small', panelX + PANEL_PADDING + 108, y, 101, 'Heal +10', () => config.callbacks.healPlayer(10));
+    addButton('player', 'kill-player', panelX + PANEL_PADDING + 216, y, 100, 'Kill player', config.callbacks.killPlayer);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'damage-player-small', panelX + PANEL_PADDING, y, 101, 'Damage 5', () => config.callbacks.damagePlayerForDebug(5));
+    addButton('player', 'damage-player-large', panelX + PANEL_PADDING + 108, y, 101, 'Damage 25', () => config.callbacks.damagePlayerForDebug(25));
+    addButton('player', 'player-invuln', panelX + PANEL_PADDING + 216, y, 100, 'Invulnerable', config.callbacks.togglePlayerInvulnerability);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'player-collision-immune', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Contact damage immunity', config.callbacks.togglePlayerCollisionDamageImmunity);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('player', y, 'Movement And Teleport');
+    addButton('player', 'player-stop', panelX + PANEL_PADDING, y, 101, 'Stop', config.callbacks.stopPlayerVelocity);
+    addButton('player', 'teleport-center', panelX + PANEL_PADDING + 108, y, 101, 'Center', () => config.callbacks.teleportPlayer('center'));
+    addButton('player', 'teleport-black-hole', panelX + PANEL_PADDING + 216, y, 100, 'Black hole', () => config.callbacks.teleportPlayer('blackHole'));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'teleport-mission', panelX + PANEL_PADDING, y, 154, 'Mission objective', () => config.callbacks.teleportPlayer('mission'));
+    addButton('player', 'teleport-extraction', panelX + PANEL_PADDING + 162, y, 154, 'Extraction beacon', () => config.callbacks.teleportPlayer('extraction'));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'nudge-left', panelX + PANEL_PADDING, y, 74, 'Left', () => config.callbacks.nudgePlayer(-180, 0));
+    addButton('player', 'nudge-right', panelX + PANEL_PADDING + 80, y, 74, 'Right', () => config.callbacks.nudgePlayer(180, 0));
+    addButton('player', 'nudge-up', panelX + PANEL_PADDING + 162, y, 74, 'Up', () => config.callbacks.nudgePlayer(0, -180));
+    addButton('player', 'nudge-down', panelX + PANEL_PADDING + 242, y, 74, 'Down', () => config.callbacks.nudgePlayer(0, 180));
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('player', y, 'Fuel And Weapons');
+    addValue('fuel', 'player', y, VALUE_LINE_HEIGHT * 3);
+    y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
+    addButton('player', 'fuel-refill', panelX + PANEL_PADDING, y, 74, 'Full fuel', config.callbacks.refillFuel);
+    addButton('player', 'fuel-empty', panelX + PANEL_PADDING + 80, y, 74, 'Empty', config.callbacks.emptyFuel);
+    addButton('player', 'fuel-drain-toggle', panelX + PANEL_PADDING + 162, y, 74, 'Drain', config.callbacks.toggleFuelDrain);
+    addButton('player', 'fuel-mode-toggle', panelX + PANEL_PADDING + 242, y, 74, 'Mode', config.callbacks.toggleFuelDrainMode);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'player-clear-player-projectiles', panelX + PANEL_PADDING, y, 154, 'Clear player shots', config.callbacks.clearPlayerProjectiles);
+    addButton('player', 'player-clear-enemy-projectiles', panelX + PANEL_PADDING + 162, y, 154, 'Clear enemy shots', config.callbacks.clearEnemyProjectiles);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'reset-weapon-cooldowns', panelX + PANEL_PADDING, y, 154, 'Ready weapons', config.callbacks.resetWeaponCooldowns);
+    addButton('player', 'refill-ramming-shield', panelX + PANEL_PADDING + 162, y, 154, 'Refill shield', config.callbacks.refillRammingShield);
+    y += BUTTON_HEIGHT + ROW_GAP;
+
+    y = addSection('player', y, 'Progression');
+    addButton('player', 'add-xp-small', panelX + PANEL_PADDING, y, 101, '+25 XP', () => config.callbacks.addPlayerXp(25));
+    addButton('player', 'add-xp-large', panelX + PANEL_PADDING + 108, y, 101, '+250 XP', () => config.callbacks.addPlayerXp(250));
+    addButton('player', 'add-banked-upgrade', panelX + PANEL_PADDING + 216, y, 100, '+Upgrade', () => config.callbacks.addBankedUpgrade(1));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'clear-banked-upgrades', panelX + PANEL_PADDING, y, 154, 'Clear upgrades', config.callbacks.clearBankedUpgrades);
+    addButton('player', 'player-add-scrap', panelX + PANEL_PADDING + 162, y, 154, '+100 scrap', () => config.callbacks.addScrap(100));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton('player', 'player-add-credits', panelX + PANEL_PADDING, y, 154, '+100 credits', () => config.callbacks.addCredits(100));
+    addButton('player', 'secret-controls-unlock', panelX + PANEL_PADDING + 162, y, 154, 'Unlock controls', config.callbacks.unlockSecretControls);
+    setTabContentHeight('player', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
 
   function buildShipTab(): void {
@@ -1023,28 +1094,22 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildBlackHoleTab(): void {
     let y = CONTENT_TOP;
-    y = addSection('blackHole', y, 'Black Hole');
-    addValue('black-hole', 'blackHole', y, VALUE_LINE_HEIGHT * 2);
-    y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
-    addButton('blackHole', 'black-hole-radii', panelX + PANEL_PADDING, y, 154, 'Radii', config.callbacks.toggleBlackHoleRadii);
-    addButton('blackHole', 'black-hole-field-damage', panelX + PANEL_PADDING + 162, y, 154, 'Field damage', config.callbacks.toggleBlackHoleFieldDamage);
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('blackHole', 'collision-debug', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Collision visuals', config.callbacks.toggleCollisionDebug);
-    y += BUTTON_HEIGHT + ROW_GAP;
+    y = addSection('blackHole', y, 'Death Vacuum');
+    addValue('black-hole', 'blackHole', y, VALUE_LINE_HEIGHT * 8);
+    y += VALUE_LINE_HEIGHT * 8 + BUTTON_GAP;
+    addBlackHoleStateButtons('blackHole', y);
+    y += (BUTTON_HEIGHT + BUTTON_GAP) * 4 + ROW_GAP;
 
-    y = addSection('blackHole', y, 'Field');
-    addValue('black-hole-field', 'blackHole', y, VALUE_LINE_HEIGHT * 10);
-    y += VALUE_LINE_HEIGHT * 10 + BUTTON_GAP;
-    addBlackHoleFieldButtons('blackHole', y);
-    y += (BUTTON_HEIGHT + BUTTON_GAP) * 7;
-    addButton('blackHole', 'field-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset field and visuals', config.callbacks.resetBlackHoleLensTuning);
-    y += BUTTON_HEIGHT + ROW_GAP;
+    y = addSection('blackHole', y, 'Vacuum Tuning');
+    addValue('black-hole-field', 'blackHole', y, VALUE_LINE_HEIGHT * 8);
+    y += VALUE_LINE_HEIGHT * 8 + BUTTON_GAP;
+    addBlackHoleVacuumButtons('blackHole', y);
+    y += (BUTTON_HEIGHT + BUTTON_GAP) * 8 + ROW_GAP;
 
-    y = addSection('blackHole', y, 'PNG Layers');
-    addValue('black-hole-lenses', 'blackHole', y, VALUE_LINE_HEIGHT * 6);
-    y += VALUE_LINE_HEIGHT * 6 + BUTTON_GAP;
-    addBlackHoleLayerButtons('blackHole', y);
-    setTabContentHeight('blackHole', y + (BUTTON_HEIGHT + BUTTON_GAP) * 6 + PANEL_PADDING);
+    y = addSection('blackHole', y, 'Debug Visuals');
+    addButton('blackHole', 'black-hole-radii', panelX + PANEL_PADDING, y, 260, 'Show black hole radii', config.callbacks.toggleBlackHoleRadii);
+    addButton('blackHole', 'collision-debug', panelX + PANEL_PADDING + 272, y, 260, 'Show all collision visuals', config.callbacks.toggleCollisionDebug);
+    setTabContentHeight('blackHole', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
 
   function buildEffectsTab(): void {
@@ -1168,6 +1233,44 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('visuals', 'near-parallax-down', panelX + PANEL_PADDING, y, 154, 'Near -', () => config.callbacks.adjustStarfieldParallax('near', -1));
     addButton('visuals', 'near-parallax-up', panelX + PANEL_PADDING + 162, y, 154, 'Near +', () => config.callbacks.adjustStarfieldParallax('near', 1));
     setTabContentHeight('visuals', y + BUTTON_HEIGHT + PANEL_PADDING);
+  }
+
+  function addBlackHoleStateButtons(tabId: DebugTabId, y: number): void {
+    addButton(tabId, 'black-hole-player-capture', panelX + PANEL_PADDING, y, 260, 'Player capture: on', config.callbacks.toggleBlackHolePlayerCapture);
+    addButton(tabId, 'black-hole-object-consume', panelX + PANEL_PADDING + 272, y, 260, 'Object consume: on', config.callbacks.toggleBlackHoleObjectConsumption);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'black-hole-warning-visuals', panelX + PANEL_PADDING, y, 260, 'Warning visuals: on', config.callbacks.toggleBlackHoleWarningVisuals);
+    addButton(tabId, 'black-hole-growth-plus', panelX + PANEL_PADDING + 272, y, 260, 'Add 5 minutes growth', () => config.callbacks.addBlackHoleGrowthMinutes(5));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'black-hole-move-player', panelX + PANEL_PADDING, y, 260, 'Move to player', config.callbacks.moveBlackHoleToPlayer);
+    addButton(tabId, 'black-hole-move-away', panelX + PANEL_PADDING + 272, y, 260, 'Move away from player', config.callbacks.moveBlackHoleAwayFromPlayer);
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'black-hole-capture-test', panelX + PANEL_PADDING, y, 260, 'Force capture test', config.callbacks.forceBlackHoleCaptureTest);
+    addButton(tabId, 'black-hole-reset-growth', panelX + PANEL_PADDING + 272, y, 260, 'Reset growth', config.callbacks.resetBlackHoleGrowth);
+  }
+
+  function addBlackHoleVacuumButtons(tabId: DebugTabId, y: number): void {
+    addButton(tabId, 'vacuum-base-down', panelX + PANEL_PADDING, y, 126, 'Base horizon -', () => config.callbacks.adjustBlackHoleVacuumTuning('baseEventHorizonRadius', -10));
+    addButton(tabId, 'vacuum-base-up', panelX + PANEL_PADDING + 134, y, 126, 'Base horizon +', () => config.callbacks.adjustBlackHoleVacuumTuning('baseEventHorizonRadius', 10));
+    addButton(tabId, 'vacuum-max-down', panelX + PANEL_PADDING + 272, y, 126, 'Max horizon -', () => config.callbacks.adjustBlackHoleVacuumTuning('maxEventHorizonRadius', -10));
+    addButton(tabId, 'vacuum-max-up', panelX + PANEL_PADDING + 406, y, 126, 'Max horizon +', () => config.callbacks.adjustBlackHoleVacuumTuning('maxEventHorizonRadius', 10));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'vacuum-growth-down', panelX + PANEL_PADDING, y, 126, 'Growth rate -', () => config.callbacks.adjustBlackHoleVacuumTuning('growthPerMinute', -0.5));
+    addButton(tabId, 'vacuum-growth-up', panelX + PANEL_PADDING + 134, y, 126, 'Growth rate +', () => config.callbacks.adjustBlackHoleVacuumTuning('growthPerMinute', 0.5));
+    addButton(tabId, 'vacuum-capture-duration-down', panelX + PANEL_PADDING + 272, y, 126, 'Capture time -', () => config.callbacks.adjustBlackHoleVacuumTuning('playerCaptureDurationMs', -100));
+    addButton(tabId, 'vacuum-capture-duration-up', panelX + PANEL_PADDING + 406, y, 126, 'Capture time +', () => config.callbacks.adjustBlackHoleVacuumTuning('playerCaptureDurationMs', 100));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'vacuum-capture-margin-down', panelX + PANEL_PADDING, y, 126, 'Capture size -', () => config.callbacks.adjustBlackHoleVacuumTuning('captureMargin', -10));
+    addButton(tabId, 'vacuum-capture-margin-up', panelX + PANEL_PADDING + 134, y, 126, 'Capture size +', () => config.callbacks.adjustBlackHoleVacuumTuning('captureMargin', 10));
+    addButton(tabId, 'vacuum-warning-margin-down', panelX + PANEL_PADDING + 272, y, 126, 'Warning size -', () => config.callbacks.adjustBlackHoleVacuumTuning('warningMargin', -10));
+    addButton(tabId, 'vacuum-warning-margin-up', panelX + PANEL_PADDING + 406, y, 126, 'Warning size +', () => config.callbacks.adjustBlackHoleVacuumTuning('warningMargin', 10));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'vacuum-player-pull-down', panelX + PANEL_PADDING, y, 126, 'Player pull -', () => config.callbacks.adjustBlackHoleVacuumTuning('playerPullStrength', -25));
+    addButton(tabId, 'vacuum-player-pull-up', panelX + PANEL_PADDING + 134, y, 126, 'Player pull +', () => config.callbacks.adjustBlackHoleVacuumTuning('playerPullStrength', 25));
+    addButton(tabId, 'vacuum-object-pull-down', panelX + PANEL_PADDING + 272, y, 126, 'Object pull -', () => config.callbacks.adjustBlackHoleVacuumTuning('objectPullStrength', -25));
+    addButton(tabId, 'vacuum-object-pull-up', panelX + PANEL_PADDING + 406, y, 126, 'Object pull +', () => config.callbacks.adjustBlackHoleVacuumTuning('objectPullStrength', 25));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButton(tabId, 'black-hole-escape-test', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Force escape test', config.callbacks.forceBlackHoleEscapeTest);
   }
 
   function addBlackHoleFieldButtons(tabId: DebugTabId, y: number): void {
@@ -1676,11 +1779,23 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
         setValue('profiler', values.performanceProfilerSummary);
         setValue('diagnostics', values.autoDiagnosticsSummary);
+        setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal} / spent ${values.runScrapSpent}\nCredits: ${values.totalCredits}\nReroll next: ${values.nextRerollCost}`);
+        setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
+        setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
+        setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
+        setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
+        setButtonLabel('reroll-cost-mode', values.debugRerollCostBase === 5 ? 'Reroll: 5 scale' : 'Reroll: 10 scale');
+      } else if (activeTab === 'player') {
         setValue(
-          'player',
-          `Hull: ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)}\nInvulnerability: ${
-            values.playerInvulnerable ? 'on' : 'off'
-          }`
+          'player-state',
+          `State: ${values.playerAlive ? 'alive' : 'dead'} / hull ${Math.ceil(values.playerHull)} of ${Math.ceil(values.playerMaxHull)}\n` +
+            `Position: ${values.playerX.toFixed(0)}, ${values.playerY.toFixed(0)}\n` +
+            `Velocity: ${formatIntegerDisplayUnits(values.playerVelocityX)}, ${formatIntegerDisplayUnits(values.playerVelocityY)} / speed ${formatIntegerDisplayUnits(values.playerSpeed)}\n` +
+            `Mission distance: ${Math.round(values.missionObjectiveDistance)} / extraction ${Math.round(values.extractionDistance)}\n` +
+            `XP: ${values.playerXp} / ${values.nextXpThreshold} / banked ${values.bankedUpgrades}\n` +
+            `Projectiles: player ${values.playerProjectiles} / enemy ${values.enemyProjectiles}\n` +
+            `Invulnerability: ${values.playerInvulnerable ? 'on' : 'off'} / contact damage: ${values.playerCollisionDamageImmune ? 'blocked' : 'normal'}\n` +
+            `Secret controls: ${values.secretControlUnlocked ? 'unlocked' : 'locked'}`
         );
         setValue(
           'fuel',
@@ -1688,15 +1803,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
             values.fuelDrainEnabled ? 'on' : 'paused'
           }\nMode: ${values.fuelDrainMode}`
         );
-        setValue('scrap', `Pickups: ${values.activeScrapPickups}\nRun scrap: ${values.runScrapTotal} / spent ${values.runScrapSpent}\nCredits: ${values.totalCredits}\nReroll next: ${values.nextRerollCost}`);
-        setButtonLabel('debug-pause', `Pause game: ${values.debugGamePaused ? 'on' : 'off'}`);
-        setButtonLabel('profiler-toggle', `Profiler: ${values.performanceProfilerEnabled ? 'on' : 'off'}`);
-        setButtonLabel('profiler-start', values.performanceProfilerManualActive ? 'Recording' : 'Start');
-        setButtonLabel('diagnostics-toggle', `Diagnostics: ${values.autoDiagnosticsEnabled ? 'on' : 'off'}`);
         setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
+        setButtonLabel('player-collision-immune', `Contact damage: ${values.playerCollisionDamageImmune ? 'blocked' : 'normal'}`);
         setButtonLabel('fuel-drain-toggle', `Drain: ${values.fuelDrainEnabled ? 'on' : 'paused'}`);
         setButtonLabel('fuel-mode-toggle', values.fuelDrainMode === 'timer-plus-thrust' ? 'Timer mode' : 'Thrust mode');
-        setButtonLabel('reroll-cost-mode', values.debugRerollCostBase === 5 ? 'Reroll: 5 scale' : 'Reroll: 10 scale');
+        setButtonLabel('secret-controls-unlock', values.secretControlUnlocked ? 'Controls unlocked' : 'Unlock controls');
       } else if (activeTab === 'ship') {
         setValue(
           'ship-stats',
@@ -1780,27 +1891,33 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       } else if (activeTab === 'blackHole') {
         setValue(
           'black-hole',
-          `Radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}\nDamage: ${
-            values.blackHoleFieldDamageEnabled ? 'on' : 'off'
-          } / collision: ${values.collisionDebugEnabled ? 'on' : 'off'}`
+          `Active: ${values.blackHoleActive ? 'yes' : 'no'} / position ${values.blackHoleX.toFixed(0)}, ${values.blackHoleY.toFixed(0)}\n` +
+            `Run age: ${formatRunTime(values.blackHoleRunAgeSeconds)} / growth ${(values.blackHoleGrowthPercent * 100).toFixed(0)}%\n` +
+            `Event horizon: ${values.blackHoleEventHorizonRadius.toFixed(0)}\n` +
+            `Capture radius: ${values.blackHoleCaptureRadius.toFixed(0)} / warning radius: ${values.blackHoleWarningRadius.toFixed(0)}\n` +
+            `Player capture: ${values.blackHolePlayerCaptureEnabled ? 'on' : 'off'} / ${
+              values.blackHolePlayerCaptured ? `${(values.blackHoleCaptureTimerRemainingMs / 1000).toFixed(1)}s left` : 'clear'
+            }\n` +
+            `Object consume: ${values.blackHoleObjectConsumptionEnabled ? 'on' : 'off'} / consumed ${values.blackHoleConsumedObjects}\n` +
+            `Warning visuals: ${values.blackHoleWarningVisualsEnabled ? 'on' : 'off'}\n` +
+            `Radii overlay: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'} / collision: ${values.collisionDebugEnabled ? 'shown' : 'hidden'}`
         );
         setValue(
           'black-hole-field',
-          `Influence x${values.blackHoleInfluenceRadiusScale.toFixed(1)} / damage x${values.blackHoleDamageRadiusScale.toFixed(1)}\nVisual x${values.blackHoleVisualScale.toFixed(1)} / core x${values.blackHoleCoreScale.toFixed(1)}\nRadial x${values.blackHoleRadialStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleRadialCurve.toFixed(1)}\nSwirl x${values.blackHoleSwirlStrengthMultiplier.toFixed(1)} / curve ${values.blackHoleSwirlCurve.toFixed(1)}\nVisc x${values.blackHoleViscosityStrength.toFixed(1)} / curve ${values.blackHoleViscosityCurve.toFixed(1)}\nInner drag ${values.blackHoleInnerDrag.toFixed(1)} / player resist x${values.blackHolePlayerResistance.toFixed(1)}\nMax velocity x${values.blackHoleMaxVelocityMultiplier.toFixed(1)}`
-        );
-        setValue(
-          'black-hole-lenses',
-          pngLayer
-            ? `Layer ${pngLayer.index + 1}/${values.blackHolePngLayerCount} ${pngLayer.enabled ? 'on' : 'off'} / all ${
-                values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'
-              }\nImage ${pngLayer.textureLabel}\nSpeed ${pngLayer.speedRps.toFixed(2)} rps / size ${pngLayer.sizeMultiplier.toFixed(2)}\nAlpha ${pngLayer.alpha.toFixed(2)} / add ${values.blackHoleAddPngTextureLabel}`
-            : `No PNG layer selected\nAll layers ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\nAdd image ${values.blackHoleAddPngTextureLabel}`
+          `Base horizon: ${values.blackHoleBaseEventHorizonRadius.toFixed(0)} / max ${values.blackHoleMaxEventHorizonRadius.toFixed(0)}\n` +
+            `Growth: ${values.blackHoleGrowthPerMinute.toFixed(1)} radius/min\n` +
+            `Capture margin: ${values.blackHoleCaptureMargin.toFixed(0)} / warning margin: ${values.blackHoleWarningMargin.toFixed(0)}\n` +
+            `Capture time: ${(values.blackHolePlayerCaptureDurationMs / 1000).toFixed(1)}s\n` +
+            `Player pull: ${values.blackHolePlayerPullStrength.toFixed(0)}\n` +
+            `Object pull: ${values.blackHoleObjectPullStrength.toFixed(0)}\n` +
+            `Visual scale: ${values.blackHoleVisualScale.toFixed(1)} / core scale: ${values.blackHoleCoreScale.toFixed(1)}\n` +
+            `Old force damage: removed`
         );
         setButtonLabel('black-hole-radii', `Black hole radii: ${values.blackHoleRadiiVisible ? 'shown' : 'hidden'}`);
-        setButtonLabel('black-hole-field-damage', `Field damage: ${values.blackHoleFieldDamageEnabled ? 'on' : 'off'}`);
         setButtonLabel('collision-debug', `Collision visuals: ${values.collisionDebugEnabled ? 'on' : 'off'}`);
-        setButtonLabel('projection-lenses', `All: ${values.blackHoleProjectionLensLayersEnabled ? 'on' : 'off'}`);
-        setButtonLabel('png-toggle-layer', `Layer: ${pngLayer?.enabled ? 'on' : 'off'}`);
+        setButtonLabel('black-hole-player-capture', `Player capture: ${values.blackHolePlayerCaptureEnabled ? 'on' : 'off'}`);
+        setButtonLabel('black-hole-object-consume', `Object consume: ${values.blackHoleObjectConsumptionEnabled ? 'on' : 'off'}`);
+        setButtonLabel('black-hole-warning-visuals', `Warning visuals: ${values.blackHoleWarningVisualsEnabled ? 'on' : 'off'}`);
       } else if (activeTab === 'visuals') {
         setValue(
           'health-bars',

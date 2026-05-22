@@ -70,6 +70,8 @@ const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
 const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
 const BLACK_HOLE_BASE_LENS_FIELD_RADIUS = BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE * 0.5;
 const BLACK_HOLE_VISUAL_FIELD_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
+const BLACK_HOLE_DEFAULT_OBJECT_PULL_STRENGTH = 520;
+const BLACK_HOLE_DEFAULT_PLAYER_PULL_STRENGTH = 420;
 
 export type {
   BlackHoleFieldTuningConfig,
@@ -189,6 +191,28 @@ export interface BlackHoleState {
   warningRadius: number;
 }
 
+export interface BlackHoleVacuumTuning {
+  baseEventHorizonRadius: number;
+  maxEventHorizonRadius: number;
+  growthPerMinute: number;
+  captureMargin: number;
+  warningMargin: number;
+  playerCaptureDurationMs: number;
+  playerPullStrength: number;
+  objectPullStrength: number;
+}
+
+export const DEFAULT_BLACK_HOLE_VACUUM_TUNING: BlackHoleVacuumTuning = {
+  baseEventHorizonRadius: 90,
+  maxEventHorizonRadius: 240,
+  growthPerMinute: 4.4,
+  captureMargin: 110,
+  warningMargin: 220,
+  playerCaptureDurationMs: 1600,
+  playerPullStrength: BLACK_HOLE_DEFAULT_PLAYER_PULL_STRENGTH,
+  objectPullStrength: BLACK_HOLE_DEFAULT_OBJECT_PULL_STRENGTH
+};
+
 export interface BlackHoleCapturedProjectileState {
   capturedByBlackHole?: boolean;
   captureStartScale?: number;
@@ -230,6 +254,8 @@ export class BlackHoleSystem {
   private coreScaleMultiplier = 1;
   private driftAngle = BLACK_HOLE_DRIFT_ANGLE;
   private visualPhase: number;
+  private runElapsedSeconds = 0;
+  private vacuumTuning: BlackHoleVacuumTuning = { ...DEFAULT_BLACK_HOLE_VACUUM_TUNING };
 
   constructor(private readonly scene: Phaser.Scene, spawnPosition: Phaser.Math.Vector2) {
     this.ensureLensTextureLayers();
@@ -278,7 +304,9 @@ export class BlackHoleSystem {
     damageRadiusMultiplier = 1,
     visualScaleMultiplier = 1,
     coreScaleMultiplier = 1,
-    shouldMove = true
+    shouldMove = true,
+    runElapsedSeconds = this.runElapsedSeconds,
+    vacuumTuning: BlackHoleVacuumTuning = this.vacuumTuning
   ): void {
     this.activeLensingArcCount = Phaser.Math.Clamp(
       Math.round(activeLensingArcCount),
@@ -289,6 +317,8 @@ export class BlackHoleSystem {
     this.damageRadiusMultiplier = Math.max(0, damageRadiusMultiplier);
     this.visualScaleMultiplier = Math.max(0, visualScaleMultiplier);
     this.coreScaleMultiplier = Math.max(0, coreScaleMultiplier);
+    this.runElapsedSeconds = Math.max(0, runElapsedSeconds);
+    this.vacuumTuning = this.normalizeVacuumTuning(vacuumTuning);
     this.setLensLengthMultiplier(lensLengthMultiplier);
     if (shouldMove) {
       this.driftAngle += BLACK_HOLE_DRIFT_TURN_RATE * deltaSeconds;
@@ -325,6 +355,37 @@ export class BlackHoleSystem {
     return sampleWorldForce(this.getForceSource(), x, y, arena);
   }
 
+  getVacuumSample(x: number, y: number, arena: ArenaSize): WorldForceSample {
+    return sampleWorldForce(this.getForceSource(), x, y, arena);
+  }
+
+  applyVacuumToVelocity(
+    x: number,
+    y: number,
+    velocity: Phaser.Math.Vector2,
+    deltaSeconds: number,
+    arena: ArenaSize,
+    strength = this.vacuumTuning.objectPullStrength
+  ): WorldForceSample {
+    const sample = this.getVacuumSample(x, y, arena);
+
+    if (sample.isInsideCapture && !sample.isInsideEventHorizon && deltaSeconds > 0) {
+      const pullDirection = sample.direction.lengthSq() > 0
+        ? sample.direction.clone().normalize()
+        : new Phaser.Math.Vector2();
+      const captureProgress = Phaser.Math.Clamp(
+        (this.captureRadius - sample.distance) / Math.max(1, this.captureRadius - this.eventHorizonRadius),
+        0,
+        1
+      );
+      const acceleration = Math.max(0, strength) * Phaser.Math.Linear(0.45, 1.35, captureProgress);
+      velocity.x += pullDirection.x * acceleration * deltaSeconds;
+      velocity.y += pullDirection.y * acceleration * deltaSeconds;
+    }
+
+    return sample;
+  }
+
   computeWhirlpoolAcceleration(
     x: number,
     y: number,
@@ -354,18 +415,14 @@ export class BlackHoleSystem {
     arena: ArenaSize,
     fieldTuning: BlackHoleFieldTuningConfig = DEFAULT_BLACK_HOLE_FIELD_TUNING
   ): boolean {
-    const tuning = {
-      ...BLACK_HOLE_PROJECTILE_WHIRLPOOL_TUNING,
-      maxSpeed: projectile.speed * 1.65
-    };
-    const result = this.applyWhirlpoolToVelocity(
+    void fieldTuning;
+    const result = this.applyVacuumToVelocity(
       projectile.body.x,
       projectile.body.y,
       projectile.velocity,
       deltaSeconds,
-      tuning,
       arena,
-      fieldTuning
+      this.vacuumTuning.objectPullStrength
     );
 
     if (result.isInsideCapture && !projectile.capturedByBlackHole) {
@@ -423,27 +480,40 @@ export class BlackHoleSystem {
   }
 
   get coreRadius(): number {
-    return BLACK_HOLE_CORE_RADIUS * this.coreScaleMultiplier;
+    return this.eventHorizonRadius * this.coreScaleMultiplier;
   }
 
   get warningRadius(): number {
-    return BLACK_HOLE_WARNING_RADIUS * this.visualScaleMultiplier;
+    return (this.eventHorizonRadius + this.vacuumTuning.captureMargin + this.vacuumTuning.warningMargin) * this.visualScaleMultiplier;
   }
 
   get influenceRadius(): number {
-    return BLACK_HOLE_INFLUENCE_RADIUS * this.influenceRadiusMultiplier;
+    return this.warningRadius * this.influenceRadiusMultiplier;
   }
 
   get damageRadius(): number {
-    return BLACK_HOLE_DAMAGE_RADIUS * this.damageRadiusMultiplier;
+    return this.captureRadius * this.damageRadiusMultiplier;
   }
 
   get captureRadius(): number {
-    return BLACK_HOLE_CAPTURE_RADIUS;
+    return this.eventHorizonRadius + this.vacuumTuning.captureMargin;
   }
 
   get eventHorizonRadius(): number {
-    return (this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET) * BLACK_HOLE_VISUAL_HORIZON_SCALE;
+    const grownRadius = this.vacuumTuning.baseEventHorizonRadius +
+      (this.runElapsedSeconds / 60) * this.vacuumTuning.growthPerMinute;
+
+    return Phaser.Math.Clamp(grownRadius, 1, this.vacuumTuning.maxEventHorizonRadius);
+  }
+
+  get growthPercent(): number {
+    const range = Math.max(1, this.vacuumTuning.maxEventHorizonRadius - this.vacuumTuning.baseEventHorizonRadius);
+
+    return Phaser.Math.Clamp((this.eventHorizonRadius - this.vacuumTuning.baseEventHorizonRadius) / range, 0, 1);
+  }
+
+  get vacuumConfig(): BlackHoleVacuumTuning {
+    return { ...this.vacuumTuning };
   }
 
   private get lensFieldScale(): number {
@@ -458,6 +528,22 @@ export class BlackHoleSystem {
     arena: ArenaSize
   ): Phaser.Math.Vector2 {
     return getWrappedDirection(fromX, fromY, toX, toY, arena);
+  }
+
+  private normalizeVacuumTuning(tuning: BlackHoleVacuumTuning): BlackHoleVacuumTuning {
+    const baseEventHorizonRadius = Math.max(1, tuning.baseEventHorizonRadius);
+    const maxEventHorizonRadius = Math.max(baseEventHorizonRadius, tuning.maxEventHorizonRadius);
+
+    return {
+      baseEventHorizonRadius,
+      maxEventHorizonRadius,
+      growthPerMinute: Math.max(0, tuning.growthPerMinute),
+      captureMargin: Math.max(0, tuning.captureMargin),
+      warningMargin: Math.max(0, tuning.warningMargin),
+      playerCaptureDurationMs: Math.max(250, tuning.playerCaptureDurationMs),
+      playerPullStrength: Math.max(0, tuning.playerPullStrength),
+      objectPullStrength: Math.max(0, tuning.objectPullStrength)
+    };
   }
 
   private getForceSource(): WorldForceSource & WorldForceRadii {
@@ -782,17 +868,14 @@ export class BlackHoleSystem {
     areLayersEnabled: boolean,
     isMirror: boolean
   ): void {
+    void displaySize;
+    void deltaSeconds;
+    void lensOrbitSpeedMultiplier;
+    void areLayersEnabled;
+    void isMirror;
     for (let i = 0; i < images.length; i += 1) {
       const image = images[i];
-      const layer = this.pngLayers[i];
-      const rotation = Math.PI * 2 * layer.speedRps * lensOrbitSpeedMultiplier * deltaSeconds;
-      const layerDisplaySize = displaySize * layer.sizeMultiplier;
-
-      image
-        .setDisplaySize(layerDisplaySize, layerDisplaySize)
-        .setRotation(image.rotation + rotation)
-        .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
-        .setVisible(areLayersEnabled && layer.enabled);
+      image.setVisible(false);
     }
   }
 
@@ -918,27 +1001,43 @@ export class BlackHoleSystem {
     time = this.scene.time.now
   ): void {
     const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + this.visualPhase) * 0.5;
-    const bodyAlpha = isMirror ? 0.56 : 0.82;
-    const coreAlpha = isMirror ? 0.84 : 1;
+    const mirrorAlpha = isMirror ? 0.55 : 1;
+    const eventRadius = this.eventHorizonRadius;
+    const captureRadius = this.captureRadius;
+    const warningRadius = this.warningRadius;
 
     graphics.clear();
-    graphics.fillStyle(0x000006, isMirror ? 0.11 : 0.18);
-    graphics.fillCircle(0, 0, this.warningRadius);
 
-    graphics.fillStyle(0x000003, bodyAlpha);
-    graphics.fillCircle(0, 0, this.coreRadius + 36 + pulse * 6);
-    graphics.lineStyle(5, 0x000000, isMirror ? 0.44 : 0.72);
-    graphics.strokeCircle(0, 0, this.coreRadius + BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET);
-    graphics.lineStyle(1, 0x1b2436, isMirror ? 0.16 : 0.28);
-    graphics.strokeCircle(0, 0, this.coreRadius + BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 2);
-    graphics.fillStyle(0x030307, isMirror ? 0.48 : 0.74);
-    graphics.fillCircle(0, 0, this.coreRadius + 16);
-    graphics.fillStyle(0x010107, coreAlpha);
-    graphics.fillCircle(0, 0, this.coreRadius);
+    graphics.fillStyle(0x000005, 0.1 * mirrorAlpha);
+    graphics.fillCircle(0, 0, warningRadius);
+    graphics.lineStyle(1, 0x26344f, 0.22 * mirrorAlpha);
+    graphics.strokeCircle(0, 0, warningRadius);
+
+    graphics.fillStyle(0x02030a, 0.16 * mirrorAlpha);
+    graphics.fillCircle(0, 0, captureRadius + pulse * 5);
+    graphics.lineStyle(2, 0x42f5d7, 0.32 * mirrorAlpha);
+    graphics.strokeCircle(0, 0, captureRadius + pulse * 4);
+
     graphics.fillStyle(0x000000, 1);
-    graphics.fillCircle(0, 0, this.coreRadius * 0.72);
+    graphics.fillCircle(0, 0, eventRadius);
+    graphics.lineStyle(5, 0x05060b, 0.82 * mirrorAlpha);
+    graphics.strokeCircle(0, 0, eventRadius + 2);
+    graphics.lineStyle(2, 0xff5964, 0.92 * mirrorAlpha);
+    graphics.strokeCircle(0, 0, eventRadius + 5 + pulse * 2);
+    graphics.lineStyle(1, 0xffc857, 0.45 * mirrorAlpha);
+    graphics.strokeCircle(0, 0, eventRadius + 12 + pulse * 5);
 
-    this.drawEventHorizonMask(graphics, isMirror);
+    graphics.fillStyle(0x000000, 1);
+    graphics.fillCircle(0, 0, eventRadius * 0.82);
+
+    if (isDebugEnabled) {
+      graphics.lineStyle(1, 0x9fd8ff, 0.3 * mirrorAlpha);
+      graphics.strokeCircle(0, 0, warningRadius);
+      graphics.lineStyle(1, 0x42f5d7, 0.5 * mirrorAlpha);
+      graphics.strokeCircle(0, 0, captureRadius);
+      graphics.lineStyle(2, 0xff5964, 0.8 * mirrorAlpha);
+      graphics.strokeCircle(0, 0, eventRadius);
+    }
   }
 
   private drawEventHorizonMask(graphics: Phaser.GameObjects.Graphics, isMirror: boolean): void {
