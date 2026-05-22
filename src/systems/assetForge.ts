@@ -162,6 +162,15 @@ export interface ForgePromotionBundle {
   savedAt: string;
 }
 
+export interface ForgeAssetBatch {
+  type: 'starvivors-forge-asset-batch';
+  version: 1;
+  styleGuideVersion: typeof FORGE_STYLE_GUIDE_VERSION;
+  displayName: string;
+  assets: ForgeAsset[];
+  savedAt: string;
+}
+
 export interface AssetForgeStorageState {
   assets: ForgeAsset[];
 }
@@ -169,9 +178,16 @@ export interface AssetForgeStorageState {
 export interface ForgeAiBriefInput {
   targetLabel: string;
   targetKind: ForgeAssetKind;
+  batchCount?: number;
   selectedAsset?: ForgeAsset;
   context?: string;
   requestedWork?: string;
+}
+
+export interface ForgeImportResult {
+  assets: ForgeAsset[];
+  rejectedCount: number;
+  errors: string[];
 }
 
 export function getNeonForwardSalvagepunkStyleGuide(): ForgeStyleGuide {
@@ -248,8 +264,7 @@ export function loadAssetForgeStorageState(): AssetForgeStorageState {
     return {
       assets: Array.isArray(parsed.assets)
         ? parsed.assets
-            .map((candidate) => parseForgeAssetImport(JSON.stringify(candidate)))
-            .filter((candidate): candidate is ForgeAsset => Boolean(candidate))
+            .flatMap((candidate) => parseForgeAssetImports(JSON.stringify(candidate)).assets)
         : []
     };
   } catch {
@@ -376,9 +391,12 @@ export function createForgeContactSheetData(assets: ForgeAsset[]): string {
 
 export function createForgeAiBrief(input: ForgeAiBriefInput): string {
   const styleGuide = getNeonForwardSalvagepunkStyleGuide();
+  const batchCount = Math.max(1, Math.round(input.batchCount ?? 1));
   const requestedWork =
     input.requestedWork ??
-    `Create or revise ${input.targetKind} Forge assets as structured Starvivors Forge JSON recipes. Return valid JSON or markdown with a json block.`;
+    (batchCount > 1
+      ? `Create ${batchCount} ${input.targetKind} Forge assets as a single starvivors-forge-asset-batch JSON recipe bundle.`
+      : `Create or revise ${input.targetKind} Forge assets as structured Starvivors Forge JSON recipes. Return valid JSON or markdown with a json block.`);
 
   return [
     `# Starvivors Asset Forge AI Brief: ${input.targetLabel}`,
@@ -402,11 +420,13 @@ export function createForgeAiBrief(input: ForgeAiBriefInput): string {
     ...Object.entries(styleGuide.examples).flatMap(([key, values]) => [`### ${key}`, ...values.map((value) => `- ${value}`), '']),
     '## Valid Asset Contract',
     '- Use `type: "starvivors-forge-asset"`.',
+    batchCount > 1 ? '- For batches, wrap assets in `type: "starvivors-forge-asset-batch"` with an `assets` array.' : '',
     '- Use `version: 1`.',
     `- Use \`styleGuideVersion: "${FORGE_STYLE_GUIDE_VERSION}"\`.`,
     '- Use only Forge vector layers and color roles.',
     '- Make neon energy visually dominant over salvage machinery.',
     '- Preserve readability at combat zoom and tiny radar/icon sizes.',
+    batchCount > 1 ? `- Return exactly ${batchCount} distinct assets unless the developer asks for a different count.` : '',
     '',
     input.context ? `## Current Context\n${input.context}\n` : '',
     input.selectedAsset ? ['## Selected Asset', '```json', JSON.stringify(input.selectedAsset, null, 2), '```', ''].join('\n') : ''
@@ -446,20 +466,32 @@ export function createForgePromotionMarkdown(bundle: ForgePromotionBundle): stri
 }
 
 export function parseForgeAssetImport(markdownOrJson: string): ForgeAsset | undefined {
+  return parseForgeAssetImports(markdownOrJson).assets[0];
+}
+
+export function parseForgeAssetImports(markdownOrJson: string): ForgeImportResult {
   const raw = extractJsonBlock(markdownOrJson);
+  const errors: string[] = [];
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (isForgeAsset(parsed)) {
-      return parsed;
-    }
-    if (isForgePromotionBundle(parsed)) {
-      return parsed.asset;
-    }
-  } catch {
-    return undefined;
-  }
+    const candidates = collectForgeAssetCandidates(parsed);
+    const assets: ForgeAsset[] = [];
+    let rejectedCount = 0;
 
-  return undefined;
+    candidates.forEach((candidate, index) => {
+      const validation = validateForgeAsset(candidate);
+      if (validation.valid && isForgeAsset(candidate)) {
+        assets.push(candidate);
+      } else {
+        rejectedCount += 1;
+        errors.push(`Asset ${index + 1}: ${validation.errors.join('; ') || 'Invalid Forge asset.'}`);
+      }
+    });
+
+    return { assets, rejectedCount, errors };
+  } catch {
+    return { assets: [], rejectedCount: 1, errors: ['Input did not contain valid JSON or a markdown json block.'] };
+  }
 }
 
 export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyLabDefinition): ForgeAsset {
@@ -765,14 +797,57 @@ function extractJsonBlock(markdownOrJson: string): string {
   return jsonBlockMatch ? jsonBlockMatch[1] : markdownOrJson;
 }
 
-function isForgeAsset(value: unknown): value is ForgeAsset {
+function collectForgeAssetCandidates(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  const candidate = value as {
+    type?: string;
+    assets?: unknown[];
+    asset?: unknown;
+  };
+  if (candidate?.type === 'starvivors-forge-asset-batch' && Array.isArray(candidate.assets)) {
+    return candidate.assets;
+  }
+  if (candidate?.type === 'starvivors-forge-promotion-bundle' && candidate.asset) {
+    return [candidate.asset];
+  }
+  if (Array.isArray(candidate.assets)) {
+    return candidate.assets;
+  }
+
+  return [value];
+}
+
+function validateForgeAsset(value: unknown): { valid: boolean; errors: string[] } {
   const candidate = value as Partial<ForgeAsset>;
-  return candidate?.type === 'starvivors-forge-asset' &&
-    candidate.version === 1 &&
-    typeof candidate.id === 'string' &&
-    typeof candidate.displayName === 'string' &&
-    candidate.styleGuideVersion === FORGE_STYLE_GUIDE_VERSION &&
-    Array.isArray(candidate.layers);
+  const errors: string[] = [];
+  if (candidate?.type !== 'starvivors-forge-asset') errors.push('type must be starvivors-forge-asset');
+  if (candidate.version !== 1) errors.push('version must be 1');
+  if (candidate.styleGuideVersion !== FORGE_STYLE_GUIDE_VERSION) errors.push(`styleGuideVersion must be ${FORGE_STYLE_GUIDE_VERSION}`);
+  if (typeof candidate.id !== 'string' || candidate.id.length === 0) errors.push('id is required');
+  if (typeof candidate.displayName !== 'string' || candidate.displayName.length === 0) errors.push('displayName is required');
+  if (!isForgeAssetKind(candidate.kind)) errors.push('kind is invalid');
+  if (!isForgeAssetStatus(candidate.status)) errors.push('status is invalid');
+  if (!isForgePalette(candidate.palette)) errors.push('palette is invalid');
+  if (!Number.isFinite(candidate.boundsRadius) || Number(candidate.boundsRadius) <= 0) errors.push('boundsRadius must be positive');
+  if (!Number.isFinite(candidate.canvasSize) || Number(candidate.canvasSize) <= 0) errors.push('canvasSize must be positive');
+  if (!Array.isArray(candidate.layers) || candidate.layers.length === 0) {
+    errors.push('layers must contain at least one layer');
+  } else {
+    candidate.layers.forEach((layer, index) => {
+      if (!isForgeLayer(layer)) {
+        errors.push(`layer ${index + 1} is invalid`);
+      }
+    });
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+function isForgeAsset(value: unknown): value is ForgeAsset {
+  return validateForgeAsset(value).valid;
 }
 
 function isForgePromotionBundle(value: unknown): value is ForgePromotionBundle {
@@ -781,6 +856,73 @@ function isForgePromotionBundle(value: unknown): value is ForgePromotionBundle {
     candidate.version === 1 &&
     candidate.styleGuideVersion === FORGE_STYLE_GUIDE_VERSION &&
     isForgeAsset(candidate.asset);
+}
+
+function isForgeAssetKind(value: unknown): value is ForgeAssetKind {
+  return value === 'enemy' ||
+    value === 'ship' ||
+    value === 'weapon' ||
+    value === 'projectile' ||
+    value === 'beam' ||
+    value === 'effect' ||
+    value === 'pickup' ||
+    value === 'ui-icon' ||
+    value === 'radar-icon' ||
+    value === 'telegraph';
+}
+
+function isForgeAssetStatus(value: unknown): value is ForgeAssetStatus {
+  return value === 'Generated' ||
+    value === 'Idea' ||
+    value === 'Visual Pass' ||
+    value === 'Behavior Pass' ||
+    value === 'Needs Tuning' ||
+    value === 'Playable Candidate' ||
+    value === 'Approved Visual' ||
+    value === 'Approved Gameplay' ||
+    value === 'Promoted' ||
+    value === 'Rejected' ||
+    value === 'Implemented';
+}
+
+function isForgePalette(value: unknown): value is ForgePalette {
+  const candidate = value as Partial<ForgePalette>;
+  return typeof candidate?.metalDark === 'number' &&
+    typeof candidate.metalWarm === 'number' &&
+    typeof candidate.neonPrimary === 'number' &&
+    typeof candidate.neonSecondary === 'number' &&
+    typeof candidate.warning === 'number' &&
+    typeof candidate.outline === 'number' &&
+    typeof candidate.white === 'number';
+}
+
+function isForgeLayer(value: unknown): value is ForgeVectorLayer {
+  const layer = value as Partial<ForgeVectorLayer>;
+  if (!layer || typeof layer.id !== 'string') return false;
+
+  switch (layer.type) {
+    case 'polygon':
+      return Array.isArray(layer.points) && layer.points.every(isPoint);
+    case 'line':
+      return isPoint(layer.from) && isPoint(layer.to);
+    case 'ellipse':
+      return Number.isFinite(layer.x) && Number.isFinite(layer.y) && Number.isFinite(layer.radiusX) && Number.isFinite(layer.radiusY);
+    case 'ring':
+    case 'glow':
+      return Number.isFinite(layer.x) && Number.isFinite(layer.y) && Number.isFinite(layer.radius);
+    case 'rect':
+      return Number.isFinite(layer.x) && Number.isFinite(layer.y) && Number.isFinite(layer.width) && Number.isFinite(layer.height);
+    case 'crescent':
+      return Number.isFinite(layer.radius);
+    case 'path':
+      return typeof layer.d === 'string' && layer.d.length > 0;
+    default:
+      return false;
+  }
+}
+
+function isPoint(value: unknown): value is [number, number] {
+  return Array.isArray(value) && value.length === 2 && Number.isFinite(value[0]) && Number.isFinite(value[1]);
 }
 
 function round(value: number): number {

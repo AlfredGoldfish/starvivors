@@ -69,12 +69,14 @@ import {
 import {
   FORGE_STYLE_GUIDE_VERSION,
   convertEnemyVisualDefinitionToForgeAsset,
+  createForgeAiBrief,
   createForgeContactSheetData,
   createForgePromotionBundle,
   createForgePromotionMarkdown,
   getNeonForwardSalvagepunkStyleGuide,
   loadAssetForgeStorageState,
   parseForgeAssetImport,
+  parseForgeAssetImports,
   renderForgeAssetToSvg,
   saveAssetForgeStorageState,
   type ForgeAsset,
@@ -160,6 +162,7 @@ interface EnemyLabOverlayRefs {
   forgeLayerStrokeColor: HTMLSelectElement;
   forgeLayerAlpha: HTMLInputElement;
   forgeLayerStrokeWidth: HTMLInputElement;
+  forgeBatchCount: HTMLInputElement;
   forgePaletteInputs: Record<keyof ForgePalette, HTMLInputElement>;
   enemySelect: HTMLSelectElement;
   variantSelect: HTMLSelectElement;
@@ -229,6 +232,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private selectedForgeAssetId = '';
   private selectedForgeLayerIndex = 0;
   private forgePreviewMode: ForgePreviewMode = 'combat';
+  private forgeBatchCount = 8;
   private selectedSquadIndex = 0;
   private selectedCustomSquadId = '';
   private selectedSquadEntryIndex = -1;
@@ -945,6 +949,12 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="importForgeAsset">Import Forge</button>
           <button data-action="exportForgePromotion">Forge Promotion</button>
         </div>
+        <div class="enemy-lab-subtitle">AI Batch</div>
+        <label>Batch size <input data-field="forgeBatchCount" type="number" min="1" max="40" step="1" value="8"></label>
+        <div class="enemy-lab-row">
+          <button data-action="exportForgeBatchBrief">Batch AI Brief</button>
+          <button data-action="importForgeBatch">Import Batch</button>
+        </div>
       </section>
       <section class="enemy-lab-panel">
         <div class="enemy-lab-panel-title">Forge Editor</div>
@@ -1107,6 +1117,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const forgeLayerStrokeColor = root.querySelector<HTMLSelectElement>('[data-field="forgeLayerStrokeColor"]');
     const forgeLayerAlpha = root.querySelector<HTMLInputElement>('[data-field="forgeLayerAlpha"]');
     const forgeLayerStrokeWidth = root.querySelector<HTMLInputElement>('[data-field="forgeLayerStrokeWidth"]');
+    const forgeBatchCount = root.querySelector<HTMLInputElement>('[data-field="forgeBatchCount"]');
     const forgePaletteInputs = Object.fromEntries(
       FORGE_PALETTE_KEYS.map((key) => [key, root.querySelector<HTMLInputElement>(`[data-palette="${key}"]`)])
     ) as Record<keyof ForgePalette, HTMLInputElement | null>;
@@ -1151,6 +1162,7 @@ export class EnemyLabScene extends Phaser.Scene {
       !forgeLayerStrokeColor ||
       !forgeLayerAlpha ||
       !forgeLayerStrokeWidth ||
+      !forgeBatchCount ||
       Object.values(forgePaletteInputs).some((input) => !input) ||
       !variantSelect ||
       !variantName ||
@@ -1208,6 +1220,7 @@ export class EnemyLabScene extends Phaser.Scene {
       forgeLayerStrokeColor,
       forgeLayerAlpha,
       forgeLayerStrokeWidth,
+      forgeBatchCount,
       forgePaletteInputs: forgePaletteInputs as Record<keyof ForgePalette, HTMLInputElement>,
       enemySelect,
       variantSelect,
@@ -1271,6 +1284,9 @@ export class EnemyLabScene extends Phaser.Scene {
       input.addEventListener('input', () => this.persistForgeLayerFromControls());
       input.addEventListener('change', () => this.persistForgeLayerFromControls());
     }
+    forgeBatchCount.addEventListener('input', () => {
+      this.forgeBatchCount = Phaser.Math.Clamp(Math.round(Number(forgeBatchCount.value) || 8), 1, 40);
+    });
     variantSelect.addEventListener('change', () => {
       this.selectedVariantId = variantSelect.value;
       this.syncVariantControlsFromState();
@@ -1374,6 +1390,8 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'exportContactSheet') this.exportForgeContactSheet();
       if (action === 'importForgeAsset') this.importForgeAsset();
       if (action === 'exportForgePromotion') this.exportForgePromotionBundle();
+      if (action === 'exportForgeBatchBrief') this.exportForgeBatchAiBrief();
+      if (action === 'importForgeBatch') this.importForgeAsset();
       if (action === 'createForgeDraft') this.createForgeDraftForSelectedEnemy();
       if (action === 'saveForgeAsset') this.saveSelectedForgeAsset();
       if (action === 'deleteForgeAsset') this.deleteSelectedForgeAsset();
@@ -1591,6 +1609,15 @@ export class EnemyLabScene extends Phaser.Scene {
     this.selectedForgeLayerIndex = 0;
     this.savePresetState();
     this.syncForgeControlsFromState();
+  }
+
+  private createImportedForgeDraft(asset: ForgeAsset, index: number): ForgeAsset {
+    const imported = this.cloneForgeAsset(asset);
+    imported.id = `${asset.id}.${Date.now()}.${index + 1}`;
+    imported.status = asset.status === 'Promoted' || asset.status === 'Implemented' ? 'Generated' : asset.status;
+    imported.tags = Array.from(new Set([...imported.tags, 'ai-batch-import']));
+    imported.savedAt = new Date().toISOString();
+    return imported;
   }
 
   private saveSelectedForgeAsset(): void {
@@ -1899,25 +1926,43 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private importForgeAsset(): void {
     loadMarkdownFile((contents) => {
-      const asset = parseForgeAssetImport(contents);
-      if (!asset) {
-        console.warn(`Unable to import Forge asset. Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`);
+      const result = parseForgeAssetImports(contents);
+      if (result.assets.length === 0) {
+        console.warn(`Unable to import Forge asset batch. Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`, result.errors);
         return;
       }
 
-      const imported: ForgeAsset = {
-        ...asset,
-        id: `${asset.id}.${Date.now()}`,
-        status: asset.status === 'Promoted' || asset.status === 'Implemented' ? 'Generated' : asset.status,
-        savedAt: new Date().toISOString()
-      };
-      this.presetState.forgeAssets = [
-        ...this.presetState.forgeAssets.filter((candidate) => candidate.id !== imported.id),
-        imported
-      ];
+      const importedAssets = result.assets.map((asset, index) => this.createImportedForgeDraft(asset, index));
+      this.presetState.forgeAssets = [...this.presetState.forgeAssets, ...importedAssets];
+      this.selectedForgeAssetId = importedAssets[0]?.id ?? this.selectedForgeAssetId;
       this.savePresetState();
       this.syncOverlayFromState();
+      if (result.rejectedCount > 0) {
+        console.warn(`Imported ${importedAssets.length} Forge assets; rejected ${result.rejectedCount}.`, result.errors);
+      }
     });
+  }
+
+  private exportForgeBatchAiBrief(): void {
+    const asset = this.getSelectedForgeAsset();
+    downloadTextFile(
+      `forge-batch-ai-brief-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createForgeAiBrief({
+        targetLabel: `${asset.displayName} Batch`,
+        targetKind: asset.kind,
+        batchCount: this.forgeBatchCount,
+        selectedAsset: asset,
+        context: [
+          `Selected enemy: ${this.getSelectedEffectiveDefinition().displayName}`,
+          `Selected Forge layers: ${asset.layers.length}`,
+          `Preview mode: ${this.forgePreviewMode}`,
+          `Existing stored Forge drafts: ${this.presetState.forgeAssets.length}`,
+          '',
+          'Generate distinct enemy asset variations that can be imported directly into the Asset Forge draft list.'
+        ].join('\n')
+      }),
+      'text/markdown'
+    );
   }
 
   private exportForgePromotionBundle(): void {
@@ -2756,6 +2801,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.hpMultiplier.value = String(this.enemyHpMultiplier);
     this.overlay.fireRateMultiplier.value = String(this.enemyFireRateMultiplier);
     this.overlay.deconflictionStrength.value = String(this.enemyDeconflictionStrength);
+    this.overlay.forgeBatchCount.value = String(this.forgeBatchCount);
     this.syncVariantControlsFromState();
     this.syncSquadControlsFromState();
     this.syncForgeControlsFromState();

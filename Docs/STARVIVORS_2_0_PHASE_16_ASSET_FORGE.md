@@ -11,6 +11,7 @@ Phase 16 starts the SVG/vector asset pipeline by turning the Enemy Lab into the 
 - Enemy Lab textures now route through the Forge renderer by converting existing `EnemyVisualDefinition` data into Forge assets.
 - `/enemy-lab.html` now exposes an Asset Forge panel with Neon-Forward Salvagepunk guidance and export/import buttons for SVG, Forge JSON, contact sheets, Forge imports, and Forge promotion bundles.
 - Phase 16B adds an in-lab enemy Forge editor for creating editable drafts, changing palette slots, selecting layers, changing layer color/alpha/stroke, moving/scaling/mirroring layers, adding common neon/salvage pieces, duplicating/deleting layers, and previewing combat/minimap/silhouette/starfield/hit-radius contexts.
+- Phase 16C adds AI batch workflow support: batch-size briefs, `starvivors-forge-asset-batch` parsing, array/storage import parsing, style/version/layer validation, rejected-import reporting, and automatic draft tagging for AI batch imports.
 - Existing Enemy Lab variants, squads, behavior testing, diagnostics, and preset import/export remain compatible.
 - Enemy Lab AI briefs and promotion reports now include the Neon-Forward Salvagepunk style guide so AI-generated assets inherit the visual direction.
 
@@ -20,4 +21,4 @@ Phase 16 starts the SVG/vector asset pipeline by turning the Enemy Lab into the 
 - Dedicated Forge tabs for weapons, projectiles, pickups, effects, UI icons, radar icons, ships, beams, and telegraphs.
 - Production promotion that patches live registries to reference `visualAssetId`.
 - Automated readability/contrast scoring.
-- Batch AI generation UI beyond import/export of Forge recipes.
+- Direct AI generation inside the app; Phase 16C still uses exported briefs and imported recipe files.
