@@ -560,11 +560,11 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('run', y, 'Economy');
     addValue('scrap', 'run', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-    addButton('run', 'spawn-scrap', panelX + PANEL_PADDING, y, 101, 'Spawn', config.callbacks.spawnScrap);
-    addButton('run', 'clear-scrap', panelX + PANEL_PADDING + 108, y, 101, 'Clear', config.callbacks.clearScrap);
-    addButton('run', 'add-scrap', panelX + PANEL_PADDING + 216, y, 100, '+100', () => config.callbacks.addScrap(100));
+    addButton('run', 'spawn-scrap', panelX + PANEL_PADDING, y, 154, 'Spawn scrap', config.callbacks.spawnScrap);
+    addButton('run', 'clear-scrap', panelX + PANEL_PADDING + 162, y, 154, 'Clear scrap', config.callbacks.clearScrap);
+    addButton('run', 'add-scrap', panelX + PANEL_PADDING + 324, y, 154, 'Add 100 scrap', () => config.callbacks.addScrap(100));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('run', 'add-credits', panelX + PANEL_PADDING, y, COLUMN_WIDTH, '+100 credits', () => config.callbacks.addCredits(100));
+    addButton('run', 'add-credits', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Add 100 credits', () => config.callbacks.addCredits(100));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('run', 'reroll-cost-mode', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reroll cost mode', config.callbacks.toggleRerollDebugCost);
     setTabContentHeight('run', y + BUTTON_HEIGHT + PANEL_PADDING);
@@ -589,26 +589,26 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('player', y, 'Movement And Teleport');
-    addButton('player', 'player-stop', panelX + PANEL_PADDING, y, 101, 'Stop', config.callbacks.stopPlayerVelocity);
-    addButton('player', 'teleport-center', panelX + PANEL_PADDING + 108, y, 101, 'Center', () => config.callbacks.teleportPlayer('center'));
+    addButton('player', 'player-stop', panelX + PANEL_PADDING, y, 101, 'Stop speed', config.callbacks.stopPlayerVelocity);
+    addButton('player', 'teleport-center', panelX + PANEL_PADDING + 108, y, 101, 'Center arena', () => config.callbacks.teleportPlayer('center'));
     addButton('player', 'teleport-black-hole', panelX + PANEL_PADDING + 216, y, 100, 'Black hole', () => config.callbacks.teleportPlayer('blackHole'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('player', 'teleport-mission', panelX + PANEL_PADDING, y, 154, 'Mission objective', () => config.callbacks.teleportPlayer('mission'));
     addButton('player', 'teleport-extraction', panelX + PANEL_PADDING + 162, y, 154, 'Extraction beacon', () => config.callbacks.teleportPlayer('extraction'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('player', 'nudge-left', panelX + PANEL_PADDING, y, 74, 'Left', () => config.callbacks.nudgePlayer(-180, 0));
-    addButton('player', 'nudge-right', panelX + PANEL_PADDING + 80, y, 74, 'Right', () => config.callbacks.nudgePlayer(180, 0));
-    addButton('player', 'nudge-up', panelX + PANEL_PADDING + 162, y, 74, 'Up', () => config.callbacks.nudgePlayer(0, -180));
-    addButton('player', 'nudge-down', panelX + PANEL_PADDING + 242, y, 74, 'Down', () => config.callbacks.nudgePlayer(0, 180));
+    addButton('player', 'nudge-left', panelX + PANEL_PADDING, y, 126, 'Nudge left', () => config.callbacks.nudgePlayer(-180, 0));
+    addButton('player', 'nudge-right', panelX + PANEL_PADDING + 134, y, 126, 'Nudge right', () => config.callbacks.nudgePlayer(180, 0));
+    addButton('player', 'nudge-up', panelX + PANEL_PADDING + 272, y, 126, 'Nudge up', () => config.callbacks.nudgePlayer(0, -180));
+    addButton('player', 'nudge-down', panelX + PANEL_PADDING + 406, y, 126, 'Nudge down', () => config.callbacks.nudgePlayer(0, 180));
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('player', y, 'Fuel And Weapons');
     addValue('fuel', 'player', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-    addButton('player', 'fuel-refill', panelX + PANEL_PADDING, y, 74, 'Full fuel', config.callbacks.refillFuel);
-    addButton('player', 'fuel-empty', panelX + PANEL_PADDING + 80, y, 74, 'Empty', config.callbacks.emptyFuel);
-    addButton('player', 'fuel-drain-toggle', panelX + PANEL_PADDING + 162, y, 74, 'Drain', config.callbacks.toggleFuelDrain);
-    addButton('player', 'fuel-mode-toggle', panelX + PANEL_PADDING + 242, y, 74, 'Mode', config.callbacks.toggleFuelDrainMode);
+    addButton('player', 'fuel-refill', panelX + PANEL_PADDING, y, 126, 'Refill fuel', config.callbacks.refillFuel);
+    addButton('player', 'fuel-empty', panelX + PANEL_PADDING + 134, y, 126, 'Empty fuel', config.callbacks.emptyFuel);
+    addButton('player', 'fuel-drain-toggle', panelX + PANEL_PADDING + 272, y, 126, 'Fuel drain', config.callbacks.toggleFuelDrain);
+    addButton('player', 'fuel-mode-toggle', panelX + PANEL_PADDING + 406, y, 126, 'Fuel mode', config.callbacks.toggleFuelDrainMode);
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('player', 'player-clear-player-projectiles', panelX + PANEL_PADDING, y, 154, 'Clear player shots', config.callbacks.clearPlayerProjectiles);
     addButton('player', 'player-clear-enemy-projectiles', panelX + PANEL_PADDING + 162, y, 154, 'Clear enemy shots', config.callbacks.clearEnemyProjectiles);
@@ -618,14 +618,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('player', y, 'Progression');
-    addButton('player', 'add-xp-small', panelX + PANEL_PADDING, y, 101, '+25 XP', () => config.callbacks.addPlayerXp(25));
-    addButton('player', 'add-xp-large', panelX + PANEL_PADDING + 108, y, 101, '+250 XP', () => config.callbacks.addPlayerXp(250));
-    addButton('player', 'add-banked-upgrade', panelX + PANEL_PADDING + 216, y, 100, '+Upgrade', () => config.callbacks.addBankedUpgrade(1));
+    addButton('player', 'add-xp-small', panelX + PANEL_PADDING, y, 154, 'Add 25 experience', () => config.callbacks.addPlayerXp(25));
+    addButton('player', 'add-xp-large', panelX + PANEL_PADDING + 162, y, 154, 'Add 250 experience', () => config.callbacks.addPlayerXp(250));
+    addButton('player', 'add-banked-upgrade', panelX + PANEL_PADDING + 324, y, 154, 'Add upgrade', () => config.callbacks.addBankedUpgrade(1));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('player', 'clear-banked-upgrades', panelX + PANEL_PADDING, y, 154, 'Clear upgrades', config.callbacks.clearBankedUpgrades);
-    addButton('player', 'player-add-scrap', panelX + PANEL_PADDING + 162, y, 154, '+100 scrap', () => config.callbacks.addScrap(100));
+    addButton('player', 'player-add-scrap', panelX + PANEL_PADDING + 162, y, 154, 'Add 100 scrap', () => config.callbacks.addScrap(100));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('player', 'player-add-credits', panelX + PANEL_PADDING, y, 154, '+100 credits', () => config.callbacks.addCredits(100));
+    addButton('player', 'player-add-credits', panelX + PANEL_PADDING, y, 154, 'Add 100 credits', () => config.callbacks.addCredits(100));
     addButton('player', 'secret-controls-unlock', panelX + PANEL_PADDING + 162, y, 154, 'Unlock controls', config.callbacks.unlockSecretControls);
     setTabContentHeight('player', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
@@ -653,13 +653,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('weapons', y, 'Global Weapon Multipliers');
     addValue('weapon', 'weapons', y, VALUE_LINE_HEIGHT * 3);
     y += VALUE_LINE_HEIGHT * 3 + BUTTON_GAP;
-    addButton('weapons', 'damage-down', panelX + PANEL_PADDING, y, 74, 'Dmg -', () => config.callbacks.adjustWeaponDamage(-0.5));
-    addButton('weapons', 'damage-up', panelX + PANEL_PADDING + 80, y, 74, 'Dmg +', () => config.callbacks.adjustWeaponDamage(0.5));
-    addButton('weapons', 'fire-down', panelX + PANEL_PADDING + 162, y, 74, 'Fire -', () => config.callbacks.adjustWeaponFireRate(-0.5));
-    addButton('weapons', 'fire-up', panelX + PANEL_PADDING + 242, y, 74, 'Fire +', () => config.callbacks.adjustWeaponFireRate(0.5));
+    addButton('weapons', 'damage-down', panelX + PANEL_PADDING, y, 126, 'Damage down', () => config.callbacks.adjustWeaponDamage(-0.5));
+    addButton('weapons', 'damage-up', panelX + PANEL_PADDING + 134, y, 126, 'Damage up', () => config.callbacks.adjustWeaponDamage(0.5));
+    addButton('weapons', 'fire-down', panelX + PANEL_PADDING + 272, y, 126, 'Fire rate down', () => config.callbacks.adjustWeaponFireRate(-0.5));
+    addButton('weapons', 'fire-up', panelX + PANEL_PADDING + 406, y, 126, 'Fire rate up', () => config.callbacks.adjustWeaponFireRate(0.5));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('weapons', 'cooldown-down', panelX + PANEL_PADDING, y, 154, 'Cooldown -', () => config.callbacks.adjustWeaponCooldownSeconds(-0.05));
-    addButton('weapons', 'cooldown-up', panelX + PANEL_PADDING + 162, y, 154, 'Cooldown +', () => config.callbacks.adjustWeaponCooldownSeconds(0.05));
+    addButton('weapons', 'cooldown-down', panelX + PANEL_PADDING, y, 154, 'Cooldown down', () => config.callbacks.adjustWeaponCooldownSeconds(-0.05));
+    addButton('weapons', 'cooldown-up', panelX + PANEL_PADDING + 162, y, 154, 'Cooldown up', () => config.callbacks.adjustWeaponCooldownSeconds(0.05));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('weapons', 'weapon-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset weapon tuning', config.callbacks.resetWeaponTuning);
     y += BUTTON_HEIGHT + ROW_GAP;
@@ -684,7 +684,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-thrust`, y, 'Accel', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 1), {
+    addButtonPair('ship', `${shipId}-thrust`, y, 'Acceleration', () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', -1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'thrust', 1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Accel ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'thrust', value),
       step: 1
@@ -702,7 +702,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('ship', `${shipId}-hit`, y, 'Hit', () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', -0.1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', 0.1), {
+    addButtonPair('ship', `${shipId}-hit`, y, 'Hit radius', () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', -0.1), () => config.callbacks.adjustShipLoadoutStat(shipId, 'hitRadius', 0.1), {
       getValue: (values) => parseSummaryValue(values.shipTuningSummaries[shipId], /Hit ([\d.]+)/),
       setValue: (value) => config.callbacks.setShipLoadoutStat(shipId, 'hitRadius', value),
       step: 0.1
@@ -734,7 +734,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'pulse-life', y, 'Life', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', 0.1), {
+    addButtonPair('weapons', 'pulse-life', y, 'Lifetime', () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', 0.1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['pulse-cannon'], /Lifetime ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('pulse-cannon', 'projectileLifetimeSeconds', value),
       step: 0.1
@@ -754,13 +754,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('weapons', y, 'Ramming Shield Loadout');
     addValue('weapon-loadout-ramming-shield', 'weapons', y, VALUE_LINE_HEIGHT * 5);
     y += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-hp', y, 'HP', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', 10), {
+    addButtonPair('weapons', 'shield-hp', y, 'Shield health', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', 10), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Shield ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'shieldMaxHp', value),
       step: 10
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-regen', y, 'Regen', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', 1), {
+    addButtonPair('weapons', 'shield-regen', y, 'Regeneration', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Regen ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'shieldRegenRatePerSecond', value),
       step: 1
@@ -778,25 +778,25 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-distance', y, 'DashDist', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', -8), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', 8), {
+    addButtonPair('weapons', 'shield-distance', y, 'Dash distance', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', -8), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', 8), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dist ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashDistance', value),
       step: 8
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-guard', y, 'GuardD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', 1), {
+    addButtonPair('weapons', 'shield-guard', y, 'Guard damage', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Guard ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'guardDamage', value),
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-bash', y, 'BashD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', 1), {
+    addButtonPair('weapons', 'shield-bash', y, 'Bash damage', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', 1), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Bash ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'bashDamage', value),
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-knock', y, 'Knock', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', 10), {
+    addButtonPair('weapons', 'shield-knock', y, 'Knockback', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', 10), {
       getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Knock ([\d.]+)/),
       setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'knockback', value),
       step: 10
@@ -817,61 +817,61 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('physics', y, 'Global Physics');
     addValue('physics-global', 'physics', y, VALUE_LINE_HEIGHT * 7);
     y += VALUE_LINE_HEIGHT * 7 + BUTTON_GAP;
-    addButtonPair('physics', 'global-speed', y, 'MaxSpd', () => config.callbacks.adjustGlobalMaxSpeed(-1), () => config.callbacks.adjustGlobalMaxSpeed(1), {
+    addButtonPair('physics', 'global-speed', y, 'Max speed', () => config.callbacks.adjustGlobalMaxSpeed(-1), () => config.callbacks.adjustGlobalMaxSpeed(1), {
       getValue: (values) => toDisplayUnits(values.globalMaxSpeed),
       setValue: (value) => config.callbacks.setPhysicsTuning('globalMaxSpeed', value),
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'global-impact-cap', y, 'GCap', () => config.callbacks.adjustGlobalImpactDamageCap(-50), () => config.callbacks.adjustGlobalImpactDamageCap(50), {
+    addButtonPair('physics', 'global-impact-cap', y, 'Global cap', () => config.callbacks.adjustGlobalImpactDamageCap(-50), () => config.callbacks.adjustGlobalImpactDamageCap(50), {
       getValue: (values) => values.globalImpactDamageCap,
       setValue: (value) => config.callbacks.setPhysicsTuning('globalImpactDamageCap', value),
       step: 50
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-impact-cap', y, 'PCap', () => config.callbacks.adjustImpactDamageCap('player', -25), () => config.callbacks.adjustImpactDamageCap('player', 25), {
+    addButtonPair('physics', 'player-impact-cap', y, 'Player cap', () => config.callbacks.adjustImpactDamageCap('player', -25), () => config.callbacks.adjustImpactDamageCap('player', 25), {
       getValue: (values) => values.playerImpactDamageCap,
       setValue: (value) => config.callbacks.setPhysicsTuning('playerImpactDamageCap', value),
       step: 25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-impact-cap', y, 'ECap', () => config.callbacks.adjustImpactDamageCap('enemy', -25), () => config.callbacks.adjustImpactDamageCap('enemy', 25), {
+    addButtonPair('physics', 'enemy-impact-cap', y, 'Enemy cap', () => config.callbacks.adjustImpactDamageCap('enemy', -25), () => config.callbacks.adjustImpactDamageCap('enemy', 25), {
       getValue: (values) => values.enemyImpactDamageCap,
       setValue: (value) => config.callbacks.setPhysicsTuning('enemyImpactDamageCap', value),
       step: 25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'asteroid-impact-cap', y, 'ACap', () => config.callbacks.adjustImpactDamageCap('asteroid', -25), () => config.callbacks.adjustImpactDamageCap('asteroid', 25), {
+    addButtonPair('physics', 'asteroid-impact-cap', y, 'Asteroid cap', () => config.callbacks.adjustImpactDamageCap('asteroid', -25), () => config.callbacks.adjustImpactDamageCap('asteroid', 25), {
       getValue: (values) => values.asteroidImpactDamageCap,
       setValue: (value) => config.callbacks.setPhysicsTuning('asteroidImpactDamageCap', value),
       step: 25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'debris-impact-cap', y, 'DCap', () => config.callbacks.adjustImpactDamageCap('debris', -25), () => config.callbacks.adjustImpactDamageCap('debris', 25), {
+    addButtonPair('physics', 'debris-impact-cap', y, 'Debris cap', () => config.callbacks.adjustImpactDamageCap('debris', -25), () => config.callbacks.adjustImpactDamageCap('debris', 25), {
       getValue: (values) => values.debrisImpactDamageCap,
       setValue: (value) => config.callbacks.setPhysicsTuning('debrisImpactDamageCap', value),
       step: 25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'player-impact-scale', y, 'PScale', () => config.callbacks.adjustImpactDamageScale('player', -0.01), () => config.callbacks.adjustImpactDamageScale('player', 0.01), {
+    addButtonPair('physics', 'player-impact-scale', y, 'Player scale', () => config.callbacks.adjustImpactDamageScale('player', -0.01), () => config.callbacks.adjustImpactDamageScale('player', 0.01), {
       getValue: (values) => values.playerImpactDamageScale,
       setValue: (value) => config.callbacks.setPhysicsTuning('playerImpactDamageScale', value),
       step: 0.01
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'enemy-impact-scale', y, 'EScale', () => config.callbacks.adjustImpactDamageScale('enemy', -0.01), () => config.callbacks.adjustImpactDamageScale('enemy', 0.01), {
+    addButtonPair('physics', 'enemy-impact-scale', y, 'Enemy scale', () => config.callbacks.adjustImpactDamageScale('enemy', -0.01), () => config.callbacks.adjustImpactDamageScale('enemy', 0.01), {
       getValue: (values) => values.enemyImpactDamageScale,
       setValue: (value) => config.callbacks.setPhysicsTuning('enemyImpactDamageScale', value),
       step: 0.01
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'asteroid-impact-scale', y, 'AScale', () => config.callbacks.adjustImpactDamageScale('asteroid', -0.01), () => config.callbacks.adjustImpactDamageScale('asteroid', 0.01), {
+    addButtonPair('physics', 'asteroid-impact-scale', y, 'Asteroid scale', () => config.callbacks.adjustImpactDamageScale('asteroid', -0.01), () => config.callbacks.adjustImpactDamageScale('asteroid', 0.01), {
       getValue: (values) => values.asteroidImpactDamageScale,
       setValue: (value) => config.callbacks.setPhysicsTuning('asteroidImpactDamageScale', value),
       step: 0.01
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('physics', 'debris-impact-scale', y, 'DScale', () => config.callbacks.adjustImpactDamageScale('debris', -0.01), () => config.callbacks.adjustImpactDamageScale('debris', 0.01), {
+    addButtonPair('physics', 'debris-impact-scale', y, 'Debris scale', () => config.callbacks.adjustImpactDamageScale('debris', -0.01), () => config.callbacks.adjustImpactDamageScale('debris', 0.01), {
       getValue: (values) => values.debrisImpactDamageScale,
       setValue: (value) => config.callbacks.setPhysicsTuning('debrisImpactDamageScale', value),
       step: 0.01
@@ -993,13 +993,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('spawns', 'spawn-shooter', panelX + PANEL_PADDING + 109, y, 98, 'Shooter', () => config.callbacks.spawnEnemy('shooter'));
     addButton('spawns', 'spawn-tank', panelX + PANEL_PADDING + 218, y, 98, 'Tank', () => config.callbacks.spawnEnemy('tank'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('spawns', 'spawn-scout-pack', panelX + PANEL_PADDING, y, 98, 'Scout', () => config.callbacks.spawnEncounter('scout-pack'));
-    addButton('spawns', 'spawn-gunner-escort', panelX + PANEL_PADDING + 109, y, 98, 'Escort', () => config.callbacks.spawnEncounter('gunner-escort'));
-    addButton('spawns', 'spawn-strike-wing', panelX + PANEL_PADDING + 218, y, 98, 'Strike', () => config.callbacks.spawnEncounter('strike-wing'));
+    addButton('spawns', 'spawn-scout-pack', panelX + PANEL_PADDING, y, 154, 'Scout pack', () => config.callbacks.spawnEncounter('scout-pack'));
+    addButton('spawns', 'spawn-gunner-escort', panelX + PANEL_PADDING + 162, y, 154, 'Gunner escort', () => config.callbacks.spawnEncounter('gunner-escort'));
+    addButton('spawns', 'spawn-strike-wing', panelX + PANEL_PADDING + 324, y, 154, 'Strike wing', () => config.callbacks.spawnEncounter('strike-wing'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('spawns', 'spawn-support-group', panelX + PANEL_PADDING, y, 98, 'Support', () => config.callbacks.spawnEncounter('support-group'));
-    addButton('spawns', 'spawn-sniper-screen', panelX + PANEL_PADDING + 109, y, 98, 'Sniper', () => config.callbacks.spawnEncounter('sniper-screen'));
-    addButton('spawns', 'spawn-carrier-group', panelX + PANEL_PADDING + 218, y, 98, 'Carrier', () => config.callbacks.spawnEncounter('carrier-group'));
+    addButton('spawns', 'spawn-support-group', panelX + PANEL_PADDING, y, 154, 'Support group', () => config.callbacks.spawnEncounter('support-group'));
+    addButton('spawns', 'spawn-sniper-screen', panelX + PANEL_PADDING + 162, y, 154, 'Sniper screen', () => config.callbacks.spawnEncounter('sniper-screen'));
+    addButton('spawns', 'spawn-carrier-group', panelX + PANEL_PADDING + 324, y, 154, 'Carrier group', () => config.callbacks.spawnEncounter('carrier-group'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('spawns', 'clear-enemies', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Clear enemies', config.callbacks.clearEnemies);
     y += BUTTON_HEIGHT + ROW_GAP;
@@ -1013,7 +1013,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       'spawns',
       'asteroid-soft-cap',
       y,
-      'Soft',
+      'Soft cap',
       () => config.callbacks.adjustAsteroidFragmentSoftCap(-10),
       () => config.callbacks.adjustAsteroidFragmentSoftCap(10),
       {
@@ -1027,7 +1027,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       'spawns',
       'asteroid-hard-cap',
       y,
-      'Hard',
+      'Hard cap',
       () => config.callbacks.adjustAsteroidFragmentHardCap(-10),
       () => config.callbacks.adjustAsteroidFragmentHardCap(10),
       {
@@ -1041,7 +1041,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       'spawns',
       'asteroid-burst-limit',
       y,
-      'Burst',
+      'Burst limit',
       () => config.callbacks.adjustAsteroidFragmentBurstLimit(-10),
       () => config.callbacks.adjustAsteroidFragmentBurstLimit(10),
       {
@@ -1057,7 +1057,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       'spawns',
       'debug-asteroid-spawn-count',
       y,
-      'Spawn',
+      'Spawn count',
       () => config.callbacks.adjustDebugAsteroidSpawnCount(-10),
       () => config.callbacks.adjustDebugAsteroidSpawnCount(10),
       {
@@ -1070,13 +1070,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('spawns', 'debug-asteroid-spawn-count-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset spawn count', config.callbacks.resetDebugAsteroidSpawnCount);
     y += BUTTON_HEIGHT + BUTTON_GAP;
     for (let tier = 1; tier <= 5; tier += 1) {
-      addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 1) * 63, y, 55, `T${tier}`, () =>
+      addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 1) * 109, y, 98, `Tier ${tier}`, () =>
         config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
       );
     }
     y += BUTTON_HEIGHT + BUTTON_GAP;
     for (let tier = 6; tier <= 10; tier += 1) {
-      addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 6) * 63, y, 55, `T${tier}`, () =>
+      addButton(`spawns`, `asteroid-${tier}`, panelX + PANEL_PADDING + (tier - 6) * 109, y, 98, `Tier ${tier}`, () =>
         config.callbacks.spawnAsteroid(tier as DebugAsteroidTier)
       );
     }
@@ -1117,8 +1117,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addDeathShardControls(y, 'ship', 'Enemy Ship');
     y = addDeathShardControls(y, 'player', 'Player');
     y = addDeathShardControls(y, 'asteroid', 'Asteroid');
-    y = addDeathShardControls(y, 'blackHoleShip', 'BH Ship');
-    y = addDeathShardControls(y, 'blackHoleAsteroid', 'BH Asteroid');
+    y = addDeathShardControls(y, 'blackHoleShip', 'Black Hole Ship');
+    y = addDeathShardControls(y, 'blackHoleAsteroid', 'Black Hole Asteroid');
     addButton('effects', 'death-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset death effects', config.callbacks.resetDeathShardTuning);
     setTabContentHeight('effects', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
@@ -1136,7 +1136,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('effects', `${key}-life`, y, 'Life', () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', 0.1), {
+    addButtonPair('effects', `${key}-life`, y, 'Lifetime', () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'lifetimeScale', 0.1), {
       getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Life x([\d.]+)/),
       setValue: (value) => config.callbacks.setDeathShardTuning(style, 'lifetimeScale', value),
       step: 0.1
@@ -1148,13 +1148,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('effects', `${key}-burst`, y, 'Burst', () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', 0.1), {
+    addButtonPair('effects', `${key}-burst`, y, 'Burst speed', () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'burstSpeedScale', 0.1), {
       getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Burst x([\d.]+)/),
       setValue: (value) => config.callbacks.setDeathShardTuning(style, 'burstSpeedScale', value),
       step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('effects', `${key}-inherit`, y, 'Inherit', () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', 0.1), {
+    addButtonPair('effects', `${key}-inherit`, y, 'Inherit velocity', () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', -0.1), () => config.callbacks.adjustDeathShardTuning(style, 'inheritedVelocityScale', 0.1), {
       getValue: (values) => parseSummaryValue(values.deathShardTuningSummaries[style], /Inherit x([\d.]+)/),
       setValue: (value) => config.callbacks.setDeathShardTuning(style, 'inheritedVelocityScale', value),
       step: 0.1
@@ -1222,16 +1222,16 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y = addSection('visuals', y, 'Background');
     addValue('background', 'visuals', y, VALUE_LINE_HEIGHT * 4);
     y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
-    addButton('visuals', 'background-stars', panelX + PANEL_PADDING, y, 154, 'Stars', config.callbacks.toggleBackgroundStars);
-    addButton('visuals', 'parallax-reset', panelX + PANEL_PADDING + 162, y, 154, 'Reset bg', config.callbacks.resetStarfieldParallax);
+    addButton('visuals', 'background-stars', panelX + PANEL_PADDING, y, 154, 'Toggle stars', config.callbacks.toggleBackgroundStars);
+    addButton('visuals', 'parallax-reset', panelX + PANEL_PADDING + 162, y, 154, 'Reset background', config.callbacks.resetStarfieldParallax);
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('visuals', 'far-parallax-down', panelX + PANEL_PADDING, y, 74, 'Far -', () => config.callbacks.adjustStarfieldParallax('far', -1));
-    addButton('visuals', 'far-parallax-up', panelX + PANEL_PADDING + 80, y, 74, 'Far +', () => config.callbacks.adjustStarfieldParallax('far', 1));
-    addButton('visuals', 'mid-parallax-down', panelX + PANEL_PADDING + 162, y, 74, 'Mid -', () => config.callbacks.adjustStarfieldParallax('mid', -1));
-    addButton('visuals', 'mid-parallax-up', panelX + PANEL_PADDING + 242, y, 74, 'Mid +', () => config.callbacks.adjustStarfieldParallax('mid', 1));
+    addButton('visuals', 'far-parallax-down', panelX + PANEL_PADDING, y, 126, 'Far layer down', () => config.callbacks.adjustStarfieldParallax('far', -1));
+    addButton('visuals', 'far-parallax-up', panelX + PANEL_PADDING + 134, y, 126, 'Far layer up', () => config.callbacks.adjustStarfieldParallax('far', 1));
+    addButton('visuals', 'mid-parallax-down', panelX + PANEL_PADDING + 272, y, 126, 'Middle down', () => config.callbacks.adjustStarfieldParallax('mid', -1));
+    addButton('visuals', 'mid-parallax-up', panelX + PANEL_PADDING + 406, y, 126, 'Middle up', () => config.callbacks.adjustStarfieldParallax('mid', 1));
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('visuals', 'near-parallax-down', panelX + PANEL_PADDING, y, 154, 'Near -', () => config.callbacks.adjustStarfieldParallax('near', -1));
-    addButton('visuals', 'near-parallax-up', panelX + PANEL_PADDING + 162, y, 154, 'Near +', () => config.callbacks.adjustStarfieldParallax('near', 1));
+    addButton('visuals', 'near-parallax-down', panelX + PANEL_PADDING, y, 154, 'Near layer down', () => config.callbacks.adjustStarfieldParallax('near', -1));
+    addButton('visuals', 'near-parallax-up', panelX + PANEL_PADDING + 162, y, 154, 'Near layer up', () => config.callbacks.adjustStarfieldParallax('near', 1));
     setTabContentHeight('visuals', y + BUTTON_HEIGHT + PANEL_PADDING);
   }
 
@@ -1347,9 +1347,9 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       return;
     }
 
-    addButton(tabId, `${keyPrefix}-down`, panelX + PANEL_PADDING, y, 74, `${label} -`, downCallback);
-    addNumberInput(tabId, keyPrefix, panelX + PANEL_PADDING + 81, y, 154, numberInput);
-    addButton(tabId, `${keyPrefix}-up`, panelX + PANEL_PADDING + 242, y, 74, `${label} +`, upCallback);
+    addButton(tabId, `${keyPrefix}-down`, panelX + PANEL_PADDING, y, 154, `${label} down`, downCallback);
+    addNumberInput(tabId, keyPrefix, panelX + PANEL_PADDING + 162, y, 154, numberInput);
+    addButton(tabId, `${keyPrefix}-up`, panelX + PANEL_PADDING + 324, y, 154, `${label} up`, upCallback);
   }
 
   function addNumberInput(
@@ -1838,7 +1838,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         );
         setValue(
           'physics-player',
-          `Velocity ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nAccel x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}`
+          `Velocity ${formatIntegerDisplayUnits(values.playerSpeed)} / ${formatIntegerDisplayUnits(values.playerMaxSpeed)}\nAcceleration x${values.playerThrustScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerThrust)}\nBrake x${values.playerBrakeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerBrake)}\nStrafe x${values.playerStrafeScale.toFixed(2)} = ${formatIntegerDisplayUnits(values.playerStrafe)}\nInertia x${values.playerInertiaScale.toFixed(2)}`
         );
         setValue(
           'physics-enemy',
