@@ -430,7 +430,7 @@ Use this section to record extraction progress.
 - Phase 2: complete. Read-only snapshot shaping for diagnostics, profiler counts/flags, collision overlay, minimap, and gameplay HUD moved to `src/systems/gameplaySnapshots.ts`.
 - Phase 3: complete. Pure per-run reset defaults for rewards, progression, counters, pulse runtime, encounter timing, pause/overlay state, beam slots, and black-hole debug state moved to `src/scenes/gameSceneRunState.ts`.
 - Phase 4: complete. Pre-run decision/config helpers for navigation, ship availability, play disabled reasons, unlock checks, hangar weapon availability, and lock labels moved to `src/scenes/gameScenePreRunFlow.ts`.
-- Phase 5: pending
+- Phase 5: complete. Mission runtime creation and sector scanner target shaping moved to systems; scene-owned visuals, rewards, and completion side effects remain in `GameScene`.
 - Phase 6: pending
 - Phase 7: pending
 - Phase 8: pending

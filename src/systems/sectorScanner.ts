@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { getWrappedDistance } from './sectorGeneration';
 import type { ArenaSize } from '../core/arena';
-import type { RareEventMinimapMarker } from './rareEventRuntime';
+import { createRareEventMinimapMarkers, type RareEventInstance, type RareEventMinimapMarker } from './rareEventRuntime';
 import type { SectorScannerLevel } from './progressionStorage';
 
 export const SECTOR_SCANNER_SCAN_MS = 5 * 60 * 1000;
@@ -21,6 +21,16 @@ export interface SectorScannerRuntime {
   targetId: string | null;
   targetLabel: string | null;
   completed: boolean;
+}
+
+export interface SectorScannerWorldEventSource {
+  id: string;
+  definition: {
+    shortName: string;
+  };
+  x: number;
+  y: number;
+  status: string;
 }
 
 export interface SectorScannerSnapshot {
@@ -95,6 +105,48 @@ export function getSectorScannerTarget(
   }
 
   return targets.find((target) => target.id === runtime.targetId);
+}
+
+export function buildSectorScannerTargets(input: {
+  worldEvents: SectorScannerWorldEventSource[];
+  rareEvents: RareEventInstance[];
+}): SectorScannerTarget[] {
+  const rareMarkers = createRareEventMinimapMarkers(input.rareEvents);
+  const targets: SectorScannerTarget[] = [];
+
+  for (const event of input.worldEvents) {
+    if (event.status !== 'active') {
+      continue;
+    }
+
+    targets.push({
+      id: event.id,
+      label: event.definition.shortName,
+      x: event.x,
+      y: event.y,
+      kind: 'world-event',
+      status: event.status
+    });
+  }
+
+  for (let i = 0; i < input.rareEvents.length; i += 1) {
+    const event = input.rareEvents[i];
+    if (event.status !== 'active') {
+      continue;
+    }
+
+    targets.push({
+      id: event.id,
+      label: event.definition.shortName,
+      x: event.x,
+      y: event.y,
+      kind: 'rare-event',
+      status: event.status,
+      minimapMarker: rareMarkers[i]
+    });
+  }
+
+  return targets;
 }
 
 function chooseNearestScannerTarget(

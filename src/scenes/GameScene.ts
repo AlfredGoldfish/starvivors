@@ -333,7 +333,11 @@ import {
   type SectorLayout,
   type SectorRegion
 } from '../systems/sectorGeneration';
-import { generateMissionObjective, type MissionObjective } from '../systems/missionGeneration';
+import {
+  createMissionRuntime as createMissionRuntimeSystem,
+  type MissionFailureReason,
+  type MissionRuntimeState
+} from '../systems/missionRuntime';
 import { generateRareEvents, type GeneratedRareEvent } from '../systems/rareEventGeneration';
 import {
   createRareEventMinimapMarkers,
@@ -358,6 +362,7 @@ import {
 import { runProgressionLoadoutMigrationHarness } from '../systems/progressionLoadoutHarness';
 import {
   createSectorScannerRuntime,
+  buildSectorScannerTargets,
   getSectorScannerSnapshot,
   getSectorScannerTarget,
   updateSectorScannerRuntime,
@@ -636,8 +641,6 @@ interface SectorSignalSpawn {
   region: SectorRegion;
 }
 
-type MissionStatus = 'active' | 'completed' | 'failed';
-type MissionFailureReason = 'player-death' | 'run-ended';
 type DebugFuelDrainMode = 'thrust-only';
 type RunEndReason = GameSceneRunEndReason;
 type WeaponRuntimeSlot = GameSceneWeaponRuntimeSlot;
@@ -656,17 +659,6 @@ interface UpgradeOverlayLayout {
   cardWidth: number;
   cardHeight: number;
   cardGap: number;
-}
-
-interface MissionRuntimeState {
-  definition: MissionDefinition;
-  objective: MissionObjective;
-  status: MissionStatus;
-  completedAt: number | null;
-  failedAt: number | null;
-  failureReason: MissionFailureReason | null;
-  targetWorldEventId: string | null;
-  targetRareEventId: string | null;
 }
 
 type WorldEventStatus = 'active' | 'destroyed';
@@ -5168,55 +5160,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createMissionRuntime(center: Phaser.Math.Vector2): void {
-    const definition = this.getSelectedMissionDefinition();
-    if (definition.objectiveType === 'free-range') {
-      this.missionRuntime = undefined;
-      return;
-    }
-
-    const targetWorldEvent = definition.guaranteedWorldEventId
-      ? this.worldEvents.find((event) => event.definition.id === definition.guaranteedWorldEventId)
-      : undefined;
-    const targetRareEvent = definition.guaranteedRareEventId
-      ? this.rareEvents.find((event) => event.definition.id === definition.guaranteedRareEventId)
-      : undefined;
-    const objective = targetWorldEvent
-      ? {
-          id: `${targetWorldEvent.id}-objective`,
-          label: targetWorldEvent.definition.shortName,
-          x: targetWorldEvent.x,
-          y: targetWorldEvent.y,
-          radius: targetWorldEvent.definition.hitRadius + 58,
-          regionId: targetWorldEvent.regionId
-        }
-      : targetRareEvent
-        ? {
-            id: `${targetRareEvent.id}-objective`,
-            label: targetRareEvent.definition.shortName,
-            x: targetRareEvent.x,
-            y: targetRareEvent.y,
-            radius: targetRareEvent.definition.objectiveRadius,
-            regionId: targetRareEvent.regionId
-          }
-      : generateMissionObjective({
-          arena: this.arena,
-          sector: this.sectorLayout,
-          mission: definition,
-          seed: this.sectorSeed,
-          startX: center.x,
-          startY: center.y
-        });
-
-    this.missionRuntime = {
-      definition,
-      objective,
-      status: 'active',
-      completedAt: null,
-      failedAt: null,
-      failureReason: null,
-      targetWorldEventId: targetWorldEvent?.id ?? null,
-      targetRareEventId: targetRareEvent?.id ?? null
-    };
+    this.missionRuntime = createMissionRuntimeSystem({
+      definition: this.getSelectedMissionDefinition(),
+      arena: this.arena,
+      sector: this.sectorLayout,
+      seed: this.sectorSeed,
+      startX: center.x,
+      startY: center.y,
+      worldEvents: this.worldEvents,
+      rareEvents: this.rareEvents
+    });
   }
 
   private createMissionObjectiveBeacon(): void {
@@ -5532,42 +5485,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getSectorScannerTargets(): SectorScannerTarget[] {
-    const rareMarkers = createRareEventMinimapMarkers(this.rareEvents);
-    const targets: SectorScannerTarget[] = [];
-
-    for (const event of this.worldEvents) {
-      if (event.status !== 'active') {
-        continue;
-      }
-
-      targets.push({
-        id: event.id,
-        label: event.definition.shortName,
-        x: event.x,
-        y: event.y,
-        kind: 'world-event',
-        status: event.status
-      });
-    }
-
-    for (let i = 0; i < this.rareEvents.length; i += 1) {
-      const event = this.rareEvents[i];
-      if (event.status !== 'active') {
-        continue;
-      }
-
-      targets.push({
-        id: event.id,
-        label: event.definition.shortName,
-        x: event.x,
-        y: event.y,
-        kind: 'rare-event',
-        status: event.status,
-        minimapMarker: rareMarkers[i]
-      });
-    }
-
-    return targets;
+    return buildSectorScannerTargets({
+      worldEvents: this.worldEvents,
+      rareEvents: this.rareEvents
+    });
   }
 
   private updateSectorScannerArrow(target: SectorScannerTarget | undefined): void {
