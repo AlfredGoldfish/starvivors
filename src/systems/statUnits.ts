@@ -8,10 +8,8 @@ const RAW_SCALED_KEYS = new Set([
   'hitRadius',
   'projectileSpeed',
   'projectileRange',
-  'dashImpulse',
   'range',
   'width',
-  'strongRamSpeed',
   'globalMaxSpeed'
 ]);
 

@@ -127,32 +127,42 @@ export function resolveRammingShieldStats(input: ResolveWeaponStatsInput): Rammi
       : undefined;
 
   if (bonus) {
-    const dashImpulseMultiplier = bonus.dashImpulseMultiplier ?? 1;
-    const { dashImpulseMultiplier: _unusedDashImpulseMultiplier, ...overrides } = bonus;
-
-    Object.assign(stats, {
-      ...overrides,
-      dashImpulse: (overrides.dashImpulse ?? stats.dashImpulse) * dashImpulseMultiplier
-    });
+    Object.assign(stats, bonus);
   }
 
   const ramDamageMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'ramDamageMultiplier');
+  const ramDamageFlat = getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'ramDamageFlat');
   const shieldMaxHpMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldMaxHpMultiplier');
   const shieldRegenRateMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldRegenRateMultiplier');
   const shieldRegenDelayMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, input.weapon, 'shieldRegenDelayMultiplier');
   const impactRadiusMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'impactRadiusMultiplier');
   const dashRechargeMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashRechargeMultiplier');
+  const dashChargeBonus = getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashChargeBonus');
+  const knockbackMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'ramKnockbackMultiplier');
+  const dashDistanceMultiplier = Math.max(0.25, 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashDistanceMultiplier'));
+  const behaviorFlags = UPGRADE_CHOICES.flatMap((upgrade) => {
+    const level = input.upgrades[upgrade.id] ?? 0;
+    if (level <= 0 || !upgrade.behaviorFlags || !isUpgradeRelevantForWeapons(upgrade, [input.weapon])) {
+      return [];
+    }
+
+    return upgrade.behaviorFlags;
+  });
 
   return {
     ...stats,
     shieldMaxHp: stats.shieldMaxHp * shieldMaxHpMultiplier,
     shieldRegenDelaySeconds: stats.shieldRegenDelaySeconds * shieldRegenDelayMultiplier,
     shieldRegenRatePerSecond: stats.shieldRegenRatePerSecond * shieldRegenRateMultiplier,
+    dashMaxCharges: stats.dashMaxCharges + Math.floor(dashChargeBonus),
     dashChargeRechargeSeconds: stats.dashChargeRechargeSeconds * dashRechargeMultiplier,
     range: stats.range * impactRadiusMultiplier,
     width: stats.width * impactRadiusMultiplier,
-    baseDamage: stats.baseDamage * ramDamageMultiplier,
-    maxDamage: stats.maxDamage * ramDamageMultiplier
+    guardDamage: (stats.guardDamage + ramDamageFlat) * ramDamageMultiplier,
+    bashDamage: (stats.bashDamage + ramDamageFlat) * ramDamageMultiplier,
+    knockback: stats.knockback * knockbackMultiplier,
+    dashDistance: stats.dashDistance * dashDistanceMultiplier,
+    behaviorFlags: [...new Set([...stats.behaviorFlags, ...behaviorFlags])]
   };
 }
 

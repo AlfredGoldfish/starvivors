@@ -120,6 +120,7 @@ import {
   getRunUpgradeLevel,
   incrementRunUpgradeLevel,
   isRunUpgradeAtMaxLevel,
+  selectWeightedRunUpgrades,
   type RunUpgradeLevels
 } from '../systems/runUpgrades';
 import { getWeaponDamageMultiplier, resolveWeaponStats, type ResolvedWeaponStats } from '../systems/weaponStats';
@@ -134,7 +135,6 @@ import {
   dampVelocityChannel,
   getClosingSpeed,
   getCollisionNormalFromOffset,
-  getRelativeSpeed,
   getRelativeVelocity,
   getTotalVelocity,
   steerVelocityToward
@@ -497,8 +497,6 @@ import {
   PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
   RAMMING_SHIELD_COLLIDER_DEPTH,
-  RAMMING_SHIELD_DASH_BURST_DISTANCE,
-  RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS,
   RAMMING_SHIELD_TEXTURE_CROP,
   RAMMING_SHIELD_TEXTURE_KEY,
   RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER,
@@ -797,8 +795,10 @@ export class GameScene extends Phaser.Scene {
   private playerInvulnerableUntil = 0;
   private rammingShieldDashBurstRemaining = 0;
   private rammingShieldDashBurstSpeed = 0;
-  private rammingShieldDashPendingImpulse = 0;
   private rammingShieldDashBurstDirection = new Phaser.Math.Vector2(0, 0);
+  private rammingShieldLastBashEffectsUntil = 0;
+  private emergencyBracingUntil = 0;
+  private nextEmergencyBracingAt = 0;
   private isPlayerDead = false;
   private hasExtracted = false;
   private runEndReason: RunEndReason = 'none';
@@ -2424,11 +2424,12 @@ export class GameScene extends Phaser.Scene {
     harness.selectShip('bulwark');
     this.startRun();
     const started = harness.getState();
-    const dashVelocityBefore = this.playerVelocity.length();
+    const dashXBefore = this.player.x;
+    const dashYBefore = this.player.y;
     this.useRammingShieldWeapon(this.getRammingShieldStats(), this.time.now);
-    this.updateRammingShieldDashBurstMovement(RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS);
+    this.updateRammingShieldDashBurstMovement(this.getRammingShieldStats().dashDurationSeconds);
     const afterDash = harness.getState();
-    const dashVelocityAfter = this.playerVelocity.length();
+    const dashDistance = Phaser.Math.Distance.Between(dashXBefore, dashYBefore, this.player.x, this.player.y);
     const enemy = this.liveEnemies[0];
     const forward = this.getForwardDirection(this.player.rotation);
 
@@ -2460,7 +2461,7 @@ export class GameScene extends Phaser.Scene {
       started.rammingShieldHp === this.getRammingShieldStats().shieldMaxHp &&
       started.rammingShieldDashMaxCharges === 6 &&
       afterDash.rammingShieldDashCharges === this.getRammingShieldStats().dashMaxCharges - 1 &&
-      dashVelocityAfter > dashVelocityBefore &&
+      dashDistance >= this.getRammingShieldStats().dashDistance - 1 &&
       afterShieldHit.hull === started.hull &&
       afterBrokenHit.hull < afterShieldHit.hull &&
       afterRegen.rammingShieldHp === 10 + this.getRammingShieldStats().shieldRegenRatePerSecond;
@@ -2471,8 +2472,7 @@ export class GameScene extends Phaser.Scene {
       JSON.stringify({
         started,
         afterDash,
-        dashVelocityBefore,
-        dashVelocityAfter,
+        dashDistance,
         afterShieldHit,
         afterBrokenHit,
         afterRegen
@@ -7956,9 +7956,11 @@ export class GameScene extends Phaser.Scene {
     this.normalUpgradeOverlayChoices =
       secondaryChoices.length > 0
         ? secondaryChoices
-        : Phaser.Utils.Array.Shuffle([
-            ...getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions())
-          ]).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+        : selectWeightedRunUpgrades(
+            getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions()),
+            UPGRADE_OVERLAY_CHOICE_COUNT,
+            () => Phaser.Math.FloatBetween(0, 1)
+          );
 
     return this.normalUpgradeOverlayChoices;
   }
@@ -7989,16 +7991,19 @@ export class GameScene extends Phaser.Scene {
 
     this.rerollsThisRun += 1;
     const available = getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions());
-    const fresh = Phaser.Utils.Array.Shuffle([...available.filter((choice) => !previousChoices.has(choice.id))]);
-    const fallback = Phaser.Utils.Array.Shuffle([...available]);
-    this.normalUpgradeOverlayChoices = (fresh.length >= UPGRADE_OVERLAY_CHOICE_COUNT ? fresh : fallback).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+    const fresh = available.filter((choice) => !previousChoices.has(choice.id));
+    this.normalUpgradeOverlayChoices = selectWeightedRunUpgrades(
+      fresh.length >= UPGRADE_OVERLAY_CHOICE_COUNT ? fresh : available,
+      UPGRADE_OVERLAY_CHOICE_COUNT,
+      () => Phaser.Math.FloatBetween(0, 1)
+    );
     this.refreshUpgradeOverlayText();
   }
 
   private getSpecialUpgradeDropChoices(): UpgradeDefinition[] {
-    const specialPool = UPGRADE_CHOICES.filter((upgrade) => upgrade.rarity === 'rare');
+    const specialPool = UPGRADE_CHOICES.filter((upgrade) => upgrade.rarity === 'rare' || upgrade.rarity === 'epic');
     const available = getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions(), specialPool);
-    return Phaser.Utils.Array.Shuffle([...available]).slice(0, UPGRADE_OVERLAY_CHOICE_COUNT);
+    return selectWeightedRunUpgrades(available, UPGRADE_OVERLAY_CHOICE_COUNT, () => Phaser.Math.FloatBetween(0, 1));
   }
 
   private getEquippedWeaponDefinitions(): WeaponRegistryEntry[] {
@@ -8970,7 +8975,7 @@ export class GameScene extends Phaser.Scene {
     const damageMultiplier = this.getActiveAutoWeaponDamageMultiplier();
     const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, activeWeapon.id === this.playerWeapons.activePrimaryWeaponId ? 'primary' : 'auto');
     const activeDamage = Math.round(
-      resolvedActiveWeapon.projectile?.damage ?? resolvedActiveWeapon.rammingShield?.baseDamage ?? 0
+      resolvedActiveWeapon.projectile?.damage ?? resolvedActiveWeapon.rammingShield?.bashDamage ?? 0
     );
     const cooldownSeconds = this.getPulseCannonCooldownMs() / 1000;
     const speed = Math.round(this.getActiveAutoWeaponProjectileSpeed());
@@ -9186,7 +9191,7 @@ export class GameScene extends Phaser.Scene {
       targets: flash,
       alpha: 0,
       scale: 2.1,
-      duration: Math.max(120, this.getRammingShieldStats().dashEmpoweredWindowSeconds * 70),
+      duration: Math.max(120, this.getRammingShieldStats().dashDurationSeconds * 1000),
       ease: 'Quad.easeOut',
       onComplete: () => flash.destroy()
     });
@@ -9243,11 +9248,10 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private startRammingShieldDashBurst(direction: Phaser.Math.Vector2, impulse: number): void {
+  private startRammingShieldDashBurst(direction: Phaser.Math.Vector2, stats: RammingShieldStats): void {
     this.rammingShieldDashBurstDirection.copy(direction);
-    this.rammingShieldDashBurstRemaining = RAMMING_SHIELD_DASH_BURST_DISTANCE;
-    this.rammingShieldDashBurstSpeed = RAMMING_SHIELD_DASH_BURST_DISTANCE / RAMMING_SHIELD_DASH_BURST_DURATION_SECONDS;
-    this.rammingShieldDashPendingImpulse = impulse;
+    this.rammingShieldDashBurstRemaining = stats.dashDistance;
+    this.rammingShieldDashBurstSpeed = stats.dashDistance / Math.max(0.01, stats.dashDurationSeconds);
   }
 
   private updateRammingShieldDashBurstMovement(deltaSeconds: number): void {
@@ -9261,12 +9265,6 @@ export class GameScene extends Phaser.Scene {
     this.rammingShieldDashBurstRemaining = Math.max(0, this.rammingShieldDashBurstRemaining - travel);
 
     if (this.rammingShieldDashBurstRemaining <= 0) {
-      addDirectionalImpulse(
-        this.playerVelocity,
-        this.rammingShieldDashBurstDirection,
-        this.rammingShieldDashPendingImpulse,
-        this.getPlayerOverspeedSafetyLimit()
-      );
       this.clearRammingShieldDashBurst();
     }
   }
@@ -9274,7 +9272,6 @@ export class GameScene extends Phaser.Scene {
   private clearRammingShieldDashBurst(): void {
     this.rammingShieldDashBurstRemaining = 0;
     this.rammingShieldDashBurstSpeed = 0;
-    this.rammingShieldDashPendingImpulse = 0;
     this.rammingShieldDashBurstDirection.set(0, 0);
   }
 
@@ -9717,21 +9714,38 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getRammingShieldDamage(targetVelocity: Phaser.Math.Vector2, time = this.time.now): number {
+  private getRammingShieldDamage(
+    target: AnyGameEnemy | BasicAsteroid | EnemyWreckageDebris,
+    time = this.time.now,
+    damageMultiplier = 1
+  ): number {
     const stats = this.getRammingShieldStats();
-    const activeMultiplier = this.rammingShieldState.hp > 0 ? 1 : stats.brokenDamageMultiplier;
-    const dashMultiplier = time < this.rammingShieldState.empoweredUntil ? stats.dashRamDamageMultiplier : 1;
-    const playerStats = this.getResolvedPlayerStats();
-    const impactDamage = calculateImpactDamage({
-      baseDamage: stats.baseDamage,
-      impactSpeed: getRelativeSpeed(this.playerVelocity, targetVelocity),
-      minImpactSpeed: stats.strongRamSpeed,
-      speedDamageScale: stats.speedDamageMultiplier,
-      minDamage: 0,
-      maxDamage: stats.maxDamage
-    });
+    if (this.rammingShieldState.hp <= 0) {
+      return 0;
+    }
 
-    return Math.max(0, Math.round(impactDamage * activeMultiplier * dashMultiplier * playerStats.damage));
+    const isBashing = this.isRammingShieldBashing(time);
+    const breachLevel = this.getRunUpgradeLevelById('ram_breach_protocol');
+    const breachMultiplier = isBashing && breachLevel > 0 && this.isLargeRammingShieldTarget(target) ? 1 + breachLevel * 0.25 : 1;
+    const baseDamage = (isBashing ? stats.bashDamage : stats.guardDamage) * damageMultiplier * breachMultiplier;
+
+    return this.rollSourceDamage(baseDamage * this.getResolvedPlayerStats().damage, stats.damageVariance);
+  }
+
+  private isRammingShieldBashing(time = this.time.now): boolean {
+    return time < this.rammingShieldState.empoweredUntil && this.rammingShieldDashBurstRemaining > 0;
+  }
+
+  private isLargeRammingShieldTarget(target: AnyGameEnemy | BasicAsteroid | EnemyWreckageDebris): boolean {
+    if ('tier' in target) {
+      return target.tier >= 5;
+    }
+
+    if ('definition' in target) {
+      return target.definition.stats.radius >= 34;
+    }
+
+    return this.tankEnemies.includes(target as TankEnemy);
   }
 
   private damageEnemy(
@@ -9879,7 +9893,11 @@ export class GameScene extends Phaser.Scene {
       return true;
     }
 
+    const shieldHpBefore = this.rammingShieldState.hp;
     damageRammingShield(this.rammingShieldState, this.getRammingShieldStats(), damage, time);
+    if (shieldHpBefore > 0 && this.rammingShieldState.hp <= 0) {
+      this.applyRammingShieldBreakEffects(time, impactX, impactY);
+    }
     this.isPulseEmergencyCharged = this.getRunUpgradeLevelById('pulse_emergency_discharge') > 0;
     this.rammingShieldState.nextBlockDamageAt = time + this.getPlayerDamageInvulnerabilityMs();
     this.updateRammingShieldVisual(time);
@@ -9888,6 +9906,44 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(time);
 
     return true;
+  }
+
+  private applyRammingShieldBreakEffects(time: number, impactX: number, impactY: number): void {
+    const bracingLevel = this.getRunUpgradeLevelById('ram_emergency_bracing');
+    if (bracingLevel > 0 && time >= this.nextEmergencyBracingAt) {
+      this.emergencyBracingUntil = time + 1000;
+      this.nextEmergencyBracingAt = time + 12000;
+    }
+
+    if (this.getRunUpgradeLevelById('ram_bulwark_nova') > 0) {
+      const stats = this.getRammingShieldStats();
+      this.emitShipCollisionImpactExplosion(impactX, impactY);
+      this.applyRammingShieldAreaDamage({
+        originX: impactX,
+        originY: impactY,
+        radius: 150,
+        dotMinimum: -1,
+        damageMultiplier: 2,
+        baseDamage: stats.guardDamage,
+        maxTargets: Number.POSITIVE_INFINITY
+      });
+    }
+  }
+
+  private fireMirrorShieldBolt(x: number, y: number): void {
+    const target = this.findNearestPulseEnemyTarget(x, y, 520, new WeakSet<object>());
+    if (!target) {
+      return;
+    }
+
+    const damage = this.rollSourceDamage(3 * this.getResolvedPlayerStats().damage, PLAYER_WEAPON_DAMAGE_VARIANCE);
+    this.emitPulseChainEffect(x, y, target.body.x, target.body.y);
+    this.damageEnemy(target, damage, 'shield', true);
+    if (target.hp <= 0) {
+      this.destroyPulseEnemyTarget(target);
+    } else {
+      this.flashDamageSprites(target.body, target.wrapMirrorBody);
+    }
   }
 
   private emitRammingShieldDamageFeedback(impactX: number, impactY: number): void {
@@ -9935,13 +9991,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedEnemy(enemy: AnyGameEnemy, time: number): void {
-    const damage = this.getRammingShieldDamage(this.getEnemyTotalVelocity(enemy), time);
+    const damage = this.getRammingShieldDamage(enemy, time);
     if (damage <= 0) {
       return;
     }
 
     this.damageEnemy(enemy, damage, 'shield', true);
+    this.applyRammingShieldKnockback(enemy, time);
+    this.applyRammingShieldStagger(enemy, time);
     this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
+    this.applyRammingShieldSuccessfulHitEffects(enemy.body, time, enemy.body.x, enemy.body.y);
 
     if (this.isLiveEnemy(enemy)) {
       const liveIndex = this.liveEnemies.indexOf(enemy);
@@ -9988,13 +10047,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedDebris(debris: EnemyWreckageDebris, time: number): void {
-    const damage = this.getRammingShieldDamage(debris.velocity, time);
+    const damage = this.getRammingShieldDamage(debris, time);
     if (damage <= 0) {
       return;
     }
 
     this.damageDebris(debris, damage, 'shield', true);
+    this.applyRammingShieldKnockback(debris, time);
     this.emitShipCollisionImpactExplosion(debris.body.x, debris.body.y);
+    this.applyRammingShieldSuccessfulHitEffects(debris.body, time, debris.body.x, debris.body.y);
 
     if (debris.hp <= 0) {
       const index = this.enemyWreckageDebris.indexOf(debris);
@@ -10009,13 +10070,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private damageRammedAsteroid(asteroid: BasicAsteroid, time: number): void {
-    const damage = this.getRammingShieldDamage(asteroid.velocity, time);
+    const damage = this.getRammingShieldDamage(asteroid, time);
     if (damage <= 0) {
       return;
     }
 
     this.damageAsteroid(asteroid, damage, 'shield', true);
+    this.applyRammingShieldKnockback(asteroid, time);
     this.emitAsteroidImpactExplosion(asteroid.body.x, asteroid.body.y, asteroid.tier);
+    this.applyRammingShieldSuccessfulHitEffects(asteroid.body, time, asteroid.body.x, asteroid.body.y);
 
     if (asteroid.hp <= 0) {
       this.destroyBasicAsteroidInstance(asteroid);
@@ -10030,6 +10093,172 @@ export class GameScene extends Phaser.Scene {
 
     const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
     addDirectionalImpulse(asteroid.velocity, impactDirection, tierConfig.impactImpulse, this.getGlobalMaxSpeed());
+  }
+
+  private applyRammingShieldKnockback(target: AnyGameEnemy | BasicAsteroid | EnemyWreckageDebris, _time: number): void {
+    const stats = this.getRammingShieldStats();
+    const direction = this.getWrappedDirection(this.player.x, this.player.y, target.body.x, target.body.y);
+
+    if ('tier' in target || 'damage' in target) {
+      addDirectionalImpulse(target.velocity, direction, stats.knockback, this.getGlobalMaxSpeed());
+      return;
+    }
+
+    addDirectionalImpulse(target.knockbackVelocity, direction, stats.knockback, this.getGlobalMaxSpeed());
+  }
+
+  private applyRammingShieldStagger(enemy: AnyGameEnemy, time: number): void {
+    const level = this.getRunUpgradeLevelById('ram_stagger_lock');
+    if (level <= 0 || !this.isLiveEnemy(enemy) || !this.isRammingShieldBashing(time)) {
+      return;
+    }
+
+    const forward = this.getForwardDirection(this.player.rotation);
+    enemy.stateData.contactRecoilUntil = Math.max(
+      typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0,
+      time + 1500
+    );
+    enemy.stateData.contactRecoilNormalX = forward.x;
+    enemy.stateData.contactRecoilNormalY = forward.y;
+    enemy.state = 'contact-recoil';
+    enemy.stateStartedAt = time;
+  }
+
+  private applyRammingShieldSuccessfulHitEffects(targetKey: object, time: number, hitX: number, hitY: number): void {
+    if (!this.isRammingShieldBashing(time)) {
+      return;
+    }
+
+    this.applyRammingShieldHardReset(time);
+    if (this.rammingShieldLastBashEffectsUntil === this.rammingShieldState.empoweredUntil) {
+      return;
+    }
+
+    this.rammingShieldLastBashEffectsUntil = this.rammingShieldState.empoweredUntil;
+
+    const stats = this.getRammingShieldStats();
+    if (this.getRunUpgradeLevelById('ram_follow_through') > 0) {
+      this.applyRammingShieldAreaDamage({
+        originX: hitX,
+        originY: hitY,
+        radius: stats.range + 140,
+        dotMinimum: 0.35,
+        damageMultiplier: 0.5,
+        baseDamage: stats.bashDamage,
+        maxTargets: this.getRunUpgradeLevelById('ram_follow_through'),
+        exclude: new Set([targetKey])
+      });
+    }
+
+    if (this.getRunUpgradeLevelById('ram_shock_front') > 0) {
+      this.applyRammingShieldAreaDamage({
+        originX: this.player.x,
+        originY: this.player.y,
+        radius: 210,
+        dotMinimum: 0.45,
+        damageMultiplier: 0.5 * this.getRunUpgradeLevelById('ram_shock_front'),
+        baseDamage: stats.bashDamage,
+        maxTargets: Number.POSITIVE_INFINITY,
+        exclude: new Set([targetKey])
+      });
+    }
+
+    if (this.getRunUpgradeLevelById('ram_aegis_drive') > 0) {
+      this.applyRammingShieldAreaDamage({
+        originX: this.player.x,
+        originY: this.player.y,
+        radius: 150,
+        dotMinimum: -0.35,
+        damageMultiplier: 0.35,
+        baseDamage: stats.bashDamage,
+        maxTargets: Number.POSITIVE_INFINITY,
+        exclude: new Set([targetKey])
+      });
+    }
+  }
+
+  private applyRammingShieldHardReset(time: number): void {
+    const level = this.getRunUpgradeLevelById('ram_hard_reset');
+    if (level <= 0 || this.rammingShieldState.hp >= this.getRammingShieldMaxHp()) {
+      return;
+    }
+
+    const delayMultiplier = Math.max(0.25, 1 - level * 0.2);
+    this.rammingShieldState.nextRegenAt = Math.min(
+      this.rammingShieldState.nextRegenAt,
+      time + this.getRammingShieldStats().shieldRegenDelaySeconds * 1000 * delayMultiplier
+    );
+  }
+
+  private applyRammingShieldAreaDamage(input: {
+    originX: number;
+    originY: number;
+    radius: number;
+    dotMinimum: number;
+    damageMultiplier: number;
+    baseDamage: number;
+    maxTargets: number;
+    exclude?: Set<object>;
+  }): void {
+    const forward = this.getForwardDirection(this.player.rotation);
+    let hits = 0;
+    const tryApply = (body: Phaser.GameObjects.Container, apply: () => void): void => {
+      if (hits >= input.maxTargets || input.exclude?.has(body)) {
+        return;
+      }
+
+      const offset = this.getWrappedDirection(input.originX, input.originY, body.x, body.y);
+      if (offset.lengthSq() > input.radius * input.radius) {
+        return;
+      }
+
+      const direction = offset.lengthSq() > 0.0001 ? offset.clone().normalize() : forward;
+      if (direction.dot(forward) < input.dotMinimum) {
+        return;
+      }
+
+      apply();
+      hits += 1;
+    };
+
+    const damage = () =>
+      this.rollSourceDamage(
+        input.baseDamage * input.damageMultiplier * this.getResolvedPlayerStats().damage,
+        this.getRammingShieldStats().damageVariance
+      );
+
+    for (const enemy of this.getAllEnemies()) {
+      tryApply(enemy.body, () => {
+        this.damageEnemy(enemy, damage(), 'shield', true);
+        this.resolveEnemyDestroyedByPhysicalImpact(enemy);
+      });
+    }
+
+    for (let index = this.basicAsteroids.length - 1; index >= 0; index -= 1) {
+      const asteroid = this.basicAsteroids[index];
+      tryApply(asteroid.body, () => {
+        this.damageAsteroid(asteroid, damage(), 'shield', true);
+        if (asteroid.hp <= 0) {
+          this.destroyBasicAsteroidInstance(asteroid);
+        } else {
+          this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+        }
+      });
+    }
+
+    for (let index = this.enemyWreckageDebris.length - 1; index >= 0; index -= 1) {
+      const debris = this.enemyWreckageDebris[index];
+      tryApply(debris.body, () => {
+        this.damageDebris(debris, damage(), 'shield', true);
+        if (debris.hp <= 0) {
+          this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
+          this.destroyEnemyWreckageDebris(debris, true);
+          this.enemyWreckageDebris.splice(index, 1);
+        } else {
+          this.flashDamageSprites(debris.body, debris.wrapMirrorBody);
+        }
+      });
+    }
   }
 
   private getEnemyContactVelocity(enemy: AnyGameEnemy): Phaser.Math.Vector2 {
@@ -10173,9 +10402,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const bracingMultiplier = time < this.emergencyBracingUntil ? 0.5 : 1;
+    const adjustedDamage = damage * bracingMultiplier;
     const hullDamage = options.bypassDefense
-      ? Math.max(0, Math.round(damage))
-      : Math.max(1, Math.round(damage - this.getResolvedPlayerStats().defense));
+      ? Math.max(0, Math.round(adjustedDamage))
+      : Math.max(1, Math.round(adjustedDamage - this.getResolvedPlayerStats().defense));
     this.playerInvulnerableUntil = time + this.getPlayerDamageInvulnerabilityMs();
     if (hullDamage <= 0) {
       this.updateGameplayHud(time);
@@ -10710,7 +10941,14 @@ export class GameScene extends Phaser.Scene {
       projectile.hitRadius
     );
     if (shieldCollision) {
-      this.blockDamageWithRammingShield(projectileDamage, time, projectile.body.x, projectile.body.y);
+      if (this.getRunUpgradeLevelById('ram_deflector_field') > 0) {
+        this.emitRammingShieldDamageFeedback(projectile.body.x, projectile.body.y);
+        if (this.getRunUpgradeLevelById('ram_mirror_shield') > 0) {
+          this.fireMirrorShieldBolt(projectile.body.x, projectile.body.y);
+        }
+      } else {
+        this.blockDamageWithRammingShield(projectileDamage, time, projectile.body.x, projectile.body.y);
+      }
       return true;
     }
 
@@ -11284,12 +11522,13 @@ export class GameScene extends Phaser.Scene {
       return false;
     }
 
-    if (!activateRammingShieldDash(this.rammingShieldState, stats, time, this.getResolvedPlayerStats())) {
+    if (!activateRammingShieldDash(this.rammingShieldState, stats, time)) {
       return false;
     }
 
     const direction = this.getForwardDirection(this.player.rotation);
-    this.startRammingShieldDashBurst(direction, stats.dashImpulse);
+    this.rammingShieldLastBashEffectsUntil = 0;
+    this.startRammingShieldDashBurst(direction, stats);
     this.emitRammingShieldDashBurst(direction, time);
     this.updateRammingShieldVisual(time);
     return true;
@@ -12943,8 +13182,9 @@ export class GameScene extends Phaser.Scene {
         `Recharge: ${shield.dashChargeRechargeSeconds.toFixed(1)}s`,
         '',
         'Impact',
-        `Damage: ${Math.round(shield.baseDamage)}-${Math.round(shield.maxDamage)}`,
-        `Dash multiplier: x${shield.dashRamDamageMultiplier.toFixed(1)}`,
+        `Guard: ${Math.round(shield.guardDamage)}  Bash: ${Math.round(shield.bashDamage)}`,
+        `Knockback: ${Math.round(shield.knockback)}`,
+        `Dash: ${Math.round(shield.dashDistance)} in ${shield.dashDurationSeconds.toFixed(2)}s`,
         `Cooldown: ${(shield.contactCooldownMs / 1000).toFixed(2)}s`
       );
     }

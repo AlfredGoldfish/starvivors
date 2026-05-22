@@ -124,13 +124,13 @@ export const rammingShield: WeaponRegistryEntry = {
       'shieldRegenRatePerSecond',
       'dashMaxCharges',
       'dashChargeRechargeSeconds',
-      'dashImpulse',
-      'dashRamDamageMultiplier',
+      'dashDistance',
+      'dashDurationSeconds',
       'range',
       'width',
-      'baseDamage',
-      'speedDamageMultiplier',
-      'maxDamage',
+      'guardDamage',
+      'bashDamage',
+      'knockback',
       'contactCooldownMs'
     ]
   },

@@ -1047,7 +1047,7 @@ function getWeaponUseLabel(weapon: WeaponRegistryEntry): string {
 
 function getWeaponStartingStats(weapon: WeaponRegistryEntry): string {
   if (weapon.rammingShield) {
-    return `Shield ${Math.round(weapon.rammingShield.shieldMaxHp)}  Charges ${weapon.rammingShield.dashMaxCharges}  Ram ${Math.round(weapon.rammingShield.maxDamage)}`;
+    return `Shield ${Math.round(weapon.rammingShield.shieldMaxHp)}  Charges ${weapon.rammingShield.dashMaxCharges}  Bash ${Math.round(weapon.rammingShield.bashDamage)}`;
   }
 
   return `Damage ${Math.round(weapon.damage ?? 0)}  Fire ${(weapon.cooldownSeconds ? 1 / weapon.cooldownSeconds : 0).toFixed(2)}/s  Speed ${Math.round(weapon.projectileSpeed ?? 0)}`;

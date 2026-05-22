@@ -97,17 +97,14 @@ export type DebugWeaponStatKey =
   | 'shieldRegenRatePerSecond'
   | 'dashMaxCharges'
   | 'dashChargeRechargeSeconds'
-  | 'dashImpulse'
-  | 'dashEmpoweredWindowSeconds'
-  | 'dashRamDamageMultiplier'
+  | 'dashDistance'
+  | 'dashDurationSeconds'
   | 'range'
   | 'width'
-  | 'baseDamage'
-  | 'speedDamageMultiplier'
-  | 'strongRamSpeed'
-  | 'maxDamage'
-  | 'contactCooldownMs'
-  | 'brokenDamageMultiplier';
+  | 'guardDamage'
+  | 'bashDamage'
+  | 'knockback'
+  | 'contactCooldownMs';
 
 export type DebugShipOverrides = Partial<Record<DebugShipStatKey, number>>;
 export type DebugWeaponOverrides = Partial<Record<DebugWeaponStatKey, number>>;
@@ -133,17 +130,14 @@ const WEAPON_STAT_MIN: Record<DebugWeaponStatKey, number> = {
   shieldRegenRatePerSecond: 0,
   dashMaxCharges: 0,
   dashChargeRechargeSeconds: 0.01,
-  dashImpulse: 0,
-  dashEmpoweredWindowSeconds: 0,
-  dashRamDamageMultiplier: 0,
+  dashDistance: 1,
+  dashDurationSeconds: 0.01,
   range: 1,
   width: 1,
-  baseDamage: 0,
-  speedDamageMultiplier: 0,
-  strongRamSpeed: 0,
-  maxDamage: 0,
-  contactCooldownMs: 1,
-  brokenDamageMultiplier: 0
+  guardDamage: 0,
+  bashDamage: 0,
+  knockback: 0,
+  contactCooldownMs: 1
 };
 
 const INTEGER_WEAPON_STATS = new Set<DebugWeaponStatKey>(['dashMaxCharges', 'contactCooldownMs']);
@@ -637,7 +631,7 @@ export class DebugState {
 
     if (effective.rammingShield) {
       const stats = effective.rammingShield;
-      return `${weapon.displayName}${marker}\nShield ${stats.shieldMaxHp}  Regen ${stats.shieldRegenRatePerSecond}/s\nDash ${stats.dashMaxCharges} @ ${stats.dashChargeRechargeSeconds.toFixed(2)}s  Imp ${formatIntegerDisplayUnits(stats.dashImpulse)}\nRam x${stats.dashRamDamageMultiplier.toFixed(2)}  Dmg ${stats.baseDamage.toFixed(2)}-${stats.maxDamage.toFixed(2)}\nRange ${formatIntegerDisplayUnits(stats.range)}  Width ${formatIntegerDisplayUnits(stats.width)}`;
+      return `${weapon.displayName}${marker}\nShield ${stats.shieldMaxHp}  Regen ${stats.shieldRegenRatePerSecond}/s\nDash ${stats.dashMaxCharges} @ ${stats.dashChargeRechargeSeconds.toFixed(2)}s  Dist ${stats.dashDistance.toFixed(0)}\nGuard ${stats.guardDamage.toFixed(2)}  Bash ${stats.bashDamage.toFixed(2)}  Knock ${stats.knockback.toFixed(0)}\nRange ${formatIntegerDisplayUnits(stats.range)}  Width ${formatIntegerDisplayUnits(stats.width)}`;
     }
 
     return `${weapon.displayName}${marker}\nDamage ${(effective.damage ?? 0).toFixed(2)}  Cooldown ${(effective.cooldownSeconds ?? 0).toFixed(2)}s\nSpeed ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}\nLifetime ${(effective.projectileLifetimeSeconds ?? 0).toFixed(2)}s  Range ${formatIntegerDisplayUnits(effective.projectileRange ?? 0)}`;
@@ -1010,17 +1004,14 @@ export class DebugState {
       shieldRegenRatePerSecond: overrides.shieldRegenRatePerSecond ?? base.shieldRegenRatePerSecond,
       dashMaxCharges: overrides.dashMaxCharges ?? base.dashMaxCharges,
       dashChargeRechargeSeconds: overrides.dashChargeRechargeSeconds ?? base.dashChargeRechargeSeconds,
-      dashImpulse: overrides.dashImpulse ?? base.dashImpulse,
-      dashEmpoweredWindowSeconds: overrides.dashEmpoweredWindowSeconds ?? base.dashEmpoweredWindowSeconds,
-      dashRamDamageMultiplier: overrides.dashRamDamageMultiplier ?? base.dashRamDamageMultiplier,
+      dashDistance: overrides.dashDistance ?? base.dashDistance,
+      dashDurationSeconds: overrides.dashDurationSeconds ?? base.dashDurationSeconds,
       range: overrides.range ?? base.range,
       width: overrides.width ?? base.width,
-      baseDamage: overrides.baseDamage ?? base.baseDamage,
-      speedDamageMultiplier: overrides.speedDamageMultiplier ?? base.speedDamageMultiplier,
-      strongRamSpeed: overrides.strongRamSpeed ?? base.strongRamSpeed,
-      maxDamage: overrides.maxDamage ?? base.maxDamage,
-      contactCooldownMs: overrides.contactCooldownMs ?? base.contactCooldownMs,
-      brokenDamageMultiplier: overrides.brokenDamageMultiplier ?? base.brokenDamageMultiplier
+      guardDamage: overrides.guardDamage ?? base.guardDamage,
+      bashDamage: overrides.bashDamage ?? base.bashDamage,
+      knockback: overrides.knockback ?? base.knockback,
+      contactCooldownMs: overrides.contactCooldownMs ?? base.contactCooldownMs
     };
   }
 

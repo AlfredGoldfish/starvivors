@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import type { PlayerStats } from '../data/stats';
 import type { RammingShieldStats } from '../data/weapons';
 import { getCapsuleCircleCollision } from './collisionShapes';
 
@@ -106,7 +105,7 @@ export function canActivateRammingShieldDash(state: RammingShieldRuntimeState, s
   return state.hp > 0 && state.dashCharges > 0 && (!stats.dashRequiresShieldHp || state.hp > 0);
 }
 
-export function activateRammingShieldDash(state: RammingShieldRuntimeState, stats: RammingShieldStats, time: number, playerStats: PlayerStats): boolean {
+export function activateRammingShieldDash(state: RammingShieldRuntimeState, stats: RammingShieldStats, time: number): boolean {
   if (!canActivateRammingShieldDash(state, stats)) {
     return false;
   }
@@ -117,7 +116,7 @@ export function activateRammingShieldDash(state: RammingShieldRuntimeState, stat
     state.nextDashChargeAt = time + stats.dashChargeRechargeSeconds * 1000;
   }
 
-  state.empoweredUntil = time + stats.dashEmpoweredWindowSeconds * 1000 * playerStats.duration;
+  state.empoweredUntil = time + stats.dashDurationSeconds * 1000;
   state.impactFlashUntil = time + 140;
   return true;
 }
@@ -144,15 +143,15 @@ export function markRammingShieldDamageApplied(state: RammingShieldRuntimeState,
 export function getRammingShieldDamage(
   state: RammingShieldRuntimeState,
   stats: RammingShieldStats,
-  speed: number,
   time: number,
-  playerStats: PlayerStats
+  playerDamageMultiplier: number
 ): number {
-  const strongRamBonus = Math.max(0, speed - stats.strongRamSpeed) * stats.speedDamageMultiplier;
-  const activeMultiplier = state.hp > 0 ? 1 : stats.brokenDamageMultiplier;
-  const dashMultiplier = time < state.empoweredUntil ? stats.dashRamDamageMultiplier : 1;
+  if (state.hp <= 0) {
+    return 0;
+  }
 
-  return Math.max(0, Math.min(stats.maxDamage, stats.baseDamage + strongRamBonus) * activeMultiplier * dashMultiplier * playerStats.damage);
+  const baseDamage = time < state.empoweredUntil ? stats.bashDamage : stats.guardDamage;
+  return Math.max(0, baseDamage * playerDamageMultiplier);
 }
 
 export function getRammingShieldCollider(input: RammingShieldColliderInput, stats: RammingShieldStats): RammingShieldCollider {

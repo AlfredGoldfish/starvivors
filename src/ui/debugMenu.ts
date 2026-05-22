@@ -724,28 +724,28 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.25
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-impulse', y, 'Impulse', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashImpulse', 1), {
-      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Imp ([\d.]+)/),
-      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashImpulse', value),
+    addButtonPair('weapons', 'shield-distance', y, 'DashDist', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', -8), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashDistance', 8), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dist ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashDistance', value),
+      step: 8
+    });
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    addButtonPair('weapons', 'shield-guard', y, 'GuardD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'guardDamage', 1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Guard ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'guardDamage', value),
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-ram', y, 'Ram x', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', 0.25), {
-      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Ram x([\d.]+)/),
-      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'dashRamDamageMultiplier', value),
-      step: 0.25
+    addButtonPair('weapons', 'shield-bash', y, 'BashD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'bashDamage', 1), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Bash ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'bashDamage', value),
+      step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-base', y, 'BaseD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'baseDamage', -0.1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'baseDamage', 0.1), {
-      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dmg ([\d.]+)/),
-      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'baseDamage', value),
-      step: 0.1
-    });
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButtonPair('weapons', 'shield-max', y, 'MaxD', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'maxDamage', -0.25), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'maxDamage', 0.25), {
-      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Dmg [\d.]+-([\d.]+)/),
-      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'maxDamage', value),
-      step: 0.25
+    addButtonPair('weapons', 'shield-knock', y, 'Knock', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', -10), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'knockback', 10), {
+      getValue: (values) => parseSummaryValue(values.weaponTuningSummaries['ramming-shield'], /Knock ([\d.]+)/),
+      setValue: (value) => config.callbacks.setWeaponLoadoutStat('ramming-shield', 'knockback', value),
+      step: 10
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButtonPair('weapons', 'shield-size', y, 'Width', () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', -1), () => config.callbacks.adjustWeaponLoadoutStat('ramming-shield', 'width', 1), {

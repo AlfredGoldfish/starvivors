@@ -1,4 +1,10 @@
-import { UPGRADE_CHOICES, type UpgradeDefinition, type UpgradeId, type WeaponUpgradeStat } from '../data/upgrades';
+import {
+  UPGRADE_CHOICES,
+  UPGRADE_RARITY_WEIGHTS,
+  type UpgradeDefinition,
+  type UpgradeId,
+  type WeaponUpgradeStat
+} from '../data/upgrades';
 import type { WeaponRegistryEntry } from '../data/weapons';
 
 export type RunUpgradeLevels = Record<UpgradeId, number>;
@@ -69,6 +75,44 @@ export function isUpgradeRelevantForWeapons(upgrade: UpgradeDefinition, equipped
 
 export function incrementRunUpgradeLevel(levels: RunUpgradeLevels, upgrade: UpgradeDefinition): void {
   levels[upgrade.id] = Math.min(upgrade.maxLevel, getRunUpgradeLevel(levels, upgrade) + 1);
+}
+
+export function selectWeightedRunUpgrades(
+  upgrades: UpgradeDefinition[],
+  count: number,
+  random: () => number = Math.random
+): UpgradeDefinition[] {
+  const pool = [...upgrades];
+  const selected: UpgradeDefinition[] = [];
+
+  while (pool.length > 0 && selected.length < count) {
+    const totalWeight = pool.reduce((total, upgrade) => total + UPGRADE_RARITY_WEIGHTS[upgrade.rarity], 0);
+    let roll = random() * totalWeight;
+    let selectedIndex = 0;
+
+    for (let index = 0; index < pool.length; index += 1) {
+      const candidate = pool[index];
+      if (!candidate) {
+        continue;
+      }
+
+      roll -= UPGRADE_RARITY_WEIGHTS[candidate.rarity];
+      if (roll <= 0) {
+        selectedIndex = index;
+        break;
+      }
+    }
+
+    const selectedUpgrade = pool[selectedIndex];
+    if (!selectedUpgrade) {
+      break;
+    }
+
+    selected.push(selectedUpgrade);
+    pool.splice(selectedIndex, 1);
+  }
+
+  return selected;
 }
 
 export function getAdditiveWeaponUpgradeModifier(

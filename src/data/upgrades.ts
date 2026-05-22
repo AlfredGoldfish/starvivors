@@ -40,6 +40,23 @@ export type UpgradeId =
   | 'shield_recharge'
   | 'impact_radius'
   | 'dash_recharge'
+  | 'ram_crushing_plate'
+  | 'ram_extra_charge'
+  | 'ram_kinetic_plow'
+  | 'ram_long_ram'
+  | 'ram_short_burn'
+  | 'ram_breach_protocol'
+  | 'ram_follow_through'
+  | 'ram_hard_reset'
+  | 'ram_emergency_bracing'
+  | 'ram_stagger_lock'
+  | 'ram_shock_front'
+  | 'ram_deflector_field'
+  | 'ram_bulwark_nova'
+  | 'ram_aegis_drive'
+  | 'ram_siege_plate'
+  | 'ram_interceptor_guard'
+  | 'ram_mirror_shield'
   | 'stat_amount'
   | 'stat_magnet'
   | 'stat_luck'
@@ -66,11 +83,15 @@ export type WeaponUpgradeStat =
   | 'projectileCount'
   | 'projectilePierce'
   | 'ramDamageMultiplier'
+  | 'ramDamageFlat'
   | 'shieldMaxHpMultiplier'
   | 'shieldRegenRateMultiplier'
   | 'shieldRegenDelayMultiplier'
   | 'impactRadiusMultiplier'
-  | 'dashRechargeMultiplier';
+  | 'dashRechargeMultiplier'
+  | 'dashChargeBonus'
+  | 'ramKnockbackMultiplier'
+  | 'dashDistanceMultiplier';
 
 export type UpgradeModifierOperation = 'add' | 'multiply';
 
@@ -147,6 +168,13 @@ export interface UpgradeDefinition {
 
 export const PASSIVE_UPGRADE_MAX_LEVEL = 5;
 export const WEAPON_UPGRADE_MAX_LEVEL = 5;
+
+export const UPGRADE_RARITY_WEIGHTS: Record<UpgradeRarity, number> = {
+  common: 100,
+  uncommon: 60,
+  rare: 25,
+  epic: 10
+};
 
 export const UPGRADE_CHOICES: UpgradeDefinition[] = [
   {
@@ -500,8 +528,8 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     id: 'ram_damage',
     category: 'ramming',
     rarity: 'common',
-    name: 'Ram Damage',
-    description: '+20% Ramming Shield impact damage per level.',
+    name: 'Reinforced Edge',
+    description: '+20% Ramming Shield guard and bash damage per level.',
     maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
     target: { weaponIds: ['ramming-shield'] },
     statModifiers: [{ stat: 'ramDamageMultiplier', operation: 'add', value: 0.2 }]
@@ -520,7 +548,7 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     id: 'shield_recharge',
     category: 'ramming',
     rarity: 'uncommon',
-    name: 'Shield Recharge',
+    name: 'Rapid Refit',
     description: '+18% shield regeneration and -6% regen delay per level.',
     maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
     target: { weaponIds: ['ramming-shield'] },
@@ -533,8 +561,8 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     id: 'impact_radius',
     category: 'ramming',
     rarity: 'uncommon',
-    name: 'Impact Radius',
-    description: '+10% Ramming Shield impact reach per level.',
+    name: 'Broad Plate',
+    description: '+10% Ramming Shield reach and width per level.',
     maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
     target: { weaponIds: ['ramming-shield'] },
     statModifiers: [{ stat: 'impactRadiusMultiplier', operation: 'add', value: 0.1 }]
@@ -543,10 +571,192 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     id: 'dash_recharge',
     category: 'ramming',
     rarity: 'rare',
-    name: 'Dash Recharge',
+    name: 'Fast Reset',
     description: 'Reduces Ramming Shield dash recharge by 10% per level.',
     maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
     target: { weaponIds: ['ramming-shield'] },
     statModifiers: [{ stat: 'dashRechargeMultiplier', operation: 'multiply', value: 0.9 }]
+  },
+  {
+    id: 'ram_crushing_plate',
+    category: 'ramming',
+    rarity: 'common',
+    name: 'Crushing Plate',
+    description: '+2 flat guard and bash damage per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [{ stat: 'ramDamageFlat', operation: 'add', value: 2 }]
+  },
+  {
+    id: 'ram_extra_charge',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Extra Charge',
+    description: '+1 Ramming Shield dash charge per level.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [{ stat: 'dashChargeBonus', operation: 'add', value: 1 }]
+  },
+  {
+    id: 'ram_kinetic_plow',
+    category: 'ramming',
+    rarity: 'uncommon',
+    name: 'Kinetic Plow',
+    description: '+20% Ramming Shield knockback per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [{ stat: 'ramKnockbackMultiplier', operation: 'add', value: 0.2 }]
+  },
+  {
+    id: 'ram_long_ram',
+    category: 'ramming',
+    rarity: 'uncommon',
+    name: 'Long Ram',
+    description: '+15% Ramming Shield dash distance per level.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [{ stat: 'dashDistanceMultiplier', operation: 'add', value: 0.15 }]
+  },
+  {
+    id: 'ram_short_burn',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Short Burn',
+    description: '-15% dash distance and -18% dash recharge time per level.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [
+      { stat: 'dashDistanceMultiplier', operation: 'add', value: -0.15 },
+      { stat: 'dashRechargeMultiplier', operation: 'multiply', value: 0.82 }
+    ]
+  },
+  {
+    id: 'ram_breach_protocol',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Breach Protocol',
+    description: '+25% bash damage to large targets per level.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-breach-protocol']
+  },
+  {
+    id: 'ram_follow_through',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Follow-Through',
+    description: 'Bash carries through additional targets behind the first at reduced damage.',
+    maxLevel: 2,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-follow-through']
+  },
+  {
+    id: 'ram_hard_reset',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Hard Reset',
+    description: 'Successful bashes reduce the current shield regen delay.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-hard-reset']
+  },
+  {
+    id: 'ram_emergency_bracing',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Emergency Bracing',
+    description: 'When the shield breaks, gain brief damage reduction.',
+    maxLevel: 2,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-emergency-bracing']
+  },
+  {
+    id: 'ram_stagger_lock',
+    category: 'ramming',
+    rarity: 'uncommon',
+    name: 'Stagger Lock',
+    description: 'Bash staggers enemies hit by the shield.',
+    maxLevel: 3,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-stagger-lock']
+  },
+  {
+    id: 'ram_shock_front',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Shock Front',
+    description: 'Bash emits a short cone shockwave for partial damage.',
+    maxLevel: 2,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-shock-front']
+  },
+  {
+    id: 'ram_deflector_field',
+    category: 'ramming',
+    rarity: 'rare',
+    name: 'Deflector Field',
+    description: 'Guard and bash delete small enemy projectiles that hit the shield.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-deflector-field']
+  },
+  {
+    id: 'ram_bulwark_nova',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Bulwark Nova',
+    description: 'Shield break emits a defensive shockwave.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-bulwark-nova']
+  },
+  {
+    id: 'ram_aegis_drive',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Aegis Drive',
+    description: 'Bash leaves a short damaging wake.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    behaviorFlags: ['ram-aegis-drive']
+  },
+  {
+    id: 'ram_siege_plate',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Siege Plate',
+    description: '+35% shield width and +25% damage, but +20% dash recharge time.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [
+      { stat: 'impactRadiusMultiplier', operation: 'add', value: 0.35 },
+      { stat: 'ramDamageMultiplier', operation: 'add', value: 0.25 },
+      { stat: 'dashRechargeMultiplier', operation: 'multiply', value: 1.2 }
+    ]
+  },
+  {
+    id: 'ram_interceptor_guard',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Interceptor Guard',
+    description: '-25% width, +25% dash distance, and -20% dash recharge time.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    statModifiers: [
+      { stat: 'impactRadiusMultiplier', operation: 'add', value: -0.25 },
+      { stat: 'dashDistanceMultiplier', operation: 'add', value: 0.25 },
+      { stat: 'dashRechargeMultiplier', operation: 'multiply', value: 0.8 }
+    ]
+  },
+  {
+    id: 'ram_mirror_shield',
+    category: 'ramming',
+    rarity: 'epic',
+    name: 'Mirror Shield',
+    description: 'Deflected projectiles fire a weak reflected bolt.',
+    maxLevel: 1,
+    target: { weaponIds: ['ramming-shield'] },
+    prerequisites: [{ id: 'ram_deflector_field', minLevel: 1 }],
+    behaviorFlags: ['ram-mirror-shield']
   }
 ];

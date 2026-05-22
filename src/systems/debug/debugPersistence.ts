@@ -18,17 +18,14 @@ const DEBUG_WEAPON_STAT_KEYS: DebugWeaponStatKey[] = [
   'shieldRegenRatePerSecond',
   'dashMaxCharges',
   'dashChargeRechargeSeconds',
-  'dashImpulse',
-  'dashEmpoweredWindowSeconds',
-  'dashRamDamageMultiplier',
+  'dashDistance',
+  'dashDurationSeconds',
   'range',
   'width',
-  'baseDamage',
-  'speedDamageMultiplier',
-  'strongRamSpeed',
-  'maxDamage',
-  'contactCooldownMs',
-  'brokenDamageMultiplier'
+  'guardDamage',
+  'bashDamage',
+  'knockback',
+  'contactCooldownMs'
 ];
 
 export function toRawDebugDelta(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', delta: number): number {
@@ -241,9 +238,9 @@ export function createDebugWeaponLoadoutMarkdown(debugState: DebugState, weapon:
         `- Shield HP: ${effective.rammingShield.shieldMaxHp}`,
         `- Dash charges: ${effective.rammingShield.dashMaxCharges}`,
         `- Dash recharge: ${effective.rammingShield.dashChargeRechargeSeconds}s`,
-        `- Dash impulse: ${formatIntegerDisplayUnits(effective.rammingShield.dashImpulse)}`,
-        `- Dash ram multiplier: ${effective.rammingShield.dashRamDamageMultiplier}`,
-        `- Base/max damage: ${effective.rammingShield.baseDamage}/${effective.rammingShield.maxDamage}`,
+        `- Dash distance/duration: ${effective.rammingShield.dashDistance}/${effective.rammingShield.dashDurationSeconds}s`,
+        `- Guard/bash damage: ${effective.rammingShield.guardDamage}/${effective.rammingShield.bashDamage}`,
+        `- Knockback: ${effective.rammingShield.knockback}`,
         `- Range/width: ${formatIntegerDisplayUnits(effective.rammingShield.range)}/${formatIntegerDisplayUnits(effective.rammingShield.width)}`
       ]
     : [

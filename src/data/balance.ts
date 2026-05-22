@@ -1,3 +1,5 @@
+import { PLAYER_WEAPON_DAMAGE_VARIANCE } from './damageVariance';
+
 export const interceptorMovement = {
   thrustAcceleration: 560,
   reverseThrustAcceleration: 335,
@@ -18,24 +20,23 @@ export const pulseCannonBalance = {
 };
 
 export const rammingShieldBalance = {
-  shieldMaxHp: 180,
-  shieldRegenDelaySeconds: 3,
-  shieldRegenRatePerSecond: 10,
+  shieldMaxHp: 35,
+  shieldRegenDelaySeconds: 2.5,
+  shieldRegenRatePerSecond: 3,
   dashMaxCharges: 3,
   dashChargeRechargeSeconds: 6,
-  dashImpulse: 520,
-  dashEmpoweredWindowSeconds: 1.5,
-  dashRamDamageMultiplier: 3,
+  dashDistance: 96,
+  dashDurationSeconds: 0.12,
   dashRequiresShieldHp: true,
   frontArcDegrees: 108,
   range: 72,
   width: 184,
-  baseDamage: 1.2,
-  speedDamageMultiplier: 0.018,
-  strongRamSpeed: 160,
-  maxDamage: 6,
+  guardDamage: 2,
+  bashDamage: 8,
+  damageVariance: PLAYER_WEAPON_DAMAGE_VARIANCE,
+  knockback: 140,
   contactCooldownMs: 450,
-  brokenDamageMultiplier: 0.35
+  behaviorFlags: [] as string[]
 };
 
 export const basicEnemyBalance = {

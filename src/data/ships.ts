@@ -4,9 +4,7 @@ import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
 import { pulseCannon, rammingShield, type RammingShieldStats, type WeaponId } from './weapons';
 
 export interface ShipWeaponBonusDefinition {
-  rammingShield?: Partial<RammingShieldStats> & {
-    dashImpulseMultiplier?: number;
-  };
+  rammingShield?: Partial<RammingShieldStats>;
 }
 
 export interface ShipDisplayStatRatings {
@@ -226,8 +224,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
       'ramming-shield': {
         rammingShield: {
           dashMaxCharges: 6,
-          dashChargeRechargeSeconds: 2,
-          dashImpulseMultiplier: 1.25
+          dashChargeRechargeSeconds: 2
         }
       }
     },
