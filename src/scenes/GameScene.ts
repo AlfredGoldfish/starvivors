@@ -249,6 +249,11 @@ import { createShopScreen } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import { createSecretControlOverlay, type SecretControlOverlayController, type SecretControlOverlayValues } from '../ui/secretControlOverlay';
+import {
+  formatUpgradeOverlayWeaponSummary,
+  UPGRADE_OVERLAY_CHOICE_COUNT,
+  UpgradeOverlayUiController
+} from '../ui/upgradeOverlay';
 import type {
   AsteroidBreakupProfile,
   AsteroidTier,
@@ -556,7 +561,6 @@ const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-4', url: asteroidVariant4Url }
 ] as const;
 
-const UPGRADE_OVERLAY_CHOICE_COUNT = 3;
 const REROLL_BASE_COST = 5;
 const REROLL_DEBUG_BASE_COST = 10;
 const DEATH_SHARD_MAX_ACTIVE = 180;
@@ -596,9 +600,6 @@ const BEAM_IGNITION_MS = 140;
 const BEAM_SPARK_INTERVAL_MS = 55;
 const BEAM_CONTACT_SPARK_MAX_PER_TICK = 4;
 const BEAM_RENDER_DEPTH = 9.5;
-const UPGRADE_OVERLAY_CARD_HEIGHT = 74;
-const UPGRADE_OVERLAY_CARD_GAP = 10;
-
 interface EnemyTimeScaling {
   elapsedMinutes: number;
   difficultyMinute: number;
@@ -646,20 +647,6 @@ type RunEndReason = GameSceneRunEndReason;
 type WeaponRuntimeSlot = GameSceneWeaponRuntimeSlot;
 
 type BeamSlotRuntime = GameSceneBeamSlotRuntime;
-
-interface UpgradeOverlayLayout {
-  width: number;
-  height: number;
-  centerX: number;
-  panelWidth: number;
-  panelHeight: number;
-  panelX: number;
-  panelY: number;
-  cardX: number;
-  cardWidth: number;
-  cardHeight: number;
-  cardGap: number;
-}
 
 type WorldEventStatus = 'active' | 'destroyed';
 
@@ -734,9 +721,7 @@ export class GameScene extends Phaser.Scene {
   private debugFuelDrainMode: DebugFuelDrainMode = 'thrust-only';
   private debugText!: Phaser.GameObjects.Text;
   private gameplayHud!: GameplayHudSystem;
-  private upgradeButtonContainer!: Phaser.GameObjects.Container;
-  private upgradeButtonGraphics!: Phaser.GameObjects.Graphics;
-  private upgradeButtonText!: Phaser.GameObjects.Text;
+  private upgradeOverlayUi!: UpgradeOverlayUiController<UpgradeOverlayChoice>;
   private resultsButtonContainer?: Phaser.GameObjects.Container;
   private resultsButtonGraphics?: Phaser.GameObjects.Graphics;
   private resultsButtonText?: Phaser.GameObjects.Text;
@@ -852,13 +837,6 @@ export class GameScene extends Phaser.Scene {
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.permanentUpgradeLevels };
   private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.activePermanentUpgradeLevels };
   private sectorScannerRuntime: SectorScannerRuntime = createSectorScannerRuntime();
-  private upgradeOverlayBlocker!: Phaser.GameObjects.Zone;
-  private upgradeOverlayGraphics!: Phaser.GameObjects.Graphics;
-  private upgradeOverlayText!: Phaser.GameObjects.Text;
-  private upgradeOverlayPromptText!: Phaser.GameObjects.Text;
-  private upgradeOverlayChoiceTexts: Phaser.GameObjects.Text[] = [];
-  private upgradeOverlayChoiceMetaTexts: Phaser.GameObjects.Text[] = [];
-  private upgradeOverlayChoiceHitZones: Phaser.GameObjects.Zone[] = [];
   private normalUpgradeOverlayChoices: UpgradeOverlayChoice[] | null = null;
   private specialUpgradeOverlayChoices: UpgradeDefinition[] | null = null;
   private sectorScannerArrow?: Phaser.GameObjects.Graphics;
@@ -915,6 +893,11 @@ export class GameScene extends Phaser.Scene {
     this.gameplayHud = new GameplayHudSystem(this, {
       assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId),
       requestEject: () => this.openEjectConfirmation()
+    });
+    this.upgradeOverlayUi = new UpgradeOverlayUiController<UpgradeOverlayChoice>({
+      scene: this,
+      onUpgradeButtonClick: () => this.handleUpgradeButtonClick(),
+      onChoiceSelected: (index, time) => this.selectUpgradeOverlayChoiceAt(index, time)
     });
     this.collisionDebugOverlay = new CollisionDebugOverlaySystem({
       scene: this,
@@ -3555,27 +3538,25 @@ export class GameScene extends Phaser.Scene {
     const opened = harness.openUpgradeOverlay();
     const choices = this.getUpgradeOverlayChoices();
     const firstChoice = choices[0];
-    const firstText = this.upgradeOverlayChoiceTexts[0];
-    const firstMeta = this.upgradeOverlayChoiceMetaTexts[0];
-    const firstHitZone = this.upgradeOverlayChoiceHitZones[0];
-    const firstTextBefore = firstText.text;
-    const firstMetaBefore = firstMeta.text;
+    const firstChoiceObjects = this.upgradeOverlayUi.getChoiceDebugObjects(0);
+    const firstTextBefore = firstChoiceObjects?.text.text ?? '';
+    const firstMetaBefore = firstChoiceObjects?.metaText.text ?? '';
     const firstChoiceLevelBefore =
       firstChoice && firstChoice.category !== 'secondary-weapon' ? this.getUpgradeLevel(firstChoice) : 0;
     const textPass =
       this.isUpgradeOverlayOpen &&
-      firstText.visible &&
-      firstMeta.visible &&
-      firstText.text.trim().length > 0 &&
-      firstMeta.text.trim().length > 0;
+      Boolean(firstChoiceObjects?.text.visible) &&
+      Boolean(firstChoiceObjects?.metaText.visible) &&
+      firstTextBefore.trim().length > 0 &&
+      firstMetaBefore.trim().length > 0;
     const clickTargetPass =
-      firstHitZone.visible &&
-      Boolean(firstHitZone.input?.enabled) &&
-      firstHitZone.depth > firstText.depth &&
-      firstHitZone.width > 0 &&
-      firstHitZone.height > 0;
+      Boolean(firstChoiceObjects?.hitZone.visible) &&
+      Boolean(firstChoiceObjects?.hitZone.input?.enabled) &&
+      Boolean(firstChoiceObjects && firstChoiceObjects.hitZone.depth > firstChoiceObjects.text.depth) &&
+      Boolean(firstChoiceObjects && firstChoiceObjects.hitZone.width > 0) &&
+      Boolean(firstChoiceObjects && firstChoiceObjects.hitZone.height > 0);
 
-    firstHitZone.emit('pointerdown', {
+    firstChoiceObjects?.hitZone.emit('pointerdown', {
       event: {
         stopPropagation: () => undefined
       }
@@ -3598,12 +3579,12 @@ export class GameScene extends Phaser.Scene {
         firstChoice,
         firstText: firstTextBefore,
         firstMeta: firstMetaBefore,
-        firstTextVisible: firstText.visible,
-        firstMetaVisible: firstMeta.visible,
-        firstHitZoneVisible: firstHitZone.visible,
-        firstHitZoneInputEnabled: Boolean(firstHitZone.input?.enabled),
-        firstHitZoneDepth: firstHitZone.depth,
-        firstTextDepth: firstText.depth,
+        firstTextVisible: firstChoiceObjects?.text.visible ?? false,
+        firstMetaVisible: firstChoiceObjects?.metaText.visible ?? false,
+        firstHitZoneVisible: firstChoiceObjects?.hitZone.visible ?? false,
+        firstHitZoneInputEnabled: Boolean(firstChoiceObjects?.hitZone.input?.enabled),
+        firstHitZoneDepth: firstChoiceObjects?.hitZone.depth ?? 0,
+        firstTextDepth: firstChoiceObjects?.text.depth ?? 0,
         firstChoiceLevelBefore,
         firstChoiceLevelAfter,
         afterClick,
@@ -8375,9 +8356,7 @@ export class GameScene extends Phaser.Scene {
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
-    this.upgradeOverlayGraphics.setVisible(true);
-    this.upgradeOverlayText.setVisible(true);
-    this.upgradeOverlayPromptText.setVisible(true);
+    this.upgradeOverlayUi.showOverlay();
     this.updateUpgradeButton();
   }
 
@@ -8398,9 +8377,7 @@ export class GameScene extends Phaser.Scene {
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
-    this.upgradeOverlayGraphics.setVisible(true);
-    this.upgradeOverlayText.setVisible(true);
-    this.upgradeOverlayPromptText.setVisible(true);
+    this.upgradeOverlayUi.showOverlay();
     this.updateUpgradeButton();
   }
 
@@ -8416,16 +8393,7 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.normalUpgradeOverlayChoices = null;
     this.specialUpgradeOverlayChoices = null;
-    this.upgradeOverlayBlocker.setVisible(false).disableInteractive();
-    this.upgradeOverlayGraphics.setVisible(false);
-    this.upgradeOverlayText.setVisible(false);
-    this.upgradeOverlayPromptText.setVisible(false);
-    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts]) {
-      text.setVisible(false);
-    }
-    for (const hitZone of this.upgradeOverlayChoiceHitZones) {
-      hitZone.setVisible(false).disableInteractive();
-    }
+    this.upgradeOverlayUi.hideOverlay();
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
   }
@@ -9074,23 +9042,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createUpgradeButton(): void {
-    this.upgradeButtonGraphics = this.add.graphics();
-    this.upgradeButtonText = this.add
-      .text(0, 0, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#f2fbff'
-      })
-      .setOrigin(0.5);
-
-    this.upgradeButtonContainer = this.add
-      .container(this.scale.width / 2, this.scale.height - 116, [this.upgradeButtonGraphics, this.upgradeButtonText])
-      .setScrollFactor(0)
-      .setDepth(1002)
-      .setSize(190, 42)
-      .setInteractive({ useHandCursor: true });
-
-    this.upgradeButtonContainer.on('pointerdown', () => this.handleUpgradeButtonClick());
+    this.upgradeOverlayUi.createButton();
     this.updateUpgradeButton();
   }
 
@@ -9103,28 +9055,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateUpgradeButton(): void {
-    if (!this.upgradeButtonContainer || !this.upgradeButtonGraphics || !this.upgradeButtonText) {
-      return;
-    }
-
-    const isVisible = this.bankedUpgrades > 0 && !this.isPlayerDead && !this.isUpgradeOverlayOpen;
-    const label = this.bankedUpgrades > 1 ? `Upgrade (${this.bankedUpgrades})` : 'Upgrade';
-
-    this.upgradeButtonContainer
-      .setPosition(this.scale.width / 2, this.scale.height - 116)
-      .setVisible(isVisible)
-      .disableInteractive();
-
-    if (isVisible) {
-      this.upgradeButtonContainer.setInteractive({ useHandCursor: true });
-    }
-
-    this.upgradeButtonText.setText(label);
-    this.upgradeButtonGraphics.clear();
-    this.upgradeButtonGraphics.fillStyle(0x071018, 0.94);
-    this.upgradeButtonGraphics.fillRoundedRect(-95, -21, 190, 42, 6);
-    this.upgradeButtonGraphics.lineStyle(2, 0x42f5d7, 0.88);
-    this.upgradeButtonGraphics.strokeRoundedRect(-95, -21, 190, 42, 6);
+    this.upgradeOverlayUi.updateButton({
+      bankedUpgrades: this.bankedUpgrades,
+      isPlayerDead: this.isPlayerDead,
+      isOverlayOpen: this.isUpgradeOverlayOpen
+    });
   }
 
   private createResultsButton(): void {
@@ -9171,280 +9106,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createUpgradeOverlay(): void {
-    const layout = this.getUpgradeOverlayLayout();
-
-    this.upgradeOverlayBlocker = this.add
-      .zone(0, 0, layout.width, layout.height)
-      .setOrigin(0, 0)
-      .setScrollFactor(0)
-      .setDepth(1199)
-      .setVisible(false)
-      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-      .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
-    this.upgradeOverlayGraphics = this.add.graphics().setScrollFactor(0).setDepth(1200);
-
-    for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
-      const cardY = this.getUpgradeOverlayCardY(layout, i);
-      const choiceText = this.add
-        .text(layout.cardX + 16, cardY + 10, '', {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '13px',
-          color: '#f2fbff',
-          fixedWidth: layout.cardWidth - 258,
-          wordWrap: { width: layout.cardWidth - 258 },
-          lineSpacing: 2
-        })
-        .setScrollFactor(0)
-        .setDepth(1209);
-      const metaText = this.add
-        .text(layout.cardX + layout.cardWidth - 16, cardY + 10, '', {
-          fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '11px',
-          color: '#a8c7ff',
-          align: 'right',
-          fixedWidth: 210
-        })
-        .setOrigin(1, 0)
-        .setScrollFactor(0)
-        .setDepth(1209);
-
-      this.upgradeOverlayChoiceTexts.push(choiceText);
-      this.upgradeOverlayChoiceMetaTexts.push(metaText);
-
-      const hitZone = this.add
-        .zone(layout.cardX, cardY, layout.cardWidth, layout.cardHeight)
-        .setOrigin(0, 0)
-        .setScrollFactor(0)
-        .setDepth(1210)
-        .setVisible(false);
-
-      hitZone
-        .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
-          pointer.event?.stopPropagation();
-          this.selectUpgradeOverlayChoiceAt(i, this.time.now);
-        });
-      this.upgradeOverlayChoiceHitZones.push(hitZone);
-    }
-
-    this.upgradeOverlayText = this.add
-      .text(layout.centerX, layout.panelY + 28, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#f2fbff',
-        align: 'left',
-        fixedWidth: layout.panelWidth - 56,
-        lineSpacing: 4,
-        wordWrap: { width: layout.panelWidth - 56 }
-      })
-      .setOrigin(0.5, 0)
-      .setScrollFactor(0)
-      .setDepth(1201);
-
-    this.upgradeOverlayPromptText = this.add
-      .text(layout.cardX, layout.panelY + layout.panelHeight - 34, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
-        color: '#f2fbff',
-        fixedWidth: layout.cardWidth,
-        wordWrap: { width: layout.cardWidth }
-      })
-      .setScrollFactor(0)
-      .setDepth(1201);
-
-    this.upgradeOverlayGraphics.setVisible(false);
-    this.upgradeOverlayBlocker.disableInteractive();
-    this.upgradeOverlayText.setVisible(false);
-    this.upgradeOverlayPromptText.setVisible(false);
-    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts]) {
-      text.setVisible(false);
-    }
-    for (const hitZone of this.upgradeOverlayChoiceHitZones) {
-      hitZone.disableInteractive();
-    }
+    this.upgradeOverlayUi.createOverlay();
   }
 
   private refreshUpgradeOverlayText(): void {
     const activeWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');
     const damageMultiplier = this.getActiveAutoWeaponDamageMultiplier();
     const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, activeWeapon.id === this.playerWeapons.activePrimaryWeaponId ? 'primary' : 'auto');
-    const weaponSummary = this.getUpgradeOverlayWeaponSummary(activeWeapon, resolvedActiveWeapon, damageMultiplier);
     const choices = this.getUpgradeOverlayChoices();
-    const rerollCost = this.getNextRerollCost();
-    const choicePrompt =
-      choices.length > 0
-        ? `Click a card or press 1-${choices.length} to choose.  R rerolls for ${rerollCost} scrap.  Esc closes.`
-        : 'Esc closes.';
 
-    this.drawUpgradeOverlayCards(choices);
-    choices.forEach((choice, index) => {
-      const text = this.upgradeOverlayChoiceTexts[index];
-      const metaText = this.upgradeOverlayChoiceMetaTexts[index];
-      if (choice.category === 'secondary-weapon') {
-        text.setText(`${index + 1}. ${choice.name}\n${choice.description}`);
-        metaText.setText('RIGHT CLICK');
-        return;
-      }
-
-      const level = this.getUpgradeLevel(choice);
-      const maxLevel = choice.maxLevel ? `/${choice.maxLevel}` : '';
-      const maxLabel = this.isUpgradeAtMaxLevel(choice) ? '  MAX' : '';
-      text.setText(`${index + 1}. ${choice.name}\n${choice.description}`);
-      metaText.setText(`${choice.rarity.toUpperCase()}  ${choice.category.toUpperCase()}\nLv ${level}${maxLevel}${maxLabel}`);
+    this.upgradeOverlayUi.renderOverlay({
+      choices,
+      isOpen: this.isUpgradeOverlayOpen,
+      isSpecialChoiceSet: this.specialUpgradeOverlayChoices !== null,
+      bankedUpgrades: this.bankedUpgrades,
+      runScrapTotal: this.runScrapTotal,
+      rerollCost: this.getNextRerollCost(),
+      weaponSummary: formatUpgradeOverlayWeaponSummary(activeWeapon, resolvedActiveWeapon, damageMultiplier),
+      playerHull: this.playerHull,
+      playerMaxHull: this.getPlayerMaxHull(),
+      playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
+      playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
+      getChoiceLevel: (choice) => (choice.category !== 'secondary-weapon' ? this.getUpgradeLevel(choice) : 0),
+      isChoiceAtMaxLevel: (choice) => choice.category !== 'secondary-weapon' && this.isUpgradeAtMaxLevel(choice)
     });
-
-    for (let i = choices.length; i < this.upgradeOverlayChoiceTexts.length; i += 1) {
-      this.upgradeOverlayChoiceTexts[i].setText('');
-      this.upgradeOverlayChoiceMetaTexts[i].setText('');
-    }
-
-    this.upgradeOverlayText.setText(
-      `${this.specialUpgradeOverlayChoices ? 'SPECIAL UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
-        `Banked upgrades: ${this.bankedUpgrades}\n` +
-        `Run scrap: ${this.runScrapTotal}  Reroll cost: ${rerollCost}\n` +
-        weaponSummary +
-        '\n' +
-        `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames`
-    );
-    this.upgradeOverlayPromptText.setText(choicePrompt);
-  }
-
-  private drawUpgradeOverlayCards(choices: UpgradeOverlayChoice[]): void {
-    const layout = this.getUpgradeOverlayLayout();
-
-    this.upgradeOverlayBlocker
-      .setPosition(0, 0)
-      .setSize(layout.width, layout.height)
-      .setVisible(this.isUpgradeOverlayOpen);
-    if (this.isUpgradeOverlayOpen) {
-      this.upgradeOverlayBlocker.setInteractive({
-        hitArea: new Phaser.Geom.Rectangle(0, 0, layout.width, layout.height),
-        hitAreaCallback: Phaser.Geom.Rectangle.Contains
-      });
-    } else {
-      this.upgradeOverlayBlocker.disableInteractive();
-    }
-
-    this.upgradeOverlayGraphics.clear();
-    this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
-    this.upgradeOverlayGraphics.fillRect(0, 0, layout.width, layout.height);
-    this.upgradeOverlayGraphics.fillStyle(0x071018, 0.95);
-    this.upgradeOverlayGraphics.fillRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
-    this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
-    this.upgradeOverlayGraphics.strokeRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
-
-    this.upgradeOverlayText
-      .setPosition(layout.centerX, layout.panelY + 28)
-      .setStyle({ fixedWidth: layout.panelWidth - 56 })
-      .setWordWrapWidth(layout.panelWidth - 56);
-    this.upgradeOverlayPromptText
-      .setPosition(layout.cardX, layout.panelY + layout.panelHeight - 34)
-      .setStyle({ fixedWidth: layout.cardWidth })
-      .setWordWrapWidth(layout.cardWidth);
-
-    for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
-      const choice = choices[i];
-      const cardY = this.getUpgradeOverlayCardY(layout, i);
-      const accentColor = choice && choice.category !== 'secondary-weapon' ? this.getUpgradeRarityColor(choice.rarity) : 0x42f5d7;
-      const hitZone = this.upgradeOverlayChoiceHitZones[i];
-      const text = this.upgradeOverlayChoiceTexts[i];
-      const metaText = this.upgradeOverlayChoiceMetaTexts[i];
-
-      this.upgradeOverlayGraphics.fillStyle(0x111a24, choice ? 0.94 : 0.42);
-      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
-      this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.9 : 0.2);
-      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, 5, layout.cardHeight, 3);
-      this.upgradeOverlayGraphics.lineStyle(1, choice ? accentColor : 0x52627f, choice ? 0.72 : 0.28);
-      this.upgradeOverlayGraphics.strokeRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
-
-      text
-        .setPosition(layout.cardX + 16, cardY + 10)
-        .setStyle({ fixedWidth: layout.cardWidth - 258 })
-        .setWordWrapWidth(layout.cardWidth - 258);
-      metaText
-        .setPosition(layout.cardX + layout.cardWidth - 16, cardY + 10)
-        .setStyle({ fixedWidth: 210 });
-      hitZone.setPosition(layout.cardX, cardY).setSize(layout.cardWidth, layout.cardHeight).setVisible(Boolean(choice));
-      if (choice && this.isUpgradeOverlayOpen) {
-        hitZone.setInteractive({
-          hitArea: new Phaser.Geom.Rectangle(0, 0, layout.cardWidth, layout.cardHeight),
-          hitAreaCallback: Phaser.Geom.Rectangle.Contains,
-          useHandCursor: true
-        });
-      } else {
-        hitZone.disableInteractive();
-      }
-    }
-
-    for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts, this.upgradeOverlayPromptText]) {
-      text.setVisible(this.isUpgradeOverlayOpen);
-    }
-    this.upgradeOverlayText.setVisible(this.isUpgradeOverlayOpen);
-  }
-
-  private getUpgradeOverlayLayout(): UpgradeOverlayLayout {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const panelWidth = Math.min(width - 48, 760);
-    const minCardStackHeight = 118 + UPGRADE_OVERLAY_CHOICE_COUNT * UPGRADE_OVERLAY_CARD_HEIGHT + (UPGRADE_OVERLAY_CHOICE_COUNT - 1) * UPGRADE_OVERLAY_CARD_GAP + 58;
-    const panelHeight = Math.min(height - 48, Math.max(560, minCardStackHeight));
-    const panelX = centerX - panelWidth / 2;
-    const panelY = Math.max(24, height / 2 - panelHeight / 2);
-
-    return {
-      width,
-      height,
-      centerX,
-      panelWidth,
-      panelHeight,
-      panelX,
-      panelY,
-      cardX: panelX + 28,
-      cardWidth: panelWidth - 56,
-      cardHeight: UPGRADE_OVERLAY_CARD_HEIGHT,
-      cardGap: UPGRADE_OVERLAY_CARD_GAP
-    };
-  }
-
-  private getUpgradeOverlayCardY(layout: UpgradeOverlayLayout, index: number): number {
-    return layout.panelY + 118 + index * (layout.cardHeight + layout.cardGap);
-  }
-
-  private getUpgradeOverlayWeaponSummary(
-    activeWeapon: WeaponRegistryEntry,
-    resolvedActiveWeapon: ResolvedWeaponStats,
-    damageMultiplier: number
-  ): string {
-    if (resolvedActiveWeapon.beam) {
-      const beam = resolvedActiveWeapon.beam;
-      return `${activeWeapon.displayName}: ${Math.round(beam.tickDamage * beam.tickRatePerSecond)} DPS, ${beam.tickRatePerSecond.toFixed(1)}/s, heat ${Math.round(beam.heatGainPerSecond)}/s, cool ${Math.round(beam.coolingPerSecond)}/s, range ${Math.round(beam.range)}`;
-    }
-
-    if (resolvedActiveWeapon.rammingShield) {
-      const shield = resolvedActiveWeapon.rammingShield;
-      return `${activeWeapon.displayName}: ${Math.round(shield.bashDamage)} bash, ${Math.round(shield.guardDamage)} guard, ${shield.dashMaxCharges} charges, ${shield.dashChargeRechargeSeconds.toFixed(1)}s recharge`;
-    }
-
-    const projectile = resolvedActiveWeapon.projectile;
-    const activeDamage = Math.round(projectile?.damage ?? 0);
-    const cooldownSeconds = (projectile?.cooldownMs ?? 0) / 1000;
-    const speed = Math.round(projectile?.projectileSpeed ?? 0);
-    return `${activeWeapon.displayName}: ${activeDamage} damage, x${damageMultiplier.toFixed(2)}, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed`;
-  }
-
-  private getUpgradeRarityColor(rarity: UpgradeDefinition['rarity']): number {
-    switch (rarity) {
-      case 'common':
-        return 0xa8c7ff;
-      case 'uncommon':
-        return 0x42f5d7;
-      case 'rare':
-        return 0xffc857;
-      case 'epic':
-        return 0xb88cff;
-      default:
-        return 0xf2fbff;
-    }
   }
 
   private updatePlayerFacing(): void {
