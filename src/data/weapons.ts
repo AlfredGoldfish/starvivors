@@ -1,15 +1,25 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { PLAYER_WEAPON_DAMAGE_VARIANCE, type DamageVariance } from './damageVariance';
 import type { PlayerStatKey } from './stats';
-import { pulseCannonBalance, rammingShieldBalance } from './balance';
+import { pulseCannonBalance, rammingShieldBalance, salvageBeamBalance } from './balance';
 
-export type WeaponId = 'pulse-cannon' | 'ramming-shield' | 'test1-weapon' | 'test2-weapon' | 'test3-weapon' | 'test4-weapon';
+export type WeaponId = 'pulse-cannon' | 'ramming-shield' | 'salvage-beam';
 export type WeaponSlotType = 'auto' | 'primary' | 'secondary';
 export type WeaponAssignmentType = 'auto' | 'manual';
-export type WeaponBehaviorType = 'projectile' | 'ramming-shield';
+export type WeaponBehaviorType = 'projectile' | 'ramming-shield' | 'beam';
 export type WeaponInputBehavior = 'hold' | 'tap';
-export type WeaponTag = 'projectile' | 'pulse' | 'ramming' | 'shield';
-export type WeaponUpgradeBranch = 'damage' | 'fire-rate' | 'projectile-speed' | 'dash-charges' | 'dash-recharge' | 'ram-damage' | 'shield-hp';
+export type WeaponTag = 'projectile' | 'pulse' | 'ramming' | 'shield' | 'beam' | 'salvage';
+export type WeaponUpgradeBranch =
+  | 'damage'
+  | 'fire-rate'
+  | 'projectile-speed'
+  | 'dash-charges'
+  | 'dash-recharge'
+  | 'ram-damage'
+  | 'shield-hp'
+  | 'beam-focus'
+  | 'heat-management'
+  | 'beam-range';
 
 export interface WeaponSlotBehaviorDefinition {
   primary: string;
@@ -55,9 +65,11 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   projectileRange?: number;
   projectileVisual?: ProjectileVisualDefinition;
   rammingShield?: typeof rammingShieldBalance;
+  beam?: typeof salvageBeamBalance;
 }
 
 export type RammingShieldStats = typeof rammingShieldBalance;
+export type BeamWeaponStats = typeof salvageBeamBalance;
 
 export const pulseCannon: WeaponRegistryEntry = {
   id: 'pulse-cannon',
@@ -138,93 +150,56 @@ export const rammingShield: WeaponRegistryEntry = {
   rammingShield: rammingShieldBalance
 };
 
-function createTestWeaponTemplate(
-  id: Extract<WeaponId, 'test1-weapon' | 'test2-weapon' | 'test3-weapon' | 'test4-weapon'>,
-  displayName: string,
-  visual: ProjectileVisualDefinition,
-  slotCompatibility: WeaponSlotType[],
-  assignmentType: WeaponAssignmentType = 'manual'
-): WeaponRegistryEntry {
-  const isAuto = slotCompatibility.includes('auto');
-  return {
-    id,
-    displayName,
-    status: 'WIP',
-    description: 'Empty test weapon template for future Hangar and loadout experiments.',
-    sourceShipId: 'test',
-    behaviorType: 'projectile',
-    tags: ['projectile'],
-    inputBehavior: 'hold',
-    autoFire: isAuto,
-    assignmentType,
-    slotCompatibility,
-    slotBehavior: {
-      primary: 'Template primary behavior placeholder.',
-      secondary: 'Template secondary behavior placeholder.'
-    },
-    startingShipId: 'test',
-    eligibleAsSecondary: slotCompatibility.includes('secondary'),
-    scaling: {
-      broadStats: ['damage', 'attackSpeed', 'projectileSpeed', 'area', 'duration', 'amount', 'pierce'],
-      weaponSpecificStats: ['damage', 'cooldownSeconds', 'projectileSpeed', 'projectileLifetimeSeconds', 'projectileRange']
-    },
-    upgradeBranches: ['damage', 'fire-rate', 'projectile-speed'],
-    damage: 0,
-    damageVariance: PLAYER_WEAPON_DAMAGE_VARIANCE,
-    cooldownSeconds: 1,
-    projectileSpeed: 0,
-    projectileLifetimeSeconds: 0,
-    projectileRange: 0,
-    projectileVisual: visual
-  };
-}
+export const salvageBeam: WeaponRegistryEntry = {
+  id: 'salvage-beam',
+  displayName: 'Salvage Beam',
+  status: 'MVP',
+  description: 'Held cutter beam that pierces targets and overheats under sustained fire.',
+  sourceShipId: 'engineer',
+  behaviorType: 'beam',
+  tags: ['beam', 'salvage'],
+  inputBehavior: 'hold',
+  autoFire: false,
+  assignmentType: 'manual',
+  slotCompatibility: ['primary', 'secondary'],
+  slotBehavior: {
+    primary: 'Hold left click or fire key to maintain a forward cutting beam.',
+    secondary: 'Hold right click to maintain the beam when equipped as a secondary weapon.'
+  },
+  startingShipId: 'engineer',
+  eligibleAsSecondary: true,
+  scaling: {
+    broadStats: ['damage', 'attackSpeed', 'area'],
+    weaponSpecificStats: [
+      'tickDamage',
+      'tickRatePerSecond',
+      'range',
+      'width',
+      'heatMax',
+      'heatGainPerSecond',
+      'coolingPerSecond',
+      'overheatCoolingPerSecond'
+    ]
+  },
+  upgradeBranches: ['beam-focus', 'heat-management', 'beam-range'],
+  damageVariance: PLAYER_WEAPON_DAMAGE_VARIANCE,
+  beam: salvageBeamBalance
+};
 
-export const test1Weapon = createTestWeaponTemplate('test1-weapon', 'Test 1 Weapon', {
-  glowColor: 0xffc857,
-  glowAlpha: 0.26,
-  bodyColor: 0xffe08a,
-  bodyStrokeColor: 0xf2fbff,
-  trailColor: 0xffc857,
-  width: 16,
-  height: 22
-}, ['primary', 'secondary']);
-
-export const test2Weapon = createTestWeaponTemplate('test2-weapon', 'Test 2 Weapon', {
-  glowColor: 0xff5964,
-  glowAlpha: 0.24,
-  bodyColor: 0xff8f95,
-  bodyStrokeColor: 0xf2fbff,
-  trailColor: 0xff5964,
-  width: 16,
-  height: 22
-}, ['primary', 'secondary']);
-
-export const test3Weapon = createTestWeaponTemplate('test3-weapon', 'Test 3 Weapon', {
-  glowColor: 0xb88cff,
-  glowAlpha: 0.24,
-  bodyColor: 0xd8c2ff,
-  bodyStrokeColor: 0xf2fbff,
-  trailColor: 0xb88cff,
-  width: 16,
-  height: 22
-}, ['primary', 'secondary']);
-
-export const test4Weapon = createTestWeaponTemplate('test4-weapon', 'Test 4 Weapon', {
-  glowColor: 0x69f0ae,
-  glowAlpha: 0.24,
-  bodyColor: 0xa8ffd2,
-  bodyStrokeColor: 0xf2fbff,
-  trailColor: 0x69f0ae,
-  width: 16,
-  height: 22
-}, ['auto'], 'auto');
-
-export const weaponRegistry: WeaponRegistryEntry[] = [pulseCannon, rammingShield, test1Weapon, test2Weapon, test3Weapon, test4Weapon];
+export const weaponRegistry: WeaponRegistryEntry[] = [pulseCannon, rammingShield, salvageBeam];
 
 export function getWeaponDefinition(weaponId: WeaponId): WeaponRegistryEntry {
   return weaponRegistry.find((weapon) => weapon.id === weaponId) ?? pulseCannon;
 }
 
+export function isWeaponId(value: string): value is WeaponId {
+  return weaponRegistry.some((weapon) => weapon.id === value);
+}
+
 export function isProjectileWeapon(weapon: WeaponRegistryEntry): boolean {
   return weapon.behaviorType === 'projectile';
+}
+
+export function isBeamWeapon(weapon: WeaponRegistryEntry): boolean {
+  return weapon.behaviorType === 'beam';
 }

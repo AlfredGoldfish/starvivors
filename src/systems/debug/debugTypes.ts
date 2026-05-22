@@ -1,4 +1,4 @@
-import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey, BlackHoleVacuumTuning } from '../blackHole';
+import type { BlackHoleVacuumTuning } from '../blackHole';
 import type { ShipId } from '../../data/ships';
 import type { WeaponId } from '../../data/weapons';
 import type { EncounterDefinitionId } from '../../data/encounters';
@@ -36,9 +36,6 @@ export interface DebugMenuValues {
   starfieldFarParallax: number;
   starfieldMidParallax: number;
   starfieldNearParallax: number;
-  blackHoleLensOrbitSpeedMultiplier: number;
-  blackHoleLensDensity: number;
-  blackHoleLensLengthMultiplier: number;
   blackHoleInfluenceRadiusScale: number;
   blackHoleDamageRadiusScale: number;
   blackHoleVisualScale: number;
@@ -52,12 +49,6 @@ export interface DebugMenuValues {
   blackHoleViscosityCurve: number;
   blackHoleInnerDrag: number;
   blackHolePlayerResistance: number;
-  blackHoleProjectionLensLayersEnabled: boolean;
-  blackHoleSelectedPngLayerIndex: number;
-  blackHolePngLayerCount: number;
-  blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
-  blackHoleAddPngTextureKey: BlackHolePngTextureKey;
-  blackHoleAddPngTextureLabel: string;
   blackHoleActive: boolean;
   blackHoleX: number;
   blackHoleY: number;
@@ -299,8 +290,6 @@ export interface DebugMenuCallbacks {
   forceBlackHoleCaptureTest: () => void;
   forceBlackHoleEscapeTest: () => void;
   adjustBlackHoleVacuumTuning: (key: keyof BlackHoleVacuumTuning, delta: number) => void;
-  adjustBlackHoleLensOrbit: (delta: number) => void;
-  adjustBlackHoleLensLength: (delta: number) => void;
   adjustBlackHoleInfluenceRadius: (delta: number) => void;
   adjustBlackHoleDamageRadius: (delta: number) => void;
   adjustBlackHoleVisualScale: (delta: number) => void;
@@ -314,21 +303,7 @@ export interface DebugMenuCallbacks {
   adjustBlackHoleViscosityCurve: (delta: number) => void;
   adjustBlackHoleInnerDrag: (delta: number) => void;
   adjustBlackHolePlayerResistance: (delta: number) => void;
-  toggleBlackHoleProjectionLenses: () => void;
-  selectPreviousBlackHolePngLayer: () => void;
-  selectNextBlackHolePngLayer: () => void;
-  cycleBlackHolePngLayerImage: (direction: number) => void;
-  cycleBlackHoleAddPngLayerImage: (direction: number) => void;
-  adjustBlackHolePngLayerSpeed: (delta: number) => void;
-  adjustBlackHolePngLayerSize: (delta: number) => void;
-  adjustBlackHolePngLayerAlpha: (delta: number) => void;
-  toggleBlackHolePngLayer: () => void;
-  addBlackHolePngLayer: () => void;
-  duplicateBlackHolePngLayer: () => void;
-  removeBlackHolePngLayer: () => void;
-  saveBlackHolePngSetup: () => void;
-  loadBlackHolePngSetup: () => void;
   saveBlackHoleFieldTuning: () => void;
   loadBlackHoleFieldTuning: () => void;
-  resetBlackHoleLensTuning: () => void;
+  resetBlackHoleTuning: () => void;
 }

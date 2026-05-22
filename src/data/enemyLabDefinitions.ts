@@ -543,4 +543,3 @@ export function getEnemyLabDefinition(id: string): EnemyLabDefinition {
 
   return definition;
 }
-

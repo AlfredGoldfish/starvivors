@@ -3,14 +3,6 @@ import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
 import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
 import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
 import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
-import blackHoleEventHorizonLines1Url from '../../assets/blackhole/blackhole_eventhorizon1.png';
-import blackHoleEventHorizonLines2Url from '../../assets/blackhole/blackhole_eventhorizon2.png';
-import blackHoleEventHorizonLinesUrl from '../../assets/blackhole/blackhole_eventhorizon3.png';
-import blackHoleFullLines1Url from '../../assets/blackhole/blackwhole_full1.png';
-import blackHoleFullLines2Url from '../../assets/blackhole/blackhole_full2.png';
-import blackHoleFullLinesUrl from '../../assets/blackhole/blackhole_full3.png';
-import blackHoleFullLines4Url from '../../assets/blackhole/blackhole_full4.png';
-import blackHoleFullLines5Url from '../../assets/blackhole/blackhole_full5.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapTier1CyanShardUrl from '../../assets/scraps_debri/scrap_tier_1_cyan_shard.png';
 import scrapTier2GreenClusterUrl from '../../assets/scraps_debri/scrap_tier_2_green_cluster.png';
@@ -123,7 +115,7 @@ import {
   selectWeightedRunUpgrades,
   type RunUpgradeLevels
 } from '../systems/runUpgrades';
-import { getWeaponDamageMultiplier, resolveWeaponStats, type ResolvedWeaponStats } from '../systems/weaponStats';
+import { getWeaponDamageMultiplier, resolveWeaponStats, type ResolvedBeamWeaponStats, type ResolvedWeaponStats } from '../systems/weaponStats';
 import {
   formatIntegerDisplayUnits,
   toDisplayUnits
@@ -153,18 +145,9 @@ import {
   type PlayerFlightStats
 } from '../systems/playerFlight';
 import {
-  BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
-  BLACK_HOLE_LENSING_ARC_MAX_COUNT,
-  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY,
-  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS,
-  BLACK_HOLE_FULL_TEXTURE_KEY,
-  BLACK_HOLE_FULL_TEXTURE_KEYS,
-  BLACK_HOLE_PNG_TEXTURE_KEYS,
-  BLACK_HOLE_PNG_TEXTURE_LABELS,
   DEFAULT_BLACK_HOLE_VACUUM_TUNING,
   BlackHoleSystem,
   type BlackHoleFieldTuningConfig,
-  type BlackHolePngTextureKey,
   type BlackHoleVacuumTuning,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
@@ -192,15 +175,10 @@ import {
   clampBlackHoleForceMultiplier as clampBlackHoleForceMultiplierDebug,
   clampBlackHoleRadiusScale as clampBlackHoleRadiusScaleDebug,
   createBlackHoleFieldTuningMarkdown as createBlackHoleFieldTuningMarkdownDebug,
-  createBlackHolePngSetupMarkdown as createBlackHolePngSetupMarkdownDebug,
-  isBlackHolePngTextureKey as isBlackHolePngTextureKeyDebug,
   normalizeBlackHoleFieldTuning as normalizeBlackHoleFieldTuningDebug,
-  normalizeBlackHolePngSetupLayers as normalizeBlackHolePngSetupLayersDebug,
-  parseBlackHoleFieldTuningMarkdown,
-  parseBlackHolePngSetupMarkdown
+  parseBlackHoleFieldTuningMarkdown
 } from '../systems/debug/blackHoleDebugTuning';
 import type { DebugAsteroidTier, DebugEnemyType, DebugPlayerTeleportTarget } from '../systems/debug/debugTypes';
-import { BlackHoleDebugControls } from '../systems/debug/blackHoleDebugControls';
 import { DebugMenuHost } from '../systems/debug/debugMenuHost';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
@@ -341,6 +319,7 @@ import {
   type WeaponLoadoutState,
   type WeaponMkLevels
 } from '../systems/progressionStorage';
+import { runProgressionLoadoutMigrationHarness } from '../systems/progressionLoadoutHarness';
 import {
   createSectorScannerRuntime,
   getSectorScannerSnapshot,
@@ -421,22 +400,9 @@ import {
   CONTACT_IMPACT_MIN_DAMAGE_SPEED,
   CONTACT_IMPACT_SPEED_DAMAGE_SCALE,
   DAMAGE_FLASH_MS,
-  DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT,
-  DEBUG_BLACK_HOLE_LENS_DENSITY_MIN,
-  DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT,
-  DEBUG_BLACK_HOLE_LENS_LENGTH_MAX,
-  DEBUG_BLACK_HOLE_LENS_LENGTH_MIN,
-  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT,
-  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX,
-  DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN,
-  DEBUG_BLACK_HOLE_LENS_SLIDER_GAP,
-  DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT,
-  DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH,
-  DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH,
   DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT,
   DEBUG_BLACK_HOLE_RADIUS_SCALE_MAX,
   DEBUG_BLACK_HOLE_RADIUS_SCALE_MIN,
-  DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT,
   DEBUG_UPDATE_INTERVAL_MS,
   DEFAULT_STARFIELD_FAR_PARALLAX,
   DEFAULT_STARFIELD_MID_PARALLAX,
@@ -549,18 +515,6 @@ const ASTEROID_TEXTURES = [
   { key: 'asteroid-variant-3', url: asteroidVariant3Url },
   { key: 'asteroid-variant-4', url: asteroidVariant4Url }
 ] as const;
-const BLACK_HOLE_FULL_TEXTURES = [
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[0], url: blackHoleFullLines1Url },
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[1], url: blackHoleFullLines2Url },
-  { key: BLACK_HOLE_FULL_TEXTURE_KEY, url: blackHoleFullLinesUrl },
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[3], url: blackHoleFullLines4Url },
-  { key: BLACK_HOLE_FULL_TEXTURE_KEYS[4], url: blackHoleFullLines5Url }
-] as const;
-const BLACK_HOLE_EVENT_HORIZON_TEXTURES = [
-  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], url: blackHoleEventHorizonLines1Url },
-  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1], url: blackHoleEventHorizonLines2Url },
-  { key: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY, url: blackHoleEventHorizonLinesUrl }
-] as const;
 
 const UPGRADE_OVERLAY_CHOICE_COUNT = 3;
 const REROLL_BASE_COST = 5;
@@ -598,6 +552,12 @@ const ASTEROID_COALESCE_EMERGENCY_OFFSCREEN_MS = 1200;
 const ASTEROID_COALESCE_MAX_TIER_NORMAL: AsteroidTier = 3;
 const ASTEROID_COALESCE_MAX_TIER_EMERGENCY: AsteroidTier = 4;
 const ASTEROID_COALESCE_NEAR_RADIUS = 420;
+const BEAM_IGNITION_MS = 140;
+const BEAM_SPARK_INTERVAL_MS = 55;
+const BEAM_CONTACT_SPARK_MAX_PER_TICK = 4;
+const BEAM_RENDER_DEPTH = 9.5;
+const UPGRADE_OVERLAY_CARD_HEIGHT = 74;
+const UPGRADE_OVERLAY_CARD_GAP = 10;
 
 interface EnemyTimeScaling {
   elapsedMinutes: number;
@@ -645,6 +605,34 @@ type MissionStatus = 'active' | 'completed' | 'failed';
 type MissionFailureReason = 'player-death' | 'extracted-early';
 type DebugFuelDrainMode = 'timer-plus-thrust' | 'thrust-only';
 type RunEndReason = 'none' | 'death' | 'extraction' | 'mission';
+type WeaponRuntimeSlot = 'auto' | 'primary' | 'secondary';
+
+interface BeamSlotRuntime {
+  heat: number;
+  overheated: boolean;
+  nextTickAt: number;
+  graphics?: Phaser.GameObjects.Graphics;
+  isActive: boolean;
+  activationStartedAt: number;
+  visualLength: number;
+  lastSparkAt: number;
+  contactSparkBurstsEmitted: number;
+  lastVentAt: number;
+}
+
+interface UpgradeOverlayLayout {
+  width: number;
+  height: number;
+  centerX: number;
+  panelWidth: number;
+  panelHeight: number;
+  panelX: number;
+  panelY: number;
+  cardX: number;
+  cardWidth: number;
+  cardHeight: number;
+  cardGap: number;
+}
 
 interface MissionRuntimeState {
   definition: MissionDefinition;
@@ -804,6 +792,11 @@ export class GameScene extends Phaser.Scene {
   private rammingShieldLastBashEffectsUntil = 0;
   private emergencyBracingUntil = 0;
   private nextEmergencyBracingAt = 0;
+  private beamSlots: Record<WeaponRuntimeSlot, BeamSlotRuntime> = {
+    auto: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 },
+    primary: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 },
+    secondary: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 }
+  };
   private isPlayerDead = false;
   private hasExtracted = false;
   private runEndReason: RunEndReason = 'none';
@@ -847,7 +840,6 @@ export class GameScene extends Phaser.Scene {
   private totalUpgradePauseMs = 0;
   private debugMenuHost?: DebugMenuHost;
   private secretControlOverlay?: SecretControlOverlayController;
-  private blackHoleDebugControls!: BlackHoleDebugControls;
   private debugMenuOpenedAt = 0;
   private totalDebugPauseMs = 0;
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.permanentUpgradeLevels };
@@ -866,9 +858,6 @@ export class GameScene extends Phaser.Scene {
   private nextDebugMenuRefreshAt = 0;
   private isDebugMenuRefreshDirty = true;
   private minimap!: MinimapSystem;
-  private debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
-  private debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
-  private debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
   private debugBlackHoleInfluenceRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleDamageRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
@@ -881,9 +870,6 @@ export class GameScene extends Phaser.Scene {
   private blackHolePlayerCaptureStartedAt: number | null = null;
   private blackHoleConsumedObjectsThisRun = 0;
   private debugBlackHoleGrowthOffsetMs = 0;
-  private areDebugBlackHoleProjectionLensLayersEnabled = true;
-  private debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
-  private debugAddBlackHolePngTextureKey: BlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
 
   constructor() {
     super('GameScene');
@@ -904,13 +890,6 @@ export class GameScene extends Phaser.Scene {
     this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
     this.load.image('player-ship-bulwark', bulwarkShipUrl);
     this.load.image(RAMMING_SHIELD_TEXTURE_KEY, rammingShieldUrl);
-    for (const blackHoleTexture of BLACK_HOLE_FULL_TEXTURES) {
-      this.load.image(blackHoleTexture.key, blackHoleTexture.url);
-    }
-
-    for (const blackHoleTexture of BLACK_HOLE_EVENT_HORIZON_TEXTURES) {
-      this.load.image(blackHoleTexture.key, blackHoleTexture.url);
-    }
   }
 
   create(): void {
@@ -936,38 +915,6 @@ export class GameScene extends Phaser.Scene {
       getNearestWrappedRenderPosition: (x, y) => this.getNearestWrappedRenderPosition(x, y),
       isCircleInCameraView: (x, y, radius) => this.isCircleInCameraView(x, y, radius),
       getForwardDirection: (rotation) => this.getForwardDirection(rotation)
-    });
-    this.blackHoleDebugControls = new BlackHoleDebugControls({
-      scene: this,
-      getState: () => ({
-        collisionDebugEnabled: this.debugState.collisionDebugEnabled,
-        isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-        isDebugMenuOpen: this.debugMenuHost?.isOpen() ?? false,
-        isPlayerDead: this.isPlayerDead,
-        lensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
-        lensDensity: this.debugBlackHoleLensDensity,
-        lensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
-        visualScale: this.debugBlackHoleVisualScale,
-        projectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled
-      }),
-      setLensOrbitSpeedMultiplier: (value) => {
-        this.debugBlackHoleLensOrbitSpeedMultiplier = value;
-      },
-      setLensDensity: (value) => {
-        this.debugBlackHoleLensDensity = value;
-      },
-      setLensLengthMultiplier: (value) => {
-        this.debugBlackHoleLensLengthMultiplier = value;
-      },
-      setVisualScale: (value) => {
-        this.debugBlackHoleVisualScale = value;
-      },
-      toggleProjectionLensLayers: () => {
-        this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
-      },
-      onChanged: () => {
-        this.nextDebugUpdateAt = 0;
-      }
     });
     this.createInput();
     this.createBackgroundTextures();
@@ -1056,7 +1003,7 @@ export class GameScene extends Phaser.Scene {
         this.profileStep('black-hole-player-collision', () => this.updateBlackHolePlayerCollision());
         this.profileStep('player-contact', () => this.updatePlayerContactDamage(time));
         this.profileStep('ramming-shield', () => this.updateRammingShield(time, deltaSeconds));
-        this.profileStep('active-main-weapon', () => this.updateActiveMainWeapon(time));
+        this.profileStep('active-main-weapon', () => this.updateActiveMainWeapon(time, deltaSeconds));
       }
       this.profileStep('player-projectiles', () => this.updatePlayerProjectiles(time, deltaSeconds));
       this.profileStep('enemy-projectiles', () => this.updateEnemyProjectiles(time, deltaSeconds));
@@ -1406,8 +1353,6 @@ export class GameScene extends Phaser.Scene {
           this.moveBlackHoleNearPlayer((this.blackHole?.captureRadius ?? 200) + 80);
         }),
         adjustBlackHoleVacuumTuning: (key, delta) => this.runDebugMenuAction(() => this.adjustBlackHoleVacuumTuning(key, delta)),
-        adjustBlackHoleLensOrbit: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensOrbitSpeed(delta)),
-        adjustBlackHoleLensLength: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleLensLength(delta)),
         adjustBlackHoleInfluenceRadius: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleInfluenceRadius(delta)),
         adjustBlackHoleDamageRadius: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleDamageRadius(delta)),
         adjustBlackHoleVisualScale: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleVisualScale(delta)),
@@ -1421,25 +1366,9 @@ export class GameScene extends Phaser.Scene {
         adjustBlackHoleViscosityCurve: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleViscosityCurve(delta)),
         adjustBlackHoleInnerDrag: (delta) => this.runDebugMenuAction(() => this.adjustBlackHoleInnerDrag(delta)),
         adjustBlackHolePlayerResistance: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePlayerResistance(delta)),
-        toggleBlackHoleProjectionLenses: () => this.runDebugMenuAction(() => {
-          this.areDebugBlackHoleProjectionLensLayersEnabled = !this.areDebugBlackHoleProjectionLensLayersEnabled;
-        }),
-        selectPreviousBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(-1)),
-        selectNextBlackHolePngLayer: () => this.runDebugMenuAction(() => this.selectBlackHolePngLayer(1)),
-        cycleBlackHolePngLayerImage: (direction) => this.runDebugMenuAction(() => this.cycleBlackHolePngLayerImage(direction)),
-        cycleBlackHoleAddPngLayerImage: (direction) => this.runDebugMenuAction(() => this.cycleBlackHoleAddPngLayerImage(direction)),
-        adjustBlackHolePngLayerSpeed: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSpeed(delta)),
-        adjustBlackHolePngLayerSize: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerSize(delta)),
-        adjustBlackHolePngLayerAlpha: (delta) => this.runDebugMenuAction(() => this.adjustBlackHolePngLayerAlpha(delta)),
-        toggleBlackHolePngLayer: () => this.runDebugMenuAction(() => this.toggleBlackHolePngLayer()),
-        addBlackHolePngLayer: () => this.runDebugMenuAction(() => this.addBlackHolePngLayer()),
-        duplicateBlackHolePngLayer: () => this.runDebugMenuAction(() => this.duplicateBlackHolePngLayer()),
-        removeBlackHolePngLayer: () => this.runDebugMenuAction(() => this.removeBlackHolePngLayer()),
-        saveBlackHolePngSetup: () => this.runDebugMenuAction(() => this.saveBlackHolePngSetup()),
-        loadBlackHolePngSetup: () => this.runDebugMenuAction(() => this.loadBlackHolePngSetup()),
         saveBlackHoleFieldTuning: () => this.runDebugMenuAction(() => this.saveBlackHoleFieldTuning()),
         loadBlackHoleFieldTuning: () => this.runDebugMenuAction(() => this.loadBlackHoleFieldTuning()),
-        resetBlackHoleLensTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleLensTuning())
+        resetBlackHoleTuning: () => this.runDebugMenuAction(() => this.resetBlackHoleTuning())
       }
     });
     this.debugMenuHost.create();
@@ -1589,9 +1518,6 @@ export class GameScene extends Phaser.Scene {
       bankedUpgrades: this.bankedUpgrades,
       weaponCooldownSeconds: this.getActiveAutoWeaponCooldownMs() / 1000,
       ...this.starfield.getDebugValues(),
-      blackHoleLensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
-      blackHoleLensDensity: this.debugBlackHoleLensDensity,
-      blackHoleLensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
       blackHoleInfluenceRadiusScale: this.debugBlackHoleInfluenceRadiusScale,
       blackHoleDamageRadiusScale: this.debugBlackHoleDamageRadiusScale,
       blackHoleVisualScale: this.debugBlackHoleVisualScale,
@@ -1605,12 +1531,6 @@ export class GameScene extends Phaser.Scene {
       blackHoleViscosityCurve: this.debugBlackHoleFieldTuning.viscosityCurve,
       blackHoleInnerDrag: this.debugBlackHoleFieldTuning.innerDrag,
       blackHolePlayerResistance: this.debugBlackHoleFieldTuning.playerResistance,
-      blackHoleProjectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
-      blackHoleSelectedPngLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
-      blackHolePngLayerCount: this.blackHole?.getPngLayerCount() ?? 0,
-      blackHoleSelectedPngLayer: this.blackHole?.getPngLayerSummary(this.debugSelectedBlackHolePngLayerIndex),
-      blackHoleAddPngTextureKey: this.debugAddBlackHolePngTextureKey,
-      blackHoleAddPngTextureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[this.debugAddBlackHolePngTextureKey],
       blackHoleActive: Boolean(this.blackHole),
       blackHoleX: this.blackHole?.body.x ?? 0,
       blackHoleY: this.blackHole?.body.y ?? 0,
@@ -1677,15 +1597,13 @@ export class GameScene extends Phaser.Scene {
       rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
       shipTuningSummaries: {
         interceptor: this.debugState.getShipTuningSummary(getShipDefinition('interceptor')),
-        bulwark: this.debugState.getShipTuningSummary(getShipDefinition('bulwark'))
+        bulwark: this.debugState.getShipTuningSummary(getShipDefinition('bulwark')),
+        engineer: this.debugState.getShipTuningSummary(getShipDefinition('engineer'))
       },
       weaponTuningSummaries: {
         'pulse-cannon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('pulse-cannon')),
         'ramming-shield': this.debugState.getWeaponTuningSummary(getWeaponDefinition('ramming-shield')),
-        'test1-weapon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('test1-weapon')),
-        'test2-weapon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('test2-weapon')),
-        'test3-weapon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('test3-weapon')),
-        'test4-weapon': this.debugState.getWeaponTuningSummary(getWeaponDefinition('test4-weapon'))
+        'salvage-beam': this.debugState.getWeaponTuningSummary(getWeaponDefinition('salvage-beam'))
       },
       nextEnemySpawnSeconds: Math.max(0, Math.min(this.nextEnemySpawnAt, this.encounterDirectorState.nextEncounterAt) - time) / 1000
     });
@@ -1729,6 +1647,8 @@ export class GameScene extends Phaser.Scene {
 
         if (this.canStartRunWithShip(ship)) {
           this.selectedShipId = ship.id;
+          this.hangarPreviewShipId = ship.id;
+          this.ensureSelectedShipStartingWeaponAvailable(ship);
         }
 
         return this.getTestHarnessState();
@@ -1984,6 +1904,26 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase14();
     }
 
+    if (query.get('testHarness') === 'phase15A') {
+      this.runTestHarnessPhase15A();
+    }
+
+    if (query.get('testHarness') === 'phase15B') {
+      this.runTestHarnessPhase15B();
+    }
+
+    if (query.get('testHarness') === 'upgradeOverlayUi') {
+      this.runTestHarnessUpgradeOverlayUi();
+    }
+
+    if (query.get('testHarness') === 'beamVisual') {
+      this.runTestHarnessBeamVisual();
+    }
+
+    if (query.get('testHarness') === 'beamTipScreenshot') {
+      this.runTestHarnessBeamTipScreenshot();
+    }
+
     if (query.get('testHarness') === 'resultsContinueFuel') {
       this.runTestHarnessResultsContinueFuel();
     }
@@ -2109,6 +2049,8 @@ export class GameScene extends Phaser.Scene {
       secondaryWeaponId: this.playerWeapons.activeSecondaryWeaponId,
       ownedAutoWeaponIds: [...this.playerWeapons.ownedAutoWeaponIds],
       ownedManualWeaponIds: [...this.playerWeapons.ownedManualWeaponIds],
+      beamHeat: this.beamSlots.primary.heat,
+      beamOverheated: this.beamSlots.primary.overheated,
       pulseDamageLevel: this.getRunUpgradeLevelById('pulse_damage'),
       pulseFireRateLevel: this.getRunUpgradeLevelById('pulse_fire_rate'),
       pulseVelocityLevel: this.getRunUpgradeLevelById('pulse_velocity'),
@@ -3482,6 +3424,360 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
+  private runTestHarnessPhase15A(): void {
+    const result = runProgressionLoadoutMigrationHarness();
+
+    document.body.setAttribute('data-starvivors-phase15a-harness', result.pass ? 'pass' : 'fail');
+    document.body.setAttribute('data-starvivors-phase15a-harness-details', JSON.stringify(result));
+  }
+
+  private runTestHarnessPhase15B(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase15b-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase15b-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    harness.addCredits(250);
+    const unlocked = harness.unlockShip('engineer');
+    const selected = harness.selectShip('engineer');
+    this.startRun();
+    const started = harness.getState();
+    const availableUpgradeIds = getAvailableRunUpgrades(this.runUpgradeLevels, this.getEquippedWeaponDefinitions()).map((upgrade) => upgrade.id);
+
+    this.player.setPosition(this.arena.width * 0.5, this.arena.height * 0.5);
+    this.player.setRotation(0);
+    this.playerVelocity.set(0, 0);
+    this.basicAsteroids = this.basicAsteroids.filter((asteroid) => {
+      destroyAsteroidRenderObjects(asteroid);
+      return false;
+    });
+    const firstAsteroid = this.createAsteroidInstance(this.player.x, this.player.y - 120, 1, new Phaser.Math.Vector2(0, 0));
+    const secondAsteroid = this.createAsteroidInstance(this.player.x, this.player.y - 220, 1, new Phaser.Math.Vector2(0, 0));
+    firstAsteroid.hp = 1000;
+    secondAsteroid.hp = 1000;
+    this.basicAsteroids.push(firstAsteroid, secondAsteroid);
+    const firstAsteroidHpBefore = firstAsteroid.hp;
+    const secondAsteroidHpBefore = secondAsteroid.hp;
+    this.beamSlots.primary.nextTickAt = 0;
+    this.updateBeamWeapon(getWeaponDefinition('salvage-beam'), 'primary', true, this.time.now + 1000, 1 / 60);
+    this.updateBeamWeapon(getWeaponDefinition('salvage-beam'), 'primary', true, this.time.now + 1200, 0.2);
+    const beamPiercePass =
+      firstAsteroid.hp < firstAsteroidHpBefore &&
+      secondAsteroid.hp < secondAsteroidHpBefore &&
+      firstAsteroid.hp > 0 &&
+      secondAsteroid.hp > 0;
+
+    this.beamSlots.primary = this.createBeamSlotRuntime();
+    this.beamSlots.primary.nextTickAt = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < 50; i += 1) {
+      this.updateBeamWeapon(getWeaponDefinition('salvage-beam'), 'primary', true, this.time.now + 1200 + i * 100, 0.1);
+    }
+    const overheated = harness.getState();
+    for (let i = 0; i < 35; i += 1) {
+      this.updateBeamWeapon(getWeaponDefinition('salvage-beam'), 'primary', false, this.time.now + 7000 + i * 100, 0.1);
+    }
+    const cooled = harness.getState();
+
+    const scrapBefore = harness.getState();
+    this.spawnScrapPickup('enemy', 4, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
+    const scrapAfter = harness.collectAllScrap();
+    const pass =
+      unlocked.unlockedShipIds.includes('engineer') &&
+      selected.selectedShipId === 'engineer' &&
+      started.selectedShipId === 'engineer' &&
+      started.primaryWeaponId === 'salvage-beam' &&
+      started.ownedManualWeaponIds.includes('salvage-beam') &&
+      availableUpgradeIds.includes('beam_focus') &&
+      availableUpgradeIds.includes('beam_extended_capacitors') &&
+      beamPiercePass &&
+      overheated.beamOverheated &&
+      cooled.beamHeat === 0 &&
+      !cooled.beamOverheated &&
+      scrapAfter.runScrapTotal === scrapBefore.runScrapTotal + 5 &&
+      scrapAfter.playerXp > scrapBefore.playerXp;
+
+    document.body.setAttribute('data-starvivors-phase15b-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase15b-harness-details',
+      JSON.stringify({
+        unlocked,
+        selected,
+        started,
+        availableUpgradeIds,
+        firstAsteroidHpBefore,
+        firstAsteroidHpAfter: firstAsteroid.hp,
+        secondAsteroidHpBefore,
+        secondAsteroidHpAfter: secondAsteroid.hp,
+        overheated,
+        cooled,
+        scrapBefore,
+        scrapAfter,
+        beamPiercePass,
+        pass
+      })
+    );
+  }
+
+  private runTestHarnessUpgradeOverlayUi(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-upgrade-overlay-ui-harness', 'fail');
+      document.body.setAttribute('data-starvivors-upgrade-overlay-ui-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    this.startRun();
+    harness.grantXp(1000);
+    const opened = harness.openUpgradeOverlay();
+    const choices = this.getUpgradeOverlayChoices();
+    const firstChoice = choices[0];
+    const firstText = this.upgradeOverlayChoiceTexts[0];
+    const firstMeta = this.upgradeOverlayChoiceMetaTexts[0];
+    const firstHitZone = this.upgradeOverlayChoiceHitZones[0];
+    const firstTextBefore = firstText.text;
+    const firstMetaBefore = firstMeta.text;
+    const firstChoiceLevelBefore =
+      firstChoice && firstChoice.category !== 'secondary-weapon' ? this.getUpgradeLevel(firstChoice) : 0;
+    const textPass =
+      this.isUpgradeOverlayOpen &&
+      firstText.visible &&
+      firstMeta.visible &&
+      firstText.text.trim().length > 0 &&
+      firstMeta.text.trim().length > 0;
+    const clickTargetPass =
+      firstHitZone.visible &&
+      Boolean(firstHitZone.input?.enabled) &&
+      firstHitZone.depth > firstText.depth &&
+      firstHitZone.width > 0 &&
+      firstHitZone.height > 0;
+
+    firstHitZone.emit('pointerdown', {
+      event: {
+        stopPropagation: () => undefined
+      }
+    } as Phaser.Input.Pointer);
+
+    const afterClick = harness.getState();
+    const firstChoiceLevelAfter =
+      firstChoice && firstChoice.category !== 'secondary-weapon' ? this.getUpgradeLevel(firstChoice) : 0;
+    const selectionPass =
+      firstChoice !== undefined &&
+      afterClick.bankedUpgrades === opened.bankedUpgrades - 1 &&
+      (firstChoice.category === 'secondary-weapon' || firstChoiceLevelAfter === firstChoiceLevelBefore + 1);
+    const pass = textPass && clickTargetPass && selectionPass;
+
+    document.body.setAttribute('data-starvivors-upgrade-overlay-ui-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-upgrade-overlay-ui-harness-details',
+      JSON.stringify({
+        opened,
+        firstChoice,
+        firstText: firstTextBefore,
+        firstMeta: firstMetaBefore,
+        firstTextVisible: firstText.visible,
+        firstMetaVisible: firstMeta.visible,
+        firstHitZoneVisible: firstHitZone.visible,
+        firstHitZoneInputEnabled: Boolean(firstHitZone.input?.enabled),
+        firstHitZoneDepth: firstHitZone.depth,
+        firstTextDepth: firstText.depth,
+        firstChoiceLevelBefore,
+        firstChoiceLevelAfter,
+        afterClick,
+        textPass,
+        clickTargetPass,
+        selectionPass,
+        pass
+      })
+    );
+  }
+
+  private runTestHarnessBeamVisual(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-beam-visual-harness', 'fail');
+      document.body.setAttribute('data-starvivors-beam-visual-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    harness.addCredits(250);
+    harness.unlockShip('engineer');
+    harness.selectShip('engineer');
+    this.startRun();
+    this.player.setRotation(0);
+    const beamWeapon = getWeaponDefinition('salvage-beam');
+    const beam = this.getResolvedWeaponStats(beamWeapon, 'primary').beam;
+    const runtime = this.beamSlots.primary;
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1000, 0.016);
+    const initialLength = runtime.visualLength;
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1070, 0.07);
+    const midLength = runtime.visualLength;
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1160, 0.09);
+    const finalLength = runtime.visualLength;
+    const graphicsDepth = runtime.graphics?.depth ?? Number.POSITIVE_INFINITY;
+    const pass =
+      Boolean(beam) &&
+      Boolean(runtime.graphics) &&
+      graphicsDepth < this.player.depth &&
+      graphicsDepth > 9 &&
+      initialLength <= midLength &&
+      midLength < finalLength &&
+      finalLength > (beam?.range ?? 0) * 0.9;
+
+    document.body.setAttribute('data-starvivors-beam-visual-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-beam-visual-harness-details',
+      JSON.stringify({
+        selectedShip: harness.getState().selectedShipId,
+        beamRange: beam?.range ?? 0,
+        initialLength,
+        midLength,
+        finalLength,
+        graphicsDepth,
+        playerDepth: this.player.depth,
+        hasGraphics: Boolean(runtime.graphics),
+        pass
+      })
+    );
+  }
+
+  private runTestHarnessBeamTipScreenshot(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-beam-tip-screenshot-harness', 'fail');
+      document.body.setAttribute('data-starvivors-beam-tip-screenshot-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    harness.addCredits(250);
+    harness.unlockShip('engineer');
+    harness.selectShip('engineer');
+    this.startRun();
+
+    for (let i = this.liveEnemies.length - 1; i >= 0; i -= 1) {
+      this.destroyLiveEnemyWithoutRewards(this.liveEnemies[i]);
+      this.liveEnemies.splice(i, 1);
+    }
+
+    this.player.setPosition(this.arena.width * 0.5 - 260, this.arena.height * 0.5);
+    this.player.setRotation(Math.PI / 2);
+    this.playerVelocity.set(0, 0);
+    this.cameras.main.centerOn(this.player.x + 260, this.player.y);
+
+    const beamWeapon = getWeaponDefinition('salvage-beam');
+    const beam = this.getResolvedWeaponStats(beamWeapon, 'primary').beam;
+    const runtime = this.beamSlots.primary;
+    const target = this.spawnLiveEnemy('scout', this.player.x + 410, this.player.y, this.time.now, 'chaser');
+    target.hp = 9999;
+    target.body.setDepth(9);
+
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1000, 0.016);
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1160, 0.16);
+    this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now + 1260, 0.1);
+    this.drawBeamTipScreenshotFrame(beam, target.body, this.time.now + 1260);
+    const contactSparkBursts = runtime.contactSparkBurstsEmitted;
+    const graphicsDepth = runtime.graphics?.depth ?? Number.POSITIVE_INFINITY;
+    const pass =
+      Boolean(beam) &&
+      Boolean(runtime.graphics) &&
+      runtime.visualLength > (beam?.range ?? 0) * 0.9 &&
+      contactSparkBursts > 0 &&
+      graphicsDepth < this.player.depth &&
+      graphicsDepth > 9;
+
+    const keepBeamVisible = (): void => {
+      if (!beam || !runtime.graphics?.scene || !target.body.scene) {
+        return;
+      }
+
+      runtime.overheated = false;
+      runtime.heat = Math.min(runtime.heat, beam.heatMax * 0.35);
+      runtime.isActive = true;
+      runtime.activationStartedAt = this.time.now - BEAM_IGNITION_MS;
+      runtime.nextTickAt = Number.POSITIVE_INFINITY;
+      this.updateBeamWeapon(beamWeapon, 'primary', true, this.time.now, 0.016);
+      runtime.nextTickAt = Number.POSITIVE_INFINITY;
+    };
+
+    this.events.on(Phaser.Scenes.Events.POST_UPDATE, keepBeamVisible);
+    this.time.delayedCall(8000, () => this.events.off(Phaser.Scenes.Events.POST_UPDATE, keepBeamVisible));
+
+    document.body.setAttribute('data-starvivors-beam-tip-screenshot-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-beam-tip-screenshot-harness-details',
+      JSON.stringify({
+        selectedShip: harness.getState().selectedShipId,
+        beamRange: beam?.range ?? 0,
+        visualLength: runtime.visualLength,
+        graphicsDepth,
+        playerDepth: this.player.depth,
+        contactSparkBursts,
+        targetHp: target.hp,
+        pass
+      })
+    );
+  }
+
+  private drawBeamTipScreenshotFrame(
+    beam: ResolvedBeamWeaponStats | undefined,
+    target: Phaser.GameObjects.Container,
+    time: number
+  ): void {
+    if (!beam) {
+      return;
+    }
+
+    const forward = this.getForwardDirection(this.player.rotation);
+    const emitterOffset = this.getBeamEmitterOffset();
+    const start = new Phaser.Math.Vector2(
+      this.player.x + forward.x * emitterOffset,
+      this.player.y + forward.y * emitterOffset
+    );
+    const visualLength = beam.range;
+    const heatProgress = this.beamSlots.primary.heat / Math.max(1, beam.heatMax);
+    const pulse = 0.5 + Math.sin(time * 0.028) * 0.5;
+    const outerWidth = Math.max(5, beam.width * (1.15 + pulse * 0.08 + heatProgress * 0.12));
+    const coreWidth = Math.max(2, outerWidth * 0.28);
+    const end = new Phaser.Math.Vector2(start.x + forward.x * visualLength, start.y + forward.y * visualLength);
+    const graphics = this.add.graphics().setDepth(BEAM_RENDER_DEPTH + 0.01).setBlendMode(Phaser.BlendModes.ADD);
+
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth * 2.1, 0x2fffb4, 0.08 + heatProgress * 0.06);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth * 1.35, 0x20d8aa, 0.2 + pulse * 0.05);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth, 0x69f0ae, 0.34);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, coreWidth, 0xf2fbff, 0.9);
+    graphics.fillStyle(0xf2fbff, 0.68);
+    graphics.fillCircle(end.x + forward.x * coreWidth * 0.16, end.y + forward.y * coreWidth * 0.16, Math.max(2, coreWidth * 0.58));
+    graphics.fillStyle(0x69f0ae, 0.28);
+    graphics.fillCircle(end.x, end.y, outerWidth * 0.31);
+
+    const targetOffset = this.getWrappedDirection(this.player.x, this.player.y, target.x, target.y);
+    const targetProjection = Phaser.Math.Clamp(targetOffset.dot(forward) - emitterOffset, 0, visualLength);
+    const contact = new Phaser.Math.Vector2(
+      start.x + forward.x * targetProjection,
+      start.y + forward.y * targetProjection
+    );
+    for (let i = 0; i < 10; i += 1) {
+      const right = new Phaser.Math.Vector2(forward.y, -forward.x);
+      const spark = this.add.circle(
+        contact.x - forward.x * Phaser.Math.FloatBetween(0, 12) + right.x * Phaser.Math.FloatBetween(-16, 16),
+        contact.y - forward.y * Phaser.Math.FloatBetween(0, 12) + right.y * Phaser.Math.FloatBetween(-16, 16),
+        Phaser.Math.FloatBetween(1.3, 2.8),
+        Phaser.Utils.Array.GetRandom([0xf2fbff, 0x9fffe0, 0xffd166]),
+        0.86
+      );
+      spark.setDepth(BEAM_RENDER_DEPTH + 0.25).setBlendMode(Phaser.BlendModes.ADD);
+    }
+  }
+
   private runTestHarnessResultsContinueFuel(): void {
     const harness = window.starvivorsTestHarness;
 
@@ -3780,6 +4076,7 @@ export class GameScene extends Phaser.Scene {
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
+    this.ensureSelectedShipStartingWeaponAvailable(this.getSelectedShipDefinition());
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition(), this.weaponLoadout);
     this.hasResolvedSecondaryWeaponChoice = false;
     this.rammingShieldImage = undefined;
@@ -3821,6 +4118,7 @@ export class GameScene extends Phaser.Scene {
     this.resultsScreen = undefined;
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
+    this.resetBeamRuntime();
     this.basicEnemies = [];
     this.shooterEnemies = [];
     this.tankEnemies = [];
@@ -3880,9 +4178,6 @@ export class GameScene extends Phaser.Scene {
     this.pauseMenuScreen = undefined;
     this.minimap.reset();
     this.debugState.resetForRun();
-    this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
-    this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
-    this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
     this.debugBlackHoleInfluenceRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleDamageRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
@@ -3895,9 +4190,6 @@ export class GameScene extends Phaser.Scene {
     this.blackHolePlayerCaptureStartedAt = null;
     this.blackHoleConsumedObjectsThisRun = 0;
     this.debugBlackHoleGrowthOffsetMs = 0;
-    this.areDebugBlackHoleProjectionLensLayersEnabled = true;
-    this.debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
-    this.debugAddBlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
     this.starfield.resetState();
 
     this.createStarfield();
@@ -3944,7 +4236,6 @@ export class GameScene extends Phaser.Scene {
     this.createUpgradeButton();
     this.createResultsButton();
     this.createUpgradeOverlay();
-    this.blackHoleDebugControls.create();
     this.createDebugMenu();
     this.createSecretControlOverlay();
     this.updateGameplayHud(this.time.now);
@@ -4318,18 +4609,46 @@ export class GameScene extends Phaser.Scene {
   }
 
   private ensureSelectedShipStartingWeaponAvailable(ship: ShipRegistryEntry): void {
-    if (!ship.startingPrimaryWeaponId) {
+    if (!ship.startingPrimaryWeaponId && !ship.startingSecondaryWeaponId) {
       return;
     }
 
     const weaponIds = new Set(this.progressionState.unlockedWeaponIds);
-    weaponIds.add(ship.startingPrimaryWeaponId);
+    if (ship.startingPrimaryWeaponId) {
+      weaponIds.add(ship.startingPrimaryWeaponId);
+    }
+    if (ship.startingSecondaryWeaponId) {
+      weaponIds.add(ship.startingSecondaryWeaponId);
+    }
     this.progressionState.unlockedWeaponIds = [...weaponIds];
-    const primaryWeapon = getWeaponDefinition(ship.startingPrimaryWeaponId);
-    if (!this.getFirstLoadoutWeaponId('primary') && primaryWeapon.slotCompatibility.includes('primary')) {
+    const primaryWeapon = ship.startingPrimaryWeaponId ? getWeaponDefinition(ship.startingPrimaryWeaponId) : null;
+    const currentPrimaryWeaponId = this.getFirstLoadoutWeaponId('primary');
+    const shouldUseStartingPrimary =
+      !currentPrimaryWeaponId ||
+      (currentPrimaryWeaponId !== ship.startingPrimaryWeaponId && this.isOtherShipStartingWeapon(currentPrimaryWeaponId, ship.id));
+    if (ship.startingPrimaryWeaponId && shouldUseStartingPrimary && primaryWeapon?.slotCompatibility.includes('primary')) {
       this.weaponLoadout = cloneWeaponLoadout(this.weaponLoadout);
       this.weaponLoadout.primary[0] = ship.startingPrimaryWeaponId;
     }
+    const secondaryWeapon = ship.startingSecondaryWeaponId ? getWeaponDefinition(ship.startingSecondaryWeaponId) : null;
+    if (
+      ship.startingSecondaryWeaponId &&
+      !this.getFirstLoadoutWeaponId('secondary') &&
+      secondaryWeapon?.slotCompatibility.includes('secondary')
+    ) {
+      this.weaponLoadout = cloneWeaponLoadout(this.weaponLoadout);
+      this.weaponLoadout.secondary[0] = ship.startingSecondaryWeaponId;
+    }
+  }
+
+  private isOtherShipStartingWeapon(weaponId: WeaponId | null, selectedShipId: ShipId): boolean {
+    if (!weaponId) {
+      return false;
+    }
+
+    return shipRegistry.some(
+      (ship) => ship.id !== selectedShipId && (ship.startingPrimaryWeaponId === weaponId || ship.startingSecondaryWeaponId === weaponId)
+    );
   }
 
   private getAvailableHangarWeaponIds(): WeaponId[] {
@@ -4337,6 +4656,9 @@ export class GameScene extends Phaser.Scene {
     for (const ship of shipRegistry) {
       if (this.isShipUnlocked(ship.id) && ship.startingPrimaryWeaponId) {
         weaponIds.add(ship.startingPrimaryWeaponId);
+      }
+      if (this.isShipUnlocked(ship.id) && ship.startingSecondaryWeaponId) {
+        weaponIds.add(ship.startingSecondaryWeaponId);
       }
     }
 
@@ -6253,10 +6575,6 @@ export class GameScene extends Phaser.Scene {
       deltaSeconds,
       this.arena,
       this.debugState.collisionDebugEnabled,
-      this.getActiveDebugBlackHoleLensOrbitSpeedMultiplier(),
-      this.getActiveDebugBlackHoleLensDensity(),
-      this.getActiveDebugBlackHoleLensLengthMultiplier(),
-      this.getActiveDebugBlackHoleProjectionLensLayerState(),
       this.debugBlackHoleInfluenceRadiusScale,
       this.debugBlackHoleDamageRadiusScale,
       this.debugBlackHoleVisualScale,
@@ -7167,10 +7485,16 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.addRunScrap(scrap.value);
-    this.grantXp(this.getScrapXpValue(scrap.value));
-    this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrap.value);
+    const scrapValue = this.getCollectedScrapValue(scrap.value);
+    this.addRunScrap(scrapValue);
+    this.grantXp(this.getScrapXpValue(scrapValue));
+    this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrapValue);
     this.destroyScrapPickup(scrap);
+  }
+
+  private getCollectedScrapValue(baseValue: number): number {
+    const multiplier = this.getSelectedShipDefinition().scrapValueMultiplier ?? 1;
+    return Math.max(1, Math.round(baseValue * multiplier));
   }
 
   private getScrapXpValue(scrapValue: number): number {
@@ -7961,24 +8285,6 @@ export class GameScene extends Phaser.Scene {
     return this.debugState.weaponFireRateMultiplier;
   }
 
-  private getActiveDebugBlackHoleLensOrbitSpeedMultiplier(): number {
-    return this.debugBlackHoleLensOrbitSpeedMultiplier;
-  }
-
-  private getActiveDebugBlackHoleLensDensity(): number {
-    return this.debugState.collisionDebugEnabled
-      ? this.debugBlackHoleLensDensity
-      : BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
-  }
-
-  private getActiveDebugBlackHoleLensLengthMultiplier(): number {
-    return this.debugBlackHoleLensLengthMultiplier;
-  }
-
-  private getActiveDebugBlackHoleProjectionLensLayerState(): boolean {
-    return this.areDebugBlackHoleProjectionLensLayersEnabled;
-  }
-
   private getBlackHoleGrowthElapsedSeconds(time = this.time.now): number {
     return Math.max(0, this.getSurvivalElapsedMs(time) + this.debugBlackHoleGrowthOffsetMs) / 1000;
   }
@@ -8421,36 +8727,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private adjustBlackHoleLensOrbitSpeed(delta: number): void {
-    this.debugBlackHoleLensOrbitSpeedMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.debugBlackHoleLensOrbitSpeedMultiplier + delta,
-        DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN,
-        DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX
-      ).toFixed(1)
-    );
-  }
-
-  private adjustBlackHoleLensDensity(delta: number): void {
-    this.debugBlackHoleLensDensity = Math.round(
-      Phaser.Math.Clamp(
-        this.debugBlackHoleLensDensity + delta,
-        DEBUG_BLACK_HOLE_LENS_DENSITY_MIN,
-        BLACK_HOLE_LENSING_ARC_MAX_COUNT
-      )
-    );
-  }
-
-  private adjustBlackHoleLensLength(delta: number): void {
-    this.debugBlackHoleLensLengthMultiplier = Number(
-      Phaser.Math.Clamp(
-        this.debugBlackHoleLensLengthMultiplier + delta,
-        DEBUG_BLACK_HOLE_LENS_LENGTH_MIN,
-        DEBUG_BLACK_HOLE_LENS_LENGTH_MAX
-      ).toFixed(1)
-    );
-  }
-
   private adjustBlackHoleInfluenceRadius(delta: number): void {
     this.debugBlackHoleInfluenceRadiusScale = this.clampBlackHoleRadiusScale(this.debugBlackHoleInfluenceRadiusScale + delta);
   }
@@ -8527,77 +8803,6 @@ export class GameScene extends Phaser.Scene {
 
   private clampBlackHoleForceMultiplier(value: number): number {
     return clampBlackHoleForceMultiplierDebug(value);
-  }
-
-  private clampSelectedBlackHolePngLayer(): void {
-    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
-    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
-      this.debugSelectedBlackHolePngLayerIndex,
-      0,
-      Math.max(0, layerCount - 1)
-    );
-  }
-
-  private selectBlackHolePngLayer(direction: number): void {
-    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
-
-    if (layerCount <= 0) {
-      this.debugSelectedBlackHolePngLayerIndex = 0;
-      return;
-    }
-
-    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Wrap(
-      this.debugSelectedBlackHolePngLayerIndex + direction,
-      0,
-      layerCount
-    );
-  }
-
-  private cycleBlackHolePngLayerImage(direction: number): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.blackHole?.cyclePngLayerTexture(this.debugSelectedBlackHolePngLayerIndex, direction);
-  }
-
-  private cycleBlackHoleAddPngLayerImage(direction: number): void {
-    const textureIndex = BLACK_HOLE_PNG_TEXTURE_KEYS.indexOf(this.debugAddBlackHolePngTextureKey);
-    const nextIndex = Phaser.Math.Wrap(textureIndex + direction, 0, BLACK_HOLE_PNG_TEXTURE_KEYS.length);
-    this.debugAddBlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[nextIndex];
-  }
-
-  private adjustBlackHolePngLayerSpeed(delta: number): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.blackHole?.adjustPngLayerSpeed(this.debugSelectedBlackHolePngLayerIndex, delta);
-  }
-
-  private adjustBlackHolePngLayerSize(delta: number): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.blackHole?.adjustPngLayerSize(this.debugSelectedBlackHolePngLayerIndex, delta);
-  }
-
-  private adjustBlackHolePngLayerAlpha(delta: number): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.blackHole?.adjustPngLayerAlpha(this.debugSelectedBlackHolePngLayerIndex, delta);
-  }
-
-  private toggleBlackHolePngLayer(): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.blackHole?.togglePngLayer(this.debugSelectedBlackHolePngLayerIndex);
-  }
-
-  private addBlackHolePngLayer(): void {
-    this.debugSelectedBlackHolePngLayerIndex = this.blackHole?.addPngLayer(this.debugAddBlackHolePngTextureKey) ?? 0;
-  }
-
-  private duplicateBlackHolePngLayer(): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.debugSelectedBlackHolePngLayerIndex =
-      this.blackHole?.duplicatePngLayer(this.debugSelectedBlackHolePngLayerIndex) ?? 0;
-  }
-
-  private removeBlackHolePngLayer(): void {
-    this.clampSelectedBlackHolePngLayer();
-    this.debugSelectedBlackHolePngLayerIndex =
-      this.blackHole?.removePngLayer(this.debugSelectedBlackHolePngLayerIndex) ?? 0;
   }
 
   private adjustDebugShipLoadoutStat(shipId: ShipId, stat: DebugShipStatKey, delta: number): void {
@@ -8701,25 +8906,11 @@ export class GameScene extends Phaser.Scene {
       debugState: this.debugState.createDebugPresetState(),
       starfield: this.starfield.getDebugValues(),
       blackHole: {
-        lensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,
-        lensDensity: this.debugBlackHoleLensDensity,
-        lensLengthMultiplier: this.debugBlackHoleLensLengthMultiplier,
         influenceRadiusScale: this.debugBlackHoleInfluenceRadiusScale,
         damageRadiusScale: this.debugBlackHoleDamageRadiusScale,
         visualScale: this.debugBlackHoleVisualScale,
         coreScale: this.debugBlackHoleCoreScale,
-        fieldTuning: { ...this.debugBlackHoleFieldTuning },
-        projectionLensLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
-        selectedPngLayerIndex: this.debugSelectedBlackHolePngLayerIndex,
-        addPngTextureKey: this.debugAddBlackHolePngTextureKey,
-        pngLayers: (this.blackHole?.getPngLayerSummaries() ?? []).map((layer) => ({
-          image: layer.textureKey,
-          speedRps: layer.speedRps,
-          size: layer.sizeMultiplier,
-          alpha: layer.alpha,
-          enabled: layer.enabled,
-          initialRotation: layer.initialRotation
-        }))
+        fieldTuning: { ...this.debugBlackHoleFieldTuning }
       }
     };
   }
@@ -8739,13 +8930,6 @@ export class GameScene extends Phaser.Scene {
     });
 
     const blackHole = this.getRecord(setup.blackHole);
-    this.debugBlackHoleLensOrbitSpeedMultiplier = this.clampBlackHoleForceMultiplier(
-      this.getNumber(blackHole.lensOrbitSpeedMultiplier, this.debugBlackHoleLensOrbitSpeedMultiplier)
-    );
-    this.debugBlackHoleLensDensity = Math.round(this.getNumber(blackHole.lensDensity, this.debugBlackHoleLensDensity));
-    this.debugBlackHoleLensLengthMultiplier = this.clampBlackHoleForceMultiplier(
-      this.getNumber(blackHole.lensLengthMultiplier, this.debugBlackHoleLensLengthMultiplier)
-    );
     this.debugBlackHoleInfluenceRadiusScale = this.clampBlackHoleRadiusScale(
       this.getNumber(blackHole.influenceRadiusScale, this.debugBlackHoleInfluenceRadiusScale)
     );
@@ -8762,25 +8946,6 @@ export class GameScene extends Phaser.Scene {
       this.getRecord(blackHole.fieldTuning),
       this.debugBlackHoleFieldTuning
     );
-    this.areDebugBlackHoleProjectionLensLayersEnabled = this.getBoolean(
-      blackHole.projectionLensLayersEnabled,
-      this.areDebugBlackHoleProjectionLensLayersEnabled
-    );
-    if (isBlackHolePngTextureKeyDebug(blackHole.addPngTextureKey)) {
-      this.debugAddBlackHolePngTextureKey = blackHole.addPngTextureKey;
-    }
-
-    const rawLayers = Array.isArray(blackHole.pngLayers) ? blackHole.pngLayers : undefined;
-    const layers = normalizeBlackHolePngSetupLayersDebug(rawLayers);
-    if (layers) {
-      this.blackHole?.setPngLayers(layers);
-    }
-    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
-    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
-      Math.trunc(this.getNumber(blackHole.selectedPngLayerIndex, this.debugSelectedBlackHolePngLayerIndex)),
-      0,
-      Math.max(0, layerCount - 1)
-    );
   }
 
   private resetDebugTuning(): void {
@@ -8794,7 +8959,7 @@ export class GameScene extends Phaser.Scene {
       starfieldMidParallax: DEFAULT_STARFIELD_MID_PARALLAX,
       starfieldNearParallax: DEFAULT_STARFIELD_NEAR_PARALLAX
     });
-    this.resetBlackHoleLensTuning();
+    this.resetBlackHoleTuning();
   }
 
   private getRecord(value: unknown): Record<string, unknown> {
@@ -8817,20 +8982,6 @@ export class GameScene extends Phaser.Scene {
     const stats = this.getRammingShieldStats();
     this.rammingShieldState.hp = Math.min(this.rammingShieldState.hp, stats.shieldMaxHp);
     this.rammingShieldState.dashCharges = Math.min(this.rammingShieldState.dashCharges, stats.dashMaxCharges);
-  }
-
-  private saveBlackHolePngSetup(): void {
-    const markdown = this.createBlackHolePngSetupMarkdown();
-    const filename = `blackhole-setup-${getTimestampSlug()}.md`;
-
-    downloadTextFile(filename, markdown, 'text/markdown');
-  }
-
-  private loadBlackHolePngSetup(): void {
-    loadMarkdownFile((contents) => {
-      this.applyBlackHolePngSetupMarkdown(contents);
-      this.refreshDebugMenu(this.time.now, true);
-    });
   }
 
   private saveBlackHoleFieldTuning(): void {
@@ -8869,64 +9020,6 @@ export class GameScene extends Phaser.Scene {
     this.debugBlackHoleFieldTuning = normalizeBlackHoleFieldTuningDebug(setup, this.debugBlackHoleFieldTuning);
   }
 
-  private applyBlackHolePngSetupMarkdown(markdown: string): void {
-    const setup = parseBlackHolePngSetupMarkdown(markdown);
-
-    if (!setup) {
-      return;
-    }
-
-    const layers = normalizeBlackHolePngSetupLayersDebug(setup.layers);
-
-    if (!layers) {
-      return;
-    }
-
-    this.blackHole?.setPngLayers(layers);
-
-    if (typeof setup.visualScale === 'number' && Number.isFinite(setup.visualScale)) {
-      this.debugBlackHoleVisualScale = this.clampBlackHoleRadiusScale(setup.visualScale);
-    } else if (typeof setup.fieldScale === 'number' && Number.isFinite(setup.fieldScale)) {
-      this.debugBlackHoleVisualScale = this.clampBlackHoleRadiusScale(setup.fieldScale);
-    }
-
-    if (typeof setup.coreScale === 'number' && Number.isFinite(setup.coreScale)) {
-      this.debugBlackHoleCoreScale = this.clampBlackHoleRadiusScale(setup.coreScale);
-    }
-
-    if (typeof setup.allLayersEnabled === 'boolean') {
-      this.areDebugBlackHoleProjectionLensLayersEnabled = setup.allLayersEnabled;
-    }
-
-    if (isBlackHolePngTextureKeyDebug(setup.addImage)) {
-      this.debugAddBlackHolePngTextureKey = setup.addImage;
-    }
-
-    const layerCount = this.blackHole?.getPngLayerCount() ?? 0;
-    const selectedLayerIndex = typeof setup.selectedLayerIndex === 'number' && Number.isFinite(setup.selectedLayerIndex)
-      ? setup.selectedLayerIndex
-      : 0;
-
-    this.debugSelectedBlackHolePngLayerIndex = Phaser.Math.Clamp(
-      Math.trunc(selectedLayerIndex),
-      0,
-      Math.max(0, layerCount - 1)
-    );
-  }
-
-  private createBlackHolePngSetupMarkdown(): string {
-    return createBlackHolePngSetupMarkdownDebug(
-      {
-        visualScale: this.debugBlackHoleVisualScale,
-        coreScale: this.debugBlackHoleCoreScale,
-        allLayersEnabled: this.areDebugBlackHoleProjectionLensLayersEnabled,
-        addTextureKey: this.debugAddBlackHolePngTextureKey,
-        selectedLayerIndex: this.debugSelectedBlackHolePngLayerIndex
-      },
-      this.blackHole?.getPngLayerSummaries() ?? []
-    );
-  }
-
   private createBlackHoleFieldTuningMarkdown(): string {
     return createBlackHoleFieldTuningMarkdownDebug({
       influenceRadiusScale: this.debugBlackHoleInfluenceRadiusScale,
@@ -8935,19 +9028,13 @@ export class GameScene extends Phaser.Scene {
       tuning: this.debugBlackHoleFieldTuning
     });
   }
-  private resetBlackHoleLensTuning(): void {
-    this.debugBlackHoleLensOrbitSpeedMultiplier = DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT;
-    this.debugBlackHoleLensDensity = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
-    this.debugBlackHoleLensLengthMultiplier = DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT;
+
+  private resetBlackHoleTuning(): void {
     this.debugBlackHoleInfluenceRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleDamageRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleCoreScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
     this.debugBlackHoleFieldTuning = { ...DEFAULT_BLACK_HOLE_FIELD_TUNING };
-    this.areDebugBlackHoleProjectionLensLayersEnabled = true;
-    this.debugSelectedBlackHolePngLayerIndex = DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT;
-    this.debugAddBlackHolePngTextureKey = DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT;
-    this.blackHole?.resetPngLayers();
   }
 
   private createUpgradeButton(): void {
@@ -9048,19 +9135,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createUpgradeOverlay(): void {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const panelWidth = Math.min(width - 48, 720);
-    const panelHeight = Math.min(height - 48, 560);
-    const panelX = centerX - panelWidth / 2;
-    const panelY = Math.max(56, height / 2 - panelHeight / 2);
-    const cardX = panelX + 28;
-    const cardWidth = panelWidth - 56;
-    const cardHeight = 54;
+    const layout = this.getUpgradeOverlayLayout();
 
     this.upgradeOverlayBlocker = this.add
-      .zone(0, 0, width, height)
+      .zone(0, 0, layout.width, layout.height)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(1199)
@@ -9070,20 +9148,20 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayGraphics = this.add.graphics().setScrollFactor(0).setDepth(1200);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
-      const cardY = panelY + 118 + i * (cardHeight + 8);
+      const cardY = this.getUpgradeOverlayCardY(layout, i);
       const choiceText = this.add
-        .text(cardX + 16, cardY + 9, '', {
+        .text(layout.cardX + 16, cardY + 10, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
           fontSize: '13px',
           color: '#f2fbff',
-          fixedWidth: cardWidth - 258,
-          wordWrap: { width: cardWidth - 258 },
+          fixedWidth: layout.cardWidth - 258,
+          wordWrap: { width: layout.cardWidth - 258 },
           lineSpacing: 2
         })
         .setScrollFactor(0)
-        .setDepth(1201);
+        .setDepth(1209);
       const metaText = this.add
-        .text(cardX + cardWidth - 16, cardY + 8, '', {
+        .text(layout.cardX + layout.cardWidth - 16, cardY + 10, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
           fontSize: '11px',
           color: '#a8c7ff',
@@ -9092,21 +9170,20 @@ export class GameScene extends Phaser.Scene {
         })
         .setOrigin(1, 0)
         .setScrollFactor(0)
-        .setDepth(1201);
+        .setDepth(1209);
 
       this.upgradeOverlayChoiceTexts.push(choiceText);
       this.upgradeOverlayChoiceMetaTexts.push(metaText);
 
       const hitZone = this.add
-        .zone(cardX, cardY, cardWidth, cardHeight)
+        .zone(layout.cardX, cardY, layout.cardWidth, layout.cardHeight)
         .setOrigin(0, 0)
         .setScrollFactor(0)
-        .setDepth(1202)
+        .setDepth(1210)
         .setVisible(false);
 
       hitZone
-        .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
-        .on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
           pointer.event?.stopPropagation();
           this.selectUpgradeOverlayChoiceAt(i, this.time.now);
         });
@@ -9114,26 +9191,26 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.upgradeOverlayText = this.add
-      .text(centerX, panelY + 28, '', {
+      .text(layout.centerX, layout.panelY + 28, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '13px',
         color: '#f2fbff',
         align: 'left',
-        fixedWidth: panelWidth - 56,
+        fixedWidth: layout.panelWidth - 56,
         lineSpacing: 4,
-        wordWrap: { width: panelWidth - 56 }
+        wordWrap: { width: layout.panelWidth - 56 }
       })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(1201);
 
     this.upgradeOverlayPromptText = this.add
-      .text(cardX, panelY + panelHeight - 34, '', {
+      .text(layout.cardX, layout.panelY + layout.panelHeight - 34, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '13px',
         color: '#f2fbff',
-        fixedWidth: cardWidth,
-        wordWrap: { width: cardWidth }
+        fixedWidth: layout.cardWidth,
+        wordWrap: { width: layout.cardWidth }
       })
       .setScrollFactor(0)
       .setDepth(1201);
@@ -9154,11 +9231,7 @@ export class GameScene extends Phaser.Scene {
     const activeWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');
     const damageMultiplier = this.getActiveAutoWeaponDamageMultiplier();
     const resolvedActiveWeapon = this.getResolvedWeaponStats(activeWeapon, activeWeapon.id === this.playerWeapons.activePrimaryWeaponId ? 'primary' : 'auto');
-    const activeDamage = Math.round(
-      resolvedActiveWeapon.projectile?.damage ?? resolvedActiveWeapon.rammingShield?.bashDamage ?? 0
-    );
-    const cooldownSeconds = this.getPulseCannonCooldownMs() / 1000;
-    const speed = Math.round(this.getActiveAutoWeaponProjectileSpeed());
+    const weaponSummary = this.getUpgradeOverlayWeaponSummary(activeWeapon, resolvedActiveWeapon, damageMultiplier);
     const choices = this.getUpgradeOverlayChoices();
     const rerollCost = this.getNextRerollCost();
     const choicePrompt =
@@ -9192,31 +9265,23 @@ export class GameScene extends Phaser.Scene {
       `${this.specialUpgradeOverlayChoices ? 'SPECIAL UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
         `Banked upgrades: ${this.bankedUpgrades}\n` +
         `Run scrap: ${this.runScrapTotal}  Reroll cost: ${rerollCost}\n` +
-        `${activeWeapon.displayName}: ${activeDamage} damage, x${damageMultiplier.toFixed(2)}, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed\n` +
+        weaponSummary +
+        '\n' +
         `Ship: ${this.playerHull}/${this.getPlayerMaxHull()} hull, x${this.getPlayerAccelerationMultiplier().toFixed(2)} accel, ${(this.getPlayerDamageInvulnerabilityMs() / 1000).toFixed(2)}s i-frames`
     );
     this.upgradeOverlayPromptText.setText(choicePrompt);
   }
 
   private drawUpgradeOverlayCards(choices: UpgradeOverlayChoice[]): void {
-    const width = this.scale.width;
-    const height = this.scale.height;
-    const centerX = width / 2;
-    const panelWidth = Math.min(width - 48, 720);
-    const panelHeight = Math.min(height - 48, 560);
-    const panelX = centerX - panelWidth / 2;
-    const panelY = Math.max(56, height / 2 - panelHeight / 2);
-    const cardX = panelX + 28;
-    const cardWidth = panelWidth - 56;
-    const cardHeight = 54;
+    const layout = this.getUpgradeOverlayLayout();
 
     this.upgradeOverlayBlocker
       .setPosition(0, 0)
-      .setSize(width, height)
+      .setSize(layout.width, layout.height)
       .setVisible(this.isUpgradeOverlayOpen);
     if (this.isUpgradeOverlayOpen) {
       this.upgradeOverlayBlocker.setInteractive({
-        hitArea: new Phaser.Geom.Rectangle(0, 0, width, height),
+        hitArea: new Phaser.Geom.Rectangle(0, 0, layout.width, layout.height),
         hitAreaCallback: Phaser.Geom.Rectangle.Contains
       });
     } else {
@@ -9225,29 +9290,47 @@ export class GameScene extends Phaser.Scene {
 
     this.upgradeOverlayGraphics.clear();
     this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
-    this.upgradeOverlayGraphics.fillRect(0, 0, width, height);
+    this.upgradeOverlayGraphics.fillRect(0, 0, layout.width, layout.height);
     this.upgradeOverlayGraphics.fillStyle(0x071018, 0.95);
-    this.upgradeOverlayGraphics.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    this.upgradeOverlayGraphics.fillRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
     this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
-    this.upgradeOverlayGraphics.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    this.upgradeOverlayGraphics.strokeRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
+
+    this.upgradeOverlayText
+      .setPosition(layout.centerX, layout.panelY + 28)
+      .setStyle({ fixedWidth: layout.panelWidth - 56 })
+      .setWordWrapWidth(layout.panelWidth - 56);
+    this.upgradeOverlayPromptText
+      .setPosition(layout.cardX, layout.panelY + layout.panelHeight - 34)
+      .setStyle({ fixedWidth: layout.cardWidth })
+      .setWordWrapWidth(layout.cardWidth);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
       const choice = choices[i];
-      const cardY = panelY + 118 + i * (cardHeight + 8);
+      const cardY = this.getUpgradeOverlayCardY(layout, i);
       const accentColor = choice && choice.category !== 'secondary-weapon' ? this.getUpgradeRarityColor(choice.rarity) : 0x42f5d7;
       const hitZone = this.upgradeOverlayChoiceHitZones[i];
+      const text = this.upgradeOverlayChoiceTexts[i];
+      const metaText = this.upgradeOverlayChoiceMetaTexts[i];
 
       this.upgradeOverlayGraphics.fillStyle(0x111a24, choice ? 0.94 : 0.42);
-      this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
+      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
       this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.9 : 0.2);
-      this.upgradeOverlayGraphics.fillRoundedRect(cardX, cardY, 5, cardHeight, 3);
+      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, 5, layout.cardHeight, 3);
       this.upgradeOverlayGraphics.lineStyle(1, choice ? accentColor : 0x52627f, choice ? 0.72 : 0.28);
-      this.upgradeOverlayGraphics.strokeRoundedRect(cardX, cardY, cardWidth, cardHeight, 6);
+      this.upgradeOverlayGraphics.strokeRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
 
-      hitZone.setPosition(cardX, cardY).setSize(cardWidth, cardHeight).setVisible(Boolean(choice));
+      text
+        .setPosition(layout.cardX + 16, cardY + 10)
+        .setStyle({ fixedWidth: layout.cardWidth - 258 })
+        .setWordWrapWidth(layout.cardWidth - 258);
+      metaText
+        .setPosition(layout.cardX + layout.cardWidth - 16, cardY + 10)
+        .setStyle({ fixedWidth: 210 });
+      hitZone.setPosition(layout.cardX, cardY).setSize(layout.cardWidth, layout.cardHeight).setVisible(Boolean(choice));
       if (choice && this.isUpgradeOverlayOpen) {
         hitZone.setInteractive({
-          hitArea: new Phaser.Geom.Rectangle(0, 0, cardWidth, cardHeight),
+          hitArea: new Phaser.Geom.Rectangle(0, 0, layout.cardWidth, layout.cardHeight),
           hitAreaCallback: Phaser.Geom.Rectangle.Contains,
           useHandCursor: true
         });
@@ -9259,6 +9342,58 @@ export class GameScene extends Phaser.Scene {
     for (const text of [...this.upgradeOverlayChoiceTexts, ...this.upgradeOverlayChoiceMetaTexts, this.upgradeOverlayPromptText]) {
       text.setVisible(this.isUpgradeOverlayOpen);
     }
+    this.upgradeOverlayText.setVisible(this.isUpgradeOverlayOpen);
+  }
+
+  private getUpgradeOverlayLayout(): UpgradeOverlayLayout {
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const panelWidth = Math.min(width - 48, 760);
+    const minCardStackHeight = 118 + UPGRADE_OVERLAY_CHOICE_COUNT * UPGRADE_OVERLAY_CARD_HEIGHT + (UPGRADE_OVERLAY_CHOICE_COUNT - 1) * UPGRADE_OVERLAY_CARD_GAP + 58;
+    const panelHeight = Math.min(height - 48, Math.max(560, minCardStackHeight));
+    const panelX = centerX - panelWidth / 2;
+    const panelY = Math.max(24, height / 2 - panelHeight / 2);
+
+    return {
+      width,
+      height,
+      centerX,
+      panelWidth,
+      panelHeight,
+      panelX,
+      panelY,
+      cardX: panelX + 28,
+      cardWidth: panelWidth - 56,
+      cardHeight: UPGRADE_OVERLAY_CARD_HEIGHT,
+      cardGap: UPGRADE_OVERLAY_CARD_GAP
+    };
+  }
+
+  private getUpgradeOverlayCardY(layout: UpgradeOverlayLayout, index: number): number {
+    return layout.panelY + 118 + index * (layout.cardHeight + layout.cardGap);
+  }
+
+  private getUpgradeOverlayWeaponSummary(
+    activeWeapon: WeaponRegistryEntry,
+    resolvedActiveWeapon: ResolvedWeaponStats,
+    damageMultiplier: number
+  ): string {
+    if (resolvedActiveWeapon.beam) {
+      const beam = resolvedActiveWeapon.beam;
+      return `${activeWeapon.displayName}: ${Math.round(beam.tickDamage * beam.tickRatePerSecond)} DPS, ${beam.tickRatePerSecond.toFixed(1)}/s, heat ${Math.round(beam.heatGainPerSecond)}/s, cool ${Math.round(beam.coolingPerSecond)}/s, range ${Math.round(beam.range)}`;
+    }
+
+    if (resolvedActiveWeapon.rammingShield) {
+      const shield = resolvedActiveWeapon.rammingShield;
+      return `${activeWeapon.displayName}: ${Math.round(shield.bashDamage)} bash, ${Math.round(shield.guardDamage)} guard, ${shield.dashMaxCharges} charges, ${shield.dashChargeRechargeSeconds.toFixed(1)}s recharge`;
+    }
+
+    const projectile = resolvedActiveWeapon.projectile;
+    const activeDamage = Math.round(projectile?.damage ?? 0);
+    const cooldownSeconds = (projectile?.cooldownMs ?? 0) / 1000;
+    const speed = Math.round(projectile?.projectileSpeed ?? 0);
+    return `${activeWeapon.displayName}: ${activeDamage} damage, x${damageMultiplier.toFixed(2)}, ${cooldownSeconds.toFixed(2)}s cooldown, ${speed} speed`;
   }
 
   private getUpgradeRarityColor(rarity: UpgradeDefinition['rarity']): number {
@@ -11793,6 +11928,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getActiveAutoWeaponUpgradeHudSummary(): string {
+    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
+
+    if (primaryWeapon?.id === 'salvage-beam') {
+      const focusLevel = this.getRunUpgradeLevelById('beam_focus');
+      const capacitorLevel = this.getRunUpgradeLevelById('beam_extended_capacitors');
+      const coolingLevel = this.getRunUpgradeLevelById('beam_heat_sinks');
+      const ventLevel = this.getRunUpgradeLevelById('beam_vent_cycle');
+      const lensLevel = this.getRunUpgradeLevelById('beam_long_lens');
+
+      if (focusLevel + capacitorLevel + coolingLevel + ventLevel + lensLevel === 0) {
+        return 'Weapon upgrades none';
+      }
+
+      return `Weapon upgrades F${focusLevel} C${capacitorLevel} H${coolingLevel} V${ventLevel} L${lensLevel}`;
+    }
+
     const damageLevel = this.getRunUpgradeLevelById('pulse_damage');
     const flatDamageLevel =
       this.getRunUpgradeLevelById('pulse_flat_damage_common') +
@@ -11808,8 +11959,9 @@ export class GameScene extends Phaser.Scene {
     return `Weapon upgrades D${damageLevel} F${flatDamageLevel} R${fireRateLevel} V${velocityLevel}`;
   }
 
-  private updateActiveMainWeapon(time: number): void {
+  private updateActiveMainWeapon(time: number, deltaSeconds: number): void {
     if (this.isPlayerDead || this.isUpgradeOverlayOpen) {
+      this.updateBeamSlotsInactive(deltaSeconds);
       return;
     }
 
@@ -11818,21 +11970,38 @@ export class GameScene extends Phaser.Scene {
       (this.debugMenuHost?.containsPointer(pointer) ?? false) ||
       (this.secretControlOverlay?.containsPointer(pointer) ?? false);
     const activeAutoWeapon = this.getEffectiveAutoWeaponDefinition();
-    if (activeAutoWeapon && time >= this.playerWeapons.nextAutoWeaponFireAt) {
+    if (activeAutoWeapon?.behaviorType === 'beam') {
+      this.updateBeamWeapon(activeAutoWeapon, 'auto', true, time, deltaSeconds);
+    } else {
+      this.updateBeamSlotInactive('auto', deltaSeconds);
+    }
+    if (activeAutoWeapon && activeAutoWeapon.behaviorType !== 'beam' && time >= this.playerWeapons.nextAutoWeaponFireAt) {
       const result = this.usePlayerWeapon(activeAutoWeapon, 'auto', time);
       this.playerWeapons.nextAutoWeaponFireAt = time + result.cooldownMs;
     }
 
     const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const isPrimaryFiring = this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown());
-    if (primaryWeapon && isPrimaryFiring && time >= this.playerWeapons.nextPrimaryWeaponFireAt) {
+    if (primaryWeapon?.behaviorType === 'beam') {
+      this.updateBeamWeapon(primaryWeapon, 'primary', isPrimaryFiring, time, deltaSeconds);
+    } else {
+      this.updateBeamSlotInactive('primary', deltaSeconds);
+    }
+    if (primaryWeapon && primaryWeapon.behaviorType !== 'beam' && isPrimaryFiring && time >= this.playerWeapons.nextPrimaryWeaponFireAt) {
       const result = this.usePlayerWeapon(primaryWeapon, 'primary', time);
       this.playerWeapons.nextPrimaryWeaponFireAt = time + result.cooldownMs;
     }
 
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
+    const isSecondaryFiring = Boolean(secondaryWeapon && !isPointerBlockedByDebugMenu && pointer.rightButtonDown());
+    if (secondaryWeapon?.behaviorType === 'beam') {
+      this.updateBeamWeapon(secondaryWeapon, 'secondary', isSecondaryFiring, time, deltaSeconds);
+    } else {
+      this.updateBeamSlotInactive('secondary', deltaSeconds);
+    }
     if (
       secondaryWeapon &&
+      secondaryWeapon.behaviorType !== 'beam' &&
       !isPointerBlockedByDebugMenu &&
       pointer.rightButtonDown() &&
       time >= this.playerWeapons.nextSecondaryWeaponFireAt
@@ -11844,6 +12013,10 @@ export class GameScene extends Phaser.Scene {
 
   private usePlayerWeapon(weapon: WeaponRegistryEntry, slot: 'auto' | 'primary' | 'secondary', time: number): { cooldownMs: number } {
     const resolved = this.getResolvedWeaponStats(weapon, slot);
+    if (weapon.behaviorType === 'beam') {
+      return { cooldownMs: 0 };
+    }
+
     if (weapon.behaviorType === 'ramming-shield') {
       return { cooldownMs: this.useRammingShieldWeapon(resolved.rammingShield, time) ? (resolved.rammingShield?.contactCooldownMs ?? 0) : 0 };
     }
@@ -11866,6 +12039,447 @@ export class GameScene extends Phaser.Scene {
     this.emitRammingShieldDashBurst(direction, time);
     this.updateRammingShieldVisual(time);
     return true;
+  }
+
+  private updateBeamSlotsInactive(deltaSeconds: number): void {
+    this.updateBeamSlotInactive('auto', deltaSeconds);
+    this.updateBeamSlotInactive('primary', deltaSeconds);
+    this.updateBeamSlotInactive('secondary', deltaSeconds);
+  }
+
+  private updateBeamSlotInactive(slot: WeaponRuntimeSlot, deltaSeconds: number): void {
+    const runtime = this.beamSlots[slot];
+    const weapon = this.getBeamSlotWeapon(slot);
+    if (weapon) {
+      const beam = this.getResolvedWeaponStats(weapon, slot).beam;
+      if (beam) {
+        this.coolBeamSlot(runtime, beam, deltaSeconds);
+      }
+    }
+
+    runtime.isActive = false;
+    this.hideBeam(slot);
+  }
+
+  private updateBeamWeapon(
+    weapon: WeaponRegistryEntry,
+    slot: WeaponRuntimeSlot,
+    isFiring: boolean,
+    time: number,
+    deltaSeconds: number
+  ): void {
+    const resolved = this.getResolvedWeaponStats(weapon, slot);
+    const beam = resolved.beam;
+    const runtime = this.beamSlots[slot];
+
+    if (!beam) {
+      this.updateBeamSlotInactive(slot, deltaSeconds);
+      return;
+    }
+
+    if (!isFiring || runtime.overheated) {
+      runtime.isActive = false;
+      this.coolBeamSlot(runtime, beam, deltaSeconds);
+      runtime.visualLength = Math.max(0, runtime.visualLength - beam.range * deltaSeconds * 8);
+      this.hideBeam(slot);
+      return;
+    }
+
+    if (!runtime.isActive) {
+      runtime.activationStartedAt = time;
+      runtime.nextTickAt = time;
+      this.emitBeamIgnitionBurst(beam);
+    }
+
+    runtime.isActive = true;
+    runtime.heat = Math.min(beam.heatMax, runtime.heat + beam.heatGainPerSecond * deltaSeconds);
+    if (runtime.heat >= beam.heatMax) {
+      runtime.overheated = true;
+      runtime.isActive = false;
+      runtime.lastVentAt = time;
+      this.hideBeam(slot);
+      this.emitBeamOverheatVent();
+      return;
+    }
+
+    runtime.visualLength = this.getBeamVisualLength(runtime, beam, time);
+    this.drawBeam(slot, beam, time);
+    while (time >= runtime.nextTickAt) {
+      this.applyBeamTick(beam, runtime.visualLength, slot, time);
+      runtime.nextTickAt = Math.max(runtime.nextTickAt + beam.tickIntervalMs, time + beam.tickIntervalMs);
+    }
+  }
+
+  private coolBeamSlot(runtime: BeamSlotRuntime, beam: ResolvedBeamWeaponStats, deltaSeconds: number): void {
+    const cooling = runtime.overheated ? beam.overheatCoolingPerSecond : beam.coolingPerSecond;
+    runtime.heat = Math.max(0, runtime.heat - cooling * deltaSeconds);
+    if (runtime.heat <= 0) {
+      runtime.overheated = false;
+    }
+  }
+
+  private applyBeamTick(beam: ResolvedBeamWeaponStats, activeRange: number, slot: WeaponRuntimeSlot, time: number): void {
+    const damageVariance = beam.damageVariance ?? PLAYER_WEAPON_DAMAGE_VARIANCE;
+    const rollBeamDamage = () => this.rollPlayerDamage(beam.tickDamage, damageVariance);
+    const runtime = this.beamSlots[slot];
+    const heatProgress = runtime.heat / Math.max(1, beam.heatMax);
+    let contactBurstsThisTick = 0;
+    const emitContactSpark = (body: Phaser.GameObjects.Container, radius: number): void => {
+      if (contactBurstsThisTick >= BEAM_CONTACT_SPARK_MAX_PER_TICK) {
+        return;
+      }
+
+      contactBurstsThisTick += 1;
+      runtime.contactSparkBurstsEmitted += 1;
+      this.emitBeamContactSpark(body, radius, beam, activeRange, heatProgress, time);
+    };
+
+    for (let i = this.liveEnemies.length - 1; i >= 0; i -= 1) {
+      const enemy = this.liveEnemies[i];
+      if (!enemy?.body.scene || !this.isBeamBodyHit(enemy.body, enemy.definition.stats.radius, beam, activeRange)) {
+        continue;
+      }
+
+      emitContactSpark(enemy.body, enemy.definition.stats.radius);
+      this.damageEnemy(enemy, rollBeamDamage(), 'player', true);
+      if (enemy.hp <= 0) {
+        this.destroyLiveEnemyWithRewards(enemy, i);
+      } else {
+        this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+      }
+    }
+
+    this.applyBeamToLegacyEnemies(this.basicEnemies, 'chaser', beam, activeRange, rollBeamDamage, emitContactSpark);
+    this.applyBeamToLegacyEnemies(this.shooterEnemies, 'shooter', beam, activeRange, rollBeamDamage, emitContactSpark);
+    this.applyBeamToLegacyEnemies(this.tankEnemies, 'tank', beam, activeRange, rollBeamDamage, emitContactSpark);
+
+    for (let i = this.basicAsteroids.length - 1; i >= 0; i -= 1) {
+      const asteroid = this.basicAsteroids[i];
+      if (!asteroid?.body.scene || !this.isBeamBodyHit(asteroid.body, asteroid.hitRadius, beam, activeRange)) {
+        continue;
+      }
+
+      emitContactSpark(asteroid.body, asteroid.hitRadius);
+      this.damageAsteroid(asteroid, rollBeamDamage(), 'player', true);
+      if (asteroid.hp <= 0) {
+        this.destroyBasicAsteroidInstance(asteroid);
+      } else {
+        this.flashAsteroidDamageSprites(asteroid.body, asteroid.wrapMirrorBody);
+      }
+    }
+
+    for (let i = this.enemyWreckageDebris.length - 1; i >= 0; i -= 1) {
+      const debris = this.enemyWreckageDebris[i];
+      if (!debris?.body.scene || !this.isBeamBodyHit(debris.body, debris.hitRadius, beam, activeRange)) {
+        continue;
+      }
+
+      emitContactSpark(debris.body, debris.hitRadius);
+      this.damageDebris(debris, rollBeamDamage(), 'player', true);
+      if (debris.hp <= 0) {
+        this.spawnScrapPickup('debris', SCRAP_PICKUP_VALUE_FROM_DEBRIS, debris.body.x, debris.body.y, debris.velocity);
+        this.destroyEnemyWreckageDebris(debris, true);
+        this.enemyWreckageDebris.splice(i, 1);
+      } else {
+        this.flashDamageSprites(debris.body, debris.wrapMirrorBody);
+      }
+    }
+
+    for (const event of this.worldEvents) {
+      if (event.status !== 'active' || !this.isBeamBodyHit(event.body, event.definition.hitRadius, beam, activeRange)) {
+        continue;
+      }
+
+      emitContactSpark(event.body, event.definition.hitRadius);
+      const wasDestroyed = this.damageWorldEvent(event, rollBeamDamage()) > 0 && event.hp <= 0;
+      if (!wasDestroyed) {
+        this.flashDamageSprites(event.body, event.wrapMirrorBody);
+      }
+    }
+  }
+
+  private applyBeamToLegacyEnemies<T extends BasicEnemy | ShooterEnemy | TankEnemy>(
+    enemies: T[],
+    enemyType: EnemySpawnType,
+    beam: ResolvedBeamWeaponStats,
+    activeRange: number,
+    rollBeamDamage: () => number,
+    emitContactSpark: (body: Phaser.GameObjects.Container, radius: number) => void
+  ): void {
+    for (let i = enemies.length - 1; i >= 0; i -= 1) {
+      const enemy = enemies[i];
+      if (!enemy?.body.scene || !this.isBeamBodyHit(enemy.body, this.getEnemyHitRadius(enemy), beam, activeRange)) {
+        continue;
+      }
+
+      emitContactSpark(enemy.body, this.getEnemyHitRadius(enemy));
+      this.damageEnemy(enemy, rollBeamDamage(), 'player', true);
+      if (enemy.hp <= 0) {
+        this.destroyEnemyWithRewards(enemy, enemies, i, enemyType);
+      } else {
+        this.flashDamageSprites(enemy.body, enemy.wrapMirrorBody);
+      }
+    }
+  }
+
+  private isBeamBodyHit(body: Phaser.GameObjects.Container, radius: number, beam: ResolvedBeamWeaponStats, activeRange = beam.range): boolean {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const offset = this.getWrappedDirection(this.player.x, this.player.y, body.x, body.y);
+    const projection = offset.dot(forward);
+    if (projection < -radius || projection > activeRange + radius) {
+      return false;
+    }
+
+    const perpendicularSq = Math.max(0, offset.lengthSq() - projection * projection);
+    const hitWidth = beam.width * 0.5 + radius;
+    return perpendicularSq <= hitWidth * hitWidth;
+  }
+
+  private drawBeam(slot: WeaponRuntimeSlot, beam: ResolvedBeamWeaponStats, time: number): void {
+    const runtime = this.beamSlots[slot];
+    const graphics = runtime.graphics ?? this.add.graphics().setDepth(BEAM_RENDER_DEPTH).setBlendMode(Phaser.BlendModes.ADD);
+    runtime.graphics = graphics;
+    graphics.clear();
+
+    const forward = this.getForwardDirection(this.player.rotation);
+    const start = this.getBeamEmitterPosition(forward);
+    const visualLength = Phaser.Math.Clamp(runtime.visualLength, 0, beam.range);
+    if (visualLength <= 1) {
+      return;
+    }
+
+    const heatProgress = runtime.heat / Math.max(1, beam.heatMax);
+    const pulse = 0.5 + Math.sin(time * 0.028) * 0.5;
+    const endX = start.x + forward.x * visualLength;
+    const endY = start.y + forward.y * visualLength;
+    const outerWidth = Math.max(5, beam.width * (1.15 + pulse * 0.08 + heatProgress * 0.12));
+    const coreWidth = Math.max(2, outerWidth * 0.28);
+    const capRadius = outerWidth * 0.5;
+
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth * 2.1, 0x2fffb4, 0.08 + heatProgress * 0.06);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth * 1.35, 0x20d8aa, 0.2 + pulse * 0.05);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, outerWidth, 0x69f0ae, 0.34);
+    this.drawRoundedBeamLayer(graphics, start, forward, visualLength, coreWidth, 0xf2fbff, 0.9);
+
+    graphics.fillStyle(0xf2fbff, 0.52);
+    graphics.fillCircle(start.x, start.y, Math.max(3, coreWidth * 1.2));
+    graphics.fillStyle(0xf2fbff, 0.68);
+    graphics.fillCircle(endX + forward.x * coreWidth * 0.16, endY + forward.y * coreWidth * 0.16, Math.max(2, coreWidth * 0.58));
+    graphics.fillStyle(0x69f0ae, 0.2 + heatProgress * 0.08);
+    graphics.fillCircle(endX, endY, capRadius * 0.62);
+
+    if (visualLength >= beam.range * 0.2 && time >= runtime.lastSparkAt + BEAM_SPARK_INTERVAL_MS) {
+      runtime.lastSparkAt = time;
+      this.emitBeamTipSpark(endX, endY, forward, heatProgress);
+    }
+  }
+
+  private drawRoundedBeamLayer(
+    graphics: Phaser.GameObjects.Graphics,
+    start: Phaser.Math.Vector2,
+    forward: Phaser.Math.Vector2,
+    length: number,
+    width: number,
+    color: number,
+    alpha: number
+  ): void {
+    const halfWidth = width * 0.5;
+    const right = new Phaser.Math.Vector2(forward.y, -forward.x);
+    const end = new Phaser.Math.Vector2(start.x + forward.x * length, start.y + forward.y * length);
+
+    graphics.fillStyle(color, alpha);
+    graphics.beginPath();
+    graphics.moveTo(start.x + right.x * halfWidth, start.y + right.y * halfWidth);
+    graphics.lineTo(end.x + right.x * halfWidth, end.y + right.y * halfWidth);
+    graphics.lineTo(end.x - right.x * halfWidth, end.y - right.y * halfWidth);
+    graphics.lineTo(start.x - right.x * halfWidth, start.y - right.y * halfWidth);
+    graphics.closePath();
+    graphics.fillPath();
+    graphics.fillCircle(start.x, start.y, halfWidth);
+    graphics.fillCircle(end.x, end.y, halfWidth);
+  }
+
+  private hideBeam(slot: WeaponRuntimeSlot): void {
+    this.beamSlots[slot].graphics?.clear();
+  }
+
+  private resetBeamRuntime(): void {
+    for (const slot of ['auto', 'primary', 'secondary'] as WeaponRuntimeSlot[]) {
+      this.beamSlots[slot].graphics?.destroy();
+      this.beamSlots[slot] = this.createBeamSlotRuntime();
+    }
+  }
+
+  private createBeamSlotRuntime(): BeamSlotRuntime {
+    return {
+      heat: 0,
+      overheated: false,
+      nextTickAt: 0,
+      isActive: false,
+      activationStartedAt: 0,
+      visualLength: 0,
+      lastSparkAt: 0,
+      contactSparkBurstsEmitted: 0,
+      lastVentAt: 0
+    };
+  }
+
+  private getBeamVisualLength(runtime: BeamSlotRuntime, beam: ResolvedBeamWeaponStats, time: number): number {
+    const progress = Phaser.Math.Clamp((time - runtime.activationStartedAt) / BEAM_IGNITION_MS, 0, 1);
+    const eased = 1 - Math.pow(1 - progress, 3);
+    return beam.range * eased;
+  }
+
+  private getBeamEmitterPosition(forward: Phaser.Math.Vector2): Phaser.Math.Vector2 {
+    const emitterOffset = this.getBeamEmitterOffset();
+    const base = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+    return new Phaser.Math.Vector2(base.x + forward.x * emitterOffset, base.y + forward.y * emitterOffset);
+  }
+
+  private getBeamEmitterOffset(): number {
+    const ship = this.getSelectedShipDefinition();
+    return Math.min(44, ship.displaySize * 0.28);
+  }
+
+  private emitBeamIgnitionBurst(beam: ResolvedBeamWeaponStats): void {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const position = this.getBeamEmitterPosition(forward);
+    const flash = this.add.circle(position.x, position.y, Math.max(8, beam.width * 0.85), 0x69f0ae, 0.36);
+
+    flash.setDepth(BEAM_RENDER_DEPTH + 0.1).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.8,
+      duration: 140,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+  }
+
+  private emitBeamTipSpark(x: number, y: number, forward: Phaser.Math.Vector2, heatProgress: number): void {
+    const sparkCount = Phaser.Math.Between(1, heatProgress > 0.65 ? 2 : 1);
+    const right = new Phaser.Math.Vector2(forward.y, -forward.x);
+
+    for (let i = 0; i < sparkCount; i += 1) {
+      const lateral = Phaser.Math.FloatBetween(-14, 14);
+      const retreat = Phaser.Math.FloatBetween(6, 22);
+      const spark = this.add.circle(x + right.x * lateral, y + right.y * lateral, Phaser.Math.FloatBetween(1.2, 2.6), 0xf2fbff, 0.76);
+
+      spark.setDepth(BEAM_RENDER_DEPTH + 0.15).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: spark,
+        x: spark.x - forward.x * retreat + right.x * Phaser.Math.FloatBetween(-10, 10),
+        y: spark.y - forward.y * retreat + right.y * Phaser.Math.FloatBetween(-10, 10),
+        alpha: 0,
+        scale: 0.25,
+        duration: Phaser.Math.Between(90, 150),
+        ease: 'Quad.easeOut',
+        onComplete: () => spark.destroy()
+      });
+    }
+  }
+
+  private emitBeamContactSpark(
+    body: Phaser.GameObjects.Container,
+    radius: number,
+    beam: ResolvedBeamWeaponStats,
+    activeRange: number,
+    heatProgress: number,
+    time: number
+  ): void {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const right = new Phaser.Math.Vector2(forward.y, -forward.x);
+    const contact = this.getBeamContactPoint(body, radius, activeRange);
+    const flashRadius = Math.max(3, Math.min(11, beam.width * 0.42 + radius * 0.08));
+    const flash = this.add.circle(contact.x, contact.y, flashRadius, 0xf2fbff, 0.62);
+    const sparkCount = Phaser.Math.Between(3, heatProgress > 0.65 ? 6 : 5);
+
+    flash.setDepth(BEAM_RENDER_DEPTH + 0.18).setBlendMode(Phaser.BlendModes.ADD);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 1.7,
+      duration: 90,
+      ease: 'Quad.easeOut',
+      onComplete: () => flash.destroy()
+    });
+
+    for (let i = 0; i < sparkCount; i += 1) {
+      const retreat = Phaser.Math.FloatBetween(10, 30);
+      const lateral = Phaser.Math.FloatBetween(-22, 22);
+      const outward = Phaser.Math.FloatBetween(-5, 10);
+      const spark = this.add.circle(
+        contact.x + right.x * Phaser.Math.FloatBetween(-3, 3),
+        contact.y + right.y * Phaser.Math.FloatBetween(-3, 3),
+        Phaser.Math.FloatBetween(1.1, 2.7),
+        Phaser.Utils.Array.GetRandom([0xf2fbff, 0x9fffe0, 0xffd166]),
+        0.84
+      );
+
+      spark.setDepth(BEAM_RENDER_DEPTH + 0.2).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: spark,
+        x: spark.x - forward.x * retreat + right.x * lateral,
+        y: spark.y - forward.y * retreat + right.y * lateral + outward,
+        alpha: 0,
+        scale: 0.18,
+        duration: Phaser.Math.Between(95, 170) + Math.round(heatProgress * 35) + Math.round(time % 19),
+        ease: 'Quad.easeOut',
+        onComplete: () => spark.destroy()
+      });
+    }
+  }
+
+  private getBeamContactPoint(body: Phaser.GameObjects.Container, radius: number, activeRange: number): Phaser.Math.Vector2 {
+    const forward = this.getForwardDirection(this.player.rotation);
+    const offset = this.getWrappedDirection(this.player.x, this.player.y, body.x, body.y);
+    const projection = Phaser.Math.Clamp(offset.dot(forward), 0, activeRange);
+    const perpendicular = offset.clone().subtract(forward.clone().scale(projection));
+    const emitterProjection = Phaser.Math.Clamp(projection - this.getBeamEmitterOffset(), 0, activeRange);
+    const emitter = this.getBeamEmitterPosition(forward);
+    const contact = new Phaser.Math.Vector2(
+      emitter.x + forward.x * emitterProjection,
+      emitter.y + forward.y * emitterProjection
+    );
+
+    if (perpendicular.lengthSq() > 0.01) {
+      const lateralDistance = perpendicular.length();
+      perpendicular.normalize().scale(Math.min(radius * 0.55, lateralDistance));
+      contact.add(perpendicular);
+    }
+
+    return contact;
+  }
+
+  private emitBeamOverheatVent(): void {
+    const position = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
+
+    for (let i = 0; i < 16; i += 1) {
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      const distance = Phaser.Math.FloatBetween(22, 58);
+      const spark = this.add.circle(position.x, position.y, Phaser.Math.FloatBetween(1.8, 3.6), Phaser.Utils.Array.GetRandom([0xffc857, 0xff8f4f, 0x69f0ae]), 0.82);
+
+      spark.setDepth(12).setBlendMode(Phaser.BlendModes.ADD);
+      this.tweens.add({
+        targets: spark,
+        x: position.x + Math.cos(angle) * distance,
+        y: position.y + Math.sin(angle) * distance,
+        alpha: 0,
+        scale: 0.2,
+        duration: Phaser.Math.Between(150, 260),
+        ease: 'Quad.easeOut',
+        onComplete: () => spark.destroy()
+      });
+    }
+  }
+
+  private getBeamSlotWeapon(slot: WeaponRuntimeSlot): WeaponRegistryEntry | undefined {
+    if (slot === 'auto') {
+      return this.getActiveAutoWeaponDefinition();
+    }
+
+    return slot === 'primary' ? this.getActivePrimaryWeaponDefinition() : this.getActiveSecondaryWeaponDefinition();
   }
 
   private fireProjectileWeapon(resolved: ResolvedWeaponStats, time: number): { cooldownMs: number } {
@@ -13244,7 +13858,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateCollisionDebugOverlay(): void {
-    this.updateBlackHoleDebugControls();
     this.collisionDebugOverlay.update(this.getCollisionDebugOverlaySnapshot());
   }
 
@@ -13271,10 +13884,6 @@ export class GameScene extends Phaser.Scene {
       playerProjectiles: this.playerProjectiles,
       enemyProjectiles: this.enemyProjectiles
     };
-  }
-
-  private updateBlackHoleDebugControls(): void {
-    this.blackHoleDebugControls.update();
   }
 
   private updateMinimap(): void {
@@ -13451,13 +14060,22 @@ export class GameScene extends Phaser.Scene {
           ? 'Left click weapon'
           : 'Right click weapon';
 
+    const resolved = weapon ? this.getResolvedWeaponStats(weapon, slot) : undefined;
+    const beamRuntime = weapon?.behaviorType === 'beam' ? this.beamSlots[slot] : undefined;
+    const cooldownProgress =
+      resolved?.beam && beamRuntime
+        ? 1 - beamRuntime.heat / Math.max(1, resolved.beam.heatMax)
+        : cooldownMs > 0
+          ? 1 - remainingMs / cooldownMs
+          : 1;
+
     return {
       slot,
       weaponId: weapon?.id ?? null,
       title,
       subtitle,
       controlLabel,
-      cooldownProgress: cooldownMs > 0 ? 1 - remainingMs / cooldownMs : 1,
+      cooldownProgress: Phaser.Math.Clamp(cooldownProgress, 0, 1),
       choices: choices.filter((choice) => choice.slotCompatibility.includes(slot)).map((choice) => ({
         weaponId: choice.id,
         name: choice.displayName.replace(' ', '\n')
@@ -13526,6 +14144,24 @@ export class GameScene extends Phaser.Scene {
       );
     }
 
+    if (resolved.beam) {
+      const beam = resolved.beam;
+      const runtime = this.beamSlots[slot];
+      const variance = beam.damageVariance ?? PLAYER_WEAPON_DAMAGE_VARIANCE;
+      lines.push(
+        '',
+        'Beam',
+        `Damage/tick: ${Math.floor(beam.tickDamage * variance.min)}-${Math.ceil(beam.tickDamage * variance.max)}`,
+        `Tick rate: ${beam.tickRatePerSecond.toFixed(1)}/s`,
+        `DPS est.: ${Math.round(beam.tickDamage * beam.tickRatePerSecond)}`,
+        `Range: ${Math.round(beam.range)}`,
+        `Width: ${Math.round(beam.width)}`,
+        `Heat: ${Math.round(runtime.heat)} / ${Math.round(beam.heatMax)}${runtime.overheated ? ' OVERHEATED' : ''}`,
+        `Cooling: ${Math.round(beam.coolingPerSecond)}/s`,
+        `Overheat vent: ${Math.round(beam.overheatCoolingPerSecond)}/s`
+      );
+    }
+
     const upgradeLines = this.getWeaponUpgradeTooltipLines(weapon);
     if (upgradeLines.length > 0) {
       lines.push('', 'Upgrades', ...upgradeLines);
@@ -13557,6 +14193,16 @@ export class GameScene extends Phaser.Scene {
         `Shield recharge levels: ${this.getRunUpgradeLevelById('shield_recharge')}`,
         `Impact radius levels: ${this.getRunUpgradeLevelById('impact_radius')}`,
         `Dash recharge levels: ${this.getRunUpgradeLevelById('dash_recharge')}`
+      ];
+    }
+
+    if (weapon.id === 'salvage-beam') {
+      return [
+        `Beam focus levels: ${this.getRunUpgradeLevelById('beam_focus')}`,
+        `Capacitor levels: ${this.getRunUpgradeLevelById('beam_extended_capacitors')}`,
+        `Heat sink levels: ${this.getRunUpgradeLevelById('beam_heat_sinks')}`,
+        `Vent cycle levels: ${this.getRunUpgradeLevelById('beam_vent_cycle')}`,
+        `Lens levels: ${this.getRunUpgradeLevelById('beam_long_lens')}`
       ];
     }
 
@@ -13613,7 +14259,7 @@ export class GameScene extends Phaser.Scene {
         `Debug weapon tuning: Z menu\n`
       : '';
     const blackHoleDebugLine = this.debugState.collisionDebugEnabled
-      ? `Black hole PNG layers: selected ${this.debugSelectedBlackHolePngLayerIndex + 1} / ${this.blackHole?.getPngLayerCount() ?? 0} / visual x${this.debugBlackHoleVisualScale.toFixed(1)} / layers ${this.areDebugBlackHoleProjectionLensLayersEnabled ? 'on' : 'off'}\n`
+      ? `Black hole: visual x${this.debugBlackHoleVisualScale.toFixed(1)} / core x${this.debugBlackHoleCoreScale.toFixed(1)} / field x${this.debugBlackHoleInfluenceRadiusScale.toFixed(1)}\n`
       : '';
 
     this.debugText.setText(

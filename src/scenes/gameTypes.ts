@@ -9,25 +9,6 @@ import type { EnemyLabInstance } from '../systems/enemyLabSpawner';
 import type { RuntimeProjectile, ProjectileSplashPayload, ProjectileStatusPayload } from '../systems/projectiles';
 import type { ResolvedProjectileEffectStats } from '../systems/weaponStats';
 
-export interface SavedBlackHolePngLayer {
-  image: unknown;
-  speedRps: unknown;
-  size: unknown;
-  alpha: unknown;
-  enabled: unknown;
-  initialRotation?: unknown;
-}
-
-export interface SavedBlackHolePngSetup {
-  fieldScale?: unknown;
-  visualScale?: unknown;
-  coreScale?: unknown;
-  allLayersEnabled?: unknown;
-  addImage?: unknown;
-  selectedLayerIndex?: unknown;
-  layers?: unknown;
-}
-
 export interface SavedBlackHoleFieldTuningPreset {
   influenceRadiusScale?: unknown;
   damageRadiusScale?: unknown;
@@ -162,6 +143,8 @@ export interface StarvivorsTestHarnessState {
   secondaryWeaponId: WeaponId | null;
   ownedAutoWeaponIds: WeaponId[];
   ownedManualWeaponIds: WeaponId[];
+  beamHeat: number;
+  beamOverheated: boolean;
   pulseDamageLevel: number;
   pulseFireRateLevel: number;
   pulseVelocityLevel: number;

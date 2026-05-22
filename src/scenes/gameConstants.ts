@@ -1,9 +1,5 @@
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
-import {
-  BLACK_HOLE_FULL_TEXTURE_KEY,
-  type BlackHolePngTextureKey,
-  type BlackHoleWhirlpoolTuning
-} from '../systems/blackHole';
+import type { BlackHoleWhirlpoolTuning } from '../systems/blackHole';
 import type { DebugImpactSourceType } from '../systems/debug/debugState';
 import type { AsteroidTier, AsteroidTierConfig, EnemySpawnType } from './gameTypes';
 
@@ -213,22 +209,9 @@ export const MINIMAP_HEIGHT = 140;
 export const MINIMAP_MARGIN = 16;
 export const MINIMAP_PADDING = 8;
 
-export const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_DEFAULT = 1;
-export const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MIN = 0;
-export const DEBUG_BLACK_HOLE_LENS_ORBIT_SPEED_MAX = 4;
-export const DEBUG_BLACK_HOLE_LENS_DENSITY_MIN = 0;
-export const DEBUG_BLACK_HOLE_LENS_LENGTH_DEFAULT = 1;
-export const DEBUG_BLACK_HOLE_LENS_LENGTH_MIN = 0.5;
-export const DEBUG_BLACK_HOLE_LENS_LENGTH_MAX = 2;
 export const DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT = 1;
 export const DEBUG_BLACK_HOLE_RADIUS_SCALE_MIN = 0;
 export const DEBUG_BLACK_HOLE_RADIUS_SCALE_MAX = 20;
-export const DEBUG_BLACK_HOLE_SELECTED_PNG_LAYER_DEFAULT = 32;
-export const DEBUG_BLACK_HOLE_ADD_PNG_TEXTURE_DEFAULT: BlackHolePngTextureKey = BLACK_HOLE_FULL_TEXTURE_KEY;
-export const DEBUG_BLACK_HOLE_LENS_SLIDER_WIDTH = 220;
-export const DEBUG_BLACK_HOLE_LENS_SLIDER_HEIGHT = 54;
-export const DEBUG_BLACK_HOLE_LENS_SLIDER_TRACK_WIDTH = 176;
-export const DEBUG_BLACK_HOLE_LENS_SLIDER_GAP = 62;
 export const BLACK_HOLE_TIDAL_DAMAGE_INTERVAL_MS = 650;
 export const BLACK_HOLE_PLAYER_TIDAL_DAMAGE_INTERVAL_MS = 900;
 export const BLACK_HOLE_ASTEROID_TIDAL_DAMAGE_BASE = 1;

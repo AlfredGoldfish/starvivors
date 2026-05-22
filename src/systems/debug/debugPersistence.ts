@@ -25,7 +25,13 @@ const DEBUG_WEAPON_STAT_KEYS: DebugWeaponStatKey[] = [
   'guardDamage',
   'bashDamage',
   'knockback',
-  'contactCooldownMs'
+  'contactCooldownMs',
+  'tickDamage',
+  'tickRatePerSecond',
+  'heatMax',
+  'heatGainPerSecond',
+  'coolingPerSecond',
+  'overheatCoolingPerSecond'
 ];
 
 export function toRawDebugDelta(stat: DebugShipStatKey | DebugWeaponStatKey | 'globalMaxSpeed', delta: number): number {
@@ -243,7 +249,17 @@ export function createDebugWeaponLoadoutMarkdown(debugState: DebugState, weapon:
         `- Knockback: ${effective.rammingShield.knockback}`,
         `- Range/width: ${formatIntegerDisplayUnits(effective.rammingShield.range)}/${formatIntegerDisplayUnits(effective.rammingShield.width)}`
       ]
-    : [
+    : effective.beam
+      ? [
+          `- Tick damage: ${effective.beam.tickDamage}`,
+          `- Tick rate: ${effective.beam.tickRatePerSecond}/s`,
+          `- Range/width: ${formatIntegerDisplayUnits(effective.beam.range)}/${formatIntegerDisplayUnits(effective.beam.width)}`,
+          `- Heat max: ${effective.beam.heatMax}`,
+          `- Heat gain: ${effective.beam.heatGainPerSecond}/s`,
+          `- Cooling: ${effective.beam.coolingPerSecond}/s`,
+          `- Overheat venting: ${effective.beam.overheatCoolingPerSecond}/s`
+        ]
+      : [
         `- Damage: ${effective.damage ?? 0}`,
         `- Cooldown: ${effective.cooldownSeconds ?? 0}s`,
         `- Projectile speed: ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}`,

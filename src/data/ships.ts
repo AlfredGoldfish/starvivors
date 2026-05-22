@@ -1,7 +1,7 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
 import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
-import { pulseCannon, rammingShield, type RammingShieldStats, type WeaponId } from './weapons';
+import { pulseCannon, rammingShield, salvageBeam, type RammingShieldStats, type WeaponId } from './weapons';
 
 export interface ShipWeaponBonusDefinition {
   rammingShield?: Partial<RammingShieldStats>;
@@ -76,6 +76,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   startingPrimaryWeaponId: WeaponId | null;
   startingSecondaryWeaponId: WeaponId | null;
   defaultPrimaryWeaponBonuses?: Partial<Record<WeaponId, ShipWeaponBonusDefinition>>;
+  scrapValueMultiplier?: number;
   speedRating: string;
   handlingRating: string;
   unlockCostCredits?: number;
@@ -94,7 +95,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   };
 }
 
-export type ShipId = 'interceptor' | 'bulwark';
+export type ShipId = 'interceptor' | 'bulwark' | 'engineer';
 
 export const DEFAULT_SHIP_ID: ShipId = 'interceptor';
 
@@ -242,6 +243,83 @@ export const shipRegistry: ShipRegistryEntry[] = [
       lowFrictionDamping: 0.995,
       overspeedDamping: 2.2,
       maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.85)
+    }
+  },
+  {
+    id: 'engineer',
+    displayName: 'Engineer',
+    status: 'MVP',
+    selectable: true,
+    description: 'Utility salvage ship. Medium handling, a heat-limited beam, and stronger scrap returns.',
+    role: 'Salvage utility',
+    display: {
+      roleTitle: 'Utility Salvage Specialist',
+      shortDescription: 'Medium-frame ship built around beam uptime, scanner economy, repairs, and scrap value.',
+      fantasy: 'Resourceful field engineer',
+      passiveTitle: 'Field Salvage',
+      passiveDescription: '+25% scrap value from collected scrap pickups.',
+      strengths: ['Better scrap economy', 'Piercing beam pressure', 'Balanced control'],
+      weaknesses: ['Heat-limited weapon', 'Lower burst damage', 'Moderate hull'],
+      tags: ['Utility', 'Beam', 'Economy', 'Salvage'],
+      statRatings: {
+        hull: 58,
+        velocity: 166,
+        acceleration: 100,
+        control: 148,
+        tractorField: 78,
+        fuel: SHIP_STARTING_FUEL_STAT
+      },
+      exampleUpgradeIds: ['Beam Focus', 'Extended Capacitors', 'Heat Sinks', 'Long Lens'],
+      masteryPreview: [
+        { level: 5, label: 'Salvage Beam cooling improves' },
+        { level: 10, label: 'Scanner and salvage hooks improve' },
+        { level: 15, label: 'Repair economy improves' },
+        { level: 20, label: 'Engineer mastery bonus coming soon' }
+      ]
+    },
+    levelGrowthWeights: {
+      hull: 0.65,
+      acceleration: 0.75,
+      control: 0.75,
+      tractorField: 0.9,
+      fuel: 0.85,
+      luck: 0.4
+    },
+    baseStats: {
+      ...DEFAULT_PLAYER_BASE_STATS,
+      maxHull: 58,
+      moveSpeed: Math.round(interceptorMovement.maxSpeed * 0.92),
+      thrust: Math.round(interceptorMovement.thrustAcceleration * 0.78),
+      brake: Math.round(interceptorMovement.reverseThrustAcceleration * 0.82),
+      strafe: Math.round(interceptorMovement.strafeThrustAcceleration * 0.74),
+      magnet: DEFAULT_PLAYER_BASE_STATS.magnet * 1.08
+    },
+    hitRadius: 33,
+    movementNotes: 'Balanced frame with stable control and a stronger pickup field.',
+    startingWeaponNotes: `${salvageBeam.displayName} primary starter`,
+    startingPrimaryWeaponId: salvageBeam.id,
+    startingSecondaryWeaponId: null,
+    skins: [
+      { id: 'engineer-green', displayName: 'Green', tint: 0x69f0ae, unlockedByDefault: true },
+      { id: 'engineer-yellow', displayName: 'Yellow', tint: 0xffc857, unlockedByDefault: true },
+      { id: 'engineer-white', displayName: 'White', tint: 0xd8fff2 }
+    ],
+    scrapValueMultiplier: 1.25,
+    speedRating: 'Moderate',
+    handlingRating: 'Balanced',
+    unlockCostCredits: 250,
+    textureKey: 'player-ship-spaceship-1',
+    displaySize: 120,
+    visualRotation: Math.PI,
+    movement: {
+      ...interceptorMovement,
+      thrustAcceleration: Math.round(interceptorMovement.thrustAcceleration * 0.78),
+      reverseThrustAcceleration: Math.round(interceptorMovement.reverseThrustAcceleration * 0.82),
+      strafeThrustAcceleration: Math.round(interceptorMovement.strafeThrustAcceleration * 0.74),
+      brakeDamping: 0.91,
+      lowFrictionDamping: 0.993,
+      overspeedDamping: 2.8,
+      maxSpeed: Math.round(interceptorMovement.maxSpeed * 0.92)
     }
   }
 ];

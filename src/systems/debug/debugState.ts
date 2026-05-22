@@ -1,6 +1,5 @@
-import type { BlackHolePngLayerDebugSummary, BlackHolePngTextureKey } from '../blackHole';
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
-import type { RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
+import type { BeamWeaponStats, RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import type { DebugMenuValues } from './debugTypes';
 import { formatDisplayUnits, formatIntegerDisplayUnits } from '../statUnits';
 import {
@@ -104,7 +103,13 @@ export type DebugWeaponStatKey =
   | 'guardDamage'
   | 'bashDamage'
   | 'knockback'
-  | 'contactCooldownMs';
+  | 'contactCooldownMs'
+  | 'tickDamage'
+  | 'tickRatePerSecond'
+  | 'heatMax'
+  | 'heatGainPerSecond'
+  | 'coolingPerSecond'
+  | 'overheatCoolingPerSecond';
 
 export type DebugShipOverrides = Partial<Record<DebugShipStatKey, number>>;
 export type DebugWeaponOverrides = Partial<Record<DebugWeaponStatKey, number>>;
@@ -137,7 +142,13 @@ const WEAPON_STAT_MIN: Record<DebugWeaponStatKey, number> = {
   guardDamage: 0,
   bashDamage: 0,
   knockback: 0,
-  contactCooldownMs: 1
+  contactCooldownMs: 1,
+  tickDamage: 0,
+  tickRatePerSecond: 0.1,
+  heatMax: 1,
+  heatGainPerSecond: 0,
+  coolingPerSecond: 0,
+  overheatCoolingPerSecond: 0
 };
 
 const INTEGER_WEAPON_STATS = new Set<DebugWeaponStatKey>(['dashMaxCharges', 'contactCooldownMs']);
@@ -621,7 +632,8 @@ export class DebugState {
       projectileSpeed: overrides.projectileSpeed ?? weapon.projectileSpeed,
       projectileLifetimeSeconds: overrides.projectileLifetimeSeconds ?? weapon.projectileLifetimeSeconds,
       projectileRange: overrides.projectileRange ?? weapon.projectileRange,
-      rammingShield: weapon.rammingShield ? this.getEffectiveRammingShieldStats(weapon.rammingShield, overrides) : weapon.rammingShield
+      rammingShield: weapon.rammingShield ? this.getEffectiveRammingShieldStats(weapon.rammingShield, overrides) : weapon.rammingShield,
+      beam: weapon.beam ? this.getEffectiveBeamStats(weapon.beam, overrides) : weapon.beam
     };
   }
 
@@ -632,6 +644,11 @@ export class DebugState {
     if (effective.rammingShield) {
       const stats = effective.rammingShield;
       return `${weapon.displayName}${marker}\nShield ${stats.shieldMaxHp}  Regen ${stats.shieldRegenRatePerSecond}/s\nDash ${stats.dashMaxCharges} @ ${stats.dashChargeRechargeSeconds.toFixed(2)}s  Dist ${stats.dashDistance.toFixed(0)}\nGuard ${stats.guardDamage.toFixed(2)}  Bash ${stats.bashDamage.toFixed(2)}  Knock ${stats.knockback.toFixed(0)}\nRange ${formatIntegerDisplayUnits(stats.range)}  Width ${formatIntegerDisplayUnits(stats.width)}`;
+    }
+
+    if (effective.beam) {
+      const stats = effective.beam;
+      return `${weapon.displayName}${marker}\nTick ${stats.tickDamage.toFixed(2)} @ ${stats.tickRatePerSecond.toFixed(1)}/s\nRange ${formatIntegerDisplayUnits(stats.range)}  Width ${formatIntegerDisplayUnits(stats.width)}\nHeat ${stats.heatGainPerSecond.toFixed(1)}/s of ${stats.heatMax}\nCool ${stats.coolingPerSecond.toFixed(1)}/s  Vent ${stats.overheatCoolingPerSecond.toFixed(1)}/s`;
     }
 
     return `${weapon.displayName}${marker}\nDamage ${(effective.damage ?? 0).toFixed(2)}  Cooldown ${(effective.cooldownSeconds ?? 0).toFixed(2)}s\nSpeed ${formatIntegerDisplayUnits(effective.projectileSpeed ?? 0)}\nLifetime ${(effective.projectileLifetimeSeconds ?? 0).toFixed(2)}s  Range ${formatIntegerDisplayUnits(effective.projectileRange ?? 0)}`;
@@ -649,9 +666,6 @@ export class DebugState {
     starfieldFarParallax: number;
     starfieldMidParallax: number;
     starfieldNearParallax: number;
-    blackHoleLensOrbitSpeedMultiplier: number;
-    blackHoleLensDensity: number;
-    blackHoleLensLengthMultiplier: number;
     blackHoleInfluenceRadiusScale: number;
     blackHoleDamageRadiusScale: number;
     blackHoleVisualScale: number;
@@ -665,12 +679,6 @@ export class DebugState {
     blackHoleViscosityCurve: number;
     blackHoleInnerDrag: number;
     blackHolePlayerResistance: number;
-    blackHoleProjectionLensLayersEnabled: boolean;
-    blackHoleSelectedPngLayerIndex: number;
-    blackHolePngLayerCount: number;
-    blackHoleSelectedPngLayer?: BlackHolePngLayerDebugSummary;
-    blackHoleAddPngTextureKey: BlackHolePngTextureKey;
-    blackHoleAddPngTextureLabel: string;
     blackHoleActive: boolean;
     blackHoleX: number;
     blackHoleY: number;
@@ -760,9 +768,6 @@ export class DebugState {
       starfieldFarParallax: snapshot.starfieldFarParallax,
       starfieldMidParallax: snapshot.starfieldMidParallax,
       starfieldNearParallax: snapshot.starfieldNearParallax,
-      blackHoleLensOrbitSpeedMultiplier: snapshot.blackHoleLensOrbitSpeedMultiplier,
-      blackHoleLensDensity: snapshot.blackHoleLensDensity,
-      blackHoleLensLengthMultiplier: snapshot.blackHoleLensLengthMultiplier,
       blackHoleInfluenceRadiusScale: snapshot.blackHoleInfluenceRadiusScale,
       blackHoleDamageRadiusScale: snapshot.blackHoleDamageRadiusScale,
       blackHoleVisualScale: snapshot.blackHoleVisualScale,
@@ -776,12 +781,6 @@ export class DebugState {
       blackHoleViscosityCurve: snapshot.blackHoleViscosityCurve,
       blackHoleInnerDrag: snapshot.blackHoleInnerDrag,
       blackHolePlayerResistance: snapshot.blackHolePlayerResistance,
-      blackHoleProjectionLensLayersEnabled: snapshot.blackHoleProjectionLensLayersEnabled,
-      blackHoleSelectedPngLayerIndex: snapshot.blackHoleSelectedPngLayerIndex,
-      blackHolePngLayerCount: snapshot.blackHolePngLayerCount,
-      blackHoleSelectedPngLayer: snapshot.blackHoleSelectedPngLayer,
-      blackHoleAddPngTextureKey: snapshot.blackHoleAddPngTextureKey,
-      blackHoleAddPngTextureLabel: snapshot.blackHoleAddPngTextureLabel,
       blackHoleActive: snapshot.blackHoleActive,
       blackHoleX: snapshot.blackHoleX,
       blackHoleY: snapshot.blackHoleY,
@@ -1060,11 +1059,17 @@ export class DebugState {
     }
 
     const shield = weapon.rammingShield;
-    if (!shield || !(key in shield)) {
+    if (shield && key in shield) {
+      const value = shield[key as keyof RammingShieldStats];
+      return typeof value === 'number' ? value : undefined;
+    }
+
+    const beam = weapon.beam;
+    if (!beam || !(key in beam)) {
       return undefined;
     }
 
-    const value = shield[key as keyof RammingShieldStats];
+    const value = beam[key as keyof BeamWeaponStats];
     return typeof value === 'number' ? value : undefined;
   }
 
@@ -1084,6 +1089,20 @@ export class DebugState {
       bashDamage: overrides.bashDamage ?? base.bashDamage,
       knockback: overrides.knockback ?? base.knockback,
       contactCooldownMs: overrides.contactCooldownMs ?? base.contactCooldownMs
+    };
+  }
+
+  private getEffectiveBeamStats(base: BeamWeaponStats, overrides: DebugWeaponOverrides): BeamWeaponStats {
+    return {
+      ...base,
+      tickDamage: overrides.tickDamage ?? base.tickDamage,
+      tickRatePerSecond: overrides.tickRatePerSecond ?? base.tickRatePerSecond,
+      range: overrides.range ?? base.range,
+      width: overrides.width ?? base.width,
+      heatMax: overrides.heatMax ?? base.heatMax,
+      heatGainPerSecond: overrides.heatGainPerSecond ?? base.heatGainPerSecond,
+      coolingPerSecond: overrides.coolingPerSecond ?? base.coolingPerSecond,
+      overheatCoolingPerSecond: overrides.overheatCoolingPerSecond ?? base.overheatCoolingPerSecond
     };
   }
 

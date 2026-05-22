@@ -335,24 +335,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'field-core-down': 'Decrease black hole core visual scale.',
   'field-core-up': 'Increase black hole core visual scale.',
   'field-reset': 'Reset black hole field and visual tuning.',
-  'black-hole-lenses': 'Current selected black hole PNG lens layer and add-layer image selection.',
-  'png-layer-prev': 'Select previous black hole PNG layer.',
-  'png-layer-next': 'Select next black hole PNG layer.',
-  'png-image-prev': 'Cycle selected layer image backward.',
-  'png-image-next': 'Cycle selected layer image forward.',
-  'png-speed-down': 'Decrease selected PNG layer rotation speed.',
-  'png-speed-up': 'Increase selected PNG layer rotation speed.',
-  'png-size-down': 'Decrease selected PNG layer size.',
-  'png-size-up': 'Increase selected PNG layer size.',
-  'png-alpha-down': 'Decrease selected PNG layer opacity.',
-  'png-alpha-up': 'Increase selected PNG layer opacity.',
-  'png-toggle-layer': 'Toggle selected PNG layer visibility.',
-  'projection-lenses': 'Toggle all black hole PNG projection lens layers.',
-  'png-add-image-prev': 'Cycle new-layer image selection backward.',
-  'png-add-image-next': 'Cycle new-layer image selection forward.',
-  'png-add-layer': 'Add a new PNG lens layer using the selected add image.',
-  'png-duplicate-layer': 'Duplicate the selected PNG lens layer.',
-  'png-remove-layer': 'Remove the selected PNG lens layer.',
   background: 'Current background star visibility and parallax values.',
   'health-bars': 'Small world-space health bars. Player bar can always show; other bars reveal after player damage.',
   'health-bars-toggle': 'Toggle all world-space health bars.',
@@ -1308,30 +1290,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton(tabId, 'field-core-up', panelX + PANEL_PADDING + 242, y, 74, 'Core +', () => config.callbacks.adjustBlackHoleCoreScale(0.1));
   }
 
-  function addBlackHoleLayerButtons(tabId: DebugTabId, y: number): void {
-    addButton(tabId, 'png-layer-prev', panelX + PANEL_PADDING, y, 74, 'Layer -', config.callbacks.selectPreviousBlackHolePngLayer);
-    addButton(tabId, 'png-layer-next', panelX + PANEL_PADDING + 80, y, 74, 'Layer +', config.callbacks.selectNextBlackHolePngLayer);
-    addButton(tabId, 'png-image-prev', panelX + PANEL_PADDING + 162, y, 74, 'Image -', () => config.callbacks.cycleBlackHolePngLayerImage(-1));
-    addButton(tabId, 'png-image-next', panelX + PANEL_PADDING + 242, y, 74, 'Image +', () => config.callbacks.cycleBlackHolePngLayerImage(1));
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'png-speed-down', panelX + PANEL_PADDING, y, 74, 'Speed -', () => config.callbacks.adjustBlackHolePngLayerSpeed(-0.05));
-    addButton(tabId, 'png-speed-up', panelX + PANEL_PADDING + 80, y, 74, 'Speed +', () => config.callbacks.adjustBlackHolePngLayerSpeed(0.05));
-    addButton(tabId, 'png-size-down', panelX + PANEL_PADDING + 162, y, 74, 'Size -', () => config.callbacks.adjustBlackHolePngLayerSize(-0.05));
-    addButton(tabId, 'png-size-up', panelX + PANEL_PADDING + 242, y, 74, 'Size +', () => config.callbacks.adjustBlackHolePngLayerSize(0.05));
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'png-alpha-down', panelX + PANEL_PADDING, y, 74, 'Alpha -', () => config.callbacks.adjustBlackHolePngLayerAlpha(-0.05));
-    addButton(tabId, 'png-alpha-up', panelX + PANEL_PADDING + 80, y, 74, 'Alpha +', () => config.callbacks.adjustBlackHolePngLayerAlpha(0.05));
-    addButton(tabId, 'png-toggle-layer', panelX + PANEL_PADDING + 162, y, 74, 'Toggle', config.callbacks.toggleBlackHolePngLayer);
-    addButton(tabId, 'projection-lenses', panelX + PANEL_PADDING + 242, y, 74, 'All', config.callbacks.toggleBlackHoleProjectionLenses);
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'png-add-image-prev', panelX + PANEL_PADDING, y, 101, 'Add img -', () => config.callbacks.cycleBlackHoleAddPngLayerImage(-1));
-    addButton(tabId, 'png-add-image-next', panelX + PANEL_PADDING + 108, y, 101, 'Add img +', () => config.callbacks.cycleBlackHoleAddPngLayerImage(1));
-    addButton(tabId, 'png-add-layer', panelX + PANEL_PADDING + 216, y, 100, 'Add +', config.callbacks.addBlackHolePngLayer);
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'png-duplicate-layer', panelX + PANEL_PADDING, y, 154, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
-    addButton(tabId, 'png-remove-layer', panelX + PANEL_PADDING + 162, y, 154, 'Remove -', config.callbacks.removeBlackHolePngLayer);
-  }
-
   function addButtonPair(
     tabId: DebugTabId,
     keyPrefix: string,
@@ -1763,8 +1721,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       }
       refreshNumberInputPositions();
       refreshNumberInputVisibility();
-      const pngLayer = values.blackHoleSelectedPngLayer;
-
       if (activeTab === 'run') {
         setValue(
           'run-overview',

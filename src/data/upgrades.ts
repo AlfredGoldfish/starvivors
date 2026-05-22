@@ -1,6 +1,6 @@
 import type { WeaponBehaviorType, WeaponId, WeaponTag } from './weapons';
 
-export type UpgradeCategory = 'projectile' | 'pulse' | 'ramming' | 'passive' | 'utility';
+export type UpgradeCategory = 'projectile' | 'pulse' | 'ramming' | 'beam' | 'passive' | 'utility';
 export type UpgradeRarity = 'common' | 'uncommon' | 'rare' | 'epic';
 export type UpgradeStatus = 'implemented' | 'data-only';
 
@@ -57,6 +57,11 @@ export type UpgradeId =
   | 'ram_siege_plate'
   | 'ram_interceptor_guard'
   | 'ram_mirror_shield'
+  | 'beam_focus'
+  | 'beam_extended_capacitors'
+  | 'beam_heat_sinks'
+  | 'beam_vent_cycle'
+  | 'beam_long_lens'
   | 'stat_amount'
   | 'stat_magnet'
   | 'stat_luck'
@@ -91,7 +96,13 @@ export type WeaponUpgradeStat =
   | 'dashRechargeMultiplier'
   | 'dashChargeBonus'
   | 'ramKnockbackMultiplier'
-  | 'dashDistanceMultiplier';
+  | 'dashDistanceMultiplier'
+  | 'beamDamageMultiplier'
+  | 'beamHeatGainMultiplier'
+  | 'beamCoolingMultiplier'
+  | 'beamOverheatCoolingMultiplier'
+  | 'beamRangeMultiplier'
+  | 'beamWidthMultiplier';
 
 export type UpgradeModifierOperation = 'add' | 'multiply';
 
@@ -327,6 +338,56 @@ export const UPGRADE_CHOICES: UpgradeDefinition[] = [
     name: 'Greed',
     description: '+10% credits earned from scrap per level.',
     maxLevel: PASSIVE_UPGRADE_MAX_LEVEL
+  },
+  {
+    id: 'beam_focus',
+    category: 'beam',
+    rarity: 'common',
+    name: 'Beam Focus',
+    description: '+15% Salvage Beam tick damage per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['salvage-beam'] },
+    statModifiers: [{ stat: 'beamDamageMultiplier', operation: 'add', value: 0.15 }]
+  },
+  {
+    id: 'beam_extended_capacitors',
+    category: 'beam',
+    rarity: 'common',
+    name: 'Extended Capacitors',
+    description: 'Reduces Salvage Beam heat gain by 12% per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['salvage-beam'] },
+    statModifiers: [{ stat: 'beamHeatGainMultiplier', operation: 'multiply', value: 0.88 }]
+  },
+  {
+    id: 'beam_heat_sinks',
+    category: 'beam',
+    rarity: 'uncommon',
+    name: 'Heat Sinks',
+    description: '+18% Salvage Beam cooling per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['salvage-beam'] },
+    statModifiers: [{ stat: 'beamCoolingMultiplier', operation: 'add', value: 0.18 }]
+  },
+  {
+    id: 'beam_vent_cycle',
+    category: 'beam',
+    rarity: 'rare',
+    name: 'Vent Cycle',
+    description: '+20% Salvage Beam overheat venting per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['salvage-beam'] },
+    statModifiers: [{ stat: 'beamOverheatCoolingMultiplier', operation: 'add', value: 0.2 }]
+  },
+  {
+    id: 'beam_long_lens',
+    category: 'beam',
+    rarity: 'uncommon',
+    name: 'Long Lens',
+    description: '+12% Salvage Beam range per level.',
+    maxLevel: WEAPON_UPGRADE_MAX_LEVEL,
+    target: { weaponIds: ['salvage-beam'] },
+    statModifiers: [{ stat: 'beamRangeMultiplier', operation: 'add', value: 0.12 }]
   },
   {
     id: 'pulse_size',

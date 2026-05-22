@@ -33,7 +33,12 @@ export function createPlayerWeaponRuntimeState(ship: ShipRegistryEntry, loadout?
     activePrimaryWeaponId: startingPrimaryWeaponId,
     activeSecondaryWeaponId: startingSecondaryWeaponId,
     ownedAutoWeaponIds: autoWeaponIds,
-    ownedManualWeaponIds: uniqueWeaponIds([...primaryWeaponIds, ...secondaryWeaponIds, ...(startingPrimaryWeaponId ? [startingPrimaryWeaponId] : [])]),
+    ownedManualWeaponIds: uniqueWeaponIds([
+      ...primaryWeaponIds,
+      ...secondaryWeaponIds,
+      ...(startingPrimaryWeaponId ? [startingPrimaryWeaponId] : []),
+      ...(startingSecondaryWeaponId ? [startingSecondaryWeaponId] : [])
+    ]),
     nextAutoWeaponFireAt: 0,
     nextPrimaryWeaponFireAt: 0,
     nextSecondaryWeaponFireAt: 0

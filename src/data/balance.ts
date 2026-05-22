@@ -39,6 +39,17 @@ export const rammingShieldBalance = {
   behaviorFlags: [] as string[]
 };
 
+export const salvageBeamBalance = {
+  tickDamage: 3,
+  tickRatePerSecond: 5,
+  range: 520,
+  width: 18,
+  heatMax: 100,
+  heatGainPerSecond: 25,
+  coolingPerSecond: 30,
+  overheatCoolingPerSecond: 45
+};
+
 export const basicEnemyBalance = {
   moveSpeed: 95,
   hp: 12,

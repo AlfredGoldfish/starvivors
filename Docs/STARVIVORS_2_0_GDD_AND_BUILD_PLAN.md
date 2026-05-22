@@ -444,7 +444,7 @@ They should affect:
 - Projectiles if performance allows.
 - Debris and scrap if useful.
 
-Big black-hole visuals must be cached/baked, not redrawn as many live vector lines.
+Big black-hole visuals should be simple code-rendered/cached geometry, not PNG layer stacks or many live vector lines.
 
 ## 9. Weapon and Upgrade Redesign
 
@@ -703,7 +703,7 @@ Allowed:
 - TypeScript polygon definitions.
 - Generated Phaser textures.
 - Cached canvas textures.
-- Baked PNG/WebP layers for expensive effects.
+- Baked PNG/WebP layers for expensive effects that are not black holes.
 
 Avoid:
 
@@ -728,7 +728,7 @@ Vector/cached assets:
 
 Baked/cached effect assets:
 
-- Black holes.
+- Black holes as simple generated/cached geometry.
 - Large explosions.
 - Energy storms.
 - Massive aura fields.
@@ -1491,7 +1491,7 @@ Tasks:
 - Create generated texture registry.
 - Convert scrap to vector/cached texture.
 - Convert player ships to vector/cached texture.
-- Keep black holes and expensive effects baked/cached.
+- Keep black holes as simple generated/cached geometry; keep other expensive effects baked/cached.
 
 Do not:
 

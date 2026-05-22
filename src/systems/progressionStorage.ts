@@ -1,6 +1,6 @@
 import { INITIAL_PERMANENT_UPGRADE_LEVELS, type PermanentUpgradeId } from '../data/permanentUpgrades';
 import { DEFAULT_SHIP_ID, type ShipId } from '../data/ships';
-import { getWeaponDefinition, type WeaponId, type WeaponSlotType } from '../data/weapons';
+import { getWeaponDefinition, isWeaponId, type WeaponId, type WeaponSlotType } from '../data/weapons';
 
 export type RewardHookId =
   | 'mission.survey-signal'
@@ -17,7 +17,7 @@ export type WeaponLoadoutState = Record<WeaponSlotType, Array<WeaponId | null>>;
 export type WeaponMkLevels = Partial<Record<WeaponId, number>>;
 
 export const WEAPON_LOADOUT_SLOT_COUNT = 3;
-const DEFAULT_UNLOCKED_WEAPON_IDS: WeaponId[] = ['pulse-cannon', 'test1-weapon', 'test2-weapon', 'test3-weapon', 'test4-weapon'];
+const DEFAULT_UNLOCKED_WEAPON_IDS: WeaponId[] = ['pulse-cannon'];
 
 export interface ProgressionState {
   schemaVersion: 1;
@@ -59,10 +59,7 @@ export function createDefaultProgressionState(): ProgressionState {
     weaponMkLevels: {
       'pulse-cannon': 1,
       'ramming-shield': 1,
-      'test1-weapon': 1,
-      'test2-weapon': 1,
-      'test3-weapon': 1,
-      'test4-weapon': 1
+      'salvage-beam': 1
     },
     secretControlUnlocked: false
   };
@@ -220,7 +217,12 @@ function normalizeWeaponLoadoutSlots(
       continue;
     }
 
-    const typedWeaponId = weaponId as WeaponId;
+    if (!isWeaponId(weaponId)) {
+      slots.push(null);
+      continue;
+    }
+
+    const typedWeaponId = weaponId;
     if (usedWeaponIds.has(typedWeaponId) || !getWeaponDefinition(typedWeaponId).slotCompatibility.includes(slot)) {
       slots.push(null);
       continue;
@@ -238,14 +240,13 @@ function normalizeWeaponMkLevels(value: unknown): WeaponMkLevels {
   const levels: WeaponMkLevels = {
     'pulse-cannon': 1,
     'ramming-shield': 1,
-    'test1-weapon': 1,
-    'test2-weapon': 1,
-    'test3-weapon': 1,
-    'test4-weapon': 1
+    'salvage-beam': 1
   };
 
   for (const [weaponId, level] of Object.entries(source)) {
-    levels[weaponId as WeaponId] = Math.max(1, Math.floor(Number(level ?? 1)));
+    if (isWeaponId(weaponId)) {
+      levels[weaponId] = Math.max(1, Math.floor(Number(level ?? 1)));
+    }
   }
 
   return levels;
@@ -253,7 +254,7 @@ function normalizeWeaponMkLevels(value: unknown): WeaponMkLevels {
 
 function normalizeUnlockedWeaponIds(value: unknown, fallback: WeaponId[]): WeaponId[] {
   const source = Array.isArray(value) ? [...fallback, ...value] : fallback;
-  return normalizeUniqueArray(source, fallback) as WeaponId[];
+  return normalizeUniqueArray(source, fallback).filter(isWeaponId);
 }
 
 function normalizeScannerLevel(value: unknown): SectorScannerLevel {

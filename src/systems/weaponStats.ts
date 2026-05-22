@@ -2,7 +2,7 @@ import type { ShipRegistryEntry } from '../data/ships';
 import type { DamageVariance } from '../data/damageVariance';
 import type { PlayerStats } from '../data/stats';
 import { UPGRADE_CHOICES, type PulseProjectileEffectModifier, type PulseProjectilePatternModifier } from '../data/upgrades';
-import type { RammingShieldStats, WeaponRegistryEntry, WeaponSlotType } from '../data/weapons';
+import type { BeamWeaponStats, RammingShieldStats, WeaponRegistryEntry, WeaponSlotType } from '../data/weapons';
 import type { PlayerWeaponDebugTuning, PlayerWeaponUpgradeState } from './playerWeapons';
 import { getAdditiveWeaponUpgradeModifier, getMultiplicativeWeaponUpgradeModifier, isUpgradeRelevantForWeapons } from './runUpgrades';
 
@@ -58,11 +58,17 @@ export interface ResolvedProjectileWeaponStats {
   effects: ResolvedProjectileEffectStats;
 }
 
+export interface ResolvedBeamWeaponStats extends BeamWeaponStats {
+  tickIntervalMs: number;
+  damageVariance?: DamageVariance;
+}
+
 export interface ResolvedWeaponStats {
   weapon: WeaponRegistryEntry;
   slot: WeaponSlotType;
   projectile?: ResolvedProjectileWeaponStats;
   rammingShield?: RammingShieldStats;
+  beam?: ResolvedBeamWeaponStats;
 }
 
 export interface ResolveWeaponStatsInput {
@@ -81,7 +87,8 @@ export function resolveWeaponStats(input: ResolveWeaponStatsInput): ResolvedWeap
     weapon: input.weapon,
     slot: input.slot,
     projectile: resolveProjectileStats(input),
-    rammingShield: resolveRammingShieldStats(input)
+    rammingShield: resolveRammingShieldStats(input),
+    beam: resolveBeamStats(input)
   };
 }
 
@@ -163,6 +170,35 @@ export function resolveRammingShieldStats(input: ResolveWeaponStatsInput): Rammi
     knockback: stats.knockback * knockbackMultiplier,
     dashDistance: stats.dashDistance * dashDistanceMultiplier,
     behaviorFlags: [...new Set([...stats.behaviorFlags, ...behaviorFlags])]
+  };
+}
+
+export function resolveBeamStats(input: ResolveWeaponStatsInput): ResolvedBeamWeaponStats | undefined {
+  const weapon = input.weapon;
+  const beam = weapon.beam;
+  if (weapon.behaviorType !== 'beam' || !beam) {
+    return undefined;
+  }
+
+  const damageMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamDamageMultiplier');
+  const rangeMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamRangeMultiplier');
+  const widthMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamWidthMultiplier');
+  const coolingMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamCoolingMultiplier');
+  const overheatCoolingMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamOverheatCoolingMultiplier');
+  const heatGainMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, weapon, 'beamHeatGainMultiplier');
+  const tickRatePerSecond = Math.max(0.1, beam.tickRatePerSecond * input.playerStats.attackSpeed * input.debugTuning.fireRateMultiplier);
+
+  return {
+    ...beam,
+    tickDamage: beam.tickDamage * damageMultiplier * input.playerStats.damage * input.debugTuning.damageMultiplier,
+    tickRatePerSecond,
+    tickIntervalMs: 1000 / tickRatePerSecond,
+    range: beam.range * rangeMultiplier,
+    width: beam.width * input.playerStats.area * widthMultiplier,
+    heatGainPerSecond: beam.heatGainPerSecond * heatGainMultiplier,
+    coolingPerSecond: beam.coolingPerSecond * coolingMultiplier,
+    overheatCoolingPerSecond: beam.overheatCoolingPerSecond * overheatCoolingMultiplier,
+    damageVariance: weapon.damageVariance
   };
 }
 

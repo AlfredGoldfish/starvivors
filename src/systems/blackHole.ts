@@ -20,42 +20,6 @@ const BLACK_HOLE_DRIFT_ANGLE = Math.PI * 0.18;
 const BLACK_HOLE_DRIFT_RESPONSE = 0.18;
 const BLACK_HOLE_DRIFT_TURN_RATE = 0.055;
 const BLACK_HOLE_CORE_RADIUS = 82;
-const BLACK_HOLE_WARNING_RADIUS = 260;
-const BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET = 34;
-const BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET = BLACK_HOLE_LENS_FADE_BORDER_RADIUS_OFFSET + 8;
-const BLACK_HOLE_VISUAL_HORIZON_SCALE = 1.5;
-const BLACK_HOLE_VISUAL_PULSE_SPEED = 0.0026;
-const BLACK_HOLE_VISUAL_TWIRL_SPEED = 0.48;
-export const BLACK_HOLE_FULL_TEXTURE_KEY = 'black-hole-full-lines';
-export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY = 'black-hole-event-horizon-lines';
-export const BLACK_HOLE_FULL_TEXTURE_KEYS = [
-  'black-hole-full-lines-1',
-  'black-hole-full-lines-2',
-  BLACK_HOLE_FULL_TEXTURE_KEY,
-  'black-hole-full-lines-4',
-  'black-hole-full-lines-5'
-] as const;
-export const BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS = [
-  'black-hole-event-horizon-lines-1',
-  'black-hole-event-horizon-lines-2',
-  BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEY
-] as const;
-export const BLACK_HOLE_PNG_TEXTURE_KEYS = [
-  ...BLACK_HOLE_FULL_TEXTURE_KEYS,
-  ...BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS
-] as const;
-export const BLACK_HOLE_PNG_TEXTURE_LABELS: Record<BlackHolePngTextureKey, string> = {
-  [BLACK_HOLE_FULL_TEXTURE_KEYS[0]]: 'full1',
-  [BLACK_HOLE_FULL_TEXTURE_KEYS[1]]: 'full2',
-  [BLACK_HOLE_FULL_TEXTURE_KEYS[2]]: 'full3',
-  [BLACK_HOLE_FULL_TEXTURE_KEYS[3]]: 'full4',
-  [BLACK_HOLE_FULL_TEXTURE_KEYS[4]]: 'full5',
-  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0]]: 'horizon1',
-  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[1]]: 'horizon2',
-  [BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[2]]: 'horizon3'
-};
-export const BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT = 450;
-export const BLACK_HOLE_LENSING_ARC_MAX_COUNT = 700;
 export const BLACK_HOLE_INFLUENCE_RADIUS = 760;
 export const BLACK_HOLE_DAMAGE_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 export const BLACK_HOLE_CAPTURE_RADIUS = 250;
@@ -65,11 +29,6 @@ export const BLACK_HOLE_PROJECTILE_CAPTURE_RADIUS = BLACK_HOLE_CAPTURE_RADIUS;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_MIN_SCALE = 0.08;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_FADE_SECONDS = 1.65;
 export const BLACK_HOLE_PROJECTILE_CAPTURE_CONSUME_RADIUS = BLACK_HOLE_EVENT_HORIZON_RADIUS;
-const BLACK_HOLE_LENSING_ARC_COLORS = [0xffffff] as const;
-const BLACK_HOLE_LENS_TEXTURE_SIZE = 1024;
-const BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE = 720;
-const BLACK_HOLE_BASE_LENS_FIELD_RADIUS = BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE * 0.5;
-const BLACK_HOLE_VISUAL_FIELD_RADIUS = BLACK_HOLE_INFLUENCE_RADIUS;
 const BLACK_HOLE_DEFAULT_OBJECT_PULL_STRENGTH = 520;
 const BLACK_HOLE_DEFAULT_PLAYER_PULL_STRENGTH = 420;
 
@@ -79,110 +38,6 @@ export type {
   BlackHoleWhirlpoolTuning,
   WorldForceSample as BlackHoleWhirlpoolSample
 } from './worldForces';
-
-const BLACK_HOLE_LENS_ARC_INNER_RADIUS = 0.025;
-const BLACK_HOLE_LENS_ARC_OUTER_RADIUS = 1;
-const BLACK_HOLE_LENS_ARC_RESET_RADIUS = 0.035;
-const BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT = 18;
-const BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN = 0.07;
-const BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX = 0.22;
-const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN = 0.84;
-const BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX = 0.985;
-const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN = 0.004;
-const BLACK_HOLE_LENS_ARC_INWARD_SPEED_MAX = 0.014;
-const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN = 0.42;
-const BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX = 1.35;
-const BLACK_HOLE_LENS_ARC_LIFETIME_MIN = 86;
-const BLACK_HOLE_LENS_ARC_LIFETIME_MAX = 160;
-const BLACK_HOLE_LENS_ARC_ALPHA = 0.72;
-const BLACK_HOLE_LENS_ARC_THICKNESS = 1.35;
-const BLACK_HOLE_LENS_ARC_LENGTH = 0.18;
-const BLACK_HOLE_LENS_ARC_SQUASH_MIN = 0.96;
-const BLACK_HOLE_LENS_ARC_SQUASH_MAX = 1;
-
-export type BlackHolePngTextureKey = (typeof BLACK_HOLE_PNG_TEXTURE_KEYS)[number];
-
-interface BlackHoleLensingArc {
-  angle: number;
-  radius: number;
-  arcLength: number;
-  baseArcLength: number;
-  thickness: number;
-  baseAlpha: number;
-  alpha: number;
-  color: number;
-  inwardSpeed: number;
-  angularDriftSpeed: number;
-  age: number;
-  lifetime: number;
-  pulsePhase: number;
-  squash: number;
-}
-
-interface BlackHoleLensTextureLayer {
-  key: string;
-  isProjectionLayer: boolean;
-  strokeCount: number;
-  minRadius: number;
-  maxRadius: number;
-  squash: number;
-  nodeAngle: number;
-  alpha: number;
-  mirrorAlpha: number;
-  scalePulse: number;
-  scalePulseSpeed: number;
-}
-
-export interface BlackHolePngLayerConfig {
-  textureKey: BlackHolePngTextureKey;
-  speedRps: number;
-  sizeMultiplier: number;
-  alpha: number;
-  enabled: boolean;
-  initialRotation: number;
-}
-
-export interface BlackHolePngLayerDebugSummary extends BlackHolePngLayerConfig {
-  index: number;
-  textureLabel: string;
-}
-
-const BLACK_HOLE_LENS_TEXTURE_LAYERS: BlackHoleLensTextureLayer[] = [];
-const BLACK_HOLE_DEFAULT_PNG_LAYERS: BlackHolePngLayerConfig[] = [
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.9557, sizeMultiplier: 1.1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.1824, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 1.0655, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.5317, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.9509, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 0.1144, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 1.4509, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 4.7282, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.4, alpha: 1, initialRotation: 5.4672, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.55, alpha: 1, initialRotation: 1.1075, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 2.4855, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 1.5073, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 5.1592, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.5, alpha: 1, initialRotation: 3.5783, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0, alpha: 1, initialRotation: 5.6083, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 4.8861, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 5.4108, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.05, alpha: 1, initialRotation: 4.9782, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.1, alpha: 1, initialRotation: 1.4044, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.15, alpha: 1, initialRotation: 5.9102, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_EVENT_HORIZON_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 6.2512, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.25, alpha: 1, initialRotation: 6.2061, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 6.6145, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 7.0229, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.4, alpha: 1, initialRotation: 7.4313, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.3, alpha: 1, initialRotation: 7.8397, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.6, alpha: 1, initialRotation: 8.2482, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[0], speedRps: 0.35, alpha: 1, initialRotation: 8.6566, sizeMultiplier: 0.55, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.45, alpha: 1, initialRotation: 5.4922, sizeMultiplier: 0.85, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.25, alpha: 1, initialRotation: 4.7142, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.05, alpha: 1, initialRotation: 3.6645, sizeMultiplier: 1.15, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEYS[1], speedRps: 0.15, alpha: 1, initialRotation: 5.4399, sizeMultiplier: 1, enabled: true },
-  { textureKey: BLACK_HOLE_FULL_TEXTURE_KEY, speedRps: 0.25, alpha: 1, initialRotation: 1.9323, sizeMultiplier: 1.1, enabled: true }
-];
 
 export interface BlackHoleState {
   body: Phaser.GameObjects.Container;
@@ -239,40 +94,25 @@ export class BlackHoleSystem {
 
   private readonly bodyGraphics: Phaser.GameObjects.Graphics;
   private readonly wrapMirrorGraphics: Phaser.GameObjects.Graphics;
-  private readonly pngLayerImages: Phaser.GameObjects.Image[] = [];
-  private readonly wrapMirrorPngLayerImages: Phaser.GameObjects.Image[] = [];
-  private readonly lensTextureImages: Phaser.GameObjects.Image[];
-  private readonly wrapMirrorLensTextureImages: Phaser.GameObjects.Image[];
   private readonly velocity: Phaser.Math.Vector2;
-  private readonly lensingArcs: BlackHoleLensingArc[];
-  private readonly pngLayers: BlackHolePngLayerConfig[];
-  private activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT;
-  private lensLengthMultiplier = 1;
   private influenceRadiusMultiplier = 1;
   private damageRadiusMultiplier = 1;
   private visualScaleMultiplier = 1;
   private coreScaleMultiplier = 1;
   private driftAngle = BLACK_HOLE_DRIFT_ANGLE;
-  private visualPhase: number;
   private runElapsedSeconds = 0;
   private vacuumTuning: BlackHoleVacuumTuning = { ...DEFAULT_BLACK_HOLE_VACUUM_TUNING };
 
   constructor(private readonly scene: Phaser.Scene, spawnPosition: Phaser.Math.Vector2) {
-    this.ensureLensTextureLayers();
-    this.lensTextureImages = this.createLensTextureImages(false);
-    this.wrapMirrorLensTextureImages = this.createLensTextureImages(true);
-    this.pngLayers = BLACK_HOLE_DEFAULT_PNG_LAYERS.map((layer) => ({ ...layer }));
     this.bodyGraphics = scene.add.graphics();
     this.wrapMirrorGraphics = scene.add.graphics();
     this.body = scene.add
       .container(spawnPosition.x, spawnPosition.y, [
-        ...this.lensTextureImages,
         this.bodyGraphics
       ])
       .setDepth(6);
     this.wrapMirrorBody = scene.add
       .container(spawnPosition.x, spawnPosition.y, [
-        ...this.wrapMirrorLensTextureImages,
         this.wrapMirrorGraphics
       ])
       .setDepth(6);
@@ -280,12 +120,9 @@ export class BlackHoleSystem {
       Math.cos(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED,
       Math.sin(BLACK_HOLE_DRIFT_ANGLE) * BLACK_HOLE_DRIFT_SPEED
     );
-    this.lensingArcs = this.createLensingArcs();
-    this.visualPhase = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    this.syncPngLayerImages();
 
-    this.body.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
-    this.wrapMirrorBody.setSize(BLACK_HOLE_WARNING_RADIUS * 2, BLACK_HOLE_WARNING_RADIUS * 2);
+    this.body.setSize(this.warningRadius * 2, this.warningRadius * 2);
+    this.wrapMirrorBody.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.wrapMirrorBody.setVisible(false);
     this.draw(this.bodyGraphics, false, false);
     this.draw(this.wrapMirrorGraphics, true, false);
@@ -296,10 +133,6 @@ export class BlackHoleSystem {
     deltaSeconds: number,
     arena: ArenaSize,
     isDebugEnabled: boolean,
-    lensOrbitSpeedMultiplier = 1,
-    activeLensingArcCount = BLACK_HOLE_LENSING_ARC_DEFAULT_COUNT,
-    lensLengthMultiplier = 1,
-    areProjectionLensLayersEnabled = true,
     influenceRadiusMultiplier = 1,
     damageRadiusMultiplier = 1,
     visualScaleMultiplier = 1,
@@ -308,18 +141,12 @@ export class BlackHoleSystem {
     runElapsedSeconds = this.runElapsedSeconds,
     vacuumTuning: BlackHoleVacuumTuning = this.vacuumTuning
   ): void {
-    this.activeLensingArcCount = Phaser.Math.Clamp(
-      Math.round(activeLensingArcCount),
-      0,
-      BLACK_HOLE_LENSING_ARC_MAX_COUNT
-    );
     this.influenceRadiusMultiplier = Math.max(0, influenceRadiusMultiplier);
     this.damageRadiusMultiplier = Math.max(0, damageRadiusMultiplier);
     this.visualScaleMultiplier = Math.max(0, visualScaleMultiplier);
     this.coreScaleMultiplier = Math.max(0, coreScaleMultiplier);
     this.runElapsedSeconds = Math.max(0, runElapsedSeconds);
     this.vacuumTuning = this.normalizeVacuumTuning(vacuumTuning);
-    this.setLensLengthMultiplier(lensLengthMultiplier);
     if (shouldMove) {
       this.driftAngle += BLACK_HOLE_DRIFT_TURN_RATE * deltaSeconds;
       steerVelocityToward({
@@ -337,10 +164,6 @@ export class BlackHoleSystem {
     }
     this.body.setSize(this.warningRadius * 2, this.warningRadius * 2);
     this.wrapMirrorBody.setSize(this.warningRadius * 2, this.warningRadius * 2);
-    this.visualPhase += BLACK_HOLE_VISUAL_TWIRL_SPEED * deltaSeconds;
-    this.updateLensTextureImages(time, false, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
-    this.updateLensTextureImages(time, true, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
-    this.updateWhirlpoolImages(deltaSeconds, lensOrbitSpeedMultiplier, areProjectionLensLayersEnabled);
     this.draw(this.bodyGraphics, false, isDebugEnabled, time);
     this.draw(this.wrapMirrorGraphics, true, isDebugEnabled, time);
   }
@@ -557,450 +380,12 @@ export class BlackHoleSystem {
     };
   }
 
-  private ensureLensTextureLayers(): void {
-    for (const layer of BLACK_HOLE_LENS_TEXTURE_LAYERS) {
-      if (!this.scene.textures.exists(layer.key)) {
-        this.scene.textures.createCanvas(
-          layer.key,
-          BLACK_HOLE_LENS_TEXTURE_SIZE,
-          BLACK_HOLE_LENS_TEXTURE_SIZE
-        );
-      }
-    }
-
-    this.redrawLensTextureLayers();
-  }
-
-  private redrawLensTextureLayers(): void {
-    for (const layer of BLACK_HOLE_LENS_TEXTURE_LAYERS) {
-      const texture = this.scene.textures.get(layer.key) as Phaser.Textures.CanvasTexture;
-
-      if (!texture || typeof texture.getContext !== 'function') {
-        continue;
-      }
-
-      const context = texture.getContext();
-      this.drawLensTextureLayer(context, layer);
-      texture.refresh();
-    }
-  }
-
-  private drawLensTextureLayer(context: CanvasRenderingContext2D, layer: BlackHoleLensTextureLayer): void {
-    const center = BLACK_HOLE_LENS_TEXTURE_SIZE / 2;
-    const random = new Phaser.Math.RandomDataGenerator([layer.key]);
-
-    context.clearRect(0, 0, BLACK_HOLE_LENS_TEXTURE_SIZE, BLACK_HOLE_LENS_TEXTURE_SIZE);
-    context.lineCap = 'round';
-
-    for (let i = 0; i < layer.strokeCount; i += 1) {
-      const denseBand = i % 7 === 0 ? 0.42 : i % 5 === 0 ? 0.26 : random.frac();
-      const biasedProgress = Math.pow(random.frac() * 0.74 + denseBand * 0.26, 1.75);
-      const radius = Phaser.Math.Linear(layer.minRadius, layer.maxRadius, biasedProgress);
-      const angle = random.frac() * Math.PI * 2;
-      const radialProgress = Phaser.Math.Clamp(
-        (radius - layer.minRadius) / Math.max(1, layer.maxRadius - layer.minRadius),
-        0,
-        1
-      );
-      const innerDensity = Math.pow(1 - radialProgress, 1.45);
-      const length = Phaser.Math.Linear(4, i % 11 === 0 ? 36 : 20, random.frac()) *
-        Phaser.Math.Linear(0.42, 1.22, innerDensity) *
-        this.lensLengthMultiplier;
-      const thickness = Phaser.Math.Linear(0.35, i % 13 === 0 ? 1.45 : 0.9, random.frac()) *
-        Phaser.Math.Linear(0.58, 1.18, innerDensity);
-      const innerFade = Phaser.Math.Clamp((radius - layer.minRadius) / 54, 0, 1);
-      const outerFade = Phaser.Math.Clamp((layer.maxRadius - radius) / 74, 0, 1);
-      const alpha = Phaser.Math.Linear(0.035, i % 17 === 0 ? 0.62 : 0.24, random.frac()) *
-        Phaser.Math.Linear(0.35, 1.2, innerDensity) *
-        innerFade *
-        outerFade;
-      const color = BLACK_HOLE_LENSING_ARC_COLORS[random.integerInRange(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)];
-      const localX = Math.cos(angle) * radius;
-      const localY = Math.sin(angle) * radius * layer.squash;
-      const x = center + localX * Math.cos(layer.nodeAngle) - localY * Math.sin(layer.nodeAngle);
-      const y = center + localX * Math.sin(layer.nodeAngle) + localY * Math.cos(layer.nodeAngle);
-      const tangentX = -Math.sin(angle);
-      const tangentY = Math.cos(angle) * layer.squash;
-      const tangentLength = Math.max(0.001, Math.hypot(tangentX, tangentY));
-      const rotatedTangentX = tangentX * Math.cos(layer.nodeAngle) - tangentY * Math.sin(layer.nodeAngle);
-      const rotatedTangentY = tangentX * Math.sin(layer.nodeAngle) + tangentY * Math.cos(layer.nodeAngle);
-      const halfLength = length * (1.08 - radialProgress * 0.34) * 0.5;
-
-      context.globalAlpha = alpha;
-      context.strokeStyle = this.toRgba(color, 1);
-      context.lineWidth = thickness;
-      context.beginPath();
-      context.moveTo(x - (rotatedTangentX / tangentLength) * halfLength, y - (rotatedTangentY / tangentLength) * halfLength);
-      context.lineTo(x + (rotatedTangentX / tangentLength) * halfLength, y + (rotatedTangentY / tangentLength) * halfLength);
-      context.stroke();
-    }
-
-    context.globalAlpha = 1;
-  }
-
-  private toRgba(color: number, alpha: number): string {
-    const red = (color >> 16) & 0xff;
-    const green = (color >> 8) & 0xff;
-    const blue = color & 0xff;
-
-    return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-  }
-
-  private createLensTextureImages(isMirror: boolean): Phaser.GameObjects.Image[] {
-    return BLACK_HOLE_LENS_TEXTURE_LAYERS.map((layer) =>
-      this.scene.add
-        .image(0, 0, layer.key)
-        .setOrigin(0.5)
-        .setDisplaySize(BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE, BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE)
-        .setAlpha(isMirror ? layer.mirrorAlpha : layer.alpha)
-    );
-  }
-
-  getPngLayerCount(): number {
-    return this.pngLayers.length;
-  }
-
-  getPngLayerSummary(index: number): BlackHolePngLayerDebugSummary | undefined {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return undefined;
-    }
-
-    return {
-      ...layer,
-      index,
-      textureLabel: BLACK_HOLE_PNG_TEXTURE_LABELS[layer.textureKey]
-    };
-  }
-
-  getPngLayerSummaries(): BlackHolePngLayerDebugSummary[] {
-    return this.pngLayers.map((_, index) => this.getPngLayerSummary(index)).filter((layer): layer is BlackHolePngLayerDebugSummary => Boolean(layer));
-  }
-
-  adjustPngLayerSpeed(index: number, deltaRps: number): void {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return;
-    }
-
-    layer.speedRps = Number(Phaser.Math.Clamp(layer.speedRps + deltaRps, 0, 5).toFixed(2));
-  }
-
-  adjustPngLayerSize(index: number, delta: number): void {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return;
-    }
-
-    layer.sizeMultiplier = Number(Phaser.Math.Clamp(layer.sizeMultiplier + delta, 0.05, 3).toFixed(2));
-  }
-
-  adjustPngLayerAlpha(index: number, delta: number): void {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return;
-    }
-
-    layer.alpha = Number(Phaser.Math.Clamp(layer.alpha + delta, 0, 1).toFixed(2));
-  }
-
-  cyclePngLayerTexture(index: number, direction: number): void {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return;
-    }
-
-    const textureIndex = BLACK_HOLE_PNG_TEXTURE_KEYS.indexOf(layer.textureKey);
-    const nextIndex = Phaser.Math.Wrap(textureIndex + direction, 0, BLACK_HOLE_PNG_TEXTURE_KEYS.length);
-    layer.textureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[nextIndex];
-    this.replacePngLayerImage(index, false);
-    this.replacePngLayerImage(index, true);
-  }
-
-  togglePngLayer(index: number): void {
-    const layer = this.pngLayers[index];
-
-    if (layer) {
-      layer.enabled = !layer.enabled;
-    }
-  }
-
-  addPngLayer(textureKey: BlackHolePngTextureKey = BLACK_HOLE_PNG_TEXTURE_KEYS[0]): number {
-    this.pngLayers.push({
-      textureKey,
-      speedRps: 0.25,
-      sizeMultiplier: 1,
-      alpha: 1,
-      enabled: true,
-      initialRotation: Phaser.Math.FloatBetween(0, Math.PI * 2)
-    });
-    this.syncPngLayerImages();
-
-    return this.pngLayers.length - 1;
-  }
-
-  duplicatePngLayer(index: number): number {
-    const layer = this.pngLayers[index];
-
-    if (!layer) {
-      return this.addPngLayer();
-    }
-
-    this.pngLayers.splice(index + 1, 0, {
-      ...layer,
-      initialRotation: layer.initialRotation + Math.PI * 0.13
-    });
-    this.syncPngLayerImages();
-
-    return index + 1;
-  }
-
-  removePngLayer(index: number): number {
-    if (!this.pngLayers[index]) {
-      return Phaser.Math.Clamp(index, 0, Math.max(0, this.pngLayers.length - 1));
-    }
-
-    this.pngLayers.splice(index, 1);
-    this.syncPngLayerImages();
-
-    return Phaser.Math.Clamp(index, 0, this.pngLayers.length - 1);
-  }
-
-  resetPngLayers(): void {
-    this.pngLayers.splice(0, this.pngLayers.length, ...BLACK_HOLE_DEFAULT_PNG_LAYERS.map((layer) => ({ ...layer })));
-    this.syncPngLayerImages();
-  }
-
-  setPngLayers(layers: BlackHolePngLayerConfig[]): void {
-    this.pngLayers.splice(
-      0,
-      this.pngLayers.length,
-      ...layers.map((layer) => ({
-        textureKey: layer.textureKey,
-        speedRps: Number(Phaser.Math.Clamp(layer.speedRps, 0, 5).toFixed(2)),
-        sizeMultiplier: Number(Phaser.Math.Clamp(layer.sizeMultiplier, 0.05, 3).toFixed(2)),
-        alpha: Number(Phaser.Math.Clamp(layer.alpha, 0, 1).toFixed(2)),
-        enabled: layer.enabled,
-        initialRotation: layer.initialRotation
-      }))
-    );
-    this.syncPngLayerImages();
-  }
-
-  private syncPngLayerImages(): void {
-    this.syncPngLayerImageGroup(false);
-    this.syncPngLayerImageGroup(true);
-  }
-
-  private syncPngLayerImageGroup(isMirror: boolean): void {
-    const images = isMirror ? this.wrapMirrorPngLayerImages : this.pngLayerImages;
-    const container = isMirror ? this.wrapMirrorBody : this.body;
-    const graphics = isMirror ? this.wrapMirrorGraphics : this.bodyGraphics;
-
-    while (images.length > this.pngLayers.length) {
-      images.pop()?.destroy();
-    }
-
-    while (images.length < this.pngLayers.length) {
-      const layer = this.pngLayers[images.length];
-      const image = this.createPngLayerImage(layer, isMirror);
-      const graphicsIndex = container.getIndex(graphics);
-
-      images.push(image);
-      container.addAt(image, Math.max(0, graphicsIndex));
-    }
-
-    for (let i = 0; i < images.length; i += 1) {
-      const layer = this.pngLayers[i];
-      const image = images[i];
-
-      if (image.texture.key !== layer.textureKey) {
-        image.setTexture(layer.textureKey);
-      }
-
-      image
-        .setRotation(layer.initialRotation)
-        .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
-        .setVisible(layer.enabled);
-    }
-  }
-
-  private replacePngLayerImage(index: number, isMirror: boolean): void {
-    const images = isMirror ? this.wrapMirrorPngLayerImages : this.pngLayerImages;
-    const layer = this.pngLayers[index];
-    const image = images[index];
-
-    if (layer && image) {
-      image.setTexture(layer.textureKey);
-    }
-  }
-
-  private createPngLayerImage(layer: BlackHolePngLayerConfig, isMirror: boolean): Phaser.GameObjects.Image {
-    return this.scene.add
-      .image(0, 0, layer.textureKey)
-      .setOrigin(0.5)
-      .setRotation(layer.initialRotation)
-      .setAlpha(layer.alpha * (isMirror ? 0.56 : 1))
-      .setBlendMode(Phaser.BlendModes.ADD);
-  }
-
-  private updateWhirlpoolImages(
-    deltaSeconds: number,
-    lensOrbitSpeedMultiplier: number,
-    areLayersEnabled: boolean
-  ): void {
-    const fullDisplaySize = BLACK_HOLE_VISUAL_FIELD_RADIUS * 2 * this.visualScaleMultiplier * this.lensLengthMultiplier;
-
-    this.updateWhirlpoolImageGroup(this.pngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, false);
-    this.updateWhirlpoolImageGroup(this.wrapMirrorPngLayerImages, fullDisplaySize, deltaSeconds, lensOrbitSpeedMultiplier, areLayersEnabled, true);
-  }
-
-  private updateWhirlpoolImageGroup(
-    images: Phaser.GameObjects.Image[],
-    displaySize: number,
-    deltaSeconds: number,
-    lensOrbitSpeedMultiplier: number,
-    areLayersEnabled: boolean,
-    isMirror: boolean
-  ): void {
-    void displaySize;
-    void deltaSeconds;
-    void lensOrbitSpeedMultiplier;
-    void areLayersEnabled;
-    void isMirror;
-    for (let i = 0; i < images.length; i += 1) {
-      const image = images[i];
-      image.setVisible(false);
-    }
-  }
-
-  private updateLensTextureImages(
-    time: number,
-    isMirror: boolean,
-    _lensOrbitSpeedMultiplier: number,
-    areProjectionLensLayersEnabled: boolean
-  ): void {
-    const images = isMirror ? this.wrapMirrorLensTextureImages : this.lensTextureImages;
-
-    for (let i = 0; i < images.length; i += 1) {
-      const image = images[i];
-      const layer = BLACK_HOLE_LENS_TEXTURE_LAYERS[i];
-      const scalePulse = 1 + Math.sin(time * 0.001 * layer.scalePulseSpeed + i * 1.7) * layer.scalePulse;
-      const isVisible = !layer.isProjectionLayer || areProjectionLensLayersEnabled;
-
-      image.setRotation(0);
-      image.setScale((BLACK_HOLE_LENS_TEXTURE_DISPLAY_SIZE / BLACK_HOLE_LENS_TEXTURE_SIZE) * scalePulse * this.lensFieldScale);
-      image.setVisible(isVisible);
-      image.setAlpha(isVisible ? (isMirror ? layer.mirrorAlpha : layer.alpha) : 0);
-    }
-  }
-
-  private setLensLengthMultiplier(lensLengthMultiplier: number): void {
-    const nextMultiplier = Number(Phaser.Math.Clamp(lensLengthMultiplier, 0.25, 4).toFixed(1));
-
-    if (nextMultiplier === this.lensLengthMultiplier) {
-      return;
-    }
-
-    this.lensLengthMultiplier = nextMultiplier;
-    this.redrawLensTextureLayers();
-  }
-
-  private createLensingArcs(): BlackHoleLensingArc[] {
-    return Array.from({ length: BLACK_HOLE_LENSING_ARC_MAX_COUNT }, (_, index) =>
-      this.createLensingArc(index, false)
-    );
-  }
-
-  private createLensingArc(index: number, startAtOuter: boolean): BlackHoleLensingArc {
-    const isDenseBandArc = index % 5 === 0;
-    const isInnerEdgeArc = index < BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT;
-    const clusterOffset = isDenseBandArc ? Phaser.Math.FloatBetween(-0.16, 0.16) : Phaser.Math.FloatBetween(-0.32, 0.32);
-    const baseAngle = isDenseBandArc
-      ? Math.PI * 0.08 + clusterOffset
-      : index * 2.399963229728653 + Phaser.Math.FloatBetween(-0.26, 0.26);
-    const radius = isInnerEdgeArc
-      ? Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN, BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX)
-      : startAtOuter
-        ? Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MIN, BLACK_HOLE_LENS_ARC_SPAWN_RADIUS_MAX)
-        : Phaser.Math.Linear(
-            BLACK_HOLE_LENS_ARC_INNER_RADIUS,
-            BLACK_HOLE_LENS_ARC_OUTER_RADIUS,
-            Math.pow(Phaser.Math.FloatBetween(0, 1), 2.15)
-          );
-    const proximity = 1 - radius;
-    const baseAlpha = BLACK_HOLE_LENS_ARC_ALPHA;
-
-    return {
-      angle: baseAngle,
-      radius,
-      arcLength: BLACK_HOLE_LENS_ARC_LENGTH,
-      baseArcLength: BLACK_HOLE_LENS_ARC_LENGTH,
-      thickness: BLACK_HOLE_LENS_ARC_THICKNESS,
-      baseAlpha,
-      alpha: baseAlpha,
-      color: BLACK_HOLE_LENSING_ARC_COLORS[Phaser.Math.Between(0, BLACK_HOLE_LENSING_ARC_COLORS.length - 1)],
-      inwardSpeed: Phaser.Math.Linear(
-        BLACK_HOLE_LENS_ARC_INWARD_SPEED_MIN,
-        BLACK_HOLE_LENS_ARC_INWARD_SPEED_MAX,
-        Phaser.Math.Clamp(radius, 0, 1)
-      ) * Phaser.Math.FloatBetween(0.94, 1.06),
-      angularDriftSpeed: Phaser.Math.Linear(
-        BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MIN,
-        BLACK_HOLE_LENS_ARC_ANGULAR_SPEED_MAX,
-        Math.pow(proximity, 0.82)
-      ) * Phaser.Math.FloatBetween(0.94, 1.06),
-      age: startAtOuter ? 0 : Phaser.Math.FloatBetween(0, BLACK_HOLE_LENS_ARC_LIFETIME_MAX * 0.7),
-      lifetime: Phaser.Math.FloatBetween(BLACK_HOLE_LENS_ARC_LIFETIME_MIN, BLACK_HOLE_LENS_ARC_LIFETIME_MAX),
-      pulsePhase: Phaser.Math.FloatBetween(0, Math.PI * 2),
-      squash: Phaser.Math.Linear(
-        BLACK_HOLE_LENS_ARC_SQUASH_MIN,
-        BLACK_HOLE_LENS_ARC_SQUASH_MAX,
-        Phaser.Math.FloatBetween(0, 1)
-      )
-    };
-  }
-
-  private updateLensingArcs(deltaSeconds: number, lensOrbitSpeedMultiplier: number): void {
-    const orbitMultiplier = Math.max(0, lensOrbitSpeedMultiplier);
-
-    for (let i = 0; i < this.activeLensingArcCount; i += 1) {
-      const arc = this.lensingArcs[i];
-      const isInnerEdgeArc = i < BLACK_HOLE_LENS_ARC_INNER_EDGE_COUNT;
-      const proximity = Phaser.Math.Clamp(1 - arc.radius, 0, 1);
-
-      arc.age += deltaSeconds;
-      arc.angle += arc.angularDriftSpeed * (0.92 + proximity * 1.28) * orbitMultiplier * deltaSeconds;
-
-      if (isInnerEdgeArc) {
-        arc.radius = Phaser.Math.Clamp(
-          arc.radius,
-          BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MIN,
-          BLACK_HOLE_LENS_ARC_INNER_EDGE_RADIUS_MAX
-        );
-        continue;
-      }
-
-      arc.radius -= arc.inwardSpeed * Phaser.Math.Linear(1, 0.18, Math.pow(proximity, 1.15)) * deltaSeconds;
-
-      if (arc.radius <= BLACK_HOLE_LENS_ARC_RESET_RADIUS) {
-        this.lensingArcs[i] = this.createLensingArc(i, true);
-      }
-    }
-  }
-
   private draw(
     graphics: Phaser.GameObjects.Graphics,
     isMirror: boolean,
     isDebugEnabled: boolean,
-    time = this.scene.time.now
+    _time = this.scene.time.now
   ): void {
-    const pulse = 0.5 + Math.sin(time * BLACK_HOLE_VISUAL_PULSE_SPEED + this.visualPhase) * 0.5;
     const mirrorAlpha = isMirror ? 0.55 : 1;
     const eventRadius = this.eventHorizonRadius;
     const captureRadius = this.captureRadius;
@@ -1008,27 +393,8 @@ export class BlackHoleSystem {
 
     graphics.clear();
 
-    graphics.fillStyle(0x000005, 0.1 * mirrorAlpha);
-    graphics.fillCircle(0, 0, warningRadius);
-    graphics.lineStyle(1, 0x26344f, 0.22 * mirrorAlpha);
-    graphics.strokeCircle(0, 0, warningRadius);
-
-    graphics.fillStyle(0x02030a, 0.16 * mirrorAlpha);
-    graphics.fillCircle(0, 0, captureRadius + pulse * 5);
-    graphics.lineStyle(2, 0x42f5d7, 0.32 * mirrorAlpha);
-    graphics.strokeCircle(0, 0, captureRadius + pulse * 4);
-
     graphics.fillStyle(0x000000, 1);
     graphics.fillCircle(0, 0, eventRadius);
-    graphics.lineStyle(5, 0x05060b, 0.82 * mirrorAlpha);
-    graphics.strokeCircle(0, 0, eventRadius + 2);
-    graphics.lineStyle(2, 0xff5964, 0.92 * mirrorAlpha);
-    graphics.strokeCircle(0, 0, eventRadius + 5 + pulse * 2);
-    graphics.lineStyle(1, 0xffc857, 0.45 * mirrorAlpha);
-    graphics.strokeCircle(0, 0, eventRadius + 12 + pulse * 5);
-
-    graphics.fillStyle(0x000000, 1);
-    graphics.fillCircle(0, 0, eventRadius * 0.82);
 
     if (isDebugEnabled) {
       graphics.lineStyle(1, 0x9fd8ff, 0.3 * mirrorAlpha);
@@ -1039,78 +405,4 @@ export class BlackHoleSystem {
       graphics.strokeCircle(0, 0, eventRadius);
     }
   }
-
-  private drawEventHorizonMask(graphics: Phaser.GameObjects.Graphics, isMirror: boolean): void {
-    const radius = (this.coreRadius + BLACK_HOLE_HORIZON_RIM_RADIUS_OFFSET) * BLACK_HOLE_VISUAL_HORIZON_SCALE;
-
-    graphics.fillStyle(0x000000, isMirror ? 0.86 : 1);
-    graphics.fillCircle(0, 0, radius);
-  }
-
-  private drawLensingArcs(
-    graphics: Phaser.GameObjects.Graphics,
-    isMirror: boolean,
-    time: number,
-    foreground: boolean
-  ): void {
-    const mirrorAlpha = isMirror ? 0.58 : 1;
-
-    for (let i = 0; i < this.activeLensingArcCount; i += 1) {
-      const arc = this.lensingArcs[i];
-      const fadeIn = Phaser.Math.Clamp((arc.radius - BLACK_HOLE_LENS_ARC_INNER_RADIUS) / 0.035, 0, 1);
-      const edgeFade = Phaser.Math.Clamp((BLACK_HOLE_LENS_ARC_OUTER_RADIUS - arc.radius) / 0.045, 0, 1);
-      const driftedAngle = arc.angle + Math.sin(time * 0.00023 + arc.pulsePhase) * 0.012;
-      const alpha = arc.baseAlpha * fadeIn * edgeFade * mirrorAlpha * (foreground ? 0.9 : 1);
-      const radius = this.getLensingRenderRadius(
-        arc.radius + (Math.sin(time * 0.00031 + arc.pulsePhase) * 0.7) / BLACK_HOLE_BASE_LENS_FIELD_RADIUS
-      );
-      const arcLength = arc.baseArcLength * Math.sqrt(this.lensLengthMultiplier);
-
-      arc.alpha = alpha;
-      arc.arcLength = arcLength;
-
-      this.drawLensingOrbitArc(graphics, arc, driftedAngle, arcLength, radius, alpha, foreground);
-    }
-  }
-
-  private drawLensingOrbitArc(
-    graphics: Phaser.GameObjects.Graphics,
-    arc: BlackHoleLensingArc,
-    centerAngle: number,
-    arcLength: number,
-    radius: number,
-    alpha: number,
-    foreground: boolean
-  ): void {
-    const segments = 6;
-    const startAngle = centerAngle - arcLength * 0.5;
-    let previous = this.getLensingArcPoint(startAngle, radius, arc.squash);
-
-    for (let i = 1; i <= segments; i += 1) {
-      const segmentProgress = i / segments;
-      const angle = startAngle + arcLength * segmentProgress;
-      const point = this.getLensingArcPoint(angle, radius, arc.squash);
-      const midY = (previous.y + point.y) * 0.5;
-      const isFrontSegment = midY >= -this.coreRadius * 0.08;
-
-      if (isFrontSegment === foreground) {
-        graphics.lineStyle(arc.thickness, arc.color, alpha);
-        graphics.lineBetween(previous.x, previous.y, point.x, point.y);
-      }
-
-      previous = point;
-    }
-  }
-
-  private getLensingArcPoint(angle: number, radius: number, squash: number): { x: number; y: number } {
-    return {
-      x: Math.cos(angle) * radius,
-      y: Math.sin(angle) * radius * squash
-    };
-  }
-
-  private getLensingRenderRadius(normalizedRadius: number): number {
-    return Phaser.Math.Linear(this.coreRadius + 28, BLACK_HOLE_VISUAL_FIELD_RADIUS * this.visualScaleMultiplier, Phaser.Math.Clamp(normalizedRadius, 0, 1));
-  }
-
 }
