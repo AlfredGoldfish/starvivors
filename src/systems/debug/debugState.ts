@@ -638,7 +638,12 @@ export class DebugState {
   }
 
   createMenuValues(snapshot: {
+    runTimeSeconds: number;
     selectedShipName: string;
+    activeWeaponName: string;
+    playerXp: number;
+    nextXpThreshold: number;
+    bankedUpgrades: number;
     weaponCooldownSeconds: number;
     backgroundStarsVisible: boolean;
     starfieldFarParallax: number;
@@ -704,7 +709,12 @@ export class DebugState {
     weaponTuningSummaries: Record<WeaponId, string>;
   }): DebugMenuValues {
     return {
+      runTimeSeconds: snapshot.runTimeSeconds,
       selectedShipName: snapshot.selectedShipName,
+      activeWeaponName: snapshot.activeWeaponName,
+      playerXp: snapshot.playerXp,
+      nextXpThreshold: snapshot.nextXpThreshold,
+      bankedUpgrades: snapshot.bankedUpgrades,
       enemySpawningEnabled: this.enemySpawningEnabled,
       asteroidSpawningAvailable: false,
       asteroidSpawningEnabled: this.asteroidSpawningEnabled,

@@ -15,7 +15,12 @@ export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
 
 export interface DebugMenuValues {
+  runTimeSeconds: number;
   selectedShipName: string;
+  activeWeaponName: string;
+  playerXp: number;
+  nextXpThreshold: number;
+  bankedUpgrades: number;
   enemySpawningEnabled: boolean;
   asteroidSpawningAvailable: boolean;
   asteroidSpawningEnabled: boolean;

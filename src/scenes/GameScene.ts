@@ -1513,7 +1513,12 @@ export class GameScene extends Phaser.Scene {
     const time = this.time.now;
 
     return this.debugState.createMenuValues({
+      runTimeSeconds: this.getSurvivalElapsedMs(time) / 1000,
       selectedShipName: this.getSelectedShipDefinition().displayName,
+      activeWeaponName: this.getActivePrimaryWeaponDefinition()?.displayName ?? this.getEffectiveAutoWeaponDefinition()?.displayName ?? 'None',
+      playerXp: this.playerXp,
+      nextXpThreshold: this.nextXpThreshold,
+      bankedUpgrades: this.bankedUpgrades,
       weaponCooldownSeconds: this.getActiveAutoWeaponCooldownMs() / 1000,
       ...this.starfield.getDebugValues(),
       blackHoleLensOrbitSpeedMultiplier: this.debugBlackHoleLensOrbitSpeedMultiplier,

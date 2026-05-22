@@ -64,7 +64,7 @@ const TAB_HEIGHT = 22;
 const TAB_GAP = 5;
 const CONTENT_TOP = 102;
 const TABS: DebugTab[] = [
-  { id: 'run', label: 'Run' },
+  { id: 'run', label: 'Overview' },
   { id: 'ship', label: 'Ship' },
   { id: 'weapons', label: 'Weapons' },
   { id: 'physics', label: 'Physics' },
@@ -77,7 +77,7 @@ const TABS: DebugTab[] = [
 
 const DEBUG_TOOLTIPS: Record<string, string> = {
   close: 'Close the debug panel. Current debug tuning values remain active.',
-  'tab-run': 'Run controls for pause state, player hull, invulnerability, and economy.',
+  'tab-run': 'Live run overview, diagnostics, player controls, fuel, and economy tools.',
   'tab-ship': 'Ship readouts for current hull, movement stats, shields, and projectiles.',
   'tab-weapons': 'Weapon tuning controls for temporary damage, fire-rate, and cooldown testing.',
   'tab-physics': 'Physics tuning for player control, enemy movement, and asteroid collision feel.',
@@ -86,6 +86,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'tab-effects': 'Death shard effect tuning and quick effect tests.',
   'tab-blackHole': 'Black hole debug controls for radii, field forces, damage, and PNG lens layers.',
   'tab-visuals': 'Combat feedback, background, and parallax controls for visual testing.',
+  'run-overview': 'Current run summary: ship, weapon, hull, fuel, XP, entities, projectiles, and time.',
   'run-state': 'Shows whether the debug pause toggle is currently stopping game updates.',
   player: 'Shows player hull and debug invulnerability state.',
   scrap: 'Shows active scrap pickups, current run scrap, and total credits.',
@@ -98,8 +99,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'fuel-empty': 'Set fuel to zero to test emergency thrust behavior.',
   'fuel-drain-toggle': 'Pause or resume fuel drain without changing current fuel.',
   'fuel-mode-toggle': 'Switch fuel drain between current timer-plus-thrust mode and thrust-only testing mode.',
-  'preset-save': 'Save all debug tuning settings to one markdown preset.',
-  'preset-load': 'Load all debug tuning settings from one markdown preset.',
   'preset-reset': 'Reset all debug tuning settings to source defaults.',
   profiler: 'Tracks frame time, subsystem timings, entity counts, and spike samples for lag diagnosis.',
   'profiler-toggle': 'Enable or disable rolling lag profiling.',
@@ -119,8 +118,8 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'add-scrap': 'Add 100 run scrap without spawning pickups.',
   'add-credits': 'Add 100 permanent credits for shop and economy testing.',
   'ship-stats': 'Live player ship stats after ship selection, upgrades, and debug physics tuning.',
-  'ship-loadout-interceptor': 'Editable Interceptor defaults for live movement and hull tuning. Save useful values as markdown before converting them into source defaults.',
-  'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, hull, and hit-radius tuning. Save useful values as markdown before converting them into source defaults.',
+  'ship-loadout-interceptor': 'Editable Interceptor defaults for live movement and hull tuning.',
+  'ship-loadout-bulwark': 'Editable Bulwark defaults for live movement, hull, and hit-radius tuning.',
   'interceptor-hull-down': 'Decrease Interceptor base hull for loadout testing.',
   'interceptor-hull-up': 'Increase Interceptor base hull for loadout testing.',
   'interceptor-speed-down': 'Decrease Interceptor max movement speed.',
@@ -133,8 +132,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'interceptor-strafe-up': 'Increase Interceptor side-thrust acceleration.',
   'interceptor-hit-down': 'Decrease Interceptor collision radius.',
   'interceptor-hit-up': 'Increase Interceptor collision radius.',
-  'interceptor-save': 'Download the current Interceptor debug loadout as markdown.',
-  'interceptor-load': 'Load an Interceptor debug loadout markdown file.',
   'interceptor-reset': 'Clear Interceptor debug loadout overrides.',
   'bulwark-hull-down': 'Decrease Bulwark base hull for loadout testing.',
   'bulwark-hull-up': 'Increase Bulwark base hull for loadout testing.',
@@ -148,8 +145,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'bulwark-strafe-up': 'Increase Bulwark side-thruster output.',
   'bulwark-hit-down': 'Decrease Bulwark collision radius.',
   'bulwark-hit-up': 'Increase Bulwark collision radius.',
-  'bulwark-save': 'Download the current Bulwark debug loadout as markdown.',
-  'bulwark-load': 'Load a Bulwark debug loadout markdown file.',
   'bulwark-reset': 'Clear Bulwark debug loadout overrides.',
   'shield-state': 'Shows Ramming Shield HP and dash charges when the shield is equipped.',
   projectiles: 'Shows active player and enemy projectile counts.',
@@ -163,7 +158,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'cooldown-down': 'Shorten the current weapon cooldown.',
   'cooldown-up': 'Lengthen the current weapon cooldown.',
   'weapon-reset': 'Reset temporary weapon damage and fire-rate tuning.',
-  'weapon-loadout-pulse-cannon': 'Editable Pulse Cannon weapon defaults for live projectile tuning. Save useful values as markdown before converting them into source defaults.',
+  'weapon-loadout-pulse-cannon': 'Editable Pulse Cannon weapon defaults for live projectile tuning.',
   'pulse-damage-down': 'Decrease Pulse Cannon base projectile damage.',
   'pulse-damage-up': 'Increase Pulse Cannon base projectile damage.',
   'pulse-cooldown-down': 'Shorten Pulse Cannon base cooldown.',
@@ -174,10 +169,8 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'pulse-life-up': 'Increase Pulse Cannon projectile lifetime.',
   'pulse-range-down': 'Decrease Pulse Cannon projectile range.',
   'pulse-range-up': 'Increase Pulse Cannon projectile range.',
-  'pulse-save': 'Download the current Pulse Cannon debug loadout as markdown.',
-  'pulse-load': 'Load a Pulse Cannon debug loadout markdown file.',
   'pulse-reset': 'Clear Pulse Cannon debug loadout overrides.',
-  'weapon-loadout-ramming-shield': 'Editable Ramming Shield weapon defaults for live shield, dash, and ram-damage tuning. Save useful values as markdown before converting them into source defaults.',
+  'weapon-loadout-ramming-shield': 'Editable Ramming Shield weapon defaults for live shield, dash, guard, and bash tuning.',
   'shield-hp-down': 'Decrease Ramming Shield maximum shield HP.',
   'shield-hp-up': 'Increase Ramming Shield maximum shield HP.',
   'shield-regen-down': 'Decrease Ramming Shield HP regeneration rate.',
@@ -186,18 +179,16 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'shield-charges-up': 'Increase Ramming Shield dash charge count.',
   'shield-recharge-down': 'Shorten Ramming Shield dash recharge time.',
   'shield-recharge-up': 'Lengthen Ramming Shield dash recharge time.',
-  'shield-impulse-down': 'Decrease Ramming Shield dash impulse.',
-  'shield-impulse-up': 'Increase Ramming Shield dash impulse.',
-  'shield-ram-down': 'Decrease empowered dash ram damage multiplier.',
-  'shield-ram-up': 'Increase empowered dash ram damage multiplier.',
-  'shield-base-down': 'Decrease Ramming Shield base ram damage.',
-  'shield-base-up': 'Increase Ramming Shield base ram damage.',
-  'shield-max-down': 'Decrease Ramming Shield maximum ram damage clamp.',
-  'shield-max-up': 'Increase Ramming Shield maximum ram damage clamp.',
+  'shield-distance-down': 'Decrease Ramming Shield bash dash distance.',
+  'shield-distance-up': 'Increase Ramming Shield bash dash distance.',
+  'shield-guard-down': 'Decrease Ramming Shield guard contact damage.',
+  'shield-guard-up': 'Increase Ramming Shield guard contact damage.',
+  'shield-bash-down': 'Decrease Ramming Shield bash damage.',
+  'shield-bash-up': 'Increase Ramming Shield bash damage.',
+  'shield-knock-down': 'Decrease Ramming Shield knockback impulse.',
+  'shield-knock-up': 'Increase Ramming Shield knockback impulse.',
   'shield-size-down': 'Decrease Ramming Shield collider width.',
   'shield-size-up': 'Increase Ramming Shield collider width.',
-  'shield-save': 'Download the current Ramming Shield debug loadout as markdown.',
-  'shield-load': 'Load a Ramming Shield debug loadout markdown file.',
   'shield-reset': 'Clear Ramming Shield debug loadout overrides.',
   'physics-player': 'Live player movement values after ship stats and debug physics multipliers.',
   'physics-global': 'Global physical speed and impact-damage caps. These are safety limits for chaotic momentum testing.',
@@ -316,8 +307,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'field-visual-up': 'Increase black hole visual radius scale.',
   'field-core-down': 'Decrease black hole core visual scale.',
   'field-core-up': 'Increase black hole core visual scale.',
-  'field-save-tuning': 'Save current black hole field tuning.',
-  'field-load-tuning': 'Load saved black hole field tuning.',
   'field-reset': 'Reset black hole field and visual tuning.',
   'black-hole-lenses': 'Current selected black hole PNG lens layer and add-layer image selection.',
   'png-layer-prev': 'Select previous black hole PNG layer.',
@@ -337,8 +326,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'png-add-layer': 'Add a new PNG lens layer using the selected add image.',
   'png-duplicate-layer': 'Duplicate the selected PNG lens layer.',
   'png-remove-layer': 'Remove the selected PNG lens layer.',
-  'png-save-setup': 'Save current PNG lens layer setup to markdown.',
-  'png-load-setup': 'Load PNG lens layer setup from markdown.',
   background: 'Current background star visibility and parallax values.',
   'health-bars': 'Small world-space health bars. Player bar can always show; other bars reveal after player damage.',
   'health-bars-toggle': 'Toggle all world-space health bars.',
@@ -486,7 +473,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   function createTabButtons(): void {
     const tabX = panelX + PANEL_PADDING;
     const tabY = panelY + 42;
-    const widths = [45, 45, 76, 67, 72, 62, 66, 91, 62];
+    const widths = [72, 45, 76, 67, 72, 62, 66, 91, 62];
     let x = tabX;
     let y = tabY;
 
@@ -506,16 +493,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildRunTab(): void {
     let y = CONTENT_TOP;
-    y = addSection('run', y, 'Run');
+    y = addSection('run', y, 'Overview');
+    addValue('run-overview', 'run', y, VALUE_LINE_HEIGHT * 7);
+    y += VALUE_LINE_HEIGHT * 7 + ROW_GAP;
+
+    y = addSection('run', y, 'Run Controls');
     addValue('run-state', 'run', y, VALUE_LINE_HEIGHT);
     y += VALUE_LINE_HEIGHT + BUTTON_GAP;
     addButton('run', 'debug-pause', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Pause game', config.callbacks.toggleDebugPause);
-    y += BUTTON_HEIGHT + ROW_GAP;
-
-    y = addSection('run', y, 'Debug Preset');
-    addButton('run', 'preset-save', panelX + PANEL_PADDING, y, 101, 'Save all', config.callbacks.saveDebugPreset);
-    addButton('run', 'preset-load', panelX + PANEL_PADDING + 108, y, 101, 'Load all', config.callbacks.loadDebugPreset);
-    addButton('run', 'preset-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset all', config.callbacks.resetDebugTuning);
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('run', y, 'Lag Profiler');
@@ -540,6 +525,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('run', 'diagnostics-open-current', panelX + PANEL_PADDING, y, 154, 'Open run', config.callbacks.openCurrentRunDiagnosticsFolder);
     addButton('run', 'diagnostics-open-runs', panelX + PANEL_PADDING + 162, y, 154, 'Open runs', config.callbacks.openRunsFolder);
+    y += BUTTON_HEIGHT + ROW_GAP;
+    addButton('run', 'preset-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset all debug tuning', config.callbacks.resetDebugTuning);
     y += BUTTON_HEIGHT + ROW_GAP;
 
     y = addSection('run', y, 'Player');
@@ -650,9 +637,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 0.1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('ship', `${shipId}-save`, panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveShipLoadout(shipId));
-    addButton('ship', `${shipId}-load`, panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadShipLoadout(shipId));
-    addButton('ship', `${shipId}-reset`, panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetShipLoadout(shipId));
+    addButton('ship', `${shipId}-reset`, panelX + PANEL_PADDING, y, COLUMN_WIDTH, `Reset ${label}`, () => config.callbacks.resetShipLoadout(shipId));
     return y + BUTTON_HEIGHT + ROW_GAP;
   }
 
@@ -690,9 +675,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('weapons', 'pulse-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('pulse-cannon'));
-    addButton('weapons', 'pulse-load', panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadWeaponLoadout('pulse-cannon'));
-    addButton('weapons', 'pulse-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetWeaponLoadout('pulse-cannon'));
+    addButton('weapons', 'pulse-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset Pulse Cannon', () => config.callbacks.resetWeaponLoadout('pulse-cannon'));
     return y + BUTTON_HEIGHT + ROW_GAP;
   }
 
@@ -754,9 +737,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       step: 1
     });
     y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton('weapons', 'shield-save', panelX + PANEL_PADDING, y, 101, 'Save .md', () => config.callbacks.saveWeaponLoadout('ramming-shield'));
-    addButton('weapons', 'shield-load', panelX + PANEL_PADDING + 108, y, 101, 'Load .md', () => config.callbacks.loadWeaponLoadout('ramming-shield'));
-    addButton('weapons', 'shield-reset', panelX + PANEL_PADDING + 216, y, 100, 'Reset', () => config.callbacks.resetWeaponLoadout('ramming-shield'));
+    addButton('weapons', 'shield-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset Ramming Shield', () => config.callbacks.resetWeaponLoadout('ramming-shield'));
     return y + BUTTON_HEIGHT + ROW_GAP;
   }
 
@@ -1056,9 +1037,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += VALUE_LINE_HEIGHT * 10 + BUTTON_GAP;
     addBlackHoleFieldButtons('blackHole', y);
     y += (BUTTON_HEIGHT + BUTTON_GAP) * 7;
-    addButton('blackHole', 'field-save-tuning', panelX + PANEL_PADDING, y, 154, 'Save field', config.callbacks.saveBlackHoleFieldTuning);
-    addButton('blackHole', 'field-load-tuning', panelX + PANEL_PADDING + 162, y, 154, 'Load field', config.callbacks.loadBlackHoleFieldTuning);
-    y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('blackHole', 'field-reset', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Reset field and visuals', config.callbacks.resetBlackHoleLensTuning);
     y += BUTTON_HEIGHT + ROW_GAP;
 
@@ -1249,9 +1227,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton(tabId, 'png-duplicate-layer', panelX + PANEL_PADDING, y, 154, 'Duplicate', config.callbacks.duplicateBlackHolePngLayer);
     addButton(tabId, 'png-remove-layer', panelX + PANEL_PADDING + 162, y, 154, 'Remove -', config.callbacks.removeBlackHolePngLayer);
-    y += BUTTON_HEIGHT + BUTTON_GAP;
-    addButton(tabId, 'png-save-setup', panelX + PANEL_PADDING, y, 154, 'Save .md', config.callbacks.saveBlackHolePngSetup);
-    addButton(tabId, 'png-load-setup', panelX + PANEL_PADDING + 162, y, 154, 'Load .md', config.callbacks.loadBlackHolePngSetup);
   }
 
   function addButtonPair(
@@ -1623,11 +1598,23 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   }
 
   function setValue(key: string, value: string): void {
-    valuesTextByKey.get(key)?.setText(value);
+    const text = valuesTextByKey.get(key);
+    if (text && text.text !== value) {
+      text.setText(value);
+    }
   }
 
   function setButtonLabel(key: string, value: string): void {
-    buttonsByKey.get(key)?.setLabel(value);
+    const button = buttonsByKey.get(key);
+    if (button && button.text.text !== value) {
+      button.setLabel(value);
+    }
+  }
+
+  function formatRunTime(totalSeconds: number): string {
+    const seconds = Math.max(0, Math.floor(totalSeconds));
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}:${String(seconds % 60).padStart(2, '0')}`;
   }
 
   function parseSummaryValue(summary: string, pattern: RegExp): number {
@@ -1676,6 +1663,16 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       const pngLayer = values.blackHoleSelectedPngLayer;
 
       if (activeTab === 'run') {
+        setValue(
+          'run-overview',
+          `Time ${formatRunTime(values.runTimeSeconds)} / ${values.debugGamePaused ? 'paused' : 'running'}\n` +
+            `Ship ${values.selectedShipName} / weapon ${values.activeWeaponName}\n` +
+            `Hull ${Math.ceil(values.playerHull)} / ${Math.ceil(values.playerMaxHull)} / fuel ${Math.ceil(values.fuel)} / ${values.fuelMax}\n` +
+            `XP ${values.playerXp} / ${values.nextXpThreshold} / banked ${values.bankedUpgrades}\n` +
+            `Entities E/A/D/S ${values.activeEnemies}/${values.activeAsteroids}/${values.activeDebris}/${values.activeScrapPickups}\n` +
+            `Projectiles P/E ${values.playerProjectiles}/${values.enemyProjectiles}\n` +
+            `Scrap ${values.runScrapTotal} / credits ${values.totalCredits}`
+        );
         setValue('run-state', `Game: ${values.debugGamePaused ? 'paused' : 'running'}`);
         setValue('profiler', values.performanceProfilerSummary);
         setValue('diagnostics', values.autoDiagnosticsSummary);
