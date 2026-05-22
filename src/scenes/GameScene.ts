@@ -247,7 +247,7 @@ import { createResultsScreen } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
-import { destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
+import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import { createSecretControlOverlay, type SecretControlOverlayController, type SecretControlOverlayValues } from '../ui/secretControlOverlay';
 import type {
   AsteroidBreakupProfile,
@@ -440,7 +440,6 @@ import {
   ENEMY_WRECKAGE_DEBRIS_MIN_ROTATION_SPEED,
   ENEMY_WRECKAGE_DEBRIS_MIN_SPEED,
   ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY,
-  EXTRACTION_ZONE_RADIUS,
   FORWARD_THRUSTER_INTERVAL_MS,
   IMPACT_MIN_DAMAGE_SPEED_BY_SOURCE,
   INITIAL_ASTEROID_TIERS,
@@ -602,9 +601,9 @@ interface SectorSignalSpawn {
 }
 
 type MissionStatus = 'active' | 'completed' | 'failed';
-type MissionFailureReason = 'player-death' | 'extracted-early';
+type MissionFailureReason = 'player-death' | 'run-ended';
 type DebugFuelDrainMode = 'thrust-only';
-type RunEndReason = 'none' | 'death' | 'extraction' | 'mission';
+type RunEndReason = 'none' | 'death' | 'eject' | 'mission';
 type WeaponRuntimeSlot = 'auto' | 'primary' | 'secondary';
 
 interface BeamSlotRuntime {
@@ -716,11 +715,6 @@ export class GameScene extends Phaser.Scene {
   private fuel = RUN_FUEL_MAX;
   private debugFuelDrainEnabled = true;
   private debugFuelDrainMode: DebugFuelDrainMode = 'thrust-only';
-  private extractionPosition = new Phaser.Math.Vector2(0, 0);
-  private extractionBeacon?: Phaser.GameObjects.Container;
-  private extractionBeaconRing?: Phaser.GameObjects.Arc;
-  private extractionBeaconCore?: Phaser.GameObjects.Arc;
-  private extractionRequiresExitBeforeCompletion = false;
   private debugText!: Phaser.GameObjects.Text;
   private gameplayHud!: GameplayHudSystem;
   private upgradeButtonContainer!: Phaser.GameObjects.Container;
@@ -742,6 +736,7 @@ export class GameScene extends Phaser.Scene {
   private shopBackTarget: ShopBackTarget = 'mainMenu';
   private resultsScreen?: ScreenHandle;
   private pauseMenuScreen?: ScreenHandle;
+  private ejectConfirmScreen?: ScreenHandle;
   private pauseMenuTab: PauseMenuTab = 'pause';
   private starfield!: StarfieldSystem;
   private gameSettings: GameSettings = loadGameSettings();
@@ -798,7 +793,6 @@ export class GameScene extends Phaser.Scene {
     secondary: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 }
   };
   private isPlayerDead = false;
-  private hasExtracted = false;
   private runEndReason: RunEndReason = 'none';
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
@@ -906,7 +900,8 @@ export class GameScene extends Phaser.Scene {
     createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
     this.minimap = new MinimapSystem(this);
     this.gameplayHud = new GameplayHudSystem(this, {
-      assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId)
+      assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId),
+      requestEject: () => this.openEjectConfirmation()
     });
     this.collisionDebugOverlay = new CollisionDebugOverlaySystem({
       scene: this,
@@ -996,7 +991,6 @@ export class GameScene extends Phaser.Scene {
         this.profileStep('player-wrap', () => this.wrapPlayer());
         this.profileStep('camera-lead', () => this.updateCameraLead());
         this.profileStep('mission', () => this.updateMission(time));
-        this.profileStep('extraction', () => this.updateExtraction(time));
       }
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
       if (!this.isPlayerDead) {
@@ -1580,7 +1574,6 @@ export class GameScene extends Phaser.Scene {
       playerVelocityY: this.playerVelocity.y,
       playerCollisionDamageImmune: this.debugPlayerCollisionDamageImmune,
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
-      extractionDistance: this.getExtractionDistance(),
       secretControlUnlocked: this.progressionState.secretControlUnlocked,
       fuel: this.fuel,
       fuelMax: RUN_FUEL_MAX,
@@ -1744,6 +1737,18 @@ export class GameScene extends Phaser.Scene {
           bypassShield: true,
           bypassDefense: true
         });
+        return this.getTestHarnessState();
+      },
+      requestEject: () => {
+        this.openEjectConfirmation();
+        return this.getTestHarnessState();
+      },
+      cancelEject: () => {
+        this.closeEjectConfirmation();
+        return this.getTestHarnessState();
+      },
+      confirmEject: () => {
+        this.confirmEject();
         return this.getTestHarnessState();
       },
       continueRun: () => {
@@ -1998,9 +2003,9 @@ export class GameScene extends Phaser.Scene {
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
       isPlayerDead: this.isPlayerDead,
-      hasExtracted: this.hasExtracted,
       runEndReason: this.runEndReason,
-      canContinueRun: this.runEndReason !== 'death',
+      canContinueRun: false,
+      isEjectConfirmOpen: Boolean(this.ejectConfirmScreen),
       sectorScale: this.sectorScale,
       sectorSeed: this.sectorSeed,
       sectorRegionCount: this.sectorLayout.regions.length,
@@ -2021,7 +2026,6 @@ export class GameScene extends Phaser.Scene {
       maxFuel: RUN_FUEL_MAX,
       fuelDrainEnabled: this.debugFuelDrainEnabled,
       fuelDrainMode: this.debugFuelDrainMode,
-      extractionDistance: this.getExtractionDistance(),
       playerXp: this.playerXp,
       runScrapTotal: this.runScrapTotal,
       runScrapSpent: this.runScrapSpent,
@@ -2699,9 +2703,8 @@ export class GameScene extends Phaser.Scene {
     const afterFuelDrain = harness.getState();
     this.fuel = 0;
     const emergencyThrustMultiplier = this.getFuelThrustMultiplier();
-    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
-    this.updateExtraction(this.time.now);
-    const extracted = harness.getState();
+    this.completeEjectRun();
+    const ejected = harness.getState();
 
     harness.addCredits(100);
     harness.unlockShip('bulwark');
@@ -2718,9 +2721,9 @@ export class GameScene extends Phaser.Scene {
       interceptorDampedSpeed > 275 &&
       interceptorDampedSpeed < 380 &&
       bulwarkDampedSpeed > interceptorDampedSpeed &&
-      extracted.hasExtracted &&
-      extracted.isResultsScreenOpen &&
-      extracted.hasPaidRunCredits;
+      ejected.runEndReason === 'eject' &&
+      ejected.isResultsScreenOpen &&
+      ejected.hasPaidRunCredits;
 
     document.body.setAttribute('data-starvivors-phase7-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -2729,7 +2732,7 @@ export class GameScene extends Phaser.Scene {
         initial,
         afterFuelDrain,
         emergencyThrustMultiplier,
-        extracted,
+        ejected,
         interceptorDampedSpeed,
         bulwarkDampedSpeed
       })
@@ -2753,12 +2756,6 @@ export class GameScene extends Phaser.Scene {
       arena: createArenaSize(viewport, scale)
     }));
     const expectedArena = createArenaSize(viewport, this.sectorScale);
-    const extractionInBounds =
-      this.extractionPosition.x >= 0 &&
-      this.extractionPosition.x < this.arena.width &&
-      this.extractionPosition.y >= 0 &&
-      this.extractionPosition.y < this.arena.height;
-
     this.player.setPosition(this.arena.width + 42, -37);
     this.wrapPlayer();
     const wrapped = harness.getState();
@@ -2802,7 +2799,6 @@ export class GameScene extends Phaser.Scene {
     const pass =
       configuredScalePass &&
       scaleSamplesPass &&
-      extractionInBounds &&
       wrapPass &&
       Boolean(mirrorState?.showMirror) &&
       cameraPass &&
@@ -2817,11 +2813,6 @@ export class GameScene extends Phaser.Scene {
         sectorScale: this.sectorScale,
         expectedArena,
         scaleSamples,
-        extractionPosition: {
-          x: this.extractionPosition.x,
-          y: this.extractionPosition.y
-        },
-        extractionInBounds,
         wrapped,
         wrapPass,
         mirrorState,
@@ -3298,7 +3289,8 @@ export class GameScene extends Phaser.Scene {
       afterBlackHole.missionStatus === 'completed' &&
       afterBlackHole.runEndReason === 'none' &&
       !afterBlackHole.isResultsScreenOpen &&
-      continued.canContinueRun;
+      continued.runEndReason === 'none' &&
+      !continued.isResultsScreenOpen;
     const hunterPass =
       hunterSpawnedEnemyIds.length > 0 &&
       hunterEvent.status === 'completed' &&
@@ -3367,7 +3359,7 @@ export class GameScene extends Phaser.Scene {
     const afterReroll = harness.rerollUpgrades();
     const debugMode = harness.toggleRerollDebugCost();
 
-    this.completeExtraction();
+    this.completeEjectRun();
     const afterResults = harness.getState();
     const persisted = loadProgressionState();
     const rewardPass =
@@ -3570,10 +3562,10 @@ export class GameScene extends Phaser.Scene {
     }
     const missionComplete = harness.getState();
 
-    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
-    this.playerVelocity.set(0, 0);
-    this.updateExtraction(this.time.now + 1200);
-    const extracted = harness.getState();
+    const ejectPrompt = harness.requestEject();
+    const ejectCancelled = harness.cancelEject();
+    harness.requestEject();
+    const ejected = harness.confirmEject();
 
     const freeRangePass =
       freeRange.selectedMissionId === 'free-range' &&
@@ -3590,12 +3582,15 @@ export class GameScene extends Phaser.Scene {
       missionComplete.missionStatus === 'completed' &&
       missionComplete.runEndReason === 'none' &&
       !missionComplete.isResultsScreenOpen;
-    const extractionPass =
-      extracted.runEndReason === 'extraction' &&
-      extracted.hasExtracted &&
-      extracted.isResultsScreenOpen &&
-      extracted.missionStatus === 'completed';
-    const pass = freeRangePass && fuelPass && missionPass && extractionPass;
+    const ejectPass =
+      ejectPrompt.isEjectConfirmOpen &&
+      !ejectCancelled.isEjectConfirmOpen &&
+      ejectCancelled.runEndReason === 'none' &&
+      ejected.runEndReason === 'eject' &&
+      !ejected.canContinueRun &&
+      ejected.isResultsScreenOpen &&
+      ejected.missionStatus === 'completed';
+    const pass = freeRangePass && fuelPass && missionPass && ejectPass;
 
     document.body.setAttribute('data-starvivors-phase15-5-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -3606,11 +3601,13 @@ export class GameScene extends Phaser.Scene {
         afterThrust,
         missionInitial,
         missionComplete,
-        extracted,
+        ejectPrompt,
+        ejectCancelled,
+        ejected,
         freeRangePass,
         fuelPass,
         missionPass,
-        extractionPass
+        ejectPass
       })
     );
   }
@@ -3890,13 +3887,11 @@ export class GameScene extends Phaser.Scene {
     const deathContinueBlocked = harness.continueRun();
 
     harness.restartRun();
-    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
-    this.playerVelocity.set(0, 0);
-    this.updateExtraction(this.time.now);
-    const extracted = harness.getState();
-    const continuedFromExtraction = harness.continueRun();
-    this.updateExtraction(this.time.now + 16);
-    const afterExtractionContinueTick = harness.getState();
+    const ejectPrompt = harness.requestEject();
+    const ejectCancelled = harness.cancelEject();
+    harness.requestEject();
+    const ejected = harness.confirmEject();
+    const ejectionContinueBlocked = harness.continueRun();
 
     harness.restartRun();
     harness.selectMission('survey-signal');
@@ -3919,19 +3914,19 @@ export class GameScene extends Phaser.Scene {
       deathContinueBlocked.isPlayerDead &&
       deathContinueBlocked.isResultsScreenOpen &&
       !deathContinueBlocked.canContinueRun &&
-      extracted.runEndReason === 'extraction' &&
-      extracted.canContinueRun &&
-      !continuedFromExtraction.isPlayerDead &&
-      !continuedFromExtraction.isResultsScreenOpen &&
-      afterExtractionContinueTick.runEndReason === 'none' &&
-      !afterExtractionContinueTick.isPlayerDead &&
-      !afterExtractionContinueTick.isResultsScreenOpen &&
+      ejectPrompt.isEjectConfirmOpen &&
+      !ejectCancelled.isEjectConfirmOpen &&
+      ejected.runEndReason === 'eject' &&
+      ejected.isResultsScreenOpen &&
+      !ejected.canContinueRun &&
+      ejectionContinueBlocked.runEndReason === 'eject' &&
+      ejectionContinueBlocked.isResultsScreenOpen &&
       missionComplete.runEndReason === 'none' &&
       !missionComplete.isResultsScreenOpen &&
-      missionComplete.canContinueRun &&
+      !missionComplete.canContinueRun &&
       !continued.isPlayerDead &&
       !continued.isResultsScreenOpen &&
-      continued.hull === continued.maxHull &&
+      continued.runEndReason === 'none' &&
       continued.missionStatus === 'completed';
     const pass = fuelControlsPass && continuePass;
 
@@ -3946,9 +3941,10 @@ export class GameScene extends Phaser.Scene {
         modeToggled,
         dead,
         deathContinueBlocked,
-        extracted,
-        continuedFromExtraction,
-        afterExtractionContinueTick,
+        ejectPrompt,
+        ejectCancelled,
+        ejected,
+        ejectionContinueBlocked,
         missionComplete,
         continued,
         fuelControlsPass,
@@ -4172,6 +4168,7 @@ export class GameScene extends Phaser.Scene {
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
+    this.ejectConfirmScreen = undefined;
     this.ensureSelectedShipStartingWeaponAvailable(this.getSelectedShipDefinition());
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition(), this.weaponLoadout);
     this.hasResolvedSecondaryWeaponChoice = false;
@@ -4183,11 +4180,6 @@ export class GameScene extends Phaser.Scene {
     this.playerVelocity.set(0, 0);
     this.cameraLead.set(0, 0);
     this.fuel = RUN_FUEL_MAX;
-    this.extractionPosition.set(0, 0);
-    this.extractionBeacon = undefined;
-    this.extractionBeaconRing = undefined;
-    this.extractionBeaconCore = undefined;
-    this.extractionRequiresExitBeforeCompletion = false;
     this.missionRuntime = undefined;
     this.missionObjectiveBeacon = undefined;
     this.missionObjectiveBeaconRing = undefined;
@@ -4205,13 +4197,13 @@ export class GameScene extends Phaser.Scene {
     this.lastRunSurvivalMs = 0;
     this.playerInvulnerableUntil = 0;
     this.isPlayerDead = false;
-    this.hasExtracted = false;
     this.runEndReason = 'none';
     this.playerXp = 0;
     this.nextXpThreshold = INITIAL_XP_THRESHOLD;
     this.bankedUpgrades = 0;
     this.rerollsThisRun = 0;
     this.resultsScreen = undefined;
+    this.ejectConfirmScreen = undefined;
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.resetBeamRuntime();
@@ -4300,7 +4292,6 @@ export class GameScene extends Phaser.Scene {
     this.createWorldEvents(center);
     this.createRareEvents(center);
     this.createMissionRuntime(center);
-    this.createExtractionBeacon(center);
     this.createMissionObjectiveBeacon();
     this.createInitialLiveEnemies(center);
     this.createSectorAsteroidSpawns(center);
@@ -4447,6 +4438,7 @@ export class GameScene extends Phaser.Scene {
     this.shipSelectScreen = undefined;
     this.resultsScreen = undefined;
     this.pauseMenuScreen = undefined;
+    this.ejectConfirmScreen = undefined;
     this.isPauseMenuOpen = false;
     this.awaitingBinding = undefined;
 
@@ -5313,25 +5305,6 @@ export class GameScene extends Phaser.Scene {
     this.missionObjectiveBeacon.setDepth(8);
     this.missionObjectiveBeaconRing = ring;
     this.missionObjectiveBeaconCore = core;
-  }
-
-  private createExtractionBeacon(center: Phaser.Math.Vector2): void {
-    const distance = Math.min(this.arena.width, this.arena.height) * 0.38;
-    this.extractionPosition.set(
-      wrapCoordinate(center.x + distance, this.arena.width),
-      wrapCoordinate(center.y - distance * 0.62, this.arena.height)
-    );
-
-    const outer = this.add.circle(0, 0, EXTRACTION_ZONE_RADIUS, 0x42f5d7, 0.06);
-    outer.setStrokeStyle(2, 0x42f5d7, 0.64);
-    const ring = this.add.circle(0, 0, EXTRACTION_ZONE_RADIUS * 0.62, 0x000000, 0);
-    ring.setStrokeStyle(2, 0xffc857, 0.9);
-    const core = this.add.circle(0, 0, 9, 0xf2fbff, 0.85);
-
-    this.extractionBeacon = this.add.container(this.extractionPosition.x, this.extractionPosition.y, [outer, ring, core]);
-    this.extractionBeacon.setDepth(7);
-    this.extractionBeaconRing = ring;
-    this.extractionBeaconCore = core;
   }
 
   private createRammingShieldImage(): Phaser.GameObjects.Image {
@@ -7949,7 +7922,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isPlayerDead = true;
-    this.hasExtracted = false;
     this.runEndReason = 'mission';
     this.gameFlowState = 'results';
     this.captureRunResults(time);
@@ -7962,6 +7934,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isPauseMenuOpen) {
       this.closePauseMenu(time);
     }
+    this.closeEjectConfirmation();
     this.updateGameplayHud(time);
     this.showResultsScreen();
     this.autoRunDiagnostics.endRun('mission-complete');
@@ -7992,9 +7965,28 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private getContractStatusLine(): string {
+    if (!this.missionRuntime) {
+      return 'Contract None';
+    }
+
+    const name = this.missionRuntime.definition.shortName;
+
+    switch (this.missionRuntime.status) {
+      case 'completed':
+        return `Contract ${name} COMPLETE`;
+      case 'failed':
+        return `Contract ${name} INCOMPLETE`;
+      case 'active': {
+        const distance = Math.max(0, Math.round(this.getMissionObjectiveDistance() - this.missionRuntime.objective.radius));
+        return `Contract ${name} ACTIVE ${distance}m`;
+      }
+    }
+  }
+
   private getMissionResultStatus(): string {
     if (!this.missionRuntime) {
-      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'free range' : 'not started';
+      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'none selected' : 'not started';
     }
 
     if (this.missionRuntime.status === 'completed') {
@@ -8005,11 +7997,24 @@ export class GameScene extends Phaser.Scene {
       return 'failed';
     }
 
-    if (this.missionRuntime.failureReason === 'extracted-early') {
+    if (this.missionRuntime.failureReason === 'run-ended') {
       return 'incomplete';
     }
 
     return this.missionRuntime.status;
+  }
+
+  private getRunEndResultStatus(): string {
+    switch (this.runEndReason) {
+      case 'death':
+        return 'Destroyed';
+      case 'eject':
+        return 'Ejected';
+      case 'mission':
+        return 'Mission complete';
+      case 'none':
+        return 'In progress';
+    }
   }
 
   private getSectorScannerHudStatus(): string {
@@ -8034,70 +8039,142 @@ export class GameScene extends Phaser.Scene {
     return `${Math.floor(snapshot.scanProgress * 100)}%`;
   }
 
-  private updateExtraction(time: number): void {
-    this.updateExtractionBeaconVisual(time);
-
-    if (!this.extractionBeacon || this.isPlayerDead) {
+  private openEjectConfirmation(): void {
+    if (
+      !this.isGameplayWorldActive() ||
+      this.isPlayerDead ||
+      this.isUpgradeOverlayOpen ||
+      this.isPauseMenuOpen ||
+      this.ejectConfirmScreen
+    ) {
       return;
     }
 
-    const extractionDistance = this.getExtractionDistance();
+    const width = this.scale.width;
+    const height = this.scale.height;
+    const centerX = width / 2;
+    const centerY = height / 2;
+    const panelWidth = Math.min(width - 48, 430);
+    const panelHeight = 216;
+    const panelX = -panelWidth / 2;
+    const panelY = -panelHeight / 2;
+    const actionZones: Phaser.GameObjects.Zone[] = [];
+    const container = this.add.container(centerX, centerY).setScrollFactor(0).setDepth(1260);
+    const blocker = this.add
+      .zone(centerX, centerY, width, height)
+      .setScrollFactor(0)
+      .setDepth(1259)
+      .setInteractive({ useHandCursor: false })
+      .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+      .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
+    const panel = this.add.graphics();
 
-    if (this.extractionRequiresExitBeforeCompletion) {
-      if (extractionDistance > EXTRACTION_ZONE_RADIUS + 24) {
-        this.extractionRequiresExitBeforeCompletion = false;
-      }
+    panel.fillStyle(0x050812, 0.96);
+    panel.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    panel.lineStyle(2, 0xff5964, 0.9);
+    panel.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+    panel.lineStyle(1, 0x42f5d7, 0.42);
+    panel.strokeRoundedRect(panelX + 7, panelY + 7, panelWidth - 14, panelHeight - 14, 5);
+
+    const title = this.add
+      .text(0, panelY + 32, 'Confirm Eject', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '22px',
+        color: '#ffb3b8',
+        align: 'center',
+        fixedWidth: panelWidth - 48
+      })
+      .setOrigin(0.5, 0);
+    const body = this.add
+      .text(0, panelY + 76, 'End the run and convert carried scrap to credits?', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '15px',
+        color: '#d8e8ff',
+        align: 'center',
+        wordWrap: { width: panelWidth - 64 }
+      })
+      .setOrigin(0.5, 0);
+
+    container.add([panel, title, body]);
+    actionZones.push(blocker);
+
+    addScreenButton({
+      scene: this,
+      container,
+      actionZones,
+      screenCenterX: centerX,
+      screenCenterY: centerY,
+      x: -88,
+      y: panelY + 144,
+      width: 150,
+      height: 40,
+      label: 'Confirm',
+      callback: () => this.confirmEject(),
+      isActionActive: () => Boolean(this.ejectConfirmScreen) && this.gameFlowState === 'running',
+      resetCursor: () => this.resetUiCursor()
+    });
+    addScreenButton({
+      scene: this,
+      container,
+      actionZones,
+      screenCenterX: centerX,
+      screenCenterY: centerY,
+      x: 88,
+      y: panelY + 144,
+      width: 150,
+      height: 40,
+      label: 'Cancel',
+      callback: () => this.closeEjectConfirmation(),
+      isActionActive: () => Boolean(this.ejectConfirmScreen) && this.gameFlowState === 'running',
+      resetCursor: () => this.resetUiCursor()
+    });
+
+    this.ejectConfirmScreen = { container, actionZones };
+  }
+
+  private closeEjectConfirmation(): void {
+    this.ejectConfirmScreen = destroyScreenHandle(this.ejectConfirmScreen, {
+      disableZones: true,
+      resetCursor: () => this.resetUiCursor()
+    });
+  }
+
+  private confirmEject(): void {
+    if (!this.ejectConfirmScreen) {
       return;
     }
 
-    if (extractionDistance <= EXTRACTION_ZONE_RADIUS) {
-      this.completeExtraction();
-    }
+    this.closeEjectConfirmation();
+    this.completeEjectRun();
   }
 
-  private updateExtractionBeaconVisual(time: number): void {
-    if (!this.extractionBeacon || !this.extractionBeaconRing || !this.extractionBeaconCore) {
-      return;
-    }
-
-    const pulse = 0.5 + Math.sin(time * 0.004) * 0.5;
-    this.extractionBeaconRing.setScale(1 + pulse * 0.12);
-    this.extractionBeaconRing.setAlpha(0.68 + pulse * 0.28);
-    this.extractionBeaconCore.setScale(0.9 + pulse * 0.35);
-  }
-
-  private getExtractionDistance(): number {
-    if (!this.player) {
-      return 0;
-    }
-
-    return this.getWrappedDirection(this.player.x, this.player.y, this.extractionPosition.x, this.extractionPosition.y).length();
-  }
-
-  private completeExtraction(): void {
+  private completeEjectRun(): void {
     if (!this.isGameplayWorldActive() || this.isPlayerDead) {
       return;
     }
 
     this.isPlayerDead = true;
-    this.hasExtracted = true;
-    this.runEndReason = 'extraction';
-    this.extractionRequiresExitBeforeCompletion = false;
+    this.runEndReason = 'eject';
     this.gameFlowState = 'results';
-    this.failMission('extracted-early', this.time.now);
+    this.failMission('run-ended', this.time.now);
     this.captureRunResults(this.time.now);
     this.payRunCredits();
+    this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
+    this.player.setVisible(false);
+    this.playerSprite.setTint(0xffc857);
+    this.playerSprite.setAlpha(0.66);
     if (this.isUpgradeOverlayOpen) {
       this.closeUpgradeOverlay(this.time.now);
     }
     if (this.isPauseMenuOpen) {
       this.closePauseMenu(this.time.now);
     }
+    this.closeEjectConfirmation();
     this.updateGameplayHud(this.time.now);
     this.showResultsScreen();
-    this.autoRunDiagnostics.endRun('extracted');
+    this.autoRunDiagnostics.endRun('ejected');
   }
 
   private updateDebugMenuInput(time: number): void {
@@ -9148,7 +9225,7 @@ export class GameScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.upgradeButtonContainer = this.add
-      .container(this.scale.width / 2, this.scale.height - 42, [this.upgradeButtonGraphics, this.upgradeButtonText])
+      .container(this.scale.width / 2, this.scale.height - 116, [this.upgradeButtonGraphics, this.upgradeButtonText])
       .setScrollFactor(0)
       .setDepth(1002)
       .setSize(190, 42)
@@ -9175,7 +9252,7 @@ export class GameScene extends Phaser.Scene {
     const label = this.bankedUpgrades > 1 ? `Upgrade (${this.bankedUpgrades})` : 'Upgrade';
 
     this.upgradeButtonContainer
-      .setPosition(this.scale.width / 2, this.scale.height - 42)
+      .setPosition(this.scale.width / 2, this.scale.height - 116)
       .setVisible(isVisible)
       .disableInteractive();
 
@@ -10961,9 +11038,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.isPlayerDead = true;
-    this.hasExtracted = false;
     this.runEndReason = 'death';
-    this.extractionRequiresExitBeforeCompletion = false;
     this.gameFlowState = 'results';
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
@@ -10981,6 +11056,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isPauseMenuOpen) {
       this.closePauseMenu(this.time.now);
     }
+    this.closeEjectConfirmation();
     this.updateGameplayHud(this.time.now);
     this.showResultsScreen();
     this.autoRunDiagnostics.endRun('player-death');
@@ -10993,9 +11069,7 @@ export class GameScene extends Phaser.Scene {
 
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
-    this.hasExtracted = false;
     this.runEndReason = 'none';
-    this.extractionRequiresExitBeforeCompletion = false;
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -11050,11 +11124,6 @@ export class GameScene extends Phaser.Scene {
 
     if (target === 'mission' && this.missionRuntime) {
       this.debugTeleportPlayerTo(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
-      return;
-    }
-
-    if (target === 'extraction') {
-      this.debugTeleportPlayerTo(this.extractionPosition.x, this.extractionPosition.y);
       return;
     }
 
@@ -11202,14 +11271,13 @@ export class GameScene extends Phaser.Scene {
       creditsEarned: this.lastRunCreditsEarned,
       totalCredits: this.totalCredits,
       unlockedRewards: this.lastRunUnlockedRewards,
-      missionName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
-      missionStatus: this.getMissionResultStatus(),
+      contractName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
+      contractStatus: this.getMissionResultStatus(),
+      runEndReason: this.getRunEndResultStatus(),
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
       scrapCreditMultiplier: this.getScrapCreditMultiplier(),
-      canContinueRun: this.runEndReason !== 'death',
       isActionActive: () => this.gameFlowState === 'results',
       resetCursor: () => this.resetUiCursor(),
-      onContinueRun: () => this.continueCurrentRun(),
       onRestartRun: () => this.startRun(),
       onMainMenu: () => this.showMainMenu(),
       onShop: () => this.showShop('results')
@@ -11221,18 +11289,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   private continueCurrentRun(): void {
-    if (!this.player || this.runEndReason === 'death') {
+    if (!this.player || this.runEndReason !== 'mission') {
       return;
     }
-
-    const continuedFromExtraction = this.runEndReason === 'extraction';
 
     this.destroyResultsScreen();
     this.gameFlowState = 'running';
     this.isPlayerDead = false;
-    this.hasExtracted = false;
     this.runEndReason = 'none';
-    this.extractionRequiresExitBeforeCompletion = continuedFromExtraction;
     this.playerHull = Math.max(this.playerHull, this.getPlayerMaxHull());
     this.player.setVisible(true);
     this.playerSprite.clearTint();
@@ -14010,11 +14074,6 @@ export class GameScene extends Phaser.Scene {
         width: camera.width,
         height: camera.height
       },
-      extraction: {
-        x: this.extractionPosition.x,
-        y: this.extractionPosition.y,
-        radius: EXTRACTION_ZONE_RADIUS
-      },
       missionObjective: this.missionRuntime
         ? {
             x: this.missionRuntime.objective.x,
@@ -14051,8 +14110,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getGameplayHudSnapshot(time: number): GameplayHudSnapshot {
-    const status = this.hasExtracted
-      ? 'EXTRACTED'
+    const status = this.runEndReason === 'eject'
+      ? 'EJECTED'
       : this.isPlayerDead
         ? 'CRITICAL'
         : this.fuel <= 0
@@ -14085,8 +14144,6 @@ export class GameScene extends Phaser.Scene {
       maxFuel: RUN_FUEL_MAX,
       fuelProgress: this.fuel / RUN_FUEL_MAX,
       isFuelEmergency: this.fuel <= 0,
-      extractionDistance: this.getExtractionDistance(),
-      extractionRadius: EXTRACTION_ZONE_RADIUS,
       missionName: this.missionRuntime?.definition.shortName ?? this.getSelectedMissionDefinition().shortName,
       missionStatus: this.getMissionHudStatus(),
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
@@ -14096,6 +14153,7 @@ export class GameScene extends Phaser.Scene {
       nextRerollCost: this.getNextRerollCost(),
       bankedUpgrades: this.bankedUpgrades,
       sectorScannerStatus: this.getSectorScannerHudStatus(),
+      contractStatusLine: this.getContractStatusLine(),
       autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',
       primaryWeaponName: primaryWeapon ? primaryWeapon.displayName : 'Empty',
       weaponStatus,
@@ -14369,7 +14427,7 @@ export class GameScene extends Phaser.Scene {
         `Sector: ${this.sectorSeed} / regions ${this.sectorLayout.regions.length} / active ${this.activeSectorAsteroids.size}/${this.sectorAsteroidSpawns.length} asteroids, ${this.activeSectorScrapPickups.size}/${this.sectorScrapSpawns.length} scrap, ${this.activeSectorSignals.size}/${this.sectorSignalSpawns.length} signals\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
-        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, drain ${this.debugFuelDrainEnabled ? this.debugFuelDrainMode : 'paused'}, extraction ${Math.max(0, Math.round(this.getExtractionDistance() - EXTRACTION_ZONE_RADIUS))}m${this.hasExtracted ? ' (extracted)' : ''}\n` +
+        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, drain ${this.debugFuelDrainEnabled ? this.debugFuelDrainMode : 'paused'}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} F${

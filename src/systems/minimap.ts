@@ -17,11 +17,6 @@ export interface MinimapSnapshot {
     width: number;
     height: number;
   };
-  extraction?: {
-    x: number;
-    y: number;
-    radius: number;
-  };
   missionObjective?: {
     x: number;
     y: number;
@@ -102,18 +97,6 @@ export class MinimapSystem {
 
     if (snapshot.camera) {
       this.drawCameraViewport(snapshot.camera, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
-    }
-
-    if (snapshot.extraction) {
-      const position = this.getPosition(snapshot.extraction.x, snapshot.extraction.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
-      const markerRadius = Phaser.Math.Clamp((snapshot.extraction.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 3.5, 6.5);
-
-      this.graphics.fillStyle(0x42f5d7, 0.24);
-      this.graphics.fillCircle(position.x, position.y, markerRadius + 2);
-      this.graphics.lineStyle(1, 0xffc857, 0.92);
-      this.graphics.strokeCircle(position.x, position.y, markerRadius);
-      this.graphics.fillStyle(0xf2fbff, 0.95);
-      this.graphics.fillRect(position.x - 1.4, position.y - 1.4, 2.8, 2.8);
     }
 
     if (snapshot.missionObjective) {

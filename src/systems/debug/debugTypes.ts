@@ -13,7 +13,7 @@ import type { DeathShardStyle, DeathShardTuningKey } from '../deathEffects';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
-export type DebugPlayerTeleportTarget = 'center' | 'mission' | 'extraction' | 'blackHole';
+export type DebugPlayerTeleportTarget = 'center' | 'mission' | 'blackHole';
 
 export interface DebugMenuValues {
   runTimeSeconds: number;
@@ -102,7 +102,6 @@ export interface DebugMenuValues {
   playerVelocityY: number;
   playerCollisionDamageImmune: boolean;
   missionObjectiveDistance: number;
-  extractionDistance: number;
   secretControlUnlocked: boolean;
   fuel: number;
   fuelMax: number;

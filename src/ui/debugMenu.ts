@@ -91,7 +91,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'run-overview': 'Current run summary: ship, weapon, hull, fuel, XP, entities, projectiles, and time.',
   'run-state': 'Shows whether the debug pause toggle is currently stopping game updates.',
   player: 'Shows player hull and debug invulnerability state.',
-  'player-state': 'Full player state: hull, position, velocity, mission/extraction distance, debug immunity, and secret-control unlock state.',
+  'player-state': 'Full player state: hull, position, velocity, mission distance, debug immunity, and secret-control unlock state.',
   scrap: 'Shows active scrap pickups, current run scrap, and total credits.',
   'debug-pause': 'Toggle debug pause. Use it to freeze gameplay while inspecting state.',
   'restore-hull': 'Restore the player hull to full for survival and collision testing.',
@@ -104,7 +104,6 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'player-stop': 'Set player velocity to zero and cancel active dash burst movement.',
   'teleport-center': 'Teleport the player to arena center.',
   'teleport-mission': 'Teleport the player to the active mission objective.',
-  'teleport-extraction': 'Teleport the player to the extraction beacon.',
   'teleport-black-hole': 'Teleport the player near the black hole capture radius.',
   'nudge-up': 'Move the player upward without changing velocity.',
   'nudge-down': 'Move the player downward without changing velocity.',
@@ -118,7 +117,7 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'refill-ramming-shield': 'Restore Ramming Shield HP and dash charges when the shield is equipped.',
   'secret-controls-unlock': 'Unlock the late-game secret controls overlay in local progression for testing.',
   fuel: 'Shows current run fuel and debug drain settings. Fuel drains only from thrust usage.',
-  'fuel-refill': 'Refill fuel to maximum for route, extraction, and emergency-thrust testing.',
+  'fuel-refill': 'Refill fuel to maximum for route and emergency-thrust testing.',
   'fuel-empty': 'Set fuel to zero to test emergency thrust behavior.',
   'fuel-drain-toggle': 'Pause or resume fuel drain without changing current fuel.',
   'fuel-mode-toggle': 'Fuel drain mode is locked to thrust-only for current 2.0 tuning.',
@@ -576,7 +575,6 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
     addButton('player', 'teleport-black-hole', panelX + PANEL_PADDING + 216, y, 100, 'Black hole', () => config.callbacks.teleportPlayer('blackHole'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('player', 'teleport-mission', panelX + PANEL_PADDING, y, 154, 'Mission objective', () => config.callbacks.teleportPlayer('mission'));
-    addButton('player', 'teleport-extraction', panelX + PANEL_PADDING + 162, y, 154, 'Extraction beacon', () => config.callbacks.teleportPlayer('extraction'));
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('player', 'nudge-left', panelX + PANEL_PADDING, y, 126, 'Nudge left', () => config.callbacks.nudgePlayer(-180, 0));
     addButton('player', 'nudge-right', panelX + PANEL_PADDING + 134, y, 126, 'Nudge right', () => config.callbacks.nudgePlayer(180, 0));
@@ -1747,7 +1745,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
           `State: ${values.playerAlive ? 'alive' : 'dead'} / hull ${Math.ceil(values.playerHull)} of ${Math.ceil(values.playerMaxHull)}\n` +
             `Position: ${values.playerX.toFixed(0)}, ${values.playerY.toFixed(0)}\n` +
             `Velocity: ${formatIntegerDisplayUnits(values.playerVelocityX)}, ${formatIntegerDisplayUnits(values.playerVelocityY)} / speed ${formatIntegerDisplayUnits(values.playerSpeed)}\n` +
-            `Mission distance: ${Math.round(values.missionObjectiveDistance)} / extraction ${Math.round(values.extractionDistance)}\n` +
+            `Mission distance: ${Math.round(values.missionObjectiveDistance)}\n` +
             `XP: ${values.playerXp} / ${values.nextXpThreshold} / banked ${values.bankedUpgrades}\n` +
             `Projectiles: player ${values.playerProjectiles} / enemy ${values.enemyProjectiles}\n` +
             `Invulnerability: ${values.playerInvulnerable ? 'on' : 'off'} / contact damage: ${values.playerCollisionDamageImmune ? 'blocked' : 'normal'}\n` +

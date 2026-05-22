@@ -9,7 +9,7 @@ Phase 8 increases sector scale without adding procedural generation.
 - Supported test scales are `1x`, `2x`, `3x`, and `5x`.
 - Use `?sectorScale=1`, `?sectorScale=2`, `?sectorScale=3`, or `?sectorScale=5` to test a specific scale.
 - The run camera uses a subtle damped camera lead so movement reads without making the ship feel like it is orbiting a pivot.
-- The minimap now shows the camera viewport and extraction beacon so larger sectors remain navigable.
+- The minimap now shows the camera viewport so larger sectors remain navigable.
 - Phase 8 verification is available with `?testHarness=phase8&sectorScale=5`.
 
 ## Deferred

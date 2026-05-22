@@ -728,7 +728,6 @@ export class DebugState {
     playerVelocityY: number;
     playerCollisionDamageImmune: boolean;
     missionObjectiveDistance: number;
-    extractionDistance: number;
     secretControlUnlocked: boolean;
     fuel: number;
     fuelMax: number;
@@ -834,7 +833,6 @@ export class DebugState {
       playerVelocityY: snapshot.playerVelocityY,
       playerCollisionDamageImmune: snapshot.playerCollisionDamageImmune,
       missionObjectiveDistance: snapshot.missionObjectiveDistance,
-      extractionDistance: snapshot.extractionDistance,
       secretControlUnlocked: snapshot.secretControlUnlocked,
       fuel: snapshot.fuel,
       fuelMax: snapshot.fuelMax,

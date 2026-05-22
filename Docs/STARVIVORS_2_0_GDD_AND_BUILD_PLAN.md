@@ -184,7 +184,7 @@ Then the player enters a large generated sector and chooses what to do:
 - Trigger rare events.
 - Search for unlocks.
 - Fight motherships.
-- Extract when satisfied.
+- Eject when satisfied.
 - Push deeper for greater rewards.
 
 ### 5.2 Mission Mode
@@ -205,22 +205,16 @@ Mission examples:
 - Recover salvage from a dead fleet.
 - Destroy a mothership.
 
-If the player dies during a mission, the player may:
-
-- Continue the same mission.
-- Abandon it.
-- Pick another mission.
-
-Decision still needed: continuing a mission may preserve the exact sector or reroll the sector while preserving the contract. See Open Questions.
+If the player dies during a mission, the run ends and the player returns to the results flow.
 
 ### 5.3 Run End Conditions
 
 Possible run end conditions:
 
 - Player dies.
-- Player extracts.
+- Player ejects.
 - A mission type explicitly ends the run on completion.
-- Sector event forces extraction or death.
+- Sector event forces ejection or death.
 
 Fuel is not a passive timer drain. Fuel is spent by thrust usage and should create a small layer of pressure around route choice, overuse of movement, and emergency recovery. The current target is about 8 minutes of continuous main thrust at the starting fuel stat, scaling up to about 35 minutes at the maximum fuel stat. Running out of fuel should create an emergency mobility state, not immediately end the run.
 
@@ -586,7 +580,7 @@ Fuel may be spent by:
 - Boosting.
 - Emergency warp.
 - Long-range scanning.
-- Calling extraction.
+- Eject support costs if the later design adds them.
 - Special ship abilities.
 
 Current tuning target:
@@ -1079,7 +1073,7 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
-### Phase 7: Controlled Movement, Fuel Use, and Extraction Prototype
+### Phase 7: Controlled Movement, Fuel Use, and Run-End Prototype
 
 Goal:
 
@@ -1089,9 +1083,9 @@ Design dialogue before coding:
 
 - Should fuel feel like battery, maneuvering propellant, travel range, or mission budget?
 - Is fuel adding useful pressure without becoming the main run timer?
-- What should happen emotionally when fuel gets low: panic, planning, risk-taking, or extraction pressure?
+- What should happen emotionally when fuel gets low: panic, planning, risk-taking, or route pressure?
 - Should boosting spend fuel, or would that punish fun movement too much?
-- Should running out of fuel kill the run, trigger emergency drift, summon rescue/extraction, or create a last-chance state?
+- Should running out of fuel kill the run, trigger emergency drift, summon rescue, or create a last-chance state?
 - How much drift should remain on the Interceptor as the baseline ship?
 - How much extra momentum should Bulwark preserve before it becomes hard to control?
 
@@ -1106,7 +1100,7 @@ Tasks:
 - Display fuel in HUD.
 - Use a first fuel-empty behavior: emergency thrust state rather than instant death.
 - When fuel is empty, all player thruster power drops by 90%, leaving 10% emergency mobility so the player can still drift, fight, and reach powerups, scrap, or future fuel cells.
-- Add simple extraction condition or placeholder beacon.
+- Add a simple prototype run-end condition.
 
 Do not:
 
@@ -1119,7 +1113,7 @@ Acceptance:
 - Bulwark preserves more momentum than Interceptor without feeling uncontrollable.
 - Fuel is visible and reacts only to thrust usage.
 - Fuel creates light movement and route pressure without functioning as a passive timer.
-- Extraction can end a run.
+- A prototype run-end path can end a run.
 - Build passes.
 - Commit and push.
 
@@ -1493,11 +1487,11 @@ Goal:
 Current priority list:
 
 1. Add a clear Free Range run option alongside mission contracts.
-2. Change mission completion so it marks the objective complete and rewards the player, then lets the player extract or keep exploring unless the mission explicitly ends the run.
+2. Change mission completion so it marks the objective complete and rewards the player, then lets the player keep exploring unless the mission explicitly ends the run.
 3. Keep fuel as thrust-use-only pressure: no passive timer drain, starting at about 8 minutes of continuous main thrust and scaling toward about 35 minutes at max fuel investment.
-4. Make extraction the normal successful run end for Free Range and most missions.
-5. Improve HUD/results language so the player can immediately understand run mode, objective state, extraction state, fuel state, and earned rewards.
-6. Add or update smoke harness coverage for Free Range start, mission completion without immediate run end, fuel thrust-only drain, and extraction after objective completion.
+4. Remove the world extraction beacon; voluntary run end should come from the ship dashboard EJECT action with confirmation.
+5. Improve HUD/results language so the player can immediately understand run mode, objective state, eject/death state, fuel state, and earned rewards.
+6. Add or update smoke harness coverage for Free Range start, mission completion without immediate run end, fuel thrust-only drain, eject confirmation/cancel/confirm, and blocked post-run continuation.
 
 Do not:
 
@@ -1511,8 +1505,8 @@ Acceptance:
 - Player can choose Free Range or a mission.
 - Mission completion does not automatically force results except for explicitly terminal mission types.
 - Fuel only drains from thrust usage and fuel-empty behavior remains emergency mobility.
-- Extraction cleanly ends a successful run.
-- Results explain whether the player extracted, completed a mission, died, or left early.
+- Eject cleanly ends the run without requiring a map beacon.
+- Results explain whether the player ejected, completed a mission, died, or left early.
 - Build passes.
 - Commit and push.
 
@@ -1654,8 +1648,8 @@ These should be answered before or during the relevant phase.
 
 1. Should classic survival mode remain as a separate mode, or should Starvivors 2.0 fully replace it?
 2. Should fuel remain in ship/module upgrade progression long term, or be removed after the core loop is proven?
-3. Should extraction be player-triggered, automatic, or mission-specific?
-4. When continuing a failed mission, should the same generated sector persist?
+3. Should EJECT remain a pure player-triggered run end, or should some mission/event types force it?
+4. Should failed mission contracts be retryable from results, or always require a fresh run?
 5. Should SVG assets live as actual `.svg` files, TypeScript vector data, or both?
 6. How low should player health be relative to enemy damage in the new quick-death model?
 7. Should black holes be rare sector events, recurring hazards, or both?
@@ -1738,7 +1732,7 @@ Use this section for expansion ideas that should not interrupt the current phase
 - Emergency Thruster upgrades: improve fuel-empty emergency thrust above the baseline 10% power without restoring full mobility.
 - Emergency Reserve: grants a one-time fuel buffer when the tank hits zero.
 - Fuel Siphon: recover small fuel amounts from elite enemies, wreckage, or specific objectives.
-- Extraction Discount: lowers the fuel threshold or travel pressure needed to extract safely.
+- Eject Support: optional late-game tuning for making voluntary run end safer or more rewarding, without restoring a world beacon.
 
 ### World Fuel Drops and Sector Resources
 

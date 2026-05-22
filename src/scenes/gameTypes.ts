@@ -88,9 +88,9 @@ export interface StarvivorsTestHarnessState {
   hull: number;
   maxHull: number;
   isPlayerDead: boolean;
-  hasExtracted: boolean;
   runEndReason: string;
   canContinueRun: boolean;
+  isEjectConfirmOpen: boolean;
   sectorScale: number;
   sectorSeed: string;
   sectorRegionCount: number;
@@ -111,7 +111,6 @@ export interface StarvivorsTestHarnessState {
   maxFuel: number;
   fuelDrainEnabled: boolean;
   fuelDrainMode: string;
-  extractionDistance: number;
   playerXp: number;
   runScrapTotal: number;
   runScrapSpent: number;
@@ -191,6 +190,9 @@ export interface StarvivorsTestHarness {
   destroyFirstWorldEvent: () => StarvivorsTestHarnessState;
   collectAllScrap: () => StarvivorsTestHarnessState;
   killPlayer: () => StarvivorsTestHarnessState;
+  requestEject: () => StarvivorsTestHarnessState;
+  cancelEject: () => StarvivorsTestHarnessState;
+  confirmEject: () => StarvivorsTestHarnessState;
   continueRun: () => StarvivorsTestHarnessState;
   refillFuel: () => StarvivorsTestHarnessState;
   emptyFuel: () => StarvivorsTestHarnessState;

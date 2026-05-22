@@ -31,8 +31,6 @@ export interface GameplayHudSnapshot {
   maxFuel: number;
   fuelProgress: number;
   isFuelEmergency: boolean;
-  extractionDistance: number;
-  extractionRadius: number;
   missionName: string;
   missionStatus: string;
   missionObjectiveDistance: number;
@@ -42,6 +40,7 @@ export interface GameplayHudSnapshot {
   nextRerollCost: number;
   bankedUpgrades: number;
   sectorScannerStatus: string;
+  contractStatusLine: string;
   autoWeaponName: string;
   primaryWeaponName: string;
   weaponStatus: string;
@@ -61,6 +60,7 @@ export interface GameplayHudSnapshot {
 
 export interface GameplayHudCallbacks {
   assignWeaponSlot: (slot: WeaponSlotType, weaponId: WeaponId) => void;
+  requestEject: () => void;
 }
 
 export class GameplayHudSystem {
@@ -74,6 +74,8 @@ export class GameplayHudSystem {
   private pickerGraphics?: Phaser.GameObjects.Graphics;
   private pickerTexts: Phaser.GameObjects.Text[] = [];
   private pickerZones: Phaser.GameObjects.Zone[] = [];
+  private ejectText?: Phaser.GameObjects.Text;
+  private ejectZone?: Phaser.GameObjects.Zone;
   private tooltipGraphics?: Phaser.GameObjects.Graphics;
   private tooltipText?: Phaser.GameObjects.Text;
   private latestSnapshot?: GameplayHudSnapshot;
@@ -143,6 +145,29 @@ export class GameplayHudSystem {
       this.hotbarTexts[slot] = text;
       this.hotbarZones[slot] = zone;
     }
+
+    this.ejectText = this.scene.add
+      .text(0, 0, 'EJECT', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#ffb3b8',
+        align: 'center',
+        fixedWidth: 64
+      })
+      .setOrigin(0.5)
+      .setScrollFactor(0)
+      .setDepth(1004);
+
+    this.ejectZone = this.scene.add
+      .zone(0, 0, 68, 40)
+      .setScrollFactor(0)
+      .setDepth(1007)
+      .setInteractive({ useHandCursor: true });
+    this.ejectZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
+    this.ejectZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      this.callbacks.requestEject();
+    });
   }
 
   update(snapshot: GameplayHudSnapshot): void {
@@ -165,8 +190,7 @@ export class GameplayHudSystem {
           `Hull ${Math.round(snapshot.playerHull)} / ${Math.round(snapshot.maxHull)}  ${snapshot.status}\n` +
           shieldStatus +
           `Fuel ${Math.ceil(snapshot.fuel)} / ${snapshot.maxFuel}${snapshot.isFuelEmergency ? '  EMERGENCY' : ''}\n` +
-          `Extract ${Math.max(0, Math.round(snapshot.extractionDistance - snapshot.extractionRadius))}m\n` +
-          `Mission ${snapshot.missionName} ${snapshot.missionStatus} ${Math.max(0, Math.round(snapshot.missionObjectiveDistance - snapshot.missionObjectiveRadius))}m\n` +
+          `${snapshot.contractStatusLine}\n` +
           `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
           `Scrap ${snapshot.runScrapTotal}  Spent ${snapshot.scrapSpentThisRun}  Reroll ${snapshot.nextRerollCost}\n` +
           `Scanner ${snapshot.sectorScannerStatus}\n` +
@@ -232,6 +256,7 @@ export class GameplayHudSystem {
     const positions = this.getHotbarPositions();
 
     this.hotbarGraphics.clear();
+    this.drawDashboardShell();
 
     for (const slotSnapshot of slots) {
       const position = positions[slotSnapshot.slot];
@@ -256,8 +281,48 @@ export class GameplayHudSystem {
       zone.setPosition(position.x, position.y);
     }
 
+    this.drawEjectButton();
+
     this.drawPicker();
     this.updateTooltip();
+  }
+
+  private drawDashboardShell(): void {
+    if (!this.hotbarGraphics) {
+      return;
+    }
+
+    const centerX = this.scene.scale.width / 2;
+    const bottomY = this.scene.scale.height + 18;
+    const width = 590;
+    const height = 128;
+
+    this.hotbarGraphics.fillStyle(0x02040a, 0.8);
+    this.hotbarGraphics.fillEllipse(centerX, bottomY, width, height);
+    this.hotbarGraphics.fillStyle(0x071018, 0.9);
+    this.hotbarGraphics.fillEllipse(centerX, bottomY + 8, width - 18, height - 20);
+    this.hotbarGraphics.lineStyle(2, 0x42f5d7, 0.84);
+    this.hotbarGraphics.strokeEllipse(centerX, bottomY, width, height);
+    this.hotbarGraphics.lineStyle(1, 0xffc857, 0.34);
+    this.hotbarGraphics.strokeEllipse(centerX, bottomY + 8, width - 42, height - 42);
+  }
+
+  private drawEjectButton(): void {
+    if (!this.hotbarGraphics || !this.ejectText || !this.ejectZone) {
+      return;
+    }
+
+    const x = this.scene.scale.width / 2 + 222;
+    const y = this.scene.scale.height - 42;
+
+    this.hotbarGraphics.fillStyle(0x241018, 0.96);
+    this.hotbarGraphics.fillRoundedRect(x - 34, y - 20, 68, 40, 7);
+    this.hotbarGraphics.lineStyle(2, 0xff5964, 0.9);
+    this.hotbarGraphics.strokeRoundedRect(x - 34, y - 20, 68, 40, 7);
+    this.hotbarGraphics.fillStyle(0xff5964, 0.28);
+    this.hotbarGraphics.fillRect(x - 26, y + 13, 52, 2);
+    this.ejectText.setPosition(x, y).setVisible(true);
+    this.ejectZone.setPosition(x, y).setVisible(true);
   }
 
   private drawPicker(): void {
@@ -352,12 +417,12 @@ export class GameplayHudSystem {
 
   private getHotbarPositions(): Record<WeaponHotbarSlotType, { x: number; y: number }> {
     const centerX = this.scene.scale.width / 2;
-    const baseY = this.scene.scale.height - 54;
+    const baseY = this.scene.scale.height - 42;
 
     return {
-      auto: { x: centerX, y: baseY - 62 },
-      primary: { x: centerX - 58, y: baseY },
-      secondary: { x: centerX + 58, y: baseY }
+      auto: { x: centerX - 142, y: baseY },
+      primary: { x: centerX - 22, y: baseY },
+      secondary: { x: centerX + 98, y: baseY }
     };
   }
 
