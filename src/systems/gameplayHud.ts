@@ -293,9 +293,9 @@ export class GameplayHudSystem {
     }
 
     const centerX = this.scene.scale.width / 2;
-    const bottomY = this.scene.scale.height + 18;
-    const width = 590;
-    const height = 128;
+    const bottomY = this.scene.scale.height - 16;
+    const width = 660;
+    const height = 138;
 
     this.hotbarGraphics.fillStyle(0x02040a, 0.8);
     this.hotbarGraphics.fillEllipse(centerX, bottomY, width, height);
@@ -312,8 +312,8 @@ export class GameplayHudSystem {
       return;
     }
 
-    const x = this.scene.scale.width / 2 + 222;
-    const y = this.scene.scale.height - 42;
+    const x = this.scene.scale.width / 2 + 252;
+    const y = this.scene.scale.height - 74;
 
     this.hotbarGraphics.fillStyle(0x241018, 0.96);
     this.hotbarGraphics.fillRoundedRect(x - 34, y - 20, 68, 40, 7);
@@ -417,12 +417,12 @@ export class GameplayHudSystem {
 
   private getHotbarPositions(): Record<WeaponHotbarSlotType, { x: number; y: number }> {
     const centerX = this.scene.scale.width / 2;
-    const baseY = this.scene.scale.height - 42;
+    const baseY = this.scene.scale.height - 74;
 
     return {
-      auto: { x: centerX - 142, y: baseY },
-      primary: { x: centerX - 22, y: baseY },
-      secondary: { x: centerX + 98, y: baseY }
+      primary: { x: centerX - 128, y: baseY },
+      auto: { x: centerX, y: baseY },
+      secondary: { x: centerX + 128, y: baseY }
     };
   }
 
