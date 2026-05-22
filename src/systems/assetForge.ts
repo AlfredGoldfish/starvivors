@@ -30,6 +30,20 @@ export type ForgeAssetStatus =
   | 'Rejected'
   | 'Implemented';
 
+export const FORGE_ASSET_STATUSES: ForgeAssetStatus[] = [
+  'Generated',
+  'Idea',
+  'Visual Pass',
+  'Behavior Pass',
+  'Needs Tuning',
+  'Playable Candidate',
+  'Approved Visual',
+  'Approved Gameplay',
+  'Promoted',
+  'Rejected',
+  'Implemented'
+];
+
 export interface ForgeStyleGuide {
   id: typeof FORGE_STYLE_GUIDE_VERSION;
   displayName: string;
@@ -159,6 +173,31 @@ export interface ForgePromotionBundle {
   asset: ForgeAsset;
   svg: string;
   productionHints: Record<string, unknown>;
+  savedAt: string;
+}
+
+export interface ForgeProductionPromotionHints {
+  source?: string;
+  sourceDefinitionId?: string;
+  selectedVariantId?: string | null;
+  targetDataFile?: string;
+  registryFile?: string;
+  notes?: string;
+}
+
+export interface ForgeProductionPromotionBundle {
+  type: 'starvivors-forge-production-promotion';
+  version: 1;
+  styleGuideVersion: typeof FORGE_STYLE_GUIDE_VERSION;
+  visualAssetId: string;
+  asset: ForgeAsset;
+  svg: string;
+  productionHints: ForgeProductionPromotionHints & {
+    targetDataFile: string;
+    registryFile: string;
+    definitionPatchHint: string;
+    registryEntrySnippet: string;
+  };
   savedAt: string;
 }
 
@@ -451,6 +490,7 @@ export function createForgePromotionMarkdown(bundle: ForgePromotionBundle): stri
     '',
     `- Status: ${bundle.asset.status}`,
     `- Kind: ${bundle.asset.kind}`,
+    `- Visual asset id: ${createForgeVisualAssetId(bundle.asset)}`,
     `- Style guide: ${bundle.styleGuideVersion}`,
     `- Tags: ${bundle.asset.tags.join(', ') || 'None'}`,
     '',
@@ -458,6 +498,87 @@ export function createForgePromotionMarkdown(bundle: ForgePromotionBundle): stri
     'Promote only assets marked Approved Visual or Approved Gameplay unless explicitly overridden by the developer.',
     '',
     '## Forge Bundle',
+    '```json',
+    JSON.stringify(bundle, null, 2),
+    '```',
+    ''
+  ].join('\n');
+}
+
+export function isForgeAssetApprovedForPromotion(asset: ForgeAsset): boolean {
+  return asset.status === 'Approved Visual' ||
+    asset.status === 'Approved Gameplay' ||
+    asset.status === 'Promoted' ||
+    asset.status === 'Implemented';
+}
+
+export function createForgeVisualAssetId(asset: ForgeAsset): string {
+  const normalizedId = normalizeForgeId(asset.id);
+  if (normalizedId.startsWith('forge.')) {
+    return normalizedId;
+  }
+
+  return `forge.${asset.kind}.${normalizeForgeId(asset.displayName || asset.id)}`;
+}
+
+export function createForgeProductionPromotionBundle(
+  asset: ForgeAsset,
+  hints: ForgeProductionPromotionHints = {}
+): ForgeProductionPromotionBundle {
+  const visualAssetId = createForgeVisualAssetId(asset);
+  const registryFile = hints.registryFile ?? 'src/data/forgeAssetRegistry.ts';
+  const targetDataFile = hints.targetDataFile ?? 'src/data/enemyLabDefinitions.ts';
+  const registryEntrySnippet = createForgeRegistryEntrySnippet(visualAssetId, asset, hints.notes);
+  const definitionPatchHint = createForgeDefinitionPatchHint(visualAssetId, hints.sourceDefinitionId);
+
+  return {
+    type: 'starvivors-forge-production-promotion',
+    version: 1,
+    styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
+    visualAssetId,
+    asset,
+    svg: renderForgeAssetToSvg(asset, { includeMetadata: true }),
+    productionHints: {
+      ...hints,
+      targetDataFile,
+      registryFile,
+      definitionPatchHint,
+      registryEntrySnippet
+    },
+    savedAt: new Date().toISOString()
+  };
+}
+
+export function createForgeProductionPromotionMarkdown(bundle: ForgeProductionPromotionBundle): string {
+  return [
+    `# Starvivors Forge Production Promotion: ${bundle.asset.displayName}`,
+    '',
+    `- Visual asset id: \`${bundle.visualAssetId}\``,
+    `- Status: ${bundle.asset.status}`,
+    `- Kind: ${bundle.asset.kind}`,
+    `- Style guide: ${bundle.styleGuideVersion}`,
+    `- Source definition: ${bundle.productionHints.sourceDefinitionId ?? 'n/a'}`,
+    `- Selected variant: ${bundle.productionHints.selectedVariantId ?? 'n/a'}`,
+    '',
+    '## Promotion Rule',
+    'Production promotion is allowed only for Forge assets marked `Approved Visual`, `Approved Gameplay`, `Promoted`, or `Implemented`.',
+    'Keep the existing embedded enemy visual as a compatibility fallback until that enemy is fully migrated.',
+    '',
+    '## Registry Entry',
+    `Add this entry to \`${bundle.productionHints.registryFile}\`:`,
+    '',
+    '```ts',
+    bundle.productionHints.registryEntrySnippet,
+    '```',
+    '',
+    '## Enemy Definition Hook',
+    `Patch \`${bundle.productionHints.targetDataFile}\` near the target definition:`,
+    '',
+    '```ts',
+    bundle.productionHints.definitionPatchHint,
+    '```',
+    '',
+    '## Forge Recipe',
     '```json',
     JSON.stringify(bundle, null, 2),
     '```',
@@ -545,6 +666,7 @@ export function applyForgeAssetToEnemyDefinition(definition: EnemyLabDefinition,
   return {
     ...definition,
     displayName: asset.displayName,
+    visualAssetId: createForgeVisualAssetId(asset),
     visual: {
       ...definition.visual,
       size: Math.max(12, asset.boundsRadius * 1.72),
@@ -797,6 +919,41 @@ function extractJsonBlock(markdownOrJson: string): string {
   return jsonBlockMatch ? jsonBlockMatch[1] : markdownOrJson;
 }
 
+function normalizeForgeId(value: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '');
+
+  return slug || 'asset';
+}
+
+function createForgeRegistryEntrySnippet(visualAssetId: string, asset: ForgeAsset, notes?: string): string {
+  const registryEntry = {
+    visualAssetId,
+    source: 'asset-forge',
+    status: asset.status === 'Implemented' ? 'implemented' : 'production-candidate',
+    notes: notes ?? `Promoted from Asset Forge as ${asset.displayName}.`,
+    asset
+  };
+
+  return JSON.stringify(registryEntry, null, 2);
+}
+
+function createForgeDefinitionPatchHint(visualAssetId: string, sourceDefinitionId?: string): string {
+  return [
+    sourceDefinitionId
+      ? `// In the enemy definition with id "${sourceDefinitionId}", add the Forge visual id while keeping visual as fallback.`
+      : '// Add the Forge visual id to the target enemy definition while keeping visual as fallback.',
+    `visualAssetId: '${visualAssetId}',`,
+    'visual: {',
+    '  // existing embedded visual remains here as compatibility fallback',
+    '}'
+  ].join('\n');
+}
+
 function collectForgeAssetCandidates(value: unknown): unknown[] {
   if (Array.isArray(value)) {
     return value;
@@ -811,6 +968,9 @@ function collectForgeAssetCandidates(value: unknown): unknown[] {
     return candidate.assets;
   }
   if (candidate?.type === 'starvivors-forge-promotion-bundle' && candidate.asset) {
+    return [candidate.asset];
+  }
+  if (candidate?.type === 'starvivors-forge-production-promotion' && candidate.asset) {
     return [candidate.asset];
   }
   if (Array.isArray(candidate.assets)) {
@@ -872,17 +1032,7 @@ function isForgeAssetKind(value: unknown): value is ForgeAssetKind {
 }
 
 function isForgeAssetStatus(value: unknown): value is ForgeAssetStatus {
-  return value === 'Generated' ||
-    value === 'Idea' ||
-    value === 'Visual Pass' ||
-    value === 'Behavior Pass' ||
-    value === 'Needs Tuning' ||
-    value === 'Playable Candidate' ||
-    value === 'Approved Visual' ||
-    value === 'Approved Gameplay' ||
-    value === 'Promoted' ||
-    value === 'Rejected' ||
-    value === 'Implemented';
+  return FORGE_ASSET_STATUSES.includes(value as ForgeAssetStatus);
 }
 
 function isForgePalette(value: unknown): value is ForgePalette {

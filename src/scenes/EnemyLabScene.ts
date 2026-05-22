@@ -67,13 +67,18 @@ import {
   type EnemyLabVariantPreset
 } from '../systems/enemyLabPresets';
 import {
+  FORGE_ASSET_STATUSES,
   FORGE_STYLE_GUIDE_VERSION,
   convertEnemyVisualDefinitionToForgeAsset,
   createForgeAiBrief,
   createForgeContactSheetData,
+  createForgeProductionPromotionBundle,
+  createForgeProductionPromotionMarkdown,
   createForgePromotionBundle,
   createForgePromotionMarkdown,
+  createForgeVisualAssetId,
   getNeonForwardSalvagepunkStyleGuide,
+  isForgeAssetApprovedForPromotion,
   loadAssetForgeStorageState,
   parseForgeAssetImport,
   parseForgeAssetImports,
@@ -155,6 +160,7 @@ interface EnemyLabOverlayRefs {
   root: HTMLDivElement;
   toggleOverlayButton: HTMLButtonElement;
   forgeAssetSelect: HTMLSelectElement;
+  forgeAssetStatus: HTMLSelectElement;
   forgePreviewMode: HTMLSelectElement;
   forgePreview: HTMLDivElement;
   forgeLayerSelect: HTMLSelectElement;
@@ -948,6 +954,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportContactSheet">Contact Sheet</button>
           <button data-action="importForgeAsset">Import Forge</button>
           <button data-action="exportForgePromotion">Forge Promotion</button>
+          <button data-action="promoteForgeAsset">Promote Approved</button>
         </div>
         <div class="enemy-lab-subtitle">AI Batch</div>
         <label>Batch size <input data-field="forgeBatchCount" type="number" min="1" max="40" step="1" value="8"></label>
@@ -959,6 +966,7 @@ export class EnemyLabScene extends Phaser.Scene {
       <section class="enemy-lab-panel">
         <div class="enemy-lab-panel-title">Forge Editor</div>
         <label>Forge Asset <select data-field="forgeAsset"></select></label>
+        <label>Status <select data-field="forgeAssetStatus"></select></label>
         <label>Preview <select data-field="forgePreviewMode">
           <option value="combat">Combat</option>
           <option value="minimap">Minimap</option>
@@ -1110,6 +1118,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const toggleOverlayButton = root.querySelector<HTMLButtonElement>('[data-action="toggleOverlay"]');
     const forgeAssetSelect = root.querySelector<HTMLSelectElement>('[data-field="forgeAsset"]');
+    const forgeAssetStatus = root.querySelector<HTMLSelectElement>('[data-field="forgeAssetStatus"]');
     const forgePreviewMode = root.querySelector<HTMLSelectElement>('[data-field="forgePreviewMode"]');
     const forgePreview = root.querySelector<HTMLDivElement>('[data-field="forgePreview"]');
     const forgeLayerSelect = root.querySelector<HTMLSelectElement>('[data-field="forgeLayer"]');
@@ -1155,6 +1164,7 @@ export class EnemyLabScene extends Phaser.Scene {
       !enemySelect ||
       !toggleOverlayButton ||
       !forgeAssetSelect ||
+      !forgeAssetStatus ||
       !forgePreviewMode ||
       !forgePreview ||
       !forgeLayerSelect ||
@@ -1208,11 +1218,15 @@ export class EnemyLabScene extends Phaser.Scene {
     }
     this.populateForgeColorSelect(forgeLayerColor);
     this.populateForgeColorSelect(forgeLayerStrokeColor);
+    for (const status of FORGE_ASSET_STATUSES) {
+      forgeAssetStatus.add(new Option(status, status));
+    }
 
     this.overlay = {
       root,
       toggleOverlayButton,
       forgeAssetSelect,
+      forgeAssetStatus,
       forgePreviewMode,
       forgePreview,
       forgeLayerSelect,
@@ -1266,6 +1280,9 @@ export class EnemyLabScene extends Phaser.Scene {
       this.selectedForgeAssetId = forgeAssetSelect.value;
       this.selectedForgeLayerIndex = 0;
       this.syncForgeControlsFromState();
+    });
+    forgeAssetStatus.addEventListener('change', () => {
+      this.persistForgeStatusFromControls();
     });
     forgePreviewMode.addEventListener('change', () => {
       this.forgePreviewMode = this.normalizeForgePreviewMode(forgePreviewMode.value);
@@ -1390,6 +1407,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'exportContactSheet') this.exportForgeContactSheet();
       if (action === 'importForgeAsset') this.importForgeAsset();
       if (action === 'exportForgePromotion') this.exportForgePromotionBundle();
+      if (action === 'promoteForgeAsset') this.promoteSelectedForgeAsset();
       if (action === 'exportForgeBatchBrief') this.exportForgeBatchAiBrief();
       if (action === 'importForgeBatch') this.importForgeAsset();
       if (action === 'createForgeDraft') this.createForgeDraftForSelectedEnemy();
@@ -1516,6 +1534,8 @@ export class EnemyLabScene extends Phaser.Scene {
 
     this.populateForgeAssetSelect();
     const asset = this.getSelectedForgeAsset();
+    this.overlay.forgeAssetStatus.value = asset.status;
+    this.overlay.forgeAssetStatus.disabled = !this.selectedForgeAssetId;
     this.overlay.forgePreviewMode.value = this.forgePreviewMode;
     for (const key of FORGE_PALETTE_KEYS) {
       this.overlay.forgePaletteInputs[key].value = this.colorNumberToInput(asset.palette[key]);
@@ -1575,6 +1595,23 @@ export class EnemyLabScene extends Phaser.Scene {
     asset.savedAt = new Date().toISOString();
     this.savePresetState();
     this.renderForgePreview();
+  }
+
+  private persistForgeStatusFromControls(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset || !this.overlay) {
+      return;
+    }
+
+    const selectedStatus = this.overlay.forgeAssetStatus.value;
+    if (!FORGE_ASSET_STATUSES.includes(selectedStatus as ForgeAsset['status'])) {
+      return;
+    }
+
+    asset.status = selectedStatus as ForgeAsset['status'];
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
   }
 
   private persistForgeLayerFromControls(): void {
@@ -1977,6 +2014,42 @@ export class EnemyLabScene extends Phaser.Scene {
     downloadTextFile(
       `forge-promotion-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
       createForgePromotionMarkdown(bundle),
+      'text/markdown'
+    );
+  }
+
+  private promoteSelectedForgeAsset(): void {
+    const asset = this.getSelectedStoredForgeAsset();
+    if (!asset) {
+      console.warn('Forge promotion requires a saved draft. Create Draft first, then mark it Approved Visual or Approved Gameplay.');
+      return;
+    }
+
+    if (!isForgeAssetApprovedForPromotion(asset)) {
+      console.warn(
+        `Forge promotion blocked for "${asset.displayName}". Set status to Approved Visual or Approved Gameplay before promotion.`
+      );
+      return;
+    }
+
+    if (asset.status === 'Approved Visual' || asset.status === 'Approved Gameplay') {
+      asset.status = 'Promoted';
+    }
+    asset.tags = Array.from(new Set([...asset.tags, 'promotion-candidate', createForgeVisualAssetId(asset)]));
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+
+    const bundle = createForgeProductionPromotionBundle(asset, {
+      source: 'enemy-lab',
+      sourceDefinitionId: this.getSelectedEffectiveDefinition().id,
+      selectedVariantId: this.getSelectedVariant()?.id ?? null,
+      notes: asset.notes || `Promoted from Asset Forge for ${this.getSelectedEffectiveDefinition().displayName}.`
+    });
+
+    downloadTextFile(
+      `forge-production-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createForgeProductionPromotionMarkdown(bundle),
       'text/markdown'
     );
   }
@@ -2647,6 +2720,14 @@ export class EnemyLabScene extends Phaser.Scene {
     return this.presetState.forgeAssets.find((asset) => asset.id === this.selectedForgeAssetId) ?? this.getBaseForgeAsset();
   }
 
+  private getSelectedStoredForgeAsset(): ForgeAsset | undefined {
+    if (!this.selectedForgeAssetId) {
+      return undefined;
+    }
+
+    return this.presetState.forgeAssets.find((asset) => asset.id === this.selectedForgeAssetId);
+  }
+
   private getSelectedForgeLayer(): ForgeVectorLayer | undefined {
     return this.getSelectedForgeAsset().layers[this.selectedForgeLayerIndex];
   }
@@ -2684,7 +2765,7 @@ export class EnemyLabScene extends Phaser.Scene {
       '<div class="enemy-lab-forge-preview-stage">',
       `<div class="enemy-lab-forge-preview-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`,
       '</div>',
-      `<div class="enemy-lab-forge-preview-caption">${asset.displayName} | ${asset.layers.length} layers | ${asset.status}</div>`
+      `<div class="enemy-lab-forge-preview-caption">${asset.displayName} | ${asset.layers.length} layers | ${asset.status} | ${createForgeVisualAssetId(asset)}</div>`
     ].join('');
   }
 
@@ -2695,6 +2776,7 @@ export class EnemyLabScene extends Phaser.Scene {
       '',
       `- Kind: ${asset.kind}`,
       `- Status: ${asset.status}`,
+      `- Visual asset id: ${createForgeVisualAssetId(asset)}`,
       `- Style guide: ${styleGuide.displayName} (${styleGuide.id})`,
       `- Tags: ${asset.tags.join(', ') || 'None'}`,
       '',

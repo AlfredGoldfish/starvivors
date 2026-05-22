@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { EnemyLabDefinition, EnemyVisualDefinition } from '../data/enemyLabDefinitions';
 import { convertEnemyVisualDefinitionToForgeAsset, createForgeAssetTexture } from './assetForge';
+import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
 
 export const ENEMY_LAB_TEXTURE_PREFIX = 'enemy-lab-visual';
 
@@ -65,7 +66,8 @@ function createEnemyLabVisualTexture(scene: Phaser.Scene, definition: EnemyLabDe
     return;
   }
 
-  createForgeAssetTexture(scene, convertEnemyVisualDefinitionToForgeAsset(definition), textureKey);
+  const registeredAsset = definition.visualAssetId ? getForgeAssetDefinition(definition.visualAssetId) : undefined;
+  createForgeAssetTexture(scene, registeredAsset ?? convertEnemyVisualDefinitionToForgeAsset(definition), textureKey);
   if (scene.textures.exists(textureKey)) {
     return;
   }

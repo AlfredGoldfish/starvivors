@@ -95,6 +95,7 @@ export interface EnemyLabDefinition {
   displayName: string;
   role: EnemyLabRole;
   tier: number;
+  visualAssetId?: string;
   visual: EnemyVisualDefinition;
   stats: EnemyLabStats;
   behavior: {
