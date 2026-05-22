@@ -84,6 +84,8 @@ src/                 Main game source
 
 The game currently includes a playable main prototype and a separate Enemy Lab sandbox. Implemented or partially implemented systems include ship selection, loadouts, Pulse Cannon, Ramming Shield, Salvage Beam, black holes, asteroids, debris, scrap pickups, upgrades, shop/results flows, missions, rare events, sector generation, roaming squads, minimap/HUD, persistent progression, debug tooling, and smoke harnesses.
 
+`GameScene.ts` remains the conductor for Phaser lifecycle, object ownership, run flow, and module wiring. Focused systems under `src/systems`, `src/ui`, `src/data`, and `src/core` own new gameplay, UI, data, harness, tuning, and runtime behavior.
+
 `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md` is the current product roadmap and operating guide. Older MVP documents remain useful reference, but the 2.0 GDD and the current source tree take precedence when they conflict.
 
 ## Development Rules

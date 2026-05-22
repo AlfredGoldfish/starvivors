@@ -10,11 +10,11 @@ Treat the 2.0 phase order as the default path. Split phases into stable subphase
 
 ## Current Task Boundary
 
-This repository now contains a browser-playable Phaser 3, TypeScript, and Vite prototype. Gameplay code exists under `src/`, with `GameScene.ts` currently serving as the main orchestration point during the refactor.
+This repository now contains a browser-playable Phaser 3, TypeScript, and Vite prototype. Gameplay code exists under `src/`, with `GameScene.ts` serving as the main orchestration point.
 
-For the current major refactor, keep changes incremental and behavior-preserving. Do not make gameplay tuning, balance, content, audio, packaging, or framework changes unless a prompt explicitly asks for them.
+The staged `GameScene.ts` refactor phases 0-10 are complete. Continue to keep changes incremental and behavior-preserving. Do not make gameplay tuning, balance, content, audio, packaging, or framework changes unless a prompt explicitly asks for them.
 
-Use `Docs/GAMESCENE_REFACTOR_PLAN.md` for the current `GameScene.ts` extraction order before moving code.
+Use `Docs/GAMESCENE_REFACTOR_PLAN.md` for current module ownership, deferred refactor risks, and the conductor rule before moving code.
 
 ## GameScene Maintenance Rule
 
@@ -93,6 +93,7 @@ Do not wire WIP or future content into active gameplay unless the prompt explici
 After the completed organization refactor:
 
 - Read the current source before moving code.
+- Check `Docs/GAMESCENE_REFACTOR_PLAN.md` for module ownership and deferred followups.
 - Keep `npm.cmd run build` passing after each focused change.
 - Preserve query-string smoke harnesses and debug menu behavior.
 - Leave unrelated local artifacts such as Vite logs out of commits.

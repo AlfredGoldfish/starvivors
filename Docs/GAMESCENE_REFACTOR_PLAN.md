@@ -394,39 +394,49 @@ Acceptance:
 - Relevant smoke harnesses pass.
 - Docs reflect the final module ownership.
 
-## Suggested Work Order For The Next Coding Task
+## Post-Refactor Ownership
 
-Start with Phase 0 and Phase 1 only.
+`GameScene.ts` remains the conductor. It should keep scene lifecycle, high-level run orchestration, Phaser object ownership where lifetime is scene-wide, and explicit callback wiring between modules.
 
-Recommended first implementation prompt:
+Current extracted ownership:
 
-```text
-Extract GameScene query-string test harness logic into a focused module.
+- `src/scenes/gameSceneHarness.ts`: query-string harness installation and dispatch.
+- `src/scenes/gameSceneRunState.ts`: pure run reset defaults and run-state helper values.
+- `src/scenes/gameScenePreRunFlow.ts`: pre-run navigation, ship availability, unlock, loadout, and label decisions.
+- `src/systems/gameplaySnapshots.ts`: HUD, minimap, diagnostics, profiler, and collision overlay snapshot shaping.
+- `src/systems/missionRuntime.ts`: mission runtime creation and objective targeting.
+- `src/systems/rareEventRuntime.ts`: rare event runtime progress and minimap marker helpers.
+- `src/systems/worldEventRuntime.ts`: reserved followup target if world-event callbacks grow beyond current generation/reward helpers.
+- `src/ui/upgradeOverlay.ts`: upgrade overlay UI objects, layout, card drawing, text refresh, hit zones, and weapon summary formatting.
+- `src/systems/playerWeapons.ts`: weapon data helpers and hotbar assignment rules.
+- `src/systems/playerWeaponRuntime.ts`: active weapon cadence and beam heat/tick runtime decisions.
+- `src/systems/playerContactRuntime.ts`: player/enemy, asteroid, debris contact detection and impact cooldown bookkeeping.
+- `src/systems/sectorRuntime.ts`: sector asteroid, scrap, and signal spawn data creation plus sector completion bookkeeping.
 
-Read:
-- Docs/GAMESCENE_REFACTOR_PLAN.md
-- Docs/README_FOR_CODEX.md
-- src/scenes/GameScene.ts
+Deferred cleanup and risks:
 
-Requirements:
-- Do not change gameplay behavior.
-- Preserve all existing data-starvivors-* harness attributes.
-- Keep GameScene responsible for calling the installer.
-- Use a narrow adapter object instead of importing GameScene into the harness module.
-- Run npm.cmd run build.
+- Deep harness scenario bodies still live in `GameScene.ts`; the installer/dispatch layer is extracted, but moving scenario bodies needs a larger adapter contract.
+- Phaser object creation for asteroids, pickups, sector signals, world events, rare events, projectiles, and many UI entry points still belongs to `GameScene.ts` until lifecycle ownership is explicit.
+- Scrap rollup and asteroid coalescing remain scene-led because they mutate active Phaser objects and scene-owned arrays.
+- Weapon damage/reward/VFX callbacks remain in `GameScene.ts`; future extraction should preserve callback contracts and avoid balance changes.
+- `GameScene.ts` is still large enough that new gameplay should default to focused modules first, then conductor wiring in the scene.
 
-Acceptance:
-- Build passes.
-- ?testHarness=smoke still reports pass.
-- No unrelated files changed.
-```
+## Suggested Work Order For Future Coding Tasks
+
+For new work after this refactor:
+
+1. Read `Docs/README_FOR_CODEX.md`, this ownership section, and the touched source modules.
+2. Choose the existing module that owns the behavior, or create one focused module if none fits.
+3. Keep `GameScene.ts` as the conductor for lifecycle, Phaser ownership, and system wiring.
+4. Preserve behavior unless the prompt explicitly requests gameplay changes.
+5. Run `npm.cmd run build` and the smallest relevant query-string harnesses before committing.
 
 ## Tracking
 
 Use this section to record extraction progress.
 
 - Phase 0: complete. Baseline build and smoke harnesses passed before code extraction.
-- Phase 1: in progress. Harness installation and query-string dispatch moved to `src/scenes/gameSceneHarness.ts`; deep scenario bodies remain in `GameScene.ts` for later adapter-based extraction.
+- Phase 1: complete for the safe extraction slice. Harness installation and query-string dispatch moved to `src/scenes/gameSceneHarness.ts`; deep scenario bodies remain in `GameScene.ts` as a deferred adapter-based extraction.
 - Phase 2: complete. Read-only snapshot shaping for diagnostics, profiler counts/flags, collision overlay, minimap, and gameplay HUD moved to `src/systems/gameplaySnapshots.ts`.
 - Phase 3: complete. Pure per-run reset defaults for rewards, progression, counters, pulse runtime, encounter timing, pause/overlay state, beam slots, and black-hole debug state moved to `src/scenes/gameSceneRunState.ts`.
 - Phase 4: complete. Pre-run decision/config helpers for navigation, ship availability, play disabled reasons, unlock checks, hangar weapon availability, and lock labels moved to `src/scenes/gameScenePreRunFlow.ts`.
@@ -435,4 +445,4 @@ Use this section to record extraction progress.
 - Phase 7: complete. Hotbar assignment rules moved to `src/systems/playerWeapons.ts`; active weapon firing cadence and beam heat/tick runtime moved to `src/systems/playerWeaponRuntime.ts`; `GameScene` remains the conductor for input, projectile spawning, ramming shield effects, beam visuals, damage, and rewards.
 - Phase 8: complete. Player/enemy, asteroid, and debris contact detection plus player/world impact cooldown bookkeeping moved to `src/systems/playerContactRuntime.ts`; `GameScene` remains the conductor for knockback, damage, VFX, destruction, rewards, black-hole death checks, and ramming shield side effects.
 - Phase 9: complete. Sector asteroid, scrap, and signal spawn data creation plus sector asteroid/scrap completion bookkeeping moved to `src/systems/sectorRuntime.ts`; `GameScene` remains the conductor for streaming decisions, Phaser object creation/destruction, active maps, beacon visuals, scrap rollup, and asteroid coalescing.
-- Phase 10: pending
+- Phase 10: complete. Final guardrail pass updated module ownership, future workflow, and deferred risks; no extra runtime extraction was made beyond verified module boundaries.
