@@ -77,7 +77,9 @@ import {
   parseForgeAssetImport,
   renderForgeAssetToSvg,
   saveAssetForgeStorageState,
-  type ForgeAsset
+  type ForgeAsset,
+  type ForgePalette,
+  type ForgeVectorLayer
 } from '../systems/assetForge';
 
 interface EnemyLabProjectile {
@@ -150,6 +152,15 @@ interface EnemyLabDiagnosticsFrame {
 interface EnemyLabOverlayRefs {
   root: HTMLDivElement;
   toggleOverlayButton: HTMLButtonElement;
+  forgeAssetSelect: HTMLSelectElement;
+  forgePreviewMode: HTMLSelectElement;
+  forgePreview: HTMLDivElement;
+  forgeLayerSelect: HTMLSelectElement;
+  forgeLayerColor: HTMLSelectElement;
+  forgeLayerStrokeColor: HTMLSelectElement;
+  forgeLayerAlpha: HTMLInputElement;
+  forgeLayerStrokeWidth: HTMLInputElement;
+  forgePaletteInputs: Record<keyof ForgePalette, HTMLInputElement>;
   enemySelect: HTMLSelectElement;
   variantSelect: HTMLSelectElement;
   variantName: HTMLInputElement;
@@ -189,6 +200,17 @@ const PLAYER_PROJECTILE_RANGE = 1100;
 const PLAYER_PROJECTILE_DAMAGE = 18;
 const LAB_PLAYER_SHIP = getShipDefinition(DEFAULT_SHIP_ID);
 const LAB_DIAGNOSTICS_FRAME_LIMIT = 900;
+const FORGE_PALETTE_KEYS: Array<keyof ForgePalette> = [
+  'metalDark',
+  'metalWarm',
+  'neonPrimary',
+  'neonSecondary',
+  'warning',
+  'outline',
+  'white'
+];
+const FORGE_COLOR_OPTIONS: Array<keyof ForgePalette> = [...FORGE_PALETTE_KEYS];
+type ForgePreviewMode = 'combat' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -204,6 +226,9 @@ export class EnemyLabScene extends Phaser.Scene {
   private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
   private selectedEnemyIndex = 0;
   private selectedVariantId = '';
+  private selectedForgeAssetId = '';
+  private selectedForgeLayerIndex = 0;
+  private forgePreviewMode: ForgePreviewMode = 'combat';
   private selectedSquadIndex = 0;
   private selectedCustomSquadId = '';
   private selectedSquadEntryIndex = -1;
@@ -922,6 +947,58 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
       </section>
       <section class="enemy-lab-panel">
+        <div class="enemy-lab-panel-title">Forge Editor</div>
+        <label>Forge Asset <select data-field="forgeAsset"></select></label>
+        <label>Preview <select data-field="forgePreviewMode">
+          <option value="combat">Combat</option>
+          <option value="minimap">Minimap</option>
+          <option value="silhouette">Silhouette</option>
+          <option value="starfield">Starfield</option>
+          <option value="hit-radius">Hit Radius</option>
+        </select></label>
+        <div class="enemy-lab-forge-preview" data-field="forgePreview"></div>
+        <div class="enemy-lab-row">
+          <button data-action="createForgeDraft">Create Draft</button>
+          <button data-action="saveForgeAsset">Save Forge</button>
+          <button data-action="deleteForgeAsset" class="enemy-lab-danger-button">Delete Forge</button>
+        </div>
+        <div class="enemy-lab-subtitle">Palette</div>
+        <div class="enemy-lab-palette-grid">
+          <label>Metal dark <input data-palette="metalDark" type="color"></label>
+          <label>Warm metal <input data-palette="metalWarm" type="color"></label>
+          <label>Neon main <input data-palette="neonPrimary" type="color"></label>
+          <label>Neon alt <input data-palette="neonSecondary" type="color"></label>
+          <label>Warning <input data-palette="warning" type="color"></label>
+          <label>Outline <input data-palette="outline" type="color"></label>
+          <label>White <input data-palette="white" type="color"></label>
+        </div>
+        <div class="enemy-lab-subtitle">Layer</div>
+        <label>Layer <select data-field="forgeLayer"></select></label>
+        <div class="enemy-lab-grid">
+          <label>Fill <select data-field="forgeLayerColor"></select></label>
+          <label>Stroke <select data-field="forgeLayerStrokeColor"></select></label>
+          <label>Alpha <input data-field="forgeLayerAlpha" type="number" min="0" max="1" step="0.05"></label>
+          <label>Stroke W <input data-field="forgeLayerStrokeWidth" type="number" min="0" max="99" step="0.5"></label>
+        </div>
+        <div class="enemy-lab-row">
+          <button data-action="forgeMoveLeft">Left</button>
+          <button data-action="forgeMoveRight">Right</button>
+          <button data-action="forgeMoveUp">Up</button>
+          <button data-action="forgeMoveDown">Down</button>
+          <button data-action="forgeScaleDown">Smaller</button>
+          <button data-action="forgeScaleUp">Larger</button>
+          <button data-action="forgeMirrorX">Mirror X</button>
+        </div>
+        <div class="enemy-lab-row">
+          <button data-action="forgeAddGlow">Add Glow</button>
+          <button data-action="forgeAddRing">Add Ring</button>
+          <button data-action="forgeAddCore">Add Core</button>
+          <button data-action="forgeAddPlate">Add Plate</button>
+          <button data-action="forgeDuplicateLayer">Duplicate</button>
+          <button data-action="forgeDeleteLayer" class="enemy-lab-danger-button">Delete Layer</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel">
         <div class="enemy-lab-panel-title">Test Enemy</div>
         <label>Enemy <select data-field="enemy"></select></label>
         <label>Variant <select data-field="variant"></select></label>
@@ -1022,6 +1099,17 @@ export class EnemyLabScene extends Phaser.Scene {
     document.body.appendChild(root);
 
     const toggleOverlayButton = root.querySelector<HTMLButtonElement>('[data-action="toggleOverlay"]');
+    const forgeAssetSelect = root.querySelector<HTMLSelectElement>('[data-field="forgeAsset"]');
+    const forgePreviewMode = root.querySelector<HTMLSelectElement>('[data-field="forgePreviewMode"]');
+    const forgePreview = root.querySelector<HTMLDivElement>('[data-field="forgePreview"]');
+    const forgeLayerSelect = root.querySelector<HTMLSelectElement>('[data-field="forgeLayer"]');
+    const forgeLayerColor = root.querySelector<HTMLSelectElement>('[data-field="forgeLayerColor"]');
+    const forgeLayerStrokeColor = root.querySelector<HTMLSelectElement>('[data-field="forgeLayerStrokeColor"]');
+    const forgeLayerAlpha = root.querySelector<HTMLInputElement>('[data-field="forgeLayerAlpha"]');
+    const forgeLayerStrokeWidth = root.querySelector<HTMLInputElement>('[data-field="forgeLayerStrokeWidth"]');
+    const forgePaletteInputs = Object.fromEntries(
+      FORGE_PALETTE_KEYS.map((key) => [key, root.querySelector<HTMLInputElement>(`[data-palette="${key}"]`)])
+    ) as Record<keyof ForgePalette, HTMLInputElement | null>;
     const enemySelect = root.querySelector<HTMLSelectElement>('[data-field="enemy"]');
     const variantSelect = root.querySelector<HTMLSelectElement>('[data-field="variant"]');
     const variantName = root.querySelector<HTMLInputElement>('[data-field="variantName"]');
@@ -1055,6 +1143,15 @@ export class EnemyLabScene extends Phaser.Scene {
     if (
       !enemySelect ||
       !toggleOverlayButton ||
+      !forgeAssetSelect ||
+      !forgePreviewMode ||
+      !forgePreview ||
+      !forgeLayerSelect ||
+      !forgeLayerColor ||
+      !forgeLayerStrokeColor ||
+      !forgeLayerAlpha ||
+      !forgeLayerStrokeWidth ||
+      Object.values(forgePaletteInputs).some((input) => !input) ||
       !variantSelect ||
       !variantName ||
       !variantStatus ||
@@ -1097,10 +1194,21 @@ export class EnemyLabScene extends Phaser.Scene {
       variantStatus.add(new Option(status, status));
       squadStatus.add(new Option(status, status));
     }
+    this.populateForgeColorSelect(forgeLayerColor);
+    this.populateForgeColorSelect(forgeLayerStrokeColor);
 
     this.overlay = {
       root,
       toggleOverlayButton,
+      forgeAssetSelect,
+      forgePreviewMode,
+      forgePreview,
+      forgeLayerSelect,
+      forgeLayerColor,
+      forgeLayerStrokeColor,
+      forgeLayerAlpha,
+      forgeLayerStrokeWidth,
+      forgePaletteInputs: forgePaletteInputs as Record<keyof ForgePalette, HTMLInputElement>,
       enemySelect,
       variantSelect,
       variantName,
@@ -1135,12 +1243,38 @@ export class EnemyLabScene extends Phaser.Scene {
     enemySelect.addEventListener('change', () => {
       this.selectedEnemyIndex = Math.max(0, getEnemyLabDefinitions().findIndex((definition) => definition.id === enemySelect.value));
       this.selectedVariantId = '';
+      this.selectedForgeAssetId = '';
+      this.selectedForgeLayerIndex = 0;
       this.populateVariantSelect();
       this.syncVariantControlsFromState();
+      this.syncForgeControlsFromState();
     });
+    forgeAssetSelect.addEventListener('change', () => {
+      this.selectedForgeAssetId = forgeAssetSelect.value;
+      this.selectedForgeLayerIndex = 0;
+      this.syncForgeControlsFromState();
+    });
+    forgePreviewMode.addEventListener('change', () => {
+      this.forgePreviewMode = this.normalizeForgePreviewMode(forgePreviewMode.value);
+      this.renderForgePreview();
+    });
+    forgeLayerSelect.addEventListener('change', () => {
+      this.selectedForgeLayerIndex = Math.max(0, Number(forgeLayerSelect.value) || 0);
+      this.syncForgeLayerControlsFromState();
+      this.renderForgePreview();
+    });
+    for (const input of Object.values(forgePaletteInputs)) {
+      input?.addEventListener('input', () => this.persistForgePaletteFromControls());
+      input?.addEventListener('change', () => this.persistForgePaletteFromControls());
+    }
+    for (const input of [forgeLayerColor, forgeLayerStrokeColor, forgeLayerAlpha, forgeLayerStrokeWidth]) {
+      input.addEventListener('input', () => this.persistForgeLayerFromControls());
+      input.addEventListener('change', () => this.persistForgeLayerFromControls());
+    }
     variantSelect.addEventListener('change', () => {
       this.selectedVariantId = variantSelect.value;
       this.syncVariantControlsFromState();
+      this.syncForgeControlsFromState();
     });
     for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statContactDamage]) {
       input.addEventListener('input', () => this.persistVariantFromControls(false));
@@ -1240,6 +1374,22 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'exportContactSheet') this.exportForgeContactSheet();
       if (action === 'importForgeAsset') this.importForgeAsset();
       if (action === 'exportForgePromotion') this.exportForgePromotionBundle();
+      if (action === 'createForgeDraft') this.createForgeDraftForSelectedEnemy();
+      if (action === 'saveForgeAsset') this.saveSelectedForgeAsset();
+      if (action === 'deleteForgeAsset') this.deleteSelectedForgeAsset();
+      if (action === 'forgeMoveLeft') this.transformSelectedForgeLayer((layer) => this.translateForgeLayer(layer, -5, 0));
+      if (action === 'forgeMoveRight') this.transformSelectedForgeLayer((layer) => this.translateForgeLayer(layer, 5, 0));
+      if (action === 'forgeMoveUp') this.transformSelectedForgeLayer((layer) => this.translateForgeLayer(layer, 0, -5));
+      if (action === 'forgeMoveDown') this.transformSelectedForgeLayer((layer) => this.translateForgeLayer(layer, 0, 5));
+      if (action === 'forgeScaleDown') this.transformSelectedForgeLayer((layer) => this.scaleForgeLayer(layer, 0.92));
+      if (action === 'forgeScaleUp') this.transformSelectedForgeLayer((layer) => this.scaleForgeLayer(layer, 1.08));
+      if (action === 'forgeMirrorX') this.transformSelectedForgeLayer((layer) => this.mirrorForgeLayerX(layer));
+      if (action === 'forgeAddGlow') this.addForgeLayer('glow');
+      if (action === 'forgeAddRing') this.addForgeLayer('ring');
+      if (action === 'forgeAddCore') this.addForgeLayer('core');
+      if (action === 'forgeAddPlate') this.addForgeLayer('plate');
+      if (action === 'forgeDuplicateLayer') this.duplicateSelectedForgeLayer();
+      if (action === 'forgeDeleteLayer') this.deleteSelectedForgeLayer();
       if (action === 'exportAiBrief') this.exportAiBrief();
       if (action === 'exportPromotion') this.exportPromotionReport();
       if (action === 'newSquad') this.createNewCustomSquad();
@@ -1285,6 +1435,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     this.populateVariantSelect();
     this.populateCustomSquadSelect();
+    this.populateForgeAssetSelect();
     this.renderQuickTags();
     this.renderBehaviorParamControls();
     this.renderSquadEntries();
@@ -1322,6 +1473,221 @@ export class EnemyLabScene extends Phaser.Scene {
       this.selectedCustomSquadId = '';
     }
     this.overlay.customSquadSelect.value = this.selectedCustomSquadId;
+  }
+
+  private populateForgeAssetSelect(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const baseAsset = this.getBaseForgeAsset();
+    this.overlay.forgeAssetSelect.replaceChildren(new Option(`${baseAsset.displayName} (live source)`, ''));
+    for (const asset of this.presetState.forgeAssets) {
+      this.overlay.forgeAssetSelect.add(new Option(`${asset.displayName} (${asset.status})`, asset.id));
+    }
+    if (this.selectedForgeAssetId && !this.presetState.forgeAssets.some((asset) => asset.id === this.selectedForgeAssetId)) {
+      this.selectedForgeAssetId = '';
+    }
+    this.overlay.forgeAssetSelect.value = this.selectedForgeAssetId;
+  }
+
+  private syncForgeControlsFromState(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    this.populateForgeAssetSelect();
+    const asset = this.getSelectedForgeAsset();
+    this.overlay.forgePreviewMode.value = this.forgePreviewMode;
+    for (const key of FORGE_PALETTE_KEYS) {
+      this.overlay.forgePaletteInputs[key].value = this.colorNumberToInput(asset.palette[key]);
+    }
+    this.renderForgeLayerSelect();
+    this.syncForgeLayerControlsFromState();
+    this.renderForgePreview();
+  }
+
+  private renderForgeLayerSelect(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const asset = this.getSelectedForgeAsset();
+    this.overlay.forgeLayerSelect.replaceChildren();
+    asset.layers.forEach((layer, index) => {
+      this.overlay?.forgeLayerSelect.add(new Option(`${index + 1}. ${layer.id} (${layer.type})`, String(index)));
+    });
+    this.selectedForgeLayerIndex = Phaser.Math.Clamp(this.selectedForgeLayerIndex, 0, Math.max(0, asset.layers.length - 1));
+    this.overlay.forgeLayerSelect.value = String(this.selectedForgeLayerIndex);
+  }
+
+  private syncForgeLayerControlsFromState(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const layer = this.getSelectedForgeLayer();
+    const editable = Boolean(layer);
+    this.overlay.forgeLayerColor.value = this.getForgeColorControlValue(layer?.color);
+    this.overlay.forgeLayerStrokeColor.value = this.getForgeColorControlValue(layer?.strokeColor);
+    this.overlay.forgeLayerAlpha.value = String(layer?.alpha ?? 1);
+    this.overlay.forgeLayerStrokeWidth.value = String(layer?.strokeWidth ?? 2);
+    this.overlay.forgeLayerColor.disabled = !editable;
+    this.overlay.forgeLayerStrokeColor.disabled = !editable;
+    this.overlay.forgeLayerAlpha.disabled = !editable;
+    this.overlay.forgeLayerStrokeWidth.disabled = !editable;
+  }
+
+  private populateForgeColorSelect(select: HTMLSelectElement): void {
+    select.replaceChildren(new Option('None', ''));
+    for (const key of FORGE_COLOR_OPTIONS) {
+      select.add(new Option(key, key));
+    }
+  }
+
+  private persistForgePaletteFromControls(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset || !this.overlay) {
+      return;
+    }
+
+    for (const key of FORGE_PALETTE_KEYS) {
+      asset.palette[key] = this.colorInputToNumber(this.overlay.forgePaletteInputs[key].value, asset.palette[key]);
+    }
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.renderForgePreview();
+  }
+
+  private persistForgeLayerFromControls(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset || !this.overlay) {
+      return;
+    }
+
+    const layer = asset.layers[this.selectedForgeLayerIndex];
+    if (!layer) {
+      return;
+    }
+
+    layer.color = this.readForgeColorControl(this.overlay.forgeLayerColor.value, layer.color);
+    layer.strokeColor = this.readForgeColorControl(this.overlay.forgeLayerStrokeColor.value, layer.strokeColor);
+    layer.alpha = this.readNumberInput(this.overlay.forgeLayerAlpha, layer.alpha ?? 1, true);
+    layer.strokeWidth = this.readNumberInput(this.overlay.forgeLayerStrokeWidth, layer.strokeWidth ?? 2, true);
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.renderForgePreview();
+  }
+
+  private createForgeDraftForSelectedEnemy(): void {
+    const source = this.getSelectedForgeAsset();
+    const draft = this.cloneForgeAsset(source);
+    draft.id = `forge.${slugify(draft.displayName)}.${Date.now()}`;
+    draft.displayName = `${draft.displayName} Draft`;
+    draft.status = 'Visual Pass';
+    draft.savedAt = new Date().toISOString();
+    this.presetState.forgeAssets.push(draft);
+    this.selectedForgeAssetId = draft.id;
+    this.selectedForgeLayerIndex = 0;
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private saveSelectedForgeAsset(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset) {
+      return;
+    }
+
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private deleteSelectedForgeAsset(): void {
+    if (!this.selectedForgeAssetId) {
+      return;
+    }
+    const asset = this.presetState.forgeAssets.find((candidate) => candidate.id === this.selectedForgeAssetId);
+    if (!asset || !window.confirm(`Delete Forge asset "${asset.displayName}"?`)) {
+      return;
+    }
+
+    this.presetState.forgeAssets = this.presetState.forgeAssets.filter((candidate) => candidate.id !== asset.id);
+    this.selectedForgeAssetId = '';
+    this.selectedForgeLayerIndex = 0;
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private transformSelectedForgeLayer(transform: (layer: ForgeVectorLayer) => ForgeVectorLayer): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset) {
+      return;
+    }
+    const layer = asset.layers[this.selectedForgeLayerIndex];
+    if (!layer) {
+      return;
+    }
+
+    asset.layers[this.selectedForgeLayerIndex] = transform(this.cloneForgeLayer(layer));
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private addForgeLayer(kind: 'glow' | 'ring' | 'core' | 'plate'): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset) {
+      return;
+    }
+    const radius = Math.max(8, asset.boundsRadius * 0.42);
+    const id = `${kind}-${asset.layers.length + 1}`;
+    const layer: ForgeVectorLayer =
+      kind === 'glow'
+        ? { id, type: 'glow', x: 0, y: 0, radius: asset.boundsRadius * 0.9, color: 'neonPrimary', innerAlpha: 0.28, role: 'crisp neon glow' }
+        : kind === 'ring'
+          ? { id, type: 'ring', x: 0, y: 0, radius, strokeColor: 'neonPrimary', strokeAlpha: 0.86, strokeWidth: 2.5, role: 'holographic ring' }
+          : kind === 'core'
+            ? { id, type: 'ellipse', x: 0, y: 0, radiusX: radius * 0.35, radiusY: radius * 0.35, color: 'neonSecondary', alpha: 0.9, fill: true, blend: 'lighter', role: 'dominant neon core' }
+            : { id, type: 'rect', x: -radius * 0.55, y: -radius * 0.16, width: radius * 1.1, height: radius * 0.32, color: 'metalWarm', alpha: 0.88, strokeColor: 'outline', strokeWidth: 1.5, role: 'riveted salvage plate' };
+
+    asset.layers.push(layer);
+    this.selectedForgeLayerIndex = asset.layers.length - 1;
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private duplicateSelectedForgeLayer(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset) {
+      return;
+    }
+    const layer = asset.layers[this.selectedForgeLayerIndex];
+    if (!layer) {
+      return;
+    }
+
+    const duplicate = this.translateForgeLayer(this.cloneForgeLayer(layer), 6, 6);
+    duplicate.id = `${layer.id}-copy-${Date.now().toString().slice(-4)}`;
+    asset.layers.splice(this.selectedForgeLayerIndex + 1, 0, duplicate);
+    this.selectedForgeLayerIndex += 1;
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private deleteSelectedForgeLayer(): void {
+    const asset = this.ensureForgeDraftForEditing();
+    if (!asset || asset.layers.length <= 1) {
+      return;
+    }
+    asset.layers.splice(this.selectedForgeLayerIndex, 1);
+    this.selectedForgeLayerIndex = Phaser.Math.Clamp(this.selectedForgeLayerIndex, 0, asset.layers.length - 1);
+    asset.savedAt = new Date().toISOString();
+    this.savePresetState();
+    this.syncForgeControlsFromState();
   }
 
   private syncVariantControlsFromState(): void {
@@ -2228,14 +2594,53 @@ export class EnemyLabScene extends Phaser.Scene {
     return applyVariantToDefinition(baseDefinition, this.getSelectedVariant());
   }
 
-  private getSelectedForgeAsset(): ForgeAsset {
+  private getBaseForgeAsset(): ForgeAsset {
     return convertEnemyVisualDefinitionToForgeAsset(this.getSelectedEffectiveDefinition());
+  }
+
+  private getSelectedForgeAsset(): ForgeAsset {
+    return this.presetState.forgeAssets.find((asset) => asset.id === this.selectedForgeAssetId) ?? this.getBaseForgeAsset();
+  }
+
+  private getSelectedForgeLayer(): ForgeVectorLayer | undefined {
+    return this.getSelectedForgeAsset().layers[this.selectedForgeLayerIndex];
+  }
+
+  private ensureForgeDraftForEditing(): ForgeAsset | undefined {
+    if (this.selectedForgeAssetId) {
+      return this.presetState.forgeAssets.find((asset) => asset.id === this.selectedForgeAssetId);
+    }
+
+    this.createForgeDraftForSelectedEnemy();
+    return this.presetState.forgeAssets.find((asset) => asset.id === this.selectedForgeAssetId);
   }
 
   private getForgeContactSheetAssets(): ForgeAsset[] {
     const selected = this.getSelectedForgeAsset();
-    const imported = this.presetState.forgeAssets.slice(-5);
+    const imported = this.presetState.forgeAssets.filter((asset) => asset.id !== selected.id).slice(-5);
     return [selected, ...imported];
+  }
+
+  private renderForgePreview(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const asset = this.getSelectedForgeAsset();
+    const mode = this.forgePreviewMode;
+    const scale = mode === 'minimap' ? 0.32 : mode === 'combat' ? 0.92 : 0.76;
+    const svg = renderForgeAssetToSvg(asset, { includeMetadata: false });
+    const radius = Number(asset.gameplayHints?.hitRadius ?? asset.boundsRadius);
+    const radiusMarkup = mode === 'hit-radius'
+      ? `<svg class="enemy-lab-forge-radius" viewBox="${-asset.canvasSize / 2} ${-asset.canvasSize / 2} ${asset.canvasSize} ${asset.canvasSize}"><circle cx="0" cy="0" r="${radius}" /></svg>`
+      : '';
+    this.overlay.forgePreview.className = `enemy-lab-forge-preview is-${mode}`;
+    this.overlay.forgePreview.innerHTML = [
+      '<div class="enemy-lab-forge-preview-stage">',
+      `<div class="enemy-lab-forge-preview-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`,
+      '</div>',
+      `<div class="enemy-lab-forge-preview-caption">${asset.displayName} | ${asset.layers.length} layers | ${asset.status}</div>`
+    ].join('');
   }
 
   private createForgeAssetMarkdown(asset: ForgeAsset): string {
@@ -2259,6 +2664,84 @@ export class EnemyLabScene extends Phaser.Scene {
     ].join('\n');
   }
 
+  private translateForgeLayer(layer: ForgeVectorLayer, dx: number, dy: number): ForgeVectorLayer {
+    return this.mapForgeLayerPoints(layer, (x, y) => [x + dx, y + dy]);
+  }
+
+  private scaleForgeLayer(layer: ForgeVectorLayer, scale: number): ForgeVectorLayer {
+    return this.mapForgeLayerPoints(layer, (x, y) => [x * scale, y * scale], scale);
+  }
+
+  private mirrorForgeLayerX(layer: ForgeVectorLayer): ForgeVectorLayer {
+    return this.mapForgeLayerPoints(layer, (x, y) => [-x, y]);
+  }
+
+  private mapForgeLayerPoints(
+    layer: ForgeVectorLayer,
+    mapPoint: (x: number, y: number) => [number, number],
+    sizeScale = 1
+  ): ForgeVectorLayer {
+    switch (layer.type) {
+      case 'polygon':
+        return { ...layer, points: layer.points.map(([x, y]) => mapPoint(x, y)) };
+      case 'line': {
+        const from = mapPoint(layer.from[0], layer.from[1]);
+        const to = mapPoint(layer.to[0], layer.to[1]);
+        return { ...layer, from, to };
+      }
+      case 'ellipse': {
+        const [x, y] = mapPoint(layer.x, layer.y);
+        return { ...layer, x, y, radiusX: layer.radiusX * sizeScale, radiusY: layer.radiusY * sizeScale };
+      }
+      case 'ring':
+      case 'glow': {
+        const [x, y] = mapPoint(layer.x, layer.y);
+        return { ...layer, x, y, radius: layer.radius * sizeScale };
+      }
+      case 'rect': {
+        const [x, y] = mapPoint(layer.x, layer.y);
+        return { ...layer, x, y, width: layer.width * sizeScale, height: layer.height * sizeScale };
+      }
+      case 'crescent':
+        return { ...layer, radius: layer.radius * sizeScale };
+      case 'path':
+        return layer;
+    }
+  }
+
+  private cloneForgeAsset(asset: ForgeAsset): ForgeAsset {
+    return JSON.parse(JSON.stringify(asset)) as ForgeAsset;
+  }
+
+  private cloneForgeLayer(layer: ForgeVectorLayer): ForgeVectorLayer {
+    return JSON.parse(JSON.stringify(layer)) as ForgeVectorLayer;
+  }
+
+  private normalizeForgePreviewMode(value: string): ForgePreviewMode {
+    return value === 'minimap' || value === 'silhouette' || value === 'starfield' || value === 'hit-radius'
+      ? value
+      : 'combat';
+  }
+
+  private getForgeColorControlValue(color: ForgeVectorLayer['color']): string {
+    return typeof color === 'string' && FORGE_COLOR_OPTIONS.includes(color) ? color : '';
+  }
+
+  private readForgeColorControl(value: string, fallback: ForgeVectorLayer['color']): ForgeVectorLayer['color'] {
+    return FORGE_COLOR_OPTIONS.includes(value as keyof ForgePalette) ? (value as keyof ForgePalette) : fallback;
+  }
+
+  private colorNumberToInput(color: number): string {
+    return `#${color.toString(16).padStart(6, '0')}`;
+  }
+
+  private colorInputToNumber(value: string, fallback: number): number {
+    if (!/^#[0-9a-f]{6}$/i.test(value)) {
+      return fallback;
+    }
+    return Number.parseInt(value.slice(1), 16);
+  }
+
   private syncOverlayFromState(): void {
     if (!this.overlay) {
       return;
@@ -2275,6 +2758,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.deconflictionStrength.value = String(this.enemyDeconflictionStrength);
     this.syncVariantControlsFromState();
     this.syncSquadControlsFromState();
+    this.syncForgeControlsFromState();
     this.syncActionButtonStates();
   }
 
