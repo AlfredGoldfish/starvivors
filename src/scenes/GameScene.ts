@@ -329,13 +329,18 @@ import {
   buildPerformanceProfilerFlags
 } from '../systems/gameplaySnapshots';
 import {
-  createCircleCollisionShape,
-  createOrientedCapsuleCollisionShape,
-  getCapsuleCircleCollision,
-  getCircleCollision,
   scaleHalfExtent,
   scaleRadius
 } from '../systems/collisionShapes';
+import {
+  canApplyCooldown,
+  canApplyPairCooldown,
+  findPlayerAsteroidContact,
+  findPlayerDebrisContact,
+  findPlayerEnemyContact,
+  markCooldown,
+  markPairCooldown
+} from '../systems/playerContactRuntime';
 import { GameplayHudSystem, type GameplayHudSnapshot, type WeaponHotbarSlotSnapshot } from '../systems/gameplayHud';
 import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import {
@@ -3994,6 +3999,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   private runTestHarnessWorldImpactCleanup(): void {
+    this.startRun();
+
     const staleBody = this.add.container(0, 0);
     const staleWrapMirrorBody = this.add.container(0, 0);
     const debrisBody = this.add.container(0, 0);
@@ -9374,132 +9381,39 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemyContact(): PlayerEnemyContact | undefined {
-    const playerHitRadius = this.getPlayerCollisionRadius();
-    for (const enemy of this.liveEnemies) {
-      const shieldCollision = this.getRammingShieldCircleCollision(
-        enemy.body.x,
-        enemy.body.y,
-        enemy.definition.stats.radius
-      );
-      if (shieldCollision) {
-        return {
-          enemy,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier,
-          hitRammingShield: true
-        };
-      }
-
-      const collision = getCircleCollision(
-        this.arena,
-        createCircleCollisionShape(this.player, playerHitRadius),
-        createCircleCollisionShape(enemy.body, enemy.definition.stats.radius)
-      );
-      if (collision) {
-        return {
-          enemy,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier
-        };
-      }
-    }
-
-    return undefined;
-  }
-
-  private getEnemyCapsulePlayerCollision(
-    enemy: BasicEnemy | ShooterEnemy | TankEnemy,
-    playerRadius: number
-  ): { normal: Phaser.Math.Vector2; penetration: number } | undefined {
-    const collision = getCapsuleCircleCollision(
-      this.arena,
-      createOrientedCapsuleCollisionShape({
-        body: enemy.body,
-        forward: this.getForwardDirection(enemy.body.rotation),
-        halfWidth: this.getEnemyCollisionHalfWidth(enemy),
-        halfLength: this.getEnemyCollisionHalfLength(enemy)
-      }),
-      createCircleCollisionShape(this.player, playerRadius)
-    );
-
-    if (!collision) {
-      return undefined;
-    }
-
-    return {
-      normal: collision.normal.clone().scale(-1),
-      penetration: collision.penetration
-    };
+    return findPlayerEnemyContact({
+      arena: this.arena,
+      player: this.player,
+      playerHitRadius: this.getPlayerCollisionRadius(),
+      enemies: this.liveEnemies,
+      getRammingShieldCircleCollision: (targetX, targetY, targetRadius) =>
+        this.getRammingShieldCircleCollision(targetX, targetY, targetRadius)
+    });
   }
 
   private getAsteroidContact(): PlayerAsteroidContact | undefined {
-    const playerHitRadius = this.getPlayerCollisionRadius();
-
-    for (const asteroid of this.basicAsteroids) {
-      const asteroidRadius = this.getAsteroidCollisionRadius(asteroid);
-      const shieldCollision = this.getRammingShieldCircleCollision(asteroid.body.x, asteroid.body.y, asteroidRadius);
-      if (shieldCollision) {
-        return {
-          asteroid,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier],
-          hitRammingShield: true
-        };
-      }
-
-      const collision = getCircleCollision(
-        this.arena,
-        createCircleCollisionShape(this.player, playerHitRadius),
-        createCircleCollisionShape(asteroid.body, asteroidRadius)
-      );
-      if (collision) {
-        return {
-          asteroid,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier]
-        };
-      }
-    }
-
-    return undefined;
+    return findPlayerAsteroidContact({
+      arena: this.arena,
+      player: this.player,
+      playerHitRadius: this.getPlayerCollisionRadius(),
+      asteroids: this.basicAsteroids,
+      getAsteroidCollisionRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
+      getAsteroidContactDamage: (asteroid) => ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier],
+      getRammingShieldCircleCollision: (targetX, targetY, targetRadius) =>
+        this.getRammingShieldCircleCollision(targetX, targetY, targetRadius)
+    });
   }
 
   private getDebrisContact(): PlayerDebrisContact | undefined {
-    const playerHitRadius = this.getPlayerCollisionRadius();
-
-    for (const debris of this.enemyWreckageDebris) {
-      const debrisRadius = this.getDebrisCollisionRadius(debris);
-      const shieldCollision = this.getRammingShieldCircleCollision(debris.body.x, debris.body.y, debrisRadius);
-      if (shieldCollision) {
-        return {
-          debris,
-          normal: shieldCollision.normal,
-          penetration: shieldCollision.penetration,
-          damage: debris.damage,
-          hitRammingShield: true
-        };
-      }
-
-      const collision = getCircleCollision(
-        this.arena,
-        createCircleCollisionShape(this.player, playerHitRadius),
-        createCircleCollisionShape(debris.body, debrisRadius)
-      );
-      if (collision) {
-        return {
-          debris,
-          normal: collision.normal,
-          penetration: collision.penetration,
-          damage: debris.damage
-        };
-      }
-    }
-
-    return undefined;
+    return findPlayerDebrisContact({
+      arena: this.arena,
+      player: this.player,
+      playerHitRadius: this.getPlayerCollisionRadius(),
+      debris: this.enemyWreckageDebris,
+      getDebrisCollisionRadius: (debris) => this.getDebrisCollisionRadius(debris),
+      getRammingShieldCircleCollision: (targetX, targetY, targetRadius) =>
+        this.getRammingShieldCircleCollision(targetX, targetY, targetRadius)
+    });
   }
 
   private getRammingShieldCollider(): RammingShieldCollider | undefined {
@@ -9679,11 +9593,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private canApplyPlayerBodyImpactDamage(target: object, time: number): boolean {
-    return time >= (this.playerBodyImpactCooldowns.get(target) ?? 0);
+    return canApplyCooldown(this.playerBodyImpactCooldowns, target, time);
   }
 
   private markPlayerBodyImpactDamageApplied(target: object, time: number): void {
-    this.playerBodyImpactCooldowns.set(target, time + PLAYER_CONTACT_IMPULSE_COOLDOWN_MS);
+    markCooldown(this.playerBodyImpactCooldowns, target, time, PLAYER_CONTACT_IMPULSE_COOLDOWN_MS);
   }
 
   private applyPlayerBodyImpactDamageToEnemy(enemy: AnyGameEnemy, normal: Phaser.Math.Vector2, time: number): void {
@@ -11512,26 +11426,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private canApplyWorldCollisionDamage(first: object, second: object, time: number): boolean {
-    return time >= (this.asteroidCollisionCooldowns.get(first)?.get(second) ?? 0);
+    return canApplyPairCooldown(this.asteroidCollisionCooldowns, first, second, time);
   }
 
   private markWorldCollisionDamageApplied(first: object, second: object, time: number): void {
-    let firstCooldowns = this.asteroidCollisionCooldowns.get(first);
-    let secondCooldowns = this.asteroidCollisionCooldowns.get(second);
-
-    if (!firstCooldowns) {
-      firstCooldowns = new WeakMap<object, number>();
-      this.asteroidCollisionCooldowns.set(first, firstCooldowns);
-    }
-
-    if (!secondCooldowns) {
-      secondCooldowns = new WeakMap<object, number>();
-      this.asteroidCollisionCooldowns.set(second, secondCooldowns);
-    }
-
-    const nextDamageAt = time + ASTEROID_COLLISION_COOLDOWN_MS;
-    firstCooldowns.set(second, nextDamageAt);
-    secondCooldowns.set(first, nextDamageAt);
+    markPairCooldown(this.asteroidCollisionCooldowns, first, second, time, ASTEROID_COLLISION_COOLDOWN_MS);
   }
 
   private getActiveAutoWeaponDefinition(): WeaponRegistryEntry | undefined {
