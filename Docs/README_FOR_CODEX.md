@@ -14,6 +14,24 @@ This repository now contains a browser-playable Phaser 3, TypeScript, and Vite p
 
 For the current major refactor, keep changes incremental and behavior-preserving. Do not make gameplay tuning, balance, content, audio, packaging, or framework changes unless a prompt explicitly asks for them.
 
+Use `Docs/GAMESCENE_REFACTOR_PLAN.md` for the current `GameScene.ts` extraction order before moving code.
+
+## GameScene Maintenance Rule
+
+`src/scenes/GameScene.ts` is an orchestration layer, not the default home for new gameplay logic.
+
+Keep `GameScene.ts` as the conductor. It may coordinate scene lifecycle, high-level run flow, Phaser-owned objects, and calls into focused modules, but new gameplay, UI, data, harness, tuning, and runtime behavior should live in existing or new modules.
+
+When adding or changing systems:
+
+- Prefer existing modules in `src/systems`, `src/data`, `src/ui`, or `src/core`.
+- Create a focused new module when no suitable module exists.
+- Keep `GameScene.ts` responsible for scene lifecycle, high-level wiring, Phaser ownership, and coordination.
+- Do not add large gameplay mechanics, UI builders, test harness logic, data definitions, or tuning tables directly to `GameScene.ts`.
+- Extract existing `GameScene.ts` responsibilities gradually in behavior-preserving slices.
+- Preserve current gameplay behavior, debug tools, desktop bridges, and query-string smoke harnesses during refactors.
+- Run `npm.cmd run build` after focused implementation changes.
+
 ## Project Direction
 
 STARVIVORS is a top-down space survival roguelite.
@@ -52,6 +70,7 @@ Recommended future stack:
 - `STARVIVORS_MVP_AUDIO_DIRECTION.md`: sound direction for later implementation
 - `STARVIVORS_MVP_GAME_FEEL_BALANCE.md`: movement, pacing, and tuning targets
 - `STARVIVORS_MVP_TECHNICAL_ARCHITECTURE.md`: future architecture rules for Codex
+- `GAMESCENE_REFACTOR_PLAN.md`: current staged plan for reducing `GameScene.ts`
 
 ## Codex Workflow Rules
 

@@ -271,15 +271,51 @@ import type {
   ShooterEnemy,
   ShopBackTarget,
   StarvivorsTestHarnessState,
+  StarvivorsTestHarness,
   TankEnemy,
   UpgradeOverlayChoice
 } from './gameTypes';
+import { installGameSceneHarness } from './gameSceneHarness';
+import {
+  createBeamSlotRuntime,
+  createBeamSlots,
+  createBlackHoleDebugResetState,
+  createEncounterTimingResetState,
+  createOverlayPauseResetState,
+  createPulseRuntimeResetState,
+  createRunCounterResetState,
+  createRunProgressResetState,
+  createRunRewardResetState,
+  type GameSceneBeamSlotRuntime,
+  type GameSceneRunEndReason,
+  type GameSceneWeaponRuntimeSlot
+} from './gameSceneRunState';
+import {
+  canStartConfiguredRun as canStartConfiguredRunPreRun,
+  canStartRunWithShip as canStartRunWithShipPreRun,
+  canUnlockShip as canUnlockShipPreRun,
+  createPreRunNavConfig,
+  getAvailableHangarWeaponIds as getAvailableHangarWeaponIdsPreRun,
+  getFirstLoadoutWeaponId as getFirstLoadoutWeaponIdPreRun,
+  getPlayDisabledReason as getPlayDisabledReasonPreRun,
+  getShipLockedLabel as getShipLockedLabelPreRun,
+  isOtherShipStartingWeapon as isOtherShipStartingWeaponPreRun,
+  isShipUnlocked as isShipUnlockedPreRun
+} from './gameScenePreRunFlow';
 import { CombatFeedbackSystem, type CombatFeedbackSnapshot } from '../systems/combatFeedback';
 import { CollisionDebugOverlaySystem, type CollisionDebugOverlaySnapshot } from '../systems/collisionDebugOverlay';
 import {
   AutoRunDiagnosticsSystem,
   type AutoRunDiagnosticsRunState
 } from '../systems/autoRunDiagnostics';
+import {
+  buildAutoRunDiagnosticsState,
+  buildCollisionDebugOverlaySnapshot,
+  buildGameplayHudSnapshot,
+  buildMinimapSnapshot,
+  buildPerformanceProfilerCounts,
+  buildPerformanceProfilerFlags
+} from '../systems/gameplaySnapshots';
 import {
   createCircleCollisionShape,
   createOrientedCapsuleCollisionShape,
@@ -603,21 +639,10 @@ interface SectorSignalSpawn {
 type MissionStatus = 'active' | 'completed' | 'failed';
 type MissionFailureReason = 'player-death' | 'run-ended';
 type DebugFuelDrainMode = 'thrust-only';
-type RunEndReason = 'none' | 'death' | 'eject' | 'mission';
-type WeaponRuntimeSlot = 'auto' | 'primary' | 'secondary';
+type RunEndReason = GameSceneRunEndReason;
+type WeaponRuntimeSlot = GameSceneWeaponRuntimeSlot;
 
-interface BeamSlotRuntime {
-  heat: number;
-  overheated: boolean;
-  nextTickAt: number;
-  graphics?: Phaser.GameObjects.Graphics;
-  isActive: boolean;
-  activationStartedAt: number;
-  visualLength: number;
-  lastSparkAt: number;
-  contactSparkBurstsEmitted: number;
-  lastVentAt: number;
-}
+type BeamSlotRuntime = GameSceneBeamSlotRuntime;
 
 interface UpgradeOverlayLayout {
   width: number;
@@ -787,11 +812,7 @@ export class GameScene extends Phaser.Scene {
   private rammingShieldLastBashEffectsUntil = 0;
   private emergencyBracingUntil = 0;
   private nextEmergencyBracingAt = 0;
-  private beamSlots: Record<WeaponRuntimeSlot, BeamSlotRuntime> = {
-    auto: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 },
-    primary: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 },
-    secondary: { heat: 0, overheated: false, nextTickAt: 0, isActive: false, activationStartedAt: 0, visualLength: 0, lastSparkAt: 0, contactSparkBurstsEmitted: 0, lastVentAt: 0 }
-  };
+  private beamSlots: Record<WeaponRuntimeSlot, BeamSlotRuntime> = createBeamSlots();
   private isPlayerDead = false;
   private runEndReason: RunEndReason = 'none';
   private playerXp = 0;
@@ -1448,7 +1469,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getAutoRunDiagnosticsState(): AutoRunDiagnosticsRunState {
-    return {
+    return buildAutoRunDiagnosticsState({
       selectedShipName: this.getSelectedShipDefinition().displayName,
       runTimeSeconds: this.getSurvivalElapsedMs(this.time.now) / 1000,
       playerHull: this.playerHull,
@@ -1460,32 +1481,32 @@ export class GameScene extends Phaser.Scene {
       activeWeaponName: this.getActivePrimaryWeaponDefinition()?.displayName ?? this.getEffectiveAutoWeaponDefinition()?.displayName ?? 'None',
       mainWeaponUpgradeSummary: this.getActiveAutoWeaponUpgradeHudSummary(),
       counts: this.getPerformanceProfilerCounts()
-    };
+    });
   }
 
   private getPerformanceProfilerCounts(): PerformanceProfilerCounts {
-    return {
+    return buildPerformanceProfilerCounts({
       chasers: this.getLiveEnemyLegacyCount('chaser'),
       shooters: this.getLiveEnemyLegacyCount('shooter'),
       tanks: this.getLiveEnemyLegacyCount('tank'),
-      asteroids: this.basicAsteroids.length,
-      debris: this.enemyWreckageDebris.length,
-      scrap: this.scrapPickups.length,
-      playerProjectiles: this.playerProjectiles.length,
-      enemyProjectiles: this.enemyProjectiles.length,
-      deathShards: this.deathShards.length
-    };
+      asteroidCount: this.basicAsteroids.length,
+      debrisCount: this.enemyWreckageDebris.length,
+      scrapCount: this.scrapPickups.length,
+      playerProjectileCount: this.playerProjectiles.length,
+      enemyProjectileCount: this.enemyProjectiles.length,
+      deathShardCount: this.deathShards.length
+    });
   }
 
   private getPerformanceProfilerFlags(): PerformanceProfilerFlags {
-    return {
+    return buildPerformanceProfilerFlags({
       flowState: this.gameFlowState,
       debugMenuOpen: this.debugMenuHost?.isOpen() ?? false,
       debugPaused: this.debugState.debugGamePaused,
       upgradeOverlayOpen: this.isUpgradeOverlayOpen,
       collisionDebugEnabled: this.debugState.collisionDebugEnabled,
       blackHoleActive: Boolean(this.blackHole)
-    };
+    });
   }
 
   private exportPerformanceReport(): void {
@@ -1603,11 +1624,45 @@ export class GameScene extends Phaser.Scene {
   }
 
   private installTestHarness(): void {
-    if (typeof window === 'undefined') {
-      return;
-    }
+    installGameSceneHarness({
+      createHarness: () => this.createTestHarness(),
+      setCollisionDebugEnabled: (enabled) => {
+        this.debugState.collisionDebugEnabled = enabled;
+      },
+      startRun: () => this.startRun(),
+      runHarnessSmoke: () => this.runTestHarnessSmoke(),
+      runHarnessBulwark: () => this.runTestHarnessBulwark(),
+      runHarnessRammingShield: () => this.runTestHarnessRammingShield(),
+      runHarnessSecondaryWeapons: () => this.runTestHarnessSecondaryWeapons(),
+      runHarnessWeaponHotbar: () => this.runTestHarnessWeaponHotbar(),
+      runHarnessPhase7: () => this.runTestHarnessPhase7(),
+      runHarnessPhase8: () => this.runTestHarnessPhase8(),
+      runHarnessPhase9: () => this.runTestHarnessPhase9(),
+      runHarnessPhase10: () => this.runTestHarnessPhase10(),
+      runHarnessPhase10_5: () => this.runTestHarnessPhase10_5(),
+      runHarnessPhase10_6: () => this.runTestHarnessPhase10_6(),
+      runHarnessPhase11: () => this.runTestHarnessPhase11(),
+      runHarnessPhase12: () => this.runTestHarnessPhase12(),
+      runHarnessPhase13: () => this.runTestHarnessPhase13(),
+      runHarnessPhase14: () => this.runTestHarnessPhase14(),
+      runHarnessPhase15A: () => this.runTestHarnessPhase15A(),
+      runHarnessPhase15B: () => this.runTestHarnessPhase15B(),
+      runHarnessPhase15_5: () => this.runTestHarnessPhase15_5(),
+      runHarnessUpgradeOverlayUi: () => this.runTestHarnessUpgradeOverlayUi(),
+      runHarnessBeamVisual: () => this.runTestHarnessBeamVisual(),
+      runHarnessBeamTipScreenshot: () => this.runTestHarnessBeamTipScreenshot(),
+      runHarnessResultsContinueFuel: () => this.runTestHarnessResultsContinueFuel(),
+      runHarnessAsteroidStaleDestroy: () => this.runTestHarnessAsteroidStaleDestroy(),
+      runHarnessEnemyContactBalance: () => this.runTestHarnessEnemyContactBalance(),
+      runHarnessWorldImpactCleanup: () => this.runTestHarnessWorldImpactCleanup(),
+      runHarnessVelocityLimiter: () => this.runTestHarnessVelocityLimiter(),
+      runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
+      runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers()
+    });
+  }
 
-    window.starvivorsTestHarness = {
+  private createTestHarness(): StarvivorsTestHarness {
+    return {
       getState: () => this.getTestHarnessState(),
       addCredits: (amount: number) => {
         this.totalCredits = Math.max(0, this.totalCredits + amount);
@@ -1843,125 +1898,6 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       }
     };
-
-    const query = new URLSearchParams(window.location.search);
-
-    this.debugState.collisionDebugEnabled = query.get('collisionDebug') === '1';
-
-    if (query.get('testHarness') === 'smoke') {
-      this.startRun();
-      this.runTestHarnessSmoke();
-    }
-
-    if (query.get('testHarness') === 'bulwark') {
-      this.runTestHarnessBulwark();
-    }
-
-    if (query.get('testHarness') === 'rammingShield') {
-      this.runTestHarnessRammingShield();
-    }
-
-    if (query.get('testHarness') === 'secondaryWeapons') {
-      this.runTestHarnessSecondaryWeapons();
-    }
-
-    if (query.get('testHarness') === 'weaponHotbar') {
-      this.runTestHarnessWeaponHotbar();
-    }
-
-    if (query.get('testHarness') === 'phase7') {
-      this.runTestHarnessPhase7();
-    }
-
-    if (query.get('testHarness') === 'phase8') {
-      this.runTestHarnessPhase8();
-    }
-
-    if (query.get('testHarness') === 'phase9') {
-      this.runTestHarnessPhase9();
-    }
-
-    if (query.get('testHarness') === 'phase10') {
-      this.runTestHarnessPhase10();
-    }
-
-    if (query.get('testHarness') === 'phase10_5') {
-      this.runTestHarnessPhase10_5();
-    }
-
-    if (query.get('testHarness') === 'phase10_6') {
-      this.runTestHarnessPhase10_6();
-    }
-
-    if (query.get('testHarness') === 'phase11') {
-      this.runTestHarnessPhase11();
-    }
-
-    if (query.get('testHarness') === 'phase12') {
-      this.runTestHarnessPhase12();
-    }
-
-    if (query.get('testHarness') === 'phase13') {
-      this.runTestHarnessPhase13();
-    }
-
-    if (query.get('testHarness') === 'phase14') {
-      this.runTestHarnessPhase14();
-    }
-
-    if (query.get('testHarness') === 'phase15A') {
-      this.runTestHarnessPhase15A();
-    }
-
-    if (query.get('testHarness') === 'phase15B') {
-      this.runTestHarnessPhase15B();
-    }
-
-    if (query.get('testHarness') === 'phase15_5') {
-      this.runTestHarnessPhase15_5();
-    }
-
-    if (query.get('testHarness') === 'upgradeOverlayUi') {
-      this.runTestHarnessUpgradeOverlayUi();
-    }
-
-    if (query.get('testHarness') === 'beamVisual') {
-      this.runTestHarnessBeamVisual();
-    }
-
-    if (query.get('testHarness') === 'beamTipScreenshot') {
-      this.runTestHarnessBeamTipScreenshot();
-    }
-
-    if (query.get('testHarness') === 'resultsContinueFuel') {
-      this.runTestHarnessResultsContinueFuel();
-    }
-
-    if (query.get('testHarness') === 'asteroidStaleDestroy') {
-      this.runTestHarnessAsteroidStaleDestroy();
-    }
-
-    if (query.get('testHarness') === 'enemyContactBalance') {
-      this.runTestHarnessEnemyContactBalance();
-    }
-
-    if (query.get('testHarness') === 'worldImpactCleanup') {
-      this.runTestHarnessWorldImpactCleanup();
-    }
-
-    if (query.get('testHarness') === 'velocityLimiter') {
-      this.runTestHarnessVelocityLimiter();
-    }
-
-    if (query.get('testHarness') === 'enemyScaling') {
-      this.startRun();
-      this.runTestHarnessEnemyScaling();
-    }
-
-    if (query.get('testHarness') === 'directCombatNumbers') {
-      this.startRun();
-      this.runTestHarnessDirectCombatNumbers();
-    }
   }
 
   private getTestHarnessState(): StarvivorsTestHarnessState {
@@ -3468,7 +3404,7 @@ export class GameScene extends Phaser.Scene {
       firstAsteroid.hp > 0 &&
       secondAsteroid.hp > 0;
 
-    this.beamSlots.primary = this.createBeamSlotRuntime();
+    this.beamSlots.primary = createBeamSlotRuntime();
     this.beamSlots.primary.nextTickAt = Number.POSITIVE_INFINITY;
     for (let i = 0; i < 50; i += 1) {
       this.updateBeamWeapon(getWeaponDefinition('salvage-beam'), 'primary', true, this.time.now + 1200 + i * 100, 0.1);
@@ -4187,21 +4123,23 @@ export class GameScene extends Phaser.Scene {
     this.worldEvents = [];
     this.rareEvents = [];
     this.clearRammingShieldDashBurst();
-    this.runScrapTotal = 0;
-    this.runScrapSpent = 0;
-    this.lastRunCreditsEarned = 0;
-    this.lastRunScrapSpent = 0;
-    this.lastRunScrapConverted = 0;
-    this.lastRunUnlockedRewards = [];
-    this.hasPaidRunCredits = false;
-    this.lastRunSurvivalMs = 0;
-    this.playerInvulnerableUntil = 0;
-    this.isPlayerDead = false;
-    this.runEndReason = 'none';
-    this.playerXp = 0;
-    this.nextXpThreshold = INITIAL_XP_THRESHOLD;
-    this.bankedUpgrades = 0;
-    this.rerollsThisRun = 0;
+    const rewardReset = createRunRewardResetState();
+    this.runScrapTotal = rewardReset.runScrapTotal;
+    this.runScrapSpent = rewardReset.runScrapSpent;
+    this.lastRunCreditsEarned = rewardReset.lastRunCreditsEarned;
+    this.lastRunScrapSpent = rewardReset.lastRunScrapSpent;
+    this.lastRunScrapConverted = rewardReset.lastRunScrapConverted;
+    this.lastRunUnlockedRewards = rewardReset.lastRunUnlockedRewards;
+    this.hasPaidRunCredits = rewardReset.hasPaidRunCredits;
+    this.lastRunSurvivalMs = rewardReset.lastRunSurvivalMs;
+    const progressReset = createRunProgressResetState(INITIAL_XP_THRESHOLD);
+    this.playerInvulnerableUntil = progressReset.playerInvulnerableUntil;
+    this.isPlayerDead = progressReset.isPlayerDead;
+    this.runEndReason = progressReset.runEndReason;
+    this.playerXp = progressReset.playerXp;
+    this.nextXpThreshold = progressReset.nextXpThreshold;
+    this.bankedUpgrades = progressReset.bankedUpgrades;
+    this.rerollsThisRun = progressReset.rerollsThisRun;
     this.resultsScreen = undefined;
     this.ejectConfirmScreen = undefined;
     this.playerProjectiles = [];
@@ -4229,55 +4167,68 @@ export class GameScene extends Phaser.Scene {
     this.nextAsteroidCoalesceAt = 0;
     this.asteroidDestructionHistory = [];
     this.blackHole = undefined;
-    this.asteroidCameraViewCount = 0;
-    this.asteroidWrappedViewCount = 0;
-    this.asteroidWrapMirrorCount = 0;
-    this.nextForwardThrusterAt = 0;
-    this.nextReverseThrusterAt = 0;
-    this.nextLeftStrafeThrusterAt = 0;
-    this.nextRightStrafeThrusterAt = 0;
-    this.nextDebugUpdateAt = 0;
-    this.nextPlayerContactImpulseAt = 0;
-    this.playerBodyImpactCooldowns = new WeakMap<object, number>();
-    this.asteroidCollisionCooldowns = new WeakMap<object, WeakMap<object, number>>();
-    this.pulseVolleyCount = 0;
-    this.isPulseEmergencyCharged = false;
-    this.pulseLifestealWindowStartedAt = 0;
-    this.pulseLifestealRestoredThisWindow = 0;
-    this.pulseIonizedTargets = new WeakMap<object, number>();
-    this.pulseCriticalTargets = new WeakMap<object, { stacks: number; expiresAt: number }>();
+    const counterReset = createRunCounterResetState();
+    this.asteroidCameraViewCount = counterReset.asteroidCameraViewCount;
+    this.asteroidWrappedViewCount = counterReset.asteroidWrappedViewCount;
+    this.asteroidWrapMirrorCount = counterReset.asteroidWrapMirrorCount;
+    this.nextForwardThrusterAt = counterReset.nextForwardThrusterAt;
+    this.nextReverseThrusterAt = counterReset.nextReverseThrusterAt;
+    this.nextLeftStrafeThrusterAt = counterReset.nextLeftStrafeThrusterAt;
+    this.nextRightStrafeThrusterAt = counterReset.nextRightStrafeThrusterAt;
+    this.nextDebugUpdateAt = counterReset.nextDebugUpdateAt;
+    this.nextPlayerContactImpulseAt = counterReset.nextPlayerContactImpulseAt;
+    this.playerBodyImpactCooldowns = counterReset.playerBodyImpactCooldowns;
+    this.asteroidCollisionCooldowns = counterReset.asteroidCollisionCooldowns;
+    const pulseReset = createPulseRuntimeResetState();
+    this.pulseVolleyCount = pulseReset.pulseVolleyCount;
+    this.isPulseEmergencyCharged = pulseReset.isPulseEmergencyCharged;
+    this.pulseLifestealWindowStartedAt = pulseReset.pulseLifestealWindowStartedAt;
+    this.pulseLifestealRestoredThisWindow = pulseReset.pulseLifestealRestoredThisWindow;
+    this.pulseIonizedTargets = pulseReset.pulseIonizedTargets;
+    this.pulseCriticalTargets = pulseReset.pulseCriticalTargets;
     this.nextBlackHolePlayerDamageAt = 0;
-    this.runStartedAt = this.time.now;
-    this.nextEnemySpawnAt = this.runStartedAt + ENEMY_SPAWN_INITIAL_DELAY_MS;
-    this.encounterDirectorState = createEncounterDirectorState(this.runStartedAt + ENEMY_SWARM_FIRST_SPAWN_MS);
+    const timingReset = createEncounterTimingResetState({
+      runStartedAt: this.time.now,
+      enemySpawnInitialDelayMs: ENEMY_SPAWN_INITIAL_DELAY_MS,
+      enemySwarmFirstSpawnMs: ENEMY_SWARM_FIRST_SPAWN_MS
+    });
+    this.runStartedAt = timingReset.runStartedAt;
+    this.nextEnemySpawnAt = timingReset.nextEnemySpawnAt;
+    this.encounterDirectorState = timingReset.encounterDirectorState;
     this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
-    this.isUpgradeOverlayOpen = false;
-    this.isPauseMenuOpen = false;
-    this.upgradeOverlayOpenedAt = 0;
-    this.pauseMenuOpenedAt = 0;
+    const overlayPauseReset = createOverlayPauseResetState();
+    this.isUpgradeOverlayOpen = overlayPauseReset.isUpgradeOverlayOpen;
+    this.isPauseMenuOpen = overlayPauseReset.isPauseMenuOpen;
+    this.upgradeOverlayOpenedAt = overlayPauseReset.upgradeOverlayOpenedAt;
+    this.pauseMenuOpenedAt = overlayPauseReset.pauseMenuOpenedAt;
     this.specialUpgradeOverlayChoices = null;
     this.sectorScannerRuntime = createSectorScannerRuntime();
-    this.totalUpgradePauseMs = 0;
-    this.totalPauseMenuPauseMs = 0;
-    this.debugMenuOpenedAt = 0;
-    this.totalDebugPauseMs = 0;
+    this.totalUpgradePauseMs = overlayPauseReset.totalUpgradePauseMs;
+    this.totalPauseMenuPauseMs = overlayPauseReset.totalPauseMenuPauseMs;
+    this.debugMenuOpenedAt = overlayPauseReset.debugMenuOpenedAt;
+    this.totalDebugPauseMs = overlayPauseReset.totalDebugPauseMs;
     this.awaitingBinding = undefined;
     this.pauseMenuScreen = undefined;
     this.minimap.reset();
     this.debugState.resetForRun();
-    this.debugBlackHoleInfluenceRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
-    this.debugBlackHoleDamageRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
-    this.debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
-    this.debugBlackHoleCoreScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
-    this.debugBlackHoleFieldTuning = { ...DEFAULT_BLACK_HOLE_FIELD_TUNING };
-    this.debugBlackHoleVacuumTuning = { ...DEFAULT_BLACK_HOLE_VACUUM_TUNING };
-    this.isBlackHolePlayerCaptureEnabled = true;
-    this.isBlackHoleObjectConsumptionEnabled = true;
-    this.areBlackHoleWarningVisualsEnabled = true;
-    this.blackHolePlayerCaptureStartedAt = null;
-    this.blackHoleConsumedObjectsThisRun = 0;
-    this.debugBlackHoleGrowthOffsetMs = 0;
+    const blackHoleDebugReset = createBlackHoleDebugResetState({
+      radiusScaleDefault: DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT,
+      fieldTuning: DEFAULT_BLACK_HOLE_FIELD_TUNING,
+      vacuumTuning: DEFAULT_BLACK_HOLE_VACUUM_TUNING
+    });
+    this.debugBlackHoleInfluenceRadiusScale = blackHoleDebugReset.influenceRadiusScale;
+    this.debugBlackHoleDamageRadiusScale = blackHoleDebugReset.damageRadiusScale;
+    this.debugBlackHoleVisualScale = blackHoleDebugReset.visualScale;
+    this.debugBlackHoleCoreScale = blackHoleDebugReset.coreScale;
+    this.debugBlackHoleFieldTuning = blackHoleDebugReset.fieldTuning;
+    this.debugBlackHoleVacuumTuning = blackHoleDebugReset.vacuumTuning;
+    this.isBlackHolePlayerCaptureEnabled = blackHoleDebugReset.playerCaptureEnabled;
+    this.isBlackHoleObjectConsumptionEnabled = blackHoleDebugReset.objectConsumptionEnabled;
+    this.areBlackHoleWarningVisualsEnabled = blackHoleDebugReset.warningVisualsEnabled;
+    this.blackHolePlayerCaptureStartedAt = blackHoleDebugReset.playerCaptureStartedAt;
+    this.blackHoleConsumedObjectsThisRun = blackHoleDebugReset.consumedObjectsThisRun;
+    this.debugBlackHoleGrowthOffsetMs = blackHoleDebugReset.growthOffsetMs;
     this.starfield.resetState();
 
     this.createStarfield();
@@ -4557,7 +4508,7 @@ export class GameScene extends Phaser.Scene {
     onShowShop: () => void;
     onShowSettings: () => void;
   } {
-    return {
+    return createPreRunNavConfig({
       canPlay: this.canStartConfiguredRun(),
       playDisabledReason: this.getPlayDisabledReason(),
       isActionActive: () => this.isPreRunFlowState(),
@@ -4567,7 +4518,7 @@ export class GameScene extends Phaser.Scene {
       onShowHangar: () => this.showShipSelect(),
       onShowShop: () => this.showShop('mainMenu'),
       onShowSettings: () => this.showSettings()
-    };
+    });
   }
 
   private showShipSelect(): void {
@@ -4634,31 +4585,35 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isShipUnlocked(shipId: ShipId): boolean {
-    return this.unlockedShipIds.has(shipId);
+    return isShipUnlockedPreRun(this.unlockedShipIds, shipId);
   }
 
   private canStartRunWithShip(ship: ShipRegistryEntry): boolean {
-    return ship.selectable && this.isShipUnlocked(ship.id);
+    return canStartRunWithShipPreRun(ship, this.unlockedShipIds);
   }
 
   private canStartConfiguredRun(): boolean {
-    return this.canStartRunWithShip(this.getSelectedShipDefinition()) && this.getFirstLoadoutWeaponId('primary') !== null;
+    return canStartConfiguredRunPreRun({
+      selectedShip: this.getSelectedShipDefinition(),
+      unlockedShipIds: this.unlockedShipIds,
+      weaponLoadout: this.weaponLoadout
+    });
   }
 
   private getPlayDisabledReason(): string {
-    if (!this.canStartRunWithShip(this.getSelectedShipDefinition())) {
-      return 'LOCKED';
-    }
-
-    if (!this.getFirstLoadoutWeaponId('primary')) {
-      return 'NO LEFT WEAPON';
-    }
-
-    return 'PLAY';
+    return getPlayDisabledReasonPreRun({
+      selectedShip: this.getSelectedShipDefinition(),
+      unlockedShipIds: this.unlockedShipIds,
+      weaponLoadout: this.weaponLoadout
+    });
   }
 
   private canUnlockShip(ship: ShipRegistryEntry): boolean {
-    return ship.selectable && !this.isShipUnlocked(ship.id) && ship.unlockCostCredits !== undefined && this.totalCredits >= ship.unlockCostCredits;
+    return canUnlockShipPreRun({
+      ship,
+      unlockedShipIds: this.unlockedShipIds,
+      totalCredits: this.totalCredits
+    });
   }
 
   private unlockShip(ship: ShipRegistryEntry): void {
@@ -4730,39 +4685,22 @@ export class GameScene extends Phaser.Scene {
   }
 
   private isOtherShipStartingWeapon(weaponId: WeaponId | null, selectedShipId: ShipId): boolean {
-    if (!weaponId) {
-      return false;
-    }
-
-    return shipRegistry.some(
-      (ship) => ship.id !== selectedShipId && (ship.startingPrimaryWeaponId === weaponId || ship.startingSecondaryWeaponId === weaponId)
-    );
+    return isOtherShipStartingWeaponPreRun(weaponId, selectedShipId);
   }
 
   private getAvailableHangarWeaponIds(): WeaponId[] {
-    const weaponIds = new Set<WeaponId>(['pulse-cannon', ...this.progressionState.unlockedWeaponIds]);
-    for (const ship of shipRegistry) {
-      if (this.isShipUnlocked(ship.id) && ship.startingPrimaryWeaponId) {
-        weaponIds.add(ship.startingPrimaryWeaponId);
-      }
-      if (this.isShipUnlocked(ship.id) && ship.startingSecondaryWeaponId) {
-        weaponIds.add(ship.startingSecondaryWeaponId);
-      }
-    }
-
-    return [...weaponIds];
+    return getAvailableHangarWeaponIdsPreRun({
+      unlockedShipIds: this.unlockedShipIds,
+      unlockedWeaponIds: this.progressionState.unlockedWeaponIds
+    });
   }
 
   private getFirstLoadoutWeaponId(slot: WeaponSlotType): WeaponId | null {
-    return this.weaponLoadout[slot].find((weaponId) => weaponId !== null && getWeaponDefinition(weaponId).slotCompatibility.includes(slot)) ?? null;
+    return getFirstLoadoutWeaponIdPreRun(this.weaponLoadout, slot);
   }
 
   private getShipLockedLabel(ship: ShipRegistryEntry): string {
-    if (!ship.selectable) {
-      return 'Coming Soon';
-    }
-
-    return ship.unlockCostCredits === undefined ? 'Locked' : `Locked ${ship.unlockCostCredits} credits`;
+    return getShipLockedLabelPreRun(ship);
   }
 
   private showShop(backTarget: ShopBackTarget): void {
@@ -12470,22 +12408,8 @@ export class GameScene extends Phaser.Scene {
   private resetBeamRuntime(): void {
     for (const slot of ['auto', 'primary', 'secondary'] as WeaponRuntimeSlot[]) {
       this.beamSlots[slot].graphics?.destroy();
-      this.beamSlots[slot] = this.createBeamSlotRuntime();
+      this.beamSlots[slot] = createBeamSlotRuntime();
     }
-  }
-
-  private createBeamSlotRuntime(): BeamSlotRuntime {
-    return {
-      heat: 0,
-      overheated: false,
-      nextTickAt: 0,
-      isActive: false,
-      activationStartedAt: 0,
-      visualLength: 0,
-      lastSparkAt: 0,
-      contactSparkBurstsEmitted: 0,
-      lastVentAt: 0
-    };
   }
 
   private getBeamVisualLength(runtime: BeamSlotRuntime, beam: ResolvedBeamWeaponStats, time: number): number {
@@ -14026,7 +13950,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getCollisionDebugOverlaySnapshot(): CollisionDebugOverlaySnapshot {
-    return {
+    return buildCollisionDebugOverlaySnapshot({
       arena: this.arena,
       collisionDebugEnabled: this.debugState.collisionDebugEnabled,
       showBlackHoleRadii: this.debugState.showBlackHoleRadii,
@@ -14037,9 +13961,6 @@ export class GameScene extends Phaser.Scene {
       asteroidCollisionScale: this.debugState.getCollisionShapeScale('asteroid'),
       debrisCollisionScale: this.debugState.getCollisionShapeScale('debris'),
       shieldCollider: this.getRammingShieldCollider(),
-      basicEnemies: [],
-      shooterEnemies: [],
-      tankEnemies: [],
       liveEnemies: this.liveEnemies,
       basicAsteroids: this.basicAsteroids,
       enemyWreckageDebris: this.enemyWreckageDebris,
@@ -14047,7 +13968,7 @@ export class GameScene extends Phaser.Scene {
       blackHole: this.blackHole,
       playerProjectiles: this.playerProjectiles,
       enemyProjectiles: this.enemyProjectiles
-    };
+    });
   }
 
   private updateMinimap(): void {
@@ -14065,7 +13986,7 @@ export class GameScene extends Phaser.Scene {
       ? getSectorScannerTarget(this.sectorScannerRuntime, this.getSectorScannerTargets())
       : undefined;
 
-    return {
+    return buildMinimapSnapshot({
       arena: this.arena,
       player: this.player,
       camera: {
@@ -14093,14 +14014,11 @@ export class GameScene extends Phaser.Scene {
       scannerTarget,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       basicAsteroids: this.basicAsteroids,
-      basicEnemies: [],
-      shooterEnemies: [],
-      tankEnemies: [],
       liveEnemies: this.liveEnemies,
       scrapPickups: this.scrapPickups,
       blackHole: this.blackHole,
       sectorRegions: this.sectorLayout.regions
-    };
+    });
   }
 
   private updateGameplayHud(time: number): void {
@@ -14110,40 +14028,26 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getGameplayHudSnapshot(time: number): GameplayHudSnapshot {
-    const status = this.runEndReason === 'eject'
-      ? 'EJECTED'
-      : this.isPlayerDead
-        ? 'CRITICAL'
-        : this.fuel <= 0
-          ? 'FUEL EMPTY'
-          : this.debugState.playerInvulnerable
-            ? 'DEBUG INVULN'
-            : this.playerInvulnerableUntil > time
-              ? 'HIT'
-              : 'STABLE';
     const elapsedSeconds = Math.max(0, Math.floor(this.getSurvivalElapsedMs(time) / 1000));
     const maxHull = this.getPlayerMaxHull();
-    const xpProgress = this.nextXpThreshold > 0 ? this.playerXp / this.nextXpThreshold : 0;
-    const hullProgress = this.playerHull / maxHull;
     const activeWeapon = this.getEffectiveAutoWeaponDefinition();
     const primaryWeapon = this.getActivePrimaryWeaponDefinition();
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const weaponCooldownMs = this.getActiveAutoWeaponCooldownMs();
     const weaponRemainingMs = Math.max(0, this.playerWeapons.nextAutoWeaponFireAt - time);
-    const weaponProgress = weaponCooldownMs > 0 ? 1 - weaponRemainingMs / weaponCooldownMs : 1;
-    const weaponStatus = weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(weaponRemainingMs / 1000)}s`;
 
-    return {
+    return buildGameplayHudSnapshot({
       timeSeconds: elapsedSeconds,
+      runEndReason: this.runEndReason,
+      isPlayerDead: this.isPlayerDead,
+      debugPlayerInvulnerable: this.debugState.playerInvulnerable,
+      playerInvulnerable: this.playerInvulnerableUntil > time,
       playerHull: this.playerHull,
       maxHull,
-      status,
       playerXp: this.playerXp,
       nextXpThreshold: this.nextXpThreshold,
       fuel: this.fuel,
       maxFuel: RUN_FUEL_MAX,
-      fuelProgress: this.fuel / RUN_FUEL_MAX,
-      isFuelEmergency: this.fuel <= 0,
       missionName: this.missionRuntime?.definition.shortName ?? this.getSelectedMissionDefinition().shortName,
       missionStatus: this.getMissionHudStatus(),
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
@@ -14154,14 +14058,12 @@ export class GameScene extends Phaser.Scene {
       bankedUpgrades: this.bankedUpgrades,
       sectorScannerStatus: this.getSectorScannerHudStatus(),
       contractStatusLine: this.getContractStatusLine(),
-      autoWeaponName: activeWeapon ? activeWeapon.displayName : 'Empty',
-      primaryWeaponName: primaryWeapon ? primaryWeapon.displayName : 'Empty',
-      weaponStatus,
-      secondaryWeaponName: secondaryWeapon ? secondaryWeapon.displayName : 'Empty',
+      activeWeapon,
+      primaryWeapon,
+      secondaryWeapon,
+      weaponCooldownMs,
+      weaponRemainingMs,
       mainWeaponUpgradeSummary: this.getActiveAutoWeaponUpgradeHudSummary(),
-      hullProgress,
-      xpProgress,
-      weaponProgress,
       hasRammingShield: this.hasRammingShield(),
       rammingShieldHp: this.rammingShieldState.hp,
       rammingShieldMaxHp: this.getRammingShieldMaxHp(),
@@ -14169,7 +14071,7 @@ export class GameScene extends Phaser.Scene {
       rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
       isRammingShieldEmpowered: time < this.rammingShieldState.empoweredUntil,
       weaponSlots: this.getWeaponHotbarSlots(time)
-    };
+    });
   }
 
   private getWeaponHotbarSlots(time: number): WeaponHotbarSlotSnapshot[] {

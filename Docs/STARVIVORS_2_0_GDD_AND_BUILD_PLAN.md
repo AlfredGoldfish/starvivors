@@ -49,6 +49,8 @@ npm.cmd run build
 9. Do not delete old systems until the replacement is verified.
 10. Prefer compatibility bridges over risky rewrites.
 11. If a phase uncovers major design uncertainty, stop and ask before implementing the uncertain part.
+12. Treat `src/scenes/GameScene.ts` as orchestration. Prefer existing or new focused modules in `src/systems`, `src/data`, `src/ui`, and `src/core` for gameplay, UI, data, harness, and tuning changes.
+13. Do not add large new responsibilities to `GameScene.ts`. If a task would grow it substantially, extract or create a module as part of the focused change.
 
 Each implementation prompt should ideally include:
 
