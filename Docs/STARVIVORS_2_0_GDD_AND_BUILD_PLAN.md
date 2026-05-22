@@ -1529,6 +1529,8 @@ Design dialogue before coding:
 Tasks:
 
 - Decide storage format: `.svg`, TypeScript vector definitions, or both.
+- Use **Neon-Forward Salvagepunk** as the locked art theme for AI asset generation: neon energy dominates the first read, salvage/steampunk machinery supports silhouette and texture.
+- Start Phase 16 through the Asset Forge inside Enemy Lab so assets can be generated, previewed, exported, reviewed, and promoted from structured vector recipes.
 - Create generated texture registry.
 - Convert scrap to vector/cached texture.
 - Convert player ships to vector/cached texture.

@@ -92,6 +92,16 @@ canvas {
   text-transform: uppercase;
 }
 
+.enemy-lab-style-guide {
+  margin: 6px 0 8px;
+  padding: 8px;
+  border-left: 2px solid rgba(255, 47, 214, 0.72);
+  background: linear-gradient(90deg, rgba(255, 47, 214, 0.12), rgba(66, 245, 215, 0.06));
+  color: rgba(242, 251, 255, 0.78);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .enemy-lab-grid,
 .enemy-lab-param-grid {
   display: grid;

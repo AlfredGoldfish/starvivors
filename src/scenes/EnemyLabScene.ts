@@ -4,7 +4,7 @@ import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from 
 import { getViewportSize } from '../core/viewport';
 import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
 import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
-import { ENEMY_LAB_DEFINITIONS } from '../data/enemyLabDefinitions';
+import { ENEMY_LAB_DEFINITIONS, type EnemyLabDefinition } from '../data/enemyLabDefinitions';
 import {
   CAMERA_LEAD_LERP,
   CAMERA_LEAD_MAX_DISTANCE,
@@ -66,6 +66,19 @@ import {
   type EnemyLabStorageState,
   type EnemyLabVariantPreset
 } from '../systems/enemyLabPresets';
+import {
+  FORGE_STYLE_GUIDE_VERSION,
+  convertEnemyVisualDefinitionToForgeAsset,
+  createForgeContactSheetData,
+  createForgePromotionBundle,
+  createForgePromotionMarkdown,
+  getNeonForwardSalvagepunkStyleGuide,
+  loadAssetForgeStorageState,
+  parseForgeAssetImport,
+  renderForgeAssetToSvg,
+  saveAssetForgeStorageState,
+  type ForgeAsset
+} from '../systems/assetForge';
 
 interface EnemyLabProjectile {
   id: string;
@@ -258,6 +271,12 @@ export class EnemyLabScene extends Phaser.Scene {
     this.resetBackgroundPlayerTracking();
 
     this.presetState = loadEnemyLabStorageState();
+    this.presetState.forgeAssets = [
+      ...this.presetState.forgeAssets,
+      ...loadAssetForgeStorageState().assets.filter(
+        (asset) => !this.presetState.forgeAssets.some((candidate) => candidate.id === asset.id)
+      )
+    ];
     this.createInput();
     this.createOverlay();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
@@ -886,9 +905,22 @@ export class EnemyLabScene extends Phaser.Scene {
     root.className = 'enemy-lab-overlay';
     root.innerHTML = `
       <div class="enemy-lab-header">
-        <div class="enemy-lab-title">Enemy Lab</div>
+        <div class="enemy-lab-title">Asset Forge / Enemy Lab</div>
         <button data-action="toggleOverlay">Hide UI</button>
       </div>
+      <section class="enemy-lab-panel">
+        <div class="enemy-lab-panel-title">Neon-Forward Salvagepunk</div>
+        <div class="enemy-lab-style-guide">
+          Neon first, salvage machinery second. Use crisp luminous cores, trim, rails, rings, arcs, glyphs, and trails over dark gunmetal, oxidized brass, copper, rivets, pipes, vents, and bolted plates. Palette target: 45% dark metal, 15% warm industrial metal, 30% neon energy, 10% warning/highlight.
+        </div>
+        <div class="enemy-lab-row">
+          <button data-action="exportForgeSvg">Export SVG</button>
+          <button data-action="exportForgeJson">Forge JSON</button>
+          <button data-action="exportContactSheet">Contact Sheet</button>
+          <button data-action="importForgeAsset">Import Forge</button>
+          <button data-action="exportForgePromotion">Forge Promotion</button>
+        </div>
+      </section>
       <section class="enemy-lab-panel">
         <div class="enemy-lab-panel-title">Test Enemy</div>
         <label>Enemy <select data-field="enemy"></select></label>
@@ -1203,6 +1235,11 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'deleteVariant') this.deleteSelectedVariant();
       if (action === 'exportVariant') this.exportSelectedVariant();
       if (action === 'importPreset') this.importEnemyLabPreset();
+      if (action === 'exportForgeSvg') this.exportSelectedForgeSvg();
+      if (action === 'exportForgeJson') this.exportSelectedForgeJson();
+      if (action === 'exportContactSheet') this.exportForgeContactSheet();
+      if (action === 'importForgeAsset') this.importForgeAsset();
+      if (action === 'exportForgePromotion') this.exportForgePromotionBundle();
       if (action === 'exportAiBrief') this.exportAiBrief();
       if (action === 'exportPromotion') this.exportPromotionReport();
       if (action === 'newSquad') this.createNewCustomSquad();
@@ -1465,6 +1502,74 @@ export class EnemyLabScene extends Phaser.Scene {
     );
   }
 
+  private exportSelectedForgeSvg(): void {
+    const asset = this.getSelectedForgeAsset();
+    downloadTextFile(
+      `forge-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.svg`,
+      renderForgeAssetToSvg(asset, { includeMetadata: true }),
+      'image/svg+xml',
+      'debug-presets'
+    );
+  }
+
+  private exportSelectedForgeJson(): void {
+    const asset = this.getSelectedForgeAsset();
+    downloadTextFile(
+      `forge-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
+      this.createForgeAssetMarkdown(asset),
+      'text/markdown'
+    );
+  }
+
+  private exportForgeContactSheet(): void {
+    const assets = this.getForgeContactSheetAssets();
+    downloadTextFile(
+      `forge-contact-sheet-${getTimestampSlug()}.svg`,
+      createForgeContactSheetData(assets),
+      'image/svg+xml',
+      'reports'
+    );
+  }
+
+  private importForgeAsset(): void {
+    loadMarkdownFile((contents) => {
+      const asset = parseForgeAssetImport(contents);
+      if (!asset) {
+        console.warn(`Unable to import Forge asset. Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`);
+        return;
+      }
+
+      const imported: ForgeAsset = {
+        ...asset,
+        id: `${asset.id}.${Date.now()}`,
+        status: asset.status === 'Promoted' || asset.status === 'Implemented' ? 'Generated' : asset.status,
+        savedAt: new Date().toISOString()
+      };
+      this.presetState.forgeAssets = [
+        ...this.presetState.forgeAssets.filter((candidate) => candidate.id !== imported.id),
+        imported
+      ];
+      this.savePresetState();
+      this.syncOverlayFromState();
+    });
+  }
+
+  private exportForgePromotionBundle(): void {
+    const asset = this.getSelectedForgeAsset();
+    const bundle = createForgePromotionBundle(asset, {
+      source: 'enemy-lab',
+      sourceDefinitionId: this.getSelectedEffectiveDefinition().id,
+      selectedVariantId: this.getSelectedVariant()?.id ?? null,
+      promoteWhenStatus: ['Approved Visual', 'Approved Gameplay']
+    });
+
+    downloadTextFile(
+      `forge-promotion-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
+      createForgePromotionMarkdown(bundle),
+      'text/markdown'
+    );
+  }
+
   private exportAiBrief(): void {
     const variant = this.getSelectedVariant();
     const squad = this.getSelectedCustomSquad();
@@ -1499,6 +1604,19 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private importEnemyLabPreset(): void {
     loadMarkdownFile((contents) => {
+      const forgeAsset = parseForgeAssetImport(contents);
+      if (forgeAsset) {
+        const imported: ForgeAsset = {
+          ...forgeAsset,
+          id: `${forgeAsset.id}.${Date.now()}`,
+          savedAt: new Date().toISOString()
+        };
+        this.presetState.forgeAssets = [...this.presetState.forgeAssets, imported];
+        this.savePresetState();
+        this.syncOverlayFromState();
+        return;
+      }
+
       const preset = parseEnemyLabPresetMarkdown(contents);
       if (!preset) {
         console.warn('Unable to import enemy lab preset.');
@@ -1851,6 +1969,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private savePresetState(): void {
     saveEnemyLabStorageState(this.presetState);
+    saveAssetForgeStorageState({ assets: this.presetState.forgeAssets });
   }
 
   private readNumberInput(input: HTMLInputElement, fallback: number, clampValue = true): number {
@@ -2104,6 +2223,42 @@ export class EnemyLabScene extends Phaser.Scene {
     ].join('\n');
   }
 
+  private getSelectedEffectiveDefinition(): EnemyLabDefinition {
+    const baseDefinition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    return applyVariantToDefinition(baseDefinition, this.getSelectedVariant());
+  }
+
+  private getSelectedForgeAsset(): ForgeAsset {
+    return convertEnemyVisualDefinitionToForgeAsset(this.getSelectedEffectiveDefinition());
+  }
+
+  private getForgeContactSheetAssets(): ForgeAsset[] {
+    const selected = this.getSelectedForgeAsset();
+    const imported = this.presetState.forgeAssets.slice(-5);
+    return [selected, ...imported];
+  }
+
+  private createForgeAssetMarkdown(asset: ForgeAsset): string {
+    const styleGuide = getNeonForwardSalvagepunkStyleGuide();
+    return [
+      `# Starvivors Forge Asset: ${asset.displayName}`,
+      '',
+      `- Kind: ${asset.kind}`,
+      `- Status: ${asset.status}`,
+      `- Style guide: ${styleGuide.displayName} (${styleGuide.id})`,
+      `- Tags: ${asset.tags.join(', ') || 'None'}`,
+      '',
+      '## Art Theme',
+      styleGuide.summary,
+      '',
+      '## Forge Asset',
+      '```json',
+      JSON.stringify(asset, null, 2),
+      '```',
+      ''
+    ].join('\n');
+  }
+
   private syncOverlayFromState(): void {
     if (!this.overlay) {
       return;
@@ -2140,7 +2295,8 @@ export class EnemyLabScene extends Phaser.Scene {
       `AI ${this.isAiEnabled ? 'on' : 'off'} | invuln ${this.isPlayerInvulnerable ? 'on' : 'off'} | ` +
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
-      `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL}` +
+      `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL} | ` +
+      `forge ${this.presetState.forgeAssets.length} | style ${FORGE_STYLE_GUIDE_VERSION}` +
       `${this.lastDiagnosticsExportPath ? ` | report ${this.lastDiagnosticsExportPath}` : ''}`;
     if (statusText !== this.lastOverlayStatusText) {
       this.overlay.status.textContent = statusText;

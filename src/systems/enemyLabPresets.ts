@@ -1,10 +1,22 @@
 import type { EnemyLabDefinition, EnemyLabSquadDefinition } from '../data/enemyLabDefinitions';
+import {
+  FORGE_STYLE_GUIDE_VERSION,
+  createForgeAiBrief,
+  getNeonForwardSalvagepunkStyleGuide,
+  parseForgeAssetImport,
+  type ForgeAsset
+} from './assetForge';
 
 export type EnemyLabAssetStatus =
+  | 'Generated'
   | 'Idea'
   | 'Visual Pass'
   | 'Behavior Pass'
   | 'Needs Tuning'
+  | 'Playable Candidate'
+  | 'Approved Visual'
+  | 'Approved Gameplay'
+  | 'Promoted'
   | 'Candidate'
   | 'Approved'
   | 'Rejected'
@@ -64,6 +76,7 @@ export interface EnemyLabSquadPreset {
 export interface EnemyLabStorageState {
   variants: EnemyLabVariantPreset[];
   squads: EnemyLabSquadPreset[];
+  forgeAssets: ForgeAsset[];
 }
 
 export interface EnemyLabContextSnapshot {
@@ -82,10 +95,15 @@ export interface EnemyLabContextSnapshot {
 export const ENEMY_LAB_STORAGE_KEY = 'starvivors.enemyLab.v1';
 
 export const ENEMY_LAB_ASSET_STATUSES: EnemyLabAssetStatus[] = [
+  'Generated',
   'Idea',
   'Visual Pass',
   'Behavior Pass',
   'Needs Tuning',
+  'Playable Candidate',
+  'Approved Visual',
+  'Approved Gameplay',
+  'Promoted',
   'Candidate',
   'Approved',
   'Rejected',
@@ -107,7 +125,7 @@ export const ENEMY_LAB_QUICK_TAGS = [
 ];
 
 export function createInitialEnemyLabStorageState(): EnemyLabStorageState {
-  return { variants: [], squads: [] };
+  return { variants: [], squads: [], forgeAssets: [] };
 }
 
 export function loadEnemyLabStorageState(): EnemyLabStorageState {
@@ -124,7 +142,12 @@ export function loadEnemyLabStorageState(): EnemyLabStorageState {
     const parsed = JSON.parse(raw) as Partial<EnemyLabStorageState>;
     return {
       variants: Array.isArray(parsed.variants) ? parsed.variants.filter(isEnemyLabVariantPreset) : [],
-      squads: Array.isArray(parsed.squads) ? parsed.squads.filter(isEnemyLabSquadPreset) : []
+      squads: Array.isArray(parsed.squads) ? parsed.squads.filter(isEnemyLabSquadPreset) : [],
+      forgeAssets: Array.isArray(parsed.forgeAssets)
+        ? parsed.forgeAssets
+            .map((candidate) => parseForgeAssetImport(JSON.stringify(candidate)))
+            .filter((candidate): candidate is ForgeAsset => Boolean(candidate))
+        : []
     };
   } catch {
     return createInitialEnemyLabStorageState();
@@ -288,12 +311,28 @@ export function createEnemyLabAiBriefMarkdown(input: {
   requestedWork?: string;
 }): string {
   const requestedWork = input.requestedWork?.trim() || 'Use the dev feedback to revise this lab-only enemy or squad. Do not touch live game files.';
+  const forgeBrief = createForgeAiBrief({
+    targetLabel: input.targetLabel,
+    targetKind: 'enemy',
+    context: [
+      `Selected enemy: ${input.context.selectedEnemyName}`,
+      `Selected variant: ${input.context.selectedVariantName ?? 'None'}`,
+      `Selected squad: ${input.context.selectedSquadName ?? 'None'}`,
+      `Enemies active: ${input.context.enemyCount}`,
+      `Projectiles active: ${input.context.projectileCount}`,
+      `Speed multiplier: ${input.context.speedMultiplier}`,
+      `HP multiplier: ${input.context.hpMultiplier}`,
+      `Fire-rate multiplier: ${input.context.fireRateMultiplier}`,
+      `Deconfliction: ${input.context.deconfliction}`,
+      '',
+      input.context.notes || 'No notes entered.'
+    ].join('\n'),
+    requestedWork
+  });
 
   return [
-    `# Enemy Lab AI Brief: ${input.targetLabel}`,
-    '',
-    '## Requested Work',
-    requestedWork,
+    forgeBrief,
+    '## Enemy Lab Context',
     '',
     '## Current Lab Context',
     `- Selected enemy: ${input.context.selectedEnemyName}`,
@@ -321,12 +360,20 @@ export function createEnemyLabPromotionMarkdown(input: {
   variant: EnemyLabVariantPreset;
   context: EnemyLabContextSnapshot;
 }): string {
+  const styleGuide = getNeonForwardSalvagepunkStyleGuide();
   return [
     `# Enemy Promotion Report: ${input.variant.displayName}`,
     '',
     `- Status: ${input.variant.status}`,
     `- Base enemy: ${input.variant.baseDefinitionId}`,
+    `- Style guide: ${styleGuide.displayName} (${FORGE_STYLE_GUIDE_VERSION})`,
     `- Tags: ${input.variant.tags.join(', ') || 'None'}`,
+    '',
+    '## Locked Art Theme',
+    styleGuide.summary,
+    '',
+    '## Required Neon-Forward Salvagepunk Checks',
+    ...styleGuide.rules.map((rule) => `- ${rule}`),
     '',
     '## Dev Notes',
     input.variant.notes || 'No notes entered.',
