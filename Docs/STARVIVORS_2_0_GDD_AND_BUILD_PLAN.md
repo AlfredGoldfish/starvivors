@@ -1,6 +1,6 @@
 # Starvivors 2.0 GDD and Build Plan
 
-Last updated: 2026-05-19
+Last updated: 2026-05-22
 
 This document is the working design and implementation guide for converting the current Starvivors prototype into its next major form. It is written for both the developer and Codex. Future work should use this document to move one phase at a time, keep the game buildable, and commit frequently.
 
@@ -24,7 +24,7 @@ The new direction is broader:
 - Enemies live in the world as roaming squads, patrols, strongholds, motherships, rare events, and reinforcements.
 - Difficulty comes from density, positioning, debris, fuel pressure, low player health, and dangerous enemy compositions rather than massive stat inflation.
 - The player chooses between free-range exploration and mission/contract runs.
-- Fuel acts as the run timer and strategic pressure.
+- Fuel is a thrust-use resource that adds light route and movement pressure.
 - Rewards unlock weapons, ships, cosmetics, upgrades, achievements, and future content.
 
 This is not a one-commit rewrite. It is a staged conversion plan.
@@ -218,12 +218,11 @@ Decision still needed: continuing a mission may preserve the exact sector or rer
 Possible run end conditions:
 
 - Player dies.
-- Fuel runs out.
 - Player extracts.
-- Mission completes.
+- A mission type explicitly ends the run on completion.
 - Sector event forces extraction or death.
 
-Fuel should create pressure, but it does not have to be an instant fail state. Running out of fuel may become an emergency state in a later design decision.
+Fuel is not a passive timer drain. Fuel is spent by thrust usage and should create a small layer of pressure around route choice, overuse of movement, and emergency recovery. The current target is about 8 minutes of continuous main thrust at the starting fuel stat, scaling up to about 35 minutes at the maximum fuel stat. Running out of fuel should create an emergency mobility state, not immediately end the run.
 
 ## 6. World and Sector Design
 
@@ -573,23 +572,31 @@ Primary resources:
 
 - XP: immediate run upgrades.
 - Scrap: repairs, rerolls, shops, mission rewards, permanent progression.
-- Fuel: run timer and strategic limit.
+- Fuel: thrust-use resource and light route pressure.
 - Rare parts: unlocks, evolutions, ships, cosmetics.
 
 ### 10.2 Fuel
 
-Fuel should become the time pressure.
+Fuel should remain a small pressure layer, not the main run timer.
 
 Fuel may be spent by:
 
-- Time alive.
+- Active thrust.
+- Active braking/strafe at a lower rate than main thrust.
 - Boosting.
 - Emergency warp.
 - Long-range scanning.
 - Calling extraction.
 - Special ship abilities.
 
-Fuel upgrade examples:
+Current tuning target:
+
+- Starting fuel supports roughly 8 minutes of continuous main thrust.
+- Maximum fuel investment supports roughly 35 minutes of continuous main thrust.
+- Normal play should usually spend less than continuous-thrust math because coasting, combat positioning, and route choices create natural gaps.
+- Fuel-empty behavior should leave limited emergency thrust instead of ending the run.
+
+Fuel upgrade examples, if retained:
 
 - Bigger tank.
 - Efficient engines.
@@ -598,6 +605,11 @@ Fuel upgrade examples:
 - Emergency reserve.
 - Lower boost cost.
 - Black-hole fuel harvesting.
+
+Later design note:
+
+- Fuel may be removed from ship module upgrade progression entirely if it proves to be bookkeeping rather than meaningful pressure.
+- Do not make fuel a large progression sink or a major difficulty gate.
 
 ### 10.3 Permanent Progression
 
@@ -1067,16 +1079,16 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
-### Phase 7: Controlled Movement, Fuel Timer, and Extraction Prototype
+### Phase 7: Controlled Movement, Fuel Use, and Extraction Prototype
 
 Goal:
 
-- Replace or supplement the run timer with fuel while shifting the baseline flight model from full drift to normal movement with light drift.
+- Add fuel as a thrust-use pressure layer while shifting the baseline flight model from full drift to normal movement with light drift.
 
 Design dialogue before coding:
 
-- Should fuel feel like oxygen, battery, travel range, or mission budget?
-- Is fuel mainly a timer, a strategic resource, or both?
+- Should fuel feel like battery, maneuvering propellant, travel range, or mission budget?
+- Is fuel adding useful pressure without becoming the main run timer?
 - What should happen emotionally when fuel gets low: panic, planning, risk-taking, or extraction pressure?
 - Should boosting spend fuel, or would that punish fun movement too much?
 - Should running out of fuel kill the run, trigger emergency drift, summon rescue/extraction, or create a last-chance state?
@@ -1088,8 +1100,9 @@ Tasks:
 - Apply normal coasting damping so ships no longer drift indefinitely.
 - Keep Interceptor more stable and Bulwark slightly more momentum-heavy.
 - Add fuel stat to run state.
-- Drain fuel over time.
-- Add only light extra fuel drain for active thrust/strafe/brake so movement still feels good.
+- Drain fuel only from active thrust/strafe/brake usage.
+- Keep main thrust as the primary drain and support movement as lighter drain so movement still feels good.
+- Tune starting fuel to roughly 8 minutes of continuous main thrust, with fuel-stat upgrades reaching roughly 35 minutes at cap.
 - Display fuel in HUD.
 - Use a first fuel-empty behavior: emergency thrust state rather than instant death.
 - When fuel is empty, all player thruster power drops by 90%, leaving 10% emergency mobility so the player can still drift, fight, and reach powerups, scrap, or future fuel cells.
@@ -1104,8 +1117,8 @@ Acceptance:
 
 - Interceptor movement is controlled with slight drift.
 - Bulwark preserves more momentum than Interceptor without feeling uncontrollable.
-- Fuel is visible and affects run outcome.
-- Timer pressure still works in some form.
+- Fuel is visible and reacts only to thrust usage.
+- Fuel creates light movement and route pressure without functioning as a passive timer.
 - Extraction can end a run.
 - Build passes.
 - Commit and push.
@@ -1471,6 +1484,38 @@ Acceptance:
 - Build passes.
 - Commit and push.
 
+### Phase 15.5: 2.0 Loop Rebaseline
+
+Goal:
+
+- Re-center the current build on the intended 2.0 run loop before adding more asset, UI, audio, balance, or content work.
+
+Current priority list:
+
+1. Add a clear Free Range run option alongside mission contracts.
+2. Change mission completion so it marks the objective complete and rewards the player, then lets the player extract or keep exploring unless the mission explicitly ends the run.
+3. Keep fuel as thrust-use-only pressure: no passive timer drain, starting at about 8 minutes of continuous main thrust and scaling toward about 35 minutes at max fuel investment.
+4. Make extraction the normal successful run end for Free Range and most missions.
+5. Improve HUD/results language so the player can immediately understand run mode, objective state, extraction state, fuel state, and earned rewards.
+6. Add or update smoke harness coverage for Free Range start, mission completion without immediate run end, fuel thrust-only drain, and extraction after objective completion.
+
+Do not:
+
+- Add more ships, enemies, missions, rare events, or permanent upgrades during this rebaseline.
+- Move into broad Phase 16 art conversion until the run loop is coherent.
+- Reintroduce passive fuel drain.
+- Make fuel a large progression sink.
+
+Acceptance:
+
+- Player can choose Free Range or a mission.
+- Mission completion does not automatically force results except for explicitly terminal mission types.
+- Fuel only drains from thrust usage and fuel-empty behavior remains emergency mobility.
+- Extraction cleanly ends a successful run.
+- Results explain whether the player extracted, completed a mission, died, or left early.
+- Build passes.
+- Commit and push.
+
 ### Phase 16: SVG/Vector Asset Pipeline
 
 Goal:
@@ -1608,7 +1653,7 @@ Acceptance:
 These should be answered before or during the relevant phase.
 
 1. Should classic survival mode remain as a separate mode, or should Starvivors 2.0 fully replace it?
-2. Should fuel empty end the run immediately, or create an emergency state?
+2. Should fuel remain in ship/module upgrade progression long term, or be removed after the core loop is proven?
 3. Should extraction be player-triggered, automatic, or mission-specific?
 4. When continuing a failed mission, should the same generated sector persist?
 5. Should SVG assets live as actual `.svg` files, TypeScript vector data, or both?
@@ -1662,7 +1707,7 @@ The Starvivors 2.0 prototype is successful when:
 - The player can choose a ship/loadout.
 - The player can choose free range or a mission.
 - The game generates a large sector.
-- Fuel creates run pressure.
+- Fuel creates light thrust-use pressure without passive timer drain.
 - Enemies live in the world as squads and anchored encounters.
 - The player can find signals, scrap, enemies, events, and objectives.
 - Combat uses readable polygon/vector enemies.

@@ -603,7 +603,7 @@ interface SectorSignalSpawn {
 
 type MissionStatus = 'active' | 'completed' | 'failed';
 type MissionFailureReason = 'player-death' | 'extracted-early';
-type DebugFuelDrainMode = 'timer-plus-thrust' | 'thrust-only';
+type DebugFuelDrainMode = 'thrust-only';
 type RunEndReason = 'none' | 'death' | 'extraction' | 'mission';
 type WeaponRuntimeSlot = 'auto' | 'primary' | 'secondary';
 
@@ -715,7 +715,7 @@ export class GameScene extends Phaser.Scene {
   private cameraLead = new Phaser.Math.Vector2(0, 0);
   private fuel = RUN_FUEL_MAX;
   private debugFuelDrainEnabled = true;
-  private debugFuelDrainMode: DebugFuelDrainMode = 'timer-plus-thrust';
+  private debugFuelDrainMode: DebugFuelDrainMode = 'thrust-only';
   private extractionPosition = new Phaser.Math.Vector2(0, 0);
   private extractionBeacon?: Phaser.GameObjects.Container;
   private extractionBeaconRing?: Phaser.GameObjects.Arc;
@@ -1216,7 +1216,7 @@ export class GameScene extends Phaser.Scene {
           this.debugFuelDrainEnabled = !this.debugFuelDrainEnabled;
         }),
         toggleFuelDrainMode: () => this.runDebugMenuAction(() => {
-          this.debugFuelDrainMode = this.debugFuelDrainMode === 'timer-plus-thrust' ? 'thrust-only' : 'timer-plus-thrust';
+          this.debugFuelDrainMode = 'thrust-only';
         }),
         adjustPlayerThrustScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerThrustScale(delta)),
         adjustPlayerBrakeScale: (delta) => this.runDebugMenuAction(() => this.debugState.adjustPlayerBrakeScale(delta)),
@@ -1763,7 +1763,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       toggleFuelDrainMode: () => {
-        this.debugFuelDrainMode = this.debugFuelDrainMode === 'timer-plus-thrust' ? 'thrust-only' : 'timer-plus-thrust';
+        this.debugFuelDrainMode = 'thrust-only';
         return this.getTestHarnessState();
       },
       resetProgression: () => {
@@ -1912,6 +1912,10 @@ export class GameScene extends Phaser.Scene {
       this.runTestHarnessPhase15B();
     }
 
+    if (query.get('testHarness') === 'phase15_5') {
+      this.runTestHarnessPhase15_5();
+    }
+
     if (query.get('testHarness') === 'upgradeOverlayUi') {
       this.runTestHarnessUpgradeOverlayUi();
     }
@@ -1970,7 +1974,7 @@ export class GameScene extends Phaser.Scene {
       selectedShipName: selectedShip.displayName,
       selectedMissionId: this.selectedMissionId,
       selectedMissionName: this.missionRuntime?.definition.displayName ?? this.getSelectedMissionDefinition().displayName,
-      missionStatus: this.missionRuntime?.status ?? 'ready',
+      missionStatus: this.missionRuntime?.status ?? (this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'open' : 'ready'),
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
       missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
       missionObjectiveRegionId: this.missionRuntime?.objective.regionId ?? null,
@@ -3292,7 +3296,8 @@ export class GameScene extends Phaser.Scene {
       initial.firstRareEventName === 'Unstable Black-Hole Cache' &&
       afterBlackHole.completedRareEventCount >= 1 &&
       afterBlackHole.missionStatus === 'completed' &&
-      afterBlackHole.runEndReason === 'mission' &&
+      afterBlackHole.runEndReason === 'none' &&
+      !afterBlackHole.isResultsScreenOpen &&
       continued.canContinueRun;
     const hunterPass =
       hunterSpawnedEnemyIds.length > 0 &&
@@ -3518,6 +3523,94 @@ export class GameScene extends Phaser.Scene {
         scrapAfter,
         beamPiercePass,
         pass
+      })
+    );
+  }
+
+  private runTestHarnessPhase15_5(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-phase15-5-harness', 'fail');
+      document.body.setAttribute('data-starvivors-phase15-5-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    harness.resetProgression();
+    this.startRun();
+    const freeRange = harness.getState();
+
+    this.updateFuel(10, {
+      thrustForward: false,
+      thrustReverse: false,
+      strafeLeft: false,
+      strafeRight: false,
+      isThrusting: false,
+      isWorldRelative: false
+    });
+    const afterNoThrust = harness.getState();
+
+    this.updateFuel(10, {
+      thrustForward: true,
+      thrustReverse: false,
+      strafeLeft: false,
+      strafeRight: false,
+      isThrusting: true,
+      isWorldRelative: false
+    });
+    const afterThrust = harness.getState();
+
+    harness.selectMission('survey-signal');
+    this.startRun();
+    const missionInitial = harness.getState();
+    if (this.missionRuntime) {
+      this.player.setPosition(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
+      this.playerVelocity.set(0, 0);
+      this.updateMission(this.time.now + 1000);
+    }
+    const missionComplete = harness.getState();
+
+    this.player.setPosition(this.extractionPosition.x, this.extractionPosition.y);
+    this.playerVelocity.set(0, 0);
+    this.updateExtraction(this.time.now + 1200);
+    const extracted = harness.getState();
+
+    const freeRangePass =
+      freeRange.selectedMissionId === 'free-range' &&
+      freeRange.missionStatus === 'open' &&
+      freeRange.missionObjectiveRadius === 0 &&
+      freeRange.runEndReason === 'none';
+    const fuelPass =
+      afterNoThrust.fuel === freeRange.fuel &&
+      afterThrust.fuel < afterNoThrust.fuel &&
+      afterThrust.fuelDrainMode === 'thrust-only';
+    const missionPass =
+      missionInitial.selectedMissionId === 'survey-signal' &&
+      missionInitial.missionStatus === 'active' &&
+      missionComplete.missionStatus === 'completed' &&
+      missionComplete.runEndReason === 'none' &&
+      !missionComplete.isResultsScreenOpen;
+    const extractionPass =
+      extracted.runEndReason === 'extraction' &&
+      extracted.hasExtracted &&
+      extracted.isResultsScreenOpen &&
+      extracted.missionStatus === 'completed';
+    const pass = freeRangePass && fuelPass && missionPass && extractionPass;
+
+    document.body.setAttribute('data-starvivors-phase15-5-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-phase15-5-harness-details',
+      JSON.stringify({
+        freeRange,
+        afterNoThrust,
+        afterThrust,
+        missionInitial,
+        missionComplete,
+        extracted,
+        freeRangePass,
+        fuelPass,
+        missionPass,
+        extractionPass
       })
     );
   }
@@ -3806,6 +3899,8 @@ export class GameScene extends Phaser.Scene {
     const afterExtractionContinueTick = harness.getState();
 
     harness.restartRun();
+    harness.selectMission('survey-signal');
+    this.startRun();
     if (this.missionRuntime) {
       this.player.setPosition(this.missionRuntime.objective.x, this.missionRuntime.objective.y);
       this.playerVelocity.set(0, 0);
@@ -3817,7 +3912,7 @@ export class GameScene extends Phaser.Scene {
       emptyFuel.fuel === 0 &&
       refilledFuel.fuel === refilledFuel.maxFuel &&
       drainToggled.fuelDrainEnabled === !initial.fuelDrainEnabled &&
-      modeToggled.fuelDrainMode !== initial.fuelDrainMode;
+      modeToggled.fuelDrainMode === 'thrust-only';
     const continuePass =
       dead.isPlayerDead &&
       dead.isResultsScreenOpen &&
@@ -3831,7 +3926,8 @@ export class GameScene extends Phaser.Scene {
       afterExtractionContinueTick.runEndReason === 'none' &&
       !afterExtractionContinueTick.isPlayerDead &&
       !afterExtractionContinueTick.isResultsScreenOpen &&
-      missionComplete.runEndReason === 'mission' &&
+      missionComplete.runEndReason === 'none' &&
+      !missionComplete.isResultsScreenOpen &&
       missionComplete.canContinueRun &&
       !continued.isPlayerDead &&
       !continued.isResultsScreenOpen &&
@@ -5143,6 +5239,11 @@ export class GameScene extends Phaser.Scene {
 
   private createMissionRuntime(center: Phaser.Math.Vector2): void {
     const definition = this.getSelectedMissionDefinition();
+    if (definition.objectiveType === 'free-range') {
+      this.missionRuntime = undefined;
+      return;
+    }
+
     const targetWorldEvent = definition.guaranteedWorldEventId
       ? this.worldEvents.find((event) => event.definition.id === definition.guaranteedWorldEventId)
       : undefined;
@@ -7840,7 +7941,6 @@ export class GameScene extends Phaser.Scene {
     const resolution = resolveMissionReward(this.progressionState, this.missionRuntime.definition);
     this.recordUnlockedRewards(resolution.newlyUnlockedHooks);
     this.updateGameplayHud(time);
-    this.completeMissionRun(time);
   }
 
   private completeMissionRun(time: number): void {
@@ -7879,7 +7979,7 @@ export class GameScene extends Phaser.Scene {
 
   private getMissionHudStatus(): string {
     if (!this.missionRuntime) {
-      return 'READY';
+      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'OPEN' : 'READY';
     }
 
     switch (this.missionRuntime.status) {
@@ -7894,7 +7994,7 @@ export class GameScene extends Phaser.Scene {
 
   private getMissionResultStatus(): string {
     if (!this.missionRuntime) {
-      return 'not started';
+      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'free range' : 'not started';
     }
 
     if (this.missionRuntime.status === 'completed') {

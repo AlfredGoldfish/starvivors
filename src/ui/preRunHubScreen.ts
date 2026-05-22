@@ -129,6 +129,7 @@ export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
   const rowHeight = 78;
   const gap = 10;
 
+  const selectedModeLabel = config.selectedMission.objectiveType === 'free-range' ? 'RUN MODE' : 'ACTIVE CONTRACT';
   const current = config.scene.add
     .text(panelX, panelY, `ACTIVE CONTRACT\n${config.selectedMission.displayName}\n${config.selectedMission.description}`, {
       fontFamily: FONT,
@@ -139,6 +140,7 @@ export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
       wordWrap: { width: Math.min(420, panelWidth), useAdvancedWrap: true }
     })
     .setOrigin(0, 0);
+  current.setText(`${selectedModeLabel}\n${config.selectedMission.displayName}\n${config.selectedMission.description}`);
   container.add(current);
 
   const listX = panelX + Math.min(460, panelWidth * 0.42);
@@ -156,7 +158,7 @@ export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
       .text(
         listX + 16,
         y + 11,
-        `${mission.displayName}   ${mission.difficulty} risk\n${mission.rewardPreview}\n${mission.description}`,
+        `${mission.displayName}   ${mission.objectiveType === 'free-range' ? 'Open sector' : `${mission.difficulty} risk`}\n${mission.rewardPreview}\n${mission.description}`,
         {
           fontFamily: FONT,
           fontSize: '13px',

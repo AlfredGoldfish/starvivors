@@ -117,11 +117,11 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'reset-weapon-cooldowns': 'Make auto, left-click, and right-click weapon slots ready immediately.',
   'refill-ramming-shield': 'Restore Ramming Shield HP and dash charges when the shield is equipped.',
   'secret-controls-unlock': 'Unlock the late-game secret controls overlay in local progression for testing.',
-  fuel: 'Shows current run fuel and debug drain settings. Default fuel behavior is timer drain with a small thrust surcharge.',
+  fuel: 'Shows current run fuel and debug drain settings. Fuel drains only from thrust usage.',
   'fuel-refill': 'Refill fuel to maximum for route, extraction, and emergency-thrust testing.',
   'fuel-empty': 'Set fuel to zero to test emergency thrust behavior.',
   'fuel-drain-toggle': 'Pause or resume fuel drain without changing current fuel.',
-  'fuel-mode-toggle': 'Switch fuel drain between current timer-plus-thrust mode and thrust-only testing mode.',
+  'fuel-mode-toggle': 'Fuel drain mode is locked to thrust-only for current 2.0 tuning.',
   'preset-reset': 'Reset all debug tuning settings to source defaults.',
   profiler: 'Tracks frame time, subsystem timings, entity counts, and spike samples for lag diagnosis.',
   'profiler-toggle': 'Enable or disable rolling lag profiling.',
@@ -1757,12 +1757,12 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
           'fuel',
           `Fuel: ${Math.ceil(values.fuel)} / ${values.fuelMax}\nDrain: ${
             values.fuelDrainEnabled ? 'on' : 'paused'
-          }\nMode: ${values.fuelDrainMode}`
+          }\nMode: thrust-only`
         );
         setButtonLabel('player-invuln', `Debug invulnerability: ${values.playerInvulnerable ? 'on' : 'off'}`);
         setButtonLabel('player-collision-immune', `Contact damage: ${values.playerCollisionDamageImmune ? 'blocked' : 'normal'}`);
         setButtonLabel('fuel-drain-toggle', `Drain: ${values.fuelDrainEnabled ? 'on' : 'paused'}`);
-        setButtonLabel('fuel-mode-toggle', values.fuelDrainMode === 'timer-plus-thrust' ? 'Timer mode' : 'Thrust mode');
+        setButtonLabel('fuel-mode-toggle', 'Thrust only');
         setButtonLabel('secret-controls-unlock', values.secretControlUnlocked ? 'Controls unlocked' : 'Unlock controls');
       } else if (activeTab === 'ship') {
         setValue(

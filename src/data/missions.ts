@@ -3,9 +3,15 @@ import type { RareEventDefinitionId } from './rareEvents';
 import type { WorldEventDefinitionId } from './worldEvents';
 import type { RewardHookId } from '../systems/progressionStorage';
 
-export type MissionDefinitionId = 'survey-signal' | 'salvage-cache' | 'enemy-probe' | 'mothership-contract' | 'rift-cache-contract';
+export type MissionDefinitionId =
+  | 'free-range'
+  | 'survey-signal'
+  | 'salvage-cache'
+  | 'enemy-probe'
+  | 'mothership-contract'
+  | 'rift-cache-contract';
 export type MissionDifficulty = 'Low' | 'Medium' | 'High';
-export type MissionObjectiveType = 'reach-location' | 'destroy-world-event' | 'complete-rare-event';
+export type MissionObjectiveType = 'free-range' | 'reach-location' | 'destroy-world-event' | 'complete-rare-event';
 
 export interface MissionDefinition {
   id: MissionDefinitionId;
@@ -23,9 +29,21 @@ export interface MissionDefinition {
   rewardUnlockHooks?: RewardHookId[];
 }
 
-export const DEFAULT_MISSION_ID: MissionDefinitionId = 'survey-signal';
+export const DEFAULT_MISSION_ID: MissionDefinitionId = 'free-range';
 
 export const missionRegistry: MissionDefinition[] = [
+  {
+    id: 'free-range',
+    displayName: 'Free Range',
+    shortName: 'Free',
+    description: 'Enter the sector, choose your own route, and extract when satisfied.',
+    objectiveType: 'free-range',
+    objectiveLabel: 'Open sector',
+    difficulty: 'Low',
+    rewardPreview: 'Keep what you extract',
+    preferredRegionTypes: [],
+    objectiveRadius: 0
+  },
   {
     id: 'survey-signal',
     displayName: 'Survey Signal',
