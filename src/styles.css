@@ -152,13 +152,71 @@ canvas {
   filter: grayscale(1) contrast(1.35) brightness(1.15);
 }
 
+.enemy-lab-forge-preview.is-projectile-motion .enemy-lab-forge-preview-stage {
+  background:
+    linear-gradient(90deg, rgba(66, 245, 215, 0.1), transparent 52%),
+    radial-gradient(circle at 72% 50%, rgba(255, 47, 214, 0.08), transparent 34%),
+    #050912;
+}
+
+.enemy-lab-forge-preview.is-weapon-icon .enemy-lab-forge-preview-stage {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 200, 87, 0.08), transparent 38%),
+    linear-gradient(135deg, rgba(66, 245, 215, 0.08), rgba(255, 47, 214, 0.06)),
+    #050912;
+}
+
 .enemy-lab-forge-preview-asset {
   position: relative;
   width: 132px;
   height: 132px;
 }
 
-.enemy-lab-forge-preview-asset svg {
+.enemy-lab-forge-motion-lane {
+  position: relative;
+  width: 178px;
+  height: 132px;
+}
+
+.enemy-lab-forge-motion-lane::before {
+  position: absolute;
+  top: 62px;
+  right: 42px;
+  left: 20px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(66, 245, 215, 0.78));
+  content: '';
+}
+
+.enemy-lab-forge-motion-asset,
+.enemy-lab-forge-motion-ghost {
+  position: absolute;
+  width: 132px;
+  height: 132px;
+}
+
+.enemy-lab-forge-motion-asset {
+  right: -10px;
+}
+
+.enemy-lab-forge-motion-ghost {
+  opacity: 0.28;
+  transform: scale(0.32);
+}
+
+.enemy-lab-forge-motion-ghost.is-far {
+  left: -22px;
+}
+
+.enemy-lab-forge-motion-ghost.is-mid {
+  left: 30px;
+  opacity: 0.46;
+  transform: scale(0.42);
+}
+
+.enemy-lab-forge-preview-asset svg,
+.enemy-lab-forge-motion-asset svg,
+.enemy-lab-forge-motion-ghost svg {
   position: absolute;
   inset: 0;
   width: 100%;

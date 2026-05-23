@@ -3,6 +3,8 @@ import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
+import { getWeaponDefinition } from '../data/weapons';
+import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
 import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
 import { ENEMY_LAB_DEFINITIONS, type EnemyLabDefinition } from '../data/enemyLabDefinitions';
 import {
@@ -70,13 +72,17 @@ import {
   FORGE_ASSET_STATUSES,
   FORGE_STYLE_GUIDE_VERSION,
   convertEnemyVisualDefinitionToForgeAsset,
+  convertProjectileVisualDefinitionToForgeAsset,
+  convertWeaponDefinitionToForgeAsset,
   createForgeAiBrief,
+  createForgeAssetTexture,
   createForgeContactSheetData,
   createForgeProductionPromotionBundle,
   createForgeProductionPromotionMarkdown,
   createForgePromotionBundle,
   createForgePromotionMarkdown,
   createForgeVisualAssetId,
+  getForgeTextureKey,
   getNeonForwardSalvagepunkStyleGuide,
   isForgeAssetApprovedForPromotion,
   loadAssetForgeStorageState,
@@ -219,7 +225,7 @@ const FORGE_PALETTE_KEYS: Array<keyof ForgePalette> = [
   'white'
 ];
 const FORGE_COLOR_OPTIONS: Array<keyof ForgePalette> = [...FORGE_PALETTE_KEYS];
-type ForgePreviewMode = 'combat' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
+type ForgePreviewMode = 'combat' | 'projectile-motion' | 'weapon-icon' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -557,8 +563,8 @@ export class EnemyLabScene extends Phaser.Scene {
     color: number;
   }): void {
     const rotation = Math.atan2(input.direction.x, -input.direction.y);
-    const body = this.createProjectileBody(input.x, input.y, input.radius, input.color, rotation);
-    const wrapMirrorBody = this.createProjectileBody(input.x, input.y, input.radius, input.color, rotation);
+    const body = this.createProjectileBody(input.x, input.y, input.radius, input.color, rotation, input.owner);
+    const wrapMirrorBody = this.createProjectileBody(input.x, input.y, input.radius, input.color, rotation, input.owner);
     wrapMirrorBody.setVisible(false);
     this.projectiles.push({
       id: `lab-projectile-${this.nextProjectileId++}`,
@@ -577,8 +583,27 @@ export class EnemyLabScene extends Phaser.Scene {
     y: number,
     radius: number,
     color: number,
-    rotation: number
+    rotation: number,
+    owner: 'player' | 'enemy'
   ): Phaser.GameObjects.Container {
+    const forgeAsset = owner === 'player' ? getForgeAssetDefinition('forge.projectile.pulse-cannon-bolt') : undefined;
+    if (forgeAsset) {
+      const textureKey = getForgeTextureKey(forgeAsset.id);
+      createForgeAssetTexture(this, forgeAsset, textureKey);
+      const image = this.add.image(0, 0, textureKey);
+      image.setOrigin(0.5);
+      image.setDisplaySize(
+        this.readForgeGameplayHint(forgeAsset.gameplayHints?.displayWidth, radius * 3.5),
+        this.readForgeGameplayHint(forgeAsset.gameplayHints?.displayHeight, radius * 4.5)
+      );
+      image.setBlendMode(Phaser.BlendModes.ADD);
+      const projectile = this.add.container(wrapCoordinate(x, this.arena.width), wrapCoordinate(y, this.arena.height), [image]);
+      projectile.setRotation(rotation);
+      projectile.setDepth(8);
+      projectile.setData('forgeAssetId', forgeAsset.id);
+      return projectile;
+    }
+
     const glow = this.add.ellipse(0, 0, radius * 4.5, radius * 4.5, color, 0.24);
     glow.setBlendMode(Phaser.BlendModes.ADD);
     const core = this.add.ellipse(0, 0, radius * 1.05, radius * 2.2, color, 0.94);
@@ -969,6 +994,8 @@ export class EnemyLabScene extends Phaser.Scene {
         <label>Status <select data-field="forgeAssetStatus"></select></label>
         <label>Preview <select data-field="forgePreviewMode">
           <option value="combat">Combat</option>
+          <option value="projectile-motion">Projectile Motion</option>
+          <option value="weapon-icon">Weapon Icon</option>
           <option value="minimap">Minimap</option>
           <option value="silhouette">Silhouette</option>
           <option value="starfield">Starfield</option>
@@ -977,6 +1004,8 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-forge-preview" data-field="forgePreview"></div>
         <div class="enemy-lab-row">
           <button data-action="createForgeDraft">Create Draft</button>
+          <button data-action="createProjectileForgeDraft">Pulse Projectile</button>
+          <button data-action="createWeaponForgeDraft">Pulse Weapon</button>
           <button data-action="saveForgeAsset">Save Forge</button>
           <button data-action="deleteForgeAsset" class="enemy-lab-danger-button">Delete Forge</button>
         </div>
@@ -1411,6 +1440,8 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'exportForgeBatchBrief') this.exportForgeBatchAiBrief();
       if (action === 'importForgeBatch') this.importForgeAsset();
       if (action === 'createForgeDraft') this.createForgeDraftForSelectedEnemy();
+      if (action === 'createProjectileForgeDraft') this.createProjectileForgeDraft();
+      if (action === 'createWeaponForgeDraft') this.createWeaponForgeDraft();
       if (action === 'saveForgeAsset') this.saveSelectedForgeAsset();
       if (action === 'deleteForgeAsset') this.deleteSelectedForgeAsset();
       if (action === 'forgeMoveLeft') this.transformSelectedForgeLayer((layer) => this.translateForgeLayer(layer, -5, 0));
@@ -1644,6 +1675,36 @@ export class EnemyLabScene extends Phaser.Scene {
     this.presetState.forgeAssets.push(draft);
     this.selectedForgeAssetId = draft.id;
     this.selectedForgeLayerIndex = 0;
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private createProjectileForgeDraft(): void {
+    const weapon = getWeaponDefinition('pulse-cannon');
+    const draft = this.cloneForgeAsset(convertProjectileVisualDefinitionToForgeAsset(weapon));
+    draft.id = `forge.projectile.${slugify(weapon.displayName)}.${Date.now()}`;
+    draft.displayName = `${weapon.displayName} Projectile Draft`;
+    draft.status = 'Visual Pass';
+    draft.savedAt = new Date().toISOString();
+    this.presetState.forgeAssets.push(draft);
+    this.selectedForgeAssetId = draft.id;
+    this.selectedForgeLayerIndex = 0;
+    this.forgePreviewMode = 'projectile-motion';
+    this.savePresetState();
+    this.syncForgeControlsFromState();
+  }
+
+  private createWeaponForgeDraft(): void {
+    const weapon = getWeaponDefinition('pulse-cannon');
+    const draft = this.cloneForgeAsset(convertWeaponDefinitionToForgeAsset(weapon));
+    draft.id = `forge.weapon.${slugify(weapon.displayName)}.${Date.now()}`;
+    draft.displayName = `${weapon.displayName} Weapon Draft`;
+    draft.status = 'Visual Pass';
+    draft.savedAt = new Date().toISOString();
+    this.presetState.forgeAssets.push(draft);
+    this.selectedForgeAssetId = draft.id;
+    this.selectedForgeLayerIndex = 0;
+    this.forgePreviewMode = 'weapon-icon';
     this.savePresetState();
     this.syncForgeControlsFromState();
   }
@@ -2476,6 +2537,10 @@ export class EnemyLabScene extends Phaser.Scene {
     return clamped;
   }
 
+  private readForgeGameplayHint(value: unknown, fallback: number): number {
+    return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
+  }
+
   private isControlPanelEditingText(): boolean {
     if (!this.overlay) {
       return false;
@@ -2754,16 +2819,25 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const asset = this.getSelectedForgeAsset();
     const mode = this.forgePreviewMode;
-    const scale = mode === 'minimap' ? 0.32 : mode === 'combat' ? 0.92 : 0.76;
+    const scale = mode === 'minimap' ? 0.32 : mode === 'projectile-motion' ? 0.54 : mode === 'weapon-icon' ? 0.68 : mode === 'combat' ? 0.92 : 0.76;
     const svg = renderForgeAssetToSvg(asset, { includeMetadata: false });
     const radius = Number(asset.gameplayHints?.hitRadius ?? asset.boundsRadius);
     const radiusMarkup = mode === 'hit-radius'
       ? `<svg class="enemy-lab-forge-radius" viewBox="${-asset.canvasSize / 2} ${-asset.canvasSize / 2} ${asset.canvasSize} ${asset.canvasSize}"><circle cx="0" cy="0" r="${radius}" /></svg>`
       : '';
+    const motionMarkup = mode === 'projectile-motion'
+      ? [
+          '<div class="enemy-lab-forge-motion-lane">',
+          `<div class="enemy-lab-forge-motion-ghost is-far">${svg}</div>`,
+          `<div class="enemy-lab-forge-motion-ghost is-mid">${svg}</div>`,
+          `<div class="enemy-lab-forge-motion-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`,
+          '</div>'
+        ].join('')
+      : `<div class="enemy-lab-forge-preview-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`;
     this.overlay.forgePreview.className = `enemy-lab-forge-preview is-${mode}`;
     this.overlay.forgePreview.innerHTML = [
       '<div class="enemy-lab-forge-preview-stage">',
-      `<div class="enemy-lab-forge-preview-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`,
+      motionMarkup,
       '</div>',
       `<div class="enemy-lab-forge-preview-caption">${asset.displayName} | ${asset.layers.length} layers | ${asset.status} | ${createForgeVisualAssetId(asset)}</div>`
     ].join('');
@@ -2845,7 +2919,12 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private normalizeForgePreviewMode(value: string): ForgePreviewMode {
-    return value === 'minimap' || value === 'silhouette' || value === 'starfield' || value === 'hit-radius'
+    return value === 'minimap' ||
+      value === 'projectile-motion' ||
+      value === 'weapon-icon' ||
+      value === 'silhouette' ||
+      value === 'starfield' ||
+      value === 'hit-radius'
       ? value
       : 'combat';
   }

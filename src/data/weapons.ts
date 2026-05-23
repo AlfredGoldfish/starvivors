@@ -57,6 +57,8 @@ export interface WeaponRegistryEntry extends ContentRegistryEntry {
   eligibleAsSecondary: boolean;
   scaling: WeaponScalingDefinition;
   upgradeBranches: WeaponUpgradeBranch[];
+  visualAssetId?: string;
+  projectileVisualAssetId?: string;
   damage?: number;
   damageVariance?: DamageVariance;
   cooldownSeconds?: number;
@@ -100,6 +102,7 @@ export const pulseCannon: WeaponRegistryEntry = {
   projectileSpeed: pulseCannonBalance.projectileSpeed,
   projectileLifetimeSeconds: pulseCannonBalance.projectileLifetimeSeconds,
   projectileRange: pulseCannonBalance.projectileRange,
+  projectileVisualAssetId: 'forge.projectile.pulse-cannon-bolt',
   projectileVisual: {
     glowColor: 0x42f5d7,
     glowAlpha: 0.3,

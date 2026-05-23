@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { EnemyLabDefinition, EnemyVisualDefinition } from '../data/enemyLabDefinitions';
+import type { ProjectileVisualDefinition, WeaponRegistryEntry } from '../data/weapons';
 
 export const FORGE_STYLE_GUIDE_VERSION = 'neon-forward-salvagepunk-v1';
 export const ASSET_FORGE_STORAGE_KEY = 'starvivors.assetForge.v1';
@@ -677,6 +678,127 @@ export function applyForgeAssetToEnemyDefinition(definition: EnemyLabDefinition,
       outlineColor: asset.palette.outline,
       engineColor: asset.palette.warning
     }
+  };
+}
+
+export function convertProjectileVisualDefinitionToForgeAsset(
+  weapon: WeaponRegistryEntry,
+  visual: ProjectileVisualDefinition = weapon.projectileVisual ?? {
+    glowColor: 0x42f5d7,
+    glowAlpha: 0.3,
+    bodyColor: 0x73f2ff,
+    bodyStrokeColor: 0xf2fbff,
+    trailColor: 0x42f5d7,
+    width: 18,
+    height: 24
+  }
+): ForgeAsset {
+  const width = Math.max(10, visual.width);
+  const height = Math.max(14, visual.height);
+  const radius = Math.max(width, height) * 0.62;
+  const canvasSize = Math.ceil(Math.max(width, height) * 2.15);
+
+  return {
+    type: 'starvivors-forge-asset',
+    version: 1,
+    id: weapon.projectileVisualAssetId ?? `forge.projectile.${weapon.id}-bolt`,
+    kind: 'projectile',
+    displayName: `${weapon.displayName} Bolt`,
+    status: weapon.projectileVisualAssetId ? 'Implemented' : 'Visual Pass',
+    tags: ['weapon', 'projectile', weapon.id, 'neon-forward-salvagepunk', ...weapon.tags],
+    notes: `Projectile recipe for ${weapon.displayName}. Neon reads first; salvage rails and hot warning strips support direction.`,
+    styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
+    palette: {
+      metalDark: 0x071018,
+      metalWarm: 0xb0793f,
+      neonPrimary: visual.glowColor,
+      neonSecondary: visual.bodyColor,
+      warning: visual.trailColor,
+      outline: visual.bodyStrokeColor,
+      white: 0xf2fbff
+    },
+    boundsRadius: radius,
+    canvasSize,
+    layers: [
+      { id: 'neon-flight-envelope', type: 'glow', x: 0, y: 0, radius: radius * 1.08, color: 'neonPrimary', innerAlpha: visual.glowAlpha, role: 'dominant projectile glow' },
+      { id: 'plasma-spear-core', type: 'ellipse', x: 0, y: -height * 0.02, radiusX: width * 0.2, radiusY: height * 0.42, color: 'neonSecondary', strokeColor: 'white', strokeWidth: 1, role: 'bright projectile core' },
+      { id: 'copper-pressure-rails', type: 'line', from: [-width * 0.38, height * 0.16], to: [-width * 0.16, -height * 0.32], color: 'metalWarm', strokeColor: 'metalWarm', strokeWidth: 2, role: 'salvage rail' },
+      { id: 'copper-pressure-rails-mirror', type: 'line', from: [width * 0.38, height * 0.16], to: [width * 0.16, -height * 0.32], color: 'metalWarm', strokeColor: 'metalWarm', strokeWidth: 2, role: 'mirrored salvage rail' },
+      { id: 'hot-tail-glyph', type: 'polygon', points: [[0, height * 0.55], [width * 0.24, height * 0.2], [0, height * 0.32], [-width * 0.24, height * 0.2]], color: 'warning', strokeColor: 'outline', strokeWidth: 0.8, role: 'direction cue' }
+    ],
+    animation: {
+      emissiveFlicker: true,
+      trail: 'plasma'
+    },
+    gameplayHints: {
+      sourceWeaponId: weapon.id,
+      displayWidth: Math.max(width * 1.55, radius * 1.55),
+      displayHeight: Math.max(height * 1.55, radius * 2),
+      hitRadius: Math.max(6, width * 0.45)
+    },
+    savedAt: new Date().toISOString()
+  };
+}
+
+export function convertWeaponDefinitionToForgeAsset(weapon: WeaponRegistryEntry): ForgeAsset {
+  const isBeam = weapon.behaviorType === 'beam';
+  const isShield = weapon.behaviorType === 'ramming-shield';
+  const neonPrimary = isBeam ? 0x69f0ae : isShield ? 0xffc857 : 0x42f5d7;
+  const neonSecondary = isBeam ? 0x73f2ff : isShield ? 0xff5964 : 0xff2fd6;
+  const radius = 34;
+
+  return {
+    type: 'starvivors-forge-asset',
+    version: 1,
+    id: weapon.visualAssetId ?? `forge.weapon.${weapon.id}`,
+    kind: 'weapon',
+    displayName: `${weapon.displayName} Icon`,
+    status: weapon.visualAssetId ? 'Implemented' : 'Visual Pass',
+    tags: ['weapon', weapon.id, weapon.behaviorType, 'neon-forward-salvagepunk', ...weapon.tags],
+    notes: `Weapon icon recipe for ${weapon.displayName}. Holographic neon silhouette first, brass/salvage frame second.`,
+    styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
+    palette: {
+      metalDark: 0x071018,
+      metalWarm: 0xb0793f,
+      neonPrimary,
+      neonSecondary,
+      warning: 0xffc857,
+      outline: 0xf2fbff,
+      white: 0xf2fbff
+    },
+    boundsRadius: radius,
+    canvasSize: 84,
+    layers: [
+      { id: 'holographic-icon-aura', type: 'glow', x: 0, y: 0, radius: radius * 0.9, color: 'neonPrimary', innerAlpha: 0.24, role: 'neon icon aura' },
+      { id: 'brass-instrument-frame', type: 'ring', x: 0, y: 0, radius: radius * 0.72, strokeColor: 'metalWarm', strokeWidth: 3, role: 'salvage instrument frame' },
+      { id: 'dark-mechanical-backplate', type: 'polygon', points: createRegularPolygon(6, radius * 0.62, Math.PI / 6), color: 'metalDark', strokeColor: 'outline', strokeWidth: 1.2, role: 'readable weapon silhouette' },
+      ...(isShield
+        ? [
+            { id: 'shield-neon-arc', type: 'path', d: `M ${-radius * 0.45} ${radius * 0.22} Q 0 ${-radius * 0.62} ${radius * 0.45} ${radius * 0.22}`, fill: false, strokeColor: 'neonPrimary', strokeWidth: 5, blend: 'lighter', role: 'shield arc' } as ForgeVectorLayer,
+            { id: 'warning-impact-core', type: 'ellipse', x: 0, y: 4, radiusX: 7, radiusY: 12, color: 'warning', strokeColor: 'outline', strokeWidth: 1, role: 'impact core' } as ForgeVectorLayer
+          ]
+        : isBeam
+          ? [
+              { id: 'beam-cutter-line', type: 'line', from: [0, radius * 0.52], to: [0, -radius * 0.58], strokeColor: 'neonPrimary', strokeWidth: 6, blend: 'lighter', role: 'beam cutter' } as ForgeVectorLayer,
+              { id: 'salvage-focusing-coil', type: 'ring', x: 0, y: -radius * 0.16, radius: 12, strokeColor: 'metalWarm', strokeWidth: 3, role: 'focusing coil' } as ForgeVectorLayer
+            ]
+          : [
+              { id: 'pressure-cannon-barrel', type: 'rect', x: -5, y: -radius * 0.58, width: 10, height: radius * 1.05, color: 'metalWarm', strokeColor: 'outline', strokeWidth: 1, role: 'cannon barrel' } as ForgeVectorLayer,
+              { id: 'cyan-energy-rail', type: 'line', from: [-12, radius * 0.42], to: [-12, -radius * 0.44], strokeColor: 'neonPrimary', strokeWidth: 3, blend: 'lighter', role: 'left energy rail' } as ForgeVectorLayer,
+              { id: 'magenta-energy-rail', type: 'line', from: [12, radius * 0.42], to: [12, -radius * 0.44], strokeColor: 'neonSecondary', strokeWidth: 3, blend: 'lighter', role: 'right energy rail' } as ForgeVectorLayer
+            ])
+    ],
+    animation: {
+      idlePulse: true,
+      emissiveFlicker: true,
+      trail: 'none'
+    },
+    gameplayHints: {
+      sourceWeaponId: weapon.id,
+      behaviorType: weapon.behaviorType,
+      iconSize: 42
+    },
+    savedAt: new Date().toISOString()
   };
 }
 

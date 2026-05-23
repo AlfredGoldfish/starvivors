@@ -10,6 +10,8 @@ import {
 import type { PlayerProjectile } from '../scenes/gameTypes';
 import type { ResolvedProjectilePatternStats, ResolvedWeaponStats } from './weaponStats';
 import { isProjectileWeapon } from '../data/weapons';
+import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
+import { createForgeAssetTexture, getForgeTextureKey } from './assetForge';
 import {
   clearRuntimeProjectiles,
   destroyRuntimeProjectile,
@@ -266,6 +268,27 @@ function createPlayerProjectileBody(
     throw new Error(`${weapon.displayName} does not define projectile visuals.`);
   }
 
+  const forgeAsset = weapon.projectileVisualAssetId ? getForgeAssetDefinition(weapon.projectileVisualAssetId) : undefined;
+  if (forgeAsset) {
+    const textureKey = getForgeTextureKey(forgeAsset.id);
+    createForgeAssetTexture(scene, forgeAsset, textureKey);
+
+    const image = scene.add.image(0, 0, textureKey);
+    image.setOrigin(0.5);
+    image.setDisplaySize(
+      readForgeDisplayHint(forgeAsset.gameplayHints?.displayWidth, visual.width * 1.55) * areaScale,
+      readForgeDisplayHint(forgeAsset.gameplayHints?.displayHeight, visual.height * 1.55) * areaScale
+    );
+    image.setBlendMode(Phaser.BlendModes.ADD);
+
+    const projectile = scene.add.container(x, y, [image]);
+    projectile.setSize(image.displayWidth, image.displayHeight);
+    projectile.setRotation(rotation);
+    projectile.setDepth(8);
+    projectile.setData('forgeAssetId', forgeAsset.id);
+    return projectile;
+  }
+
   const glow = scene.add.ellipse(0, 0, visual.width * areaScale, visual.height * areaScale, visual.glowColor, visual.glowAlpha);
   const body = scene.add.ellipse(0, 0, visual.width * 0.44 * areaScale, visual.height * 0.63 * areaScale, visual.bodyColor, 1);
   body.setStrokeStyle(1, visual.bodyStrokeColor, 0.95);
@@ -277,4 +300,8 @@ function createPlayerProjectileBody(
   projectile.setDepth(8);
 
   return projectile;
+}
+
+function readForgeDisplayHint(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : fallback;
 }
