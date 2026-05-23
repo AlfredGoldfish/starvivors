@@ -2,7 +2,13 @@ import Phaser from 'phaser';
 import { PERMANENT_UPGRADE_DEFINITIONS, type PermanentUpgradeDefinition, type PermanentUpgradeId } from '../data/permanentUpgrades';
 import type { ShopBackTarget } from '../scenes/gameTypes';
 import { addPreRunNav, type PreRunNavConfig } from './preRunHubScreen';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import {
+  addScreenButton,
+  drawCockpitBackdrop,
+  drawCockpitPanel,
+  UI_COLORS,
+  type ScreenHandle
+} from './screenUi';
 
 export interface ShopScreenConfig {
   scene: Phaser.Scene;
@@ -52,12 +58,15 @@ export function createShopScreen(config: ShopScreenConfig): ScreenHandle {
   const actionZones: Phaser.GameObjects.Zone[] = [];
 
   const background = config.scene.add.graphics();
-  background.fillStyle(0x02040a, config.backTarget === 'results' ? 0.82 : 1);
-  background.fillRect(-width / 2, -height / 2, width, height);
-  background.fillStyle(0x071018, 0.96);
-  background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-  background.lineStyle(2, 0x42f5d7, 0.82);
-  background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+  drawCockpitBackdrop(background, width, height, config.backTarget === 'results' ? 0.82 : 1);
+  drawCockpitPanel(background, {
+    x: panelX,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    accentColor: UI_COLORS.brass,
+    headerHeight: 78
+  });
 
   const title = config.scene.add
     .text(panelX + 32, panelY + 28, 'SHOP', {

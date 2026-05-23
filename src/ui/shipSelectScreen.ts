@@ -13,7 +13,7 @@ import { resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import { type WeaponLoadoutState, type WeaponMkLevels } from '../systems/progressionStorage';
 import { addPreRunNav, type PreRunNavConfig } from './preRunHubScreen';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import { addScreenButton, drawCockpitBackdrop, UI_COLORS, type ScreenHandle } from './screenUi';
 
 export interface ShipSelectScreenConfig {
   scene: Phaser.Scene;
@@ -77,11 +77,12 @@ export function createShipSelectScreen(config: ShipSelectScreenConfig): ScreenHa
   const slotTargets: Array<{ slot: WeaponSlotType; index: number; bounds: Phaser.Geom.Rectangle }> = [];
 
   const background = config.scene.add.graphics();
-  background.fillStyle(0x02040a, 1);
-  background.fillRect(-width / 2, -height / 2, width, height);
-  background.lineStyle(4, 0x42f5d7, 0.9);
+  drawCockpitBackdrop(background, width, height, 1);
+  background.lineStyle(4, UI_COLORS.cyan, 0.9);
   background.strokeRect(panelX, panelY, panelWidth, panelHeight);
-  background.lineStyle(1, 0x52627f, 0.52);
+  background.lineStyle(1, UI_COLORS.brass, 0.32);
+  background.strokeRect(panelX + 8, panelY + 8, panelWidth - 16, panelHeight - 16);
+  background.lineStyle(1, UI_COLORS.steel, 0.52);
   background.lineBetween(panelX + 34, panelY + 72, panelX + panelWidth - 34, panelY + 72);
 
   const title = config.scene.add

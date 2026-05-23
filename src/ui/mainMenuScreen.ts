@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import { addScreenButton, drawCockpitBackdrop, drawCockpitPanel, UI_COLORS, UI_FONT, type ScreenHandle } from './screenUi';
 
 export interface MainMenuScreenConfig {
   scene: Phaser.Scene;
@@ -29,16 +29,19 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
   const buttonStartY = panelY + panelHeight - 192;
   const actionZones: Phaser.GameObjects.Zone[] = [];
   const background = config.scene.add.graphics();
-  background.fillStyle(0x02040a, 1);
-  background.fillRect(-width / 2, -height / 2, width, height);
-  background.fillStyle(0x071018, 0.96);
-  background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-  background.lineStyle(2, 0x42f5d7, 0.82);
-  background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+  drawCockpitBackdrop(background, width, height, 1);
+  drawCockpitPanel(background, {
+    x: panelX,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    accentColor: UI_COLORS.cyan,
+    headerHeight: 90
+  });
 
   const title = config.scene.add
     .text(0, panelY + 38, 'STARVIVORS', {
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: UI_FONT,
       fontSize: '38px',
       color: '#f2fbff',
       align: 'center'
@@ -46,7 +49,7 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
     .setOrigin(0.5, 0);
   const credits = config.scene.add
     .text(0, panelY + 104, `Credits ${config.totalCredits}`, {
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: UI_FONT,
       fontSize: '20px',
       color: '#c8f7ff',
       align: 'center'
@@ -54,7 +57,7 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
     .setOrigin(0.5, 0);
   const selectedShip = config.scene.add
     .text(0, panelY + 132, `Ship ${config.selectedShipDisplayName}`, {
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: UI_FONT,
       fontSize: '16px',
       color: '#9fb5d1',
       align: 'center'
@@ -68,7 +71,7 @@ export function createMainMenuScreen(config: MainMenuScreenConfig): ScreenHandle
         `${config.selectedMissionDifficulty} risk  ${config.selectedMissionRewardPreview}\n` +
         config.selectedMissionDescription,
       {
-        fontFamily: 'Consolas, "Courier New", monospace',
+        fontFamily: UI_FONT,
         fontSize: '13px',
         color: '#c8f7ff',
         align: 'center',

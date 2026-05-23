@@ -1,5 +1,13 @@
 import Phaser from 'phaser';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import {
+  addScreenButton,
+  drawCockpitBackdrop,
+  drawCockpitDivider,
+  drawCockpitPanel,
+  UI_COLORS,
+  UI_FONT,
+  type ScreenHandle
+} from './screenUi';
 
 export interface ResultsScreenSection {
   title: string;
@@ -52,16 +60,16 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
   const actionZones: Phaser.GameObjects.Zone[] = [];
 
   const background = config.scene.add.graphics();
-  background.fillStyle(0x02040a, 0.78);
-  background.fillRect(-width / 2, -height / 2, width, height);
-  background.fillStyle(0x071018, 0.96);
-  background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-  background.lineStyle(2, 0x42f5d7, 0.82);
-  background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-  background.lineStyle(1, 0xffc857, 0.42);
-  background.lineBetween(panelX + 24, panelY + 74, panelX + panelWidth - 24, panelY + 74);
-  background.lineStyle(1, 0x52627f, 0.55);
-  background.lineBetween(panelX + 24, buttonTop - 18, panelX + panelWidth - 24, buttonTop - 18);
+  drawCockpitBackdrop(background, width, height, 0.78);
+  drawCockpitPanel(background, {
+    x: panelX,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    accentColor: UI_COLORS.cyan,
+    headerHeight: 72
+  });
+  drawCockpitDivider(background, panelX + 24, buttonTop - 18, panelX + panelWidth - 24, UI_COLORS.steel, 0.55);
 
   const titleText = config.scene.add
     .text(
@@ -69,7 +77,7 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
       textTop,
       `RUN REPORT\n${config.outcomeTitle}`,
       {
-        fontFamily: 'Consolas, "Courier New", monospace',
+        fontFamily: UI_FONT,
         fontSize: height < 560 ? '16px' : '18px',
         color: '#f2fbff',
         align: 'left',
@@ -125,7 +133,7 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
     const y = columnHeights[column];
     const sectionText = config.scene.add
       .text(x, y, `${section.title.toUpperCase()}\n${section.lines.join('\n')}`, {
-        fontFamily: 'Consolas, "Courier New", monospace',
+        fontFamily: UI_FONT,
         fontSize: height < 560 ? '11px' : '12px',
         color: '#f2fbff',
         fixedWidth: columnWidth,
@@ -140,7 +148,7 @@ export function createResultsScreen(config: ResultsScreenConfig): ScreenHandle {
 
   const shortcutText = config.scene.add
     .text(panelX + 28, buttonTop - 13, 'R restart    Shop converts future runs and upgrades scanner/loadout paths', {
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: UI_FONT,
       fontSize: '10px',
       color: '#a8c7ff',
       fixedWidth: detailsWidth,

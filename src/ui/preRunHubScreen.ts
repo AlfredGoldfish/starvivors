@@ -1,7 +1,13 @@
 import Phaser from 'phaser';
 import { missionRegistry, type MissionDefinition, type MissionDefinitionId } from '../data/missions';
 import { formatKeyCode, RUN_CONTROL_ACTIONS, RUN_CONTROL_LABELS, type GameSettings } from '../systems/gameSettings';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import {
+  addScreenButton,
+  drawCockpitBackdrop,
+  drawCockpitDivider,
+  UI_COLORS,
+  type ScreenHandle
+} from './screenUi';
 
 export type PreRunHubTab = 'command' | 'hangar' | 'shop' | 'settings';
 
@@ -337,12 +343,12 @@ function createHubBackground(scene: Phaser.Scene, width: number, height: number)
   const centerX = width / 2;
   const centerY = height / 2;
   const background = scene.add.graphics();
-  background.fillStyle(0x02040a, 1);
-  background.fillRect(-centerX, -centerY, width, height);
-  background.lineStyle(3, 0x42f5d7, 0.86);
+  drawCockpitBackdrop(background, width, height, 1);
+  background.lineStyle(3, UI_COLORS.cyan, 0.86);
   background.strokeRect(-centerX + 3, -centerY + 3, width - 6, height - 6);
-  background.lineStyle(1, 0x52627f, 0.5);
-  background.lineBetween(-centerX + 34, -centerY + 72, centerX - 34, -centerY + 72);
+  background.lineStyle(1, UI_COLORS.brass, 0.34);
+  background.strokeRect(-centerX + 10, -centerY + 10, width - 20, height - 20);
+  drawCockpitDivider(background, -centerX + 34, -centerY + 72, centerX - 34, UI_COLORS.steel, 0.5);
   return background;
 }
 

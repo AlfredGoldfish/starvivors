@@ -9,7 +9,15 @@ import {
   type MovementMode,
   type RunControlAction
 } from '../systems/gameSettings';
-import { addScreenButton, type ScreenHandle } from './screenUi';
+import {
+  addScreenButton,
+  drawCockpitBackdrop,
+  drawCockpitDivider,
+  drawCockpitPanel,
+  UI_COLORS,
+  UI_FONT,
+  type ScreenHandle
+} from './screenUi';
 
 export type PauseMenuTab = 'pause' | 'graphics' | 'sound' | 'controls' | 'gameplay' | 'accessibility';
 
@@ -54,16 +62,20 @@ export function createPauseMenuScreen(config: PauseMenuConfig): ScreenHandle {
   const background = scene.add.graphics();
   const container = scene.add.container(centerX, centerY, [background]).setScrollFactor(0).setDepth(1250);
 
-  background.fillStyle(0x02040a, 0.72);
-  background.fillRect(-centerX, -centerY, width, height);
-  background.fillStyle(0x071018, 0.97);
-  background.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
-  background.lineStyle(2, 0x42f5d7, 0.78);
-  background.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
+  drawCockpitBackdrop(background, width, height, 0.72);
+  drawCockpitPanel(background, {
+    x: panelX,
+    y: panelY,
+    width: panelWidth,
+    height: panelHeight,
+    accentColor: config.activeTab === 'pause' ? UI_COLORS.cyan : UI_COLORS.brass,
+    headerHeight: 66
+  });
+  drawCockpitDivider(background, panelX + 24, panelY + 112, panelX + panelWidth - 24, UI_COLORS.steel, 0.42);
 
   const title = scene.add
     .text(panelX + 28, panelY + 24, config.activeTab === 'pause' ? 'PAUSED' : 'SETTINGS', {
-      fontFamily: 'Consolas, "Courier New", monospace',
+      fontFamily: UI_FONT,
       fontSize: '28px',
       color: '#f2fbff'
     })
