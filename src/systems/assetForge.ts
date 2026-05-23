@@ -222,12 +222,116 @@ export interface ForgeAiBriefInput {
   selectedAsset?: ForgeAsset;
   context?: string;
   requestedWork?: string;
+  taskType?: ForgeAiTaskType;
+  templateId?: ForgeAssetTemplateId;
+  role?: string;
+  productionTarget?: string;
 }
 
 export interface ForgeImportResult {
   assets: ForgeAsset[];
   rejectedCount: number;
   errors: string[];
+  response?: ForgeAiResponse;
+  validationReports: ForgeAiValidationReport[];
+}
+
+export type ForgeAssetTemplateId =
+  | 'projectile.neon-bolt'
+  | 'projectile.plasma-orb'
+  | 'projectile.missile'
+  | 'weapon.icon.cannon'
+  | 'weapon.icon.beam'
+  | 'weapon.icon.shield'
+  | 'effect.shock-ring'
+  | 'pickup.scrap-shard'
+  | 'ui-icon.hologlyph';
+
+export interface ForgeAssetTemplate {
+  id: ForgeAssetTemplateId;
+  displayName: string;
+  kind: ForgeAssetKind;
+  role: string;
+  previewModes: string[];
+  aiGuidance: string;
+  asset: ForgeAsset;
+}
+
+export interface ForgeAssetTemplateOptions {
+  id?: string;
+  displayName?: string;
+  status?: ForgeAssetStatus;
+  tags?: string[];
+  notes?: string;
+  role?: string;
+  palette?: Partial<ForgePalette>;
+  sourceWeaponId?: string;
+  productionTarget?: string;
+  gameplayHints?: Record<string, unknown>;
+}
+
+export type ForgeAiTaskType = 'generate' | 'revise' | 'batch' | 'repair' | 'promotion-prep';
+
+export interface ForgeAiSelfCheck {
+  styleGuide: string;
+  neonDominance: string;
+  silhouetteReadability: string;
+  combatScaleReadability: string;
+  layerCount: string;
+  boundsAndHitRadius: string;
+  roleCue: string;
+}
+
+export interface ForgeAiTask {
+  type: 'starvivors-forge-ai-task';
+  version: 1;
+  taskType: ForgeAiTaskType;
+  styleGuideVersion: typeof FORGE_STYLE_GUIDE_VERSION;
+  targetKind: ForgeAssetKind;
+  targetLabel: string;
+  templateId?: ForgeAssetTemplateId;
+  batchCount: number;
+  role?: string;
+  productionTarget?: string;
+  selectedAsset?: ForgeAsset;
+  templates: ForgeAssetTemplate[];
+  allowedLayerTypes: ForgeVectorLayer['type'][];
+  paletteRoles: Array<keyof ForgePalette>;
+  outputContract: string[];
+  readabilityRequirements: string[];
+  context?: string;
+  savedAt: string;
+}
+
+export interface ForgeAiResponse {
+  type: 'starvivors-forge-ai-response';
+  version: 1;
+  styleGuideVersion: typeof FORGE_STYLE_GUIDE_VERSION;
+  taskId?: string;
+  assets: ForgeAsset[];
+  notes?: string;
+  warnings?: string[];
+  rejectedIdeas?: string[];
+  revisionNotes?: string[];
+  selfChecks?: Record<string, ForgeAiSelfCheck>;
+  savedAt?: string;
+}
+
+export interface ForgeAiValidationReport {
+  assetId?: string;
+  assetName?: string;
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+  repairPrompt: string;
+}
+
+export type ForgeAiProviderStatus = 'manual' | 'unconfigured' | 'ready' | 'error';
+
+export interface ForgeAiProviderRequest {
+  providerStatus: ForgeAiProviderStatus;
+  task: ForgeAiTask;
+  prompt: string;
 }
 
 export function getNeonForwardSalvagepunkStyleGuide(): ForgeStyleGuide {
@@ -288,6 +392,43 @@ export function getNeonForwardSalvagepunkStyleGuide(): ForgeStyleGuide {
 
 export function getForgeTextureKey(assetId: string): string {
   return `${FORGE_TEXTURE_PREFIX}-${assetId}`;
+}
+
+export function getForgeAssetTemplates(kind?: ForgeAssetKind): ForgeAssetTemplate[] {
+  const templates = createForgeAssetTemplateCatalog();
+  return kind ? templates.filter((template) => template.kind === kind) : templates;
+}
+
+export function createForgeAssetFromTemplate(templateId: ForgeAssetTemplateId, options: ForgeAssetTemplateOptions = {}): ForgeAsset {
+  const template = getForgeAssetTemplates().find((candidate) => candidate.id === templateId) ?? getForgeAssetTemplates()[0];
+  const asset = cloneForgeAsset(template.asset);
+  const role = options.role ?? template.role;
+  asset.id = options.id ?? `forge.${template.kind}.${normalizeForgeId(role)}.${Date.now()}`;
+  asset.displayName = options.displayName ?? `${template.displayName} Draft`;
+  asset.status = options.status ?? 'Visual Pass';
+  asset.tags = Array.from(new Set([...asset.tags, template.kind, role, ...(options.tags ?? [])]));
+  asset.notes = options.notes ?? `${template.aiGuidance} Created from generic Forge template ${template.id}.`;
+  asset.palette = { ...asset.palette, ...options.palette };
+  asset.gameplayHints = {
+    ...asset.gameplayHints,
+    assetRole: role,
+    templateId,
+    productionTarget: options.productionTarget,
+    ...options.gameplayHints
+  };
+  if (options.sourceWeaponId) {
+    asset.gameplayHints.sourceWeaponId = options.sourceWeaponId;
+  }
+  asset.savedAt = new Date().toISOString();
+  return asset;
+}
+
+export function createForgeProjectileTemplate(options: ForgeAssetTemplateOptions = {}): ForgeAsset {
+  return createForgeAssetFromTemplate('projectile.neon-bolt', options);
+}
+
+export function createForgeWeaponIconTemplate(options: ForgeAssetTemplateOptions = {}): ForgeAsset {
+  return createForgeAssetFromTemplate('weapon.icon.cannon', options);
 }
 
 export function loadAssetForgeStorageState(): AssetForgeStorageState {
@@ -408,6 +549,8 @@ export function createForgeContactSheetData(assets: ForgeAsset[]): string {
     const x = index * cell;
     const scale = 92 / Math.max(1, asset.boundsRadius);
     const assetSvg = asset.layers.map((layer) => renderSvgLayer(asset, layer)).join('\n');
+    const role = typeof asset.gameplayHints?.assetRole === 'string' ? asset.gameplayHints.assetRole : asset.kind;
+    const selfCheck = typeof asset.gameplayHints?.aiSelfCheck === 'string' ? ` | ${asset.gameplayHints.aiSelfCheck}` : '';
 
     return [
       `<g transform="translate(${x + cell / 2} ${cell / 2 + 8}) scale(${scale})">`,
@@ -415,7 +558,7 @@ export function createForgeContactSheetData(assets: ForgeAsset[]): string {
       `<circle cx="0" cy="0" r="${asset.boundsRadius}" fill="none" stroke="#ff5964" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.7" />`,
       '</g>',
       `<text x="${x + cell / 2}" y="${height - 28}" text-anchor="middle" fill="#f2fbff" font-family="monospace" font-size="11">${escapeXml(asset.displayName)}</text>`,
-      `<text x="${x + cell / 2}" y="${height - 12}" text-anchor="middle" fill="#73f2ff" font-family="monospace" font-size="9">${asset.kind} | ${asset.status}</text>`
+      `<text x="${x + cell / 2}" y="${height - 12}" text-anchor="middle" fill="#73f2ff" font-family="monospace" font-size="9">${asset.kind} | ${escapeXml(role)} | ${asset.status}${escapeXml(selfCheck)}</text>`
     ].join('\n');
   });
 
@@ -429,9 +572,50 @@ export function createForgeContactSheetData(assets: ForgeAsset[]): string {
   ].join('\n');
 }
 
+export function createForgeAiTask(input: ForgeAiBriefInput): ForgeAiTask {
+  const batchCount = Math.max(1, Math.round(input.batchCount ?? 1));
+  const taskType = input.taskType ?? (batchCount > 1 ? 'batch' : 'generate');
+  const templates = getForgeAssetTemplates(input.targetKind);
+  return {
+    type: 'starvivors-forge-ai-task',
+    version: 1,
+    taskType,
+    styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
+    targetKind: input.targetKind,
+    targetLabel: input.targetLabel,
+    templateId: input.templateId,
+    batchCount,
+    role: input.role,
+    productionTarget: input.productionTarget,
+    selectedAsset: input.selectedAsset,
+    templates,
+    allowedLayerTypes: ['polygon', 'line', 'ellipse', 'ring', 'rect', 'glow', 'crescent', 'path'],
+    paletteRoles: ['metalDark', 'metalWarm', 'neonPrimary', 'neonSecondary', 'warning', 'outline', 'white'],
+    outputContract: [
+      'Return JSON or markdown with one json block.',
+      'Use type "starvivors-forge-ai-response" for AI envelopes, or "starvivors-forge-asset-batch" for plain batches.',
+      'Every asset must use type "starvivors-forge-asset", version 1, and the requested styleGuideVersion.',
+      'Assets should be reusable and should not require sourceWeaponId, visualAssetId, or projectileVisualAssetId unless explicitly requested.',
+      'Include gameplayHints.assetRole and gameplayHints.motionProfile or gameplayHints.iconSize when relevant.',
+      'Include selfChecks keyed by asset id when using the AI response envelope.'
+    ],
+    readabilityRequirements: [
+      'One clear silhouette.',
+      'One dominant neon signature.',
+      'One readable role cue.',
+      'Crisp emission edges instead of blurry haze.',
+      'Readable over dark starfield and at tiny icon/radar size.',
+      'Reasonable layer count for cached texture baking.'
+    ],
+    context: input.context,
+    savedAt: new Date().toISOString()
+  };
+}
+
 export function createForgeAiBrief(input: ForgeAiBriefInput): string {
   const styleGuide = getNeonForwardSalvagepunkStyleGuide();
-  const batchCount = Math.max(1, Math.round(input.batchCount ?? 1));
+  const task = createForgeAiTask(input);
+  const batchCount = task.batchCount;
   const requestedWork =
     input.requestedWork ??
     (batchCount > 1
@@ -458,19 +642,46 @@ export function createForgeAiBrief(input: ForgeAiBriefInput): string {
     '',
     '## Examples',
     ...Object.entries(styleGuide.examples).flatMap(([key, values]) => [`### ${key}`, ...values.map((value) => `- ${value}`), '']),
+    '## Template Catalog',
+    ...task.templates.map((template) => `- ${template.id}: ${template.displayName} (${template.kind}/${template.role}) - ${template.aiGuidance}`),
+    '',
+    '## Allowed Layer Types',
+    `- ${task.allowedLayerTypes.join(', ')}`,
+    '',
+    '## Palette Roles',
+    `- ${task.paletteRoles.join(', ')}`,
+    '',
     '## Valid Asset Contract',
-    '- Use `type: "starvivors-forge-asset"`.',
-    batchCount > 1 ? '- For batches, wrap assets in `type: "starvivors-forge-asset-batch"` with an `assets` array.' : '',
-    '- Use `version: 1`.',
-    `- Use \`styleGuideVersion: "${FORGE_STYLE_GUIDE_VERSION}"\`.`,
-    '- Use only Forge vector layers and color roles.',
-    '- Make neon energy visually dominant over salvage machinery.',
-    '- Preserve readability at combat zoom and tiny radar/icon sizes.',
+    ...task.outputContract.map((rule) => `- ${rule}`),
+    ...task.readabilityRequirements.map((rule) => `- ${rule}`),
     batchCount > 1 ? `- Return exactly ${batchCount} distinct assets unless the developer asks for a different count.` : '',
+    '',
+    '## AI Task JSON',
+    '```json',
+    JSON.stringify(task, null, 2),
+    '```',
     '',
     input.context ? `## Current Context\n${input.context}\n` : '',
     input.selectedAsset ? ['## Selected Asset', '```json', JSON.stringify(input.selectedAsset, null, 2), '```', ''].join('\n') : ''
   ].join('\n');
+}
+
+export function createForgeAiProviderRequest(task: ForgeAiTask): ForgeAiProviderRequest {
+  return {
+    providerStatus: 'manual',
+    task,
+    prompt: createForgeAiBrief({
+      targetLabel: task.targetLabel,
+      targetKind: task.targetKind,
+      batchCount: task.batchCount,
+      selectedAsset: task.selectedAsset,
+      context: task.context,
+      taskType: task.taskType,
+      templateId: task.templateId,
+      role: task.role,
+      productionTarget: task.productionTarget
+    })
+  };
 }
 
 export function createForgePromotionBundle(asset: ForgeAsset, productionHints: Record<string, unknown> = {}): ForgePromotionBundle {
@@ -591,17 +802,24 @@ export function parseForgeAssetImport(markdownOrJson: string): ForgeAsset | unde
   return parseForgeAssetImports(markdownOrJson).assets[0];
 }
 
+export function parseForgeAiResponse(markdownOrJson: string): ForgeImportResult {
+  return parseForgeAssetImports(markdownOrJson);
+}
+
 export function parseForgeAssetImports(markdownOrJson: string): ForgeImportResult {
   const raw = extractJsonBlock(markdownOrJson);
   const errors: string[] = [];
   try {
     const parsed = JSON.parse(raw) as unknown;
+    const response = isForgeAiResponse(parsed) ? parsed : undefined;
     const candidates = collectForgeAssetCandidates(parsed);
     const assets: ForgeAsset[] = [];
+    const validationReports: ForgeAiValidationReport[] = [];
     let rejectedCount = 0;
 
     candidates.forEach((candidate, index) => {
-      const validation = validateForgeAsset(candidate);
+      const validation = validateForgeAssetForAi(candidate);
+      validationReports.push(validation);
       if (validation.valid && isForgeAsset(candidate)) {
         assets.push(candidate);
       } else {
@@ -610,10 +828,71 @@ export function parseForgeAssetImports(markdownOrJson: string): ForgeImportResul
       }
     });
 
-    return { assets, rejectedCount, errors };
+    return { assets, rejectedCount, errors, response, validationReports };
   } catch {
-    return { assets: [], rejectedCount: 1, errors: ['Input did not contain valid JSON or a markdown json block.'] };
+    return {
+      assets: [],
+      rejectedCount: 1,
+      errors: ['Input did not contain valid JSON or a markdown json block.'],
+      validationReports: [{
+        valid: false,
+        errors: ['Input did not contain valid JSON or a markdown json block.'],
+        warnings: [],
+        repairPrompt: 'Return valid JSON or markdown with one ```json block containing a Forge asset, batch, or AI response envelope.'
+      }]
+    };
   }
+}
+
+export function validateForgeAssetForAi(value: unknown): ForgeAiValidationReport {
+  const validation = validateForgeAsset(value);
+  const candidate = value as Partial<ForgeAsset>;
+  const warnings: string[] = [];
+  if (validation.valid && isForgeAsset(value)) {
+    const neonLayers = value.layers.filter((layer) => String(layer.role ?? layer.id).toLowerCase().includes('neon') || layer.color === 'neonPrimary' || layer.strokeColor === 'neonPrimary');
+    if (neonLayers.length === 0) warnings.push('Asset has no obvious neonPrimary/neon role layer.');
+    if (!value.gameplayHints?.assetRole) warnings.push('gameplayHints.assetRole is recommended for AI-created reusable assets.');
+    if (value.layers.length > 40) warnings.push('Layer count is high for a cached runtime asset; simplify unless detail is needed.');
+    if (value.boundsRadius > value.canvasSize * 0.48) warnings.push('boundsRadius nearly fills canvas; review clipping risk.');
+  }
+
+  return {
+    assetId: typeof candidate.id === 'string' ? candidate.id : undefined,
+    assetName: typeof candidate.displayName === 'string' ? candidate.displayName : undefined,
+    valid: validation.valid,
+    errors: validation.errors,
+    warnings,
+    repairPrompt: createForgeRepairPrompt({ valid: validation.valid, errors: validation.errors, warnings, repairPrompt: '' }, value)
+  };
+}
+
+export function createForgeRepairPrompt(report: ForgeAiValidationReport, originalInput: unknown): string {
+  return [
+    '# Starvivors Asset Forge Repair Prompt',
+    '',
+    `Style guide version: ${FORGE_STYLE_GUIDE_VERSION}`,
+    '',
+    'Fix the Forge JSON so it imports cleanly. Preserve the intended reusable asset concept. Return only valid JSON or one markdown json block.',
+    '',
+    '## Errors',
+    ...(report.errors.length > 0 ? report.errors.map((error) => `- ${error}`) : ['- None']),
+    '',
+    '## Warnings',
+    ...(report.warnings.length > 0 ? report.warnings.map((warning) => `- ${warning}`) : ['- None']),
+    '',
+    '## Required Contract',
+    '- Use type "starvivors-forge-asset" for each asset.',
+    '- Use version 1.',
+    `- Use styleGuideVersion "${FORGE_STYLE_GUIDE_VERSION}".`,
+    '- Use only known Forge layer types and palette roles.',
+    '- Keep assets reusable; sourceWeaponId is optional metadata only.',
+    '',
+    '## Original Input',
+    '```json',
+    JSON.stringify(originalInput, null, 2),
+    '```',
+    ''
+  ].join('\n');
 }
 
 export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyLabDefinition): ForgeAsset {
@@ -679,6 +958,194 @@ export function applyForgeAssetToEnemyDefinition(definition: EnemyLabDefinition,
       engineColor: asset.palette.warning
     }
   };
+}
+
+function createForgeAssetTemplateCatalog(): ForgeAssetTemplate[] {
+  return [
+    createForgeTemplate('projectile.neon-bolt', 'Neon Bolt', 'projectile', 'neon-bolt', ['projectile-motion', 'combat', 'hit-radius'], 'Fast readable projectile with a sharp neon core, compact salvage rails, and a clear tail cue.', createTemplateAsset({
+      id: 'template.projectile.neon-bolt',
+      kind: 'projectile',
+      displayName: 'Neon Bolt',
+      role: 'neon-bolt',
+      boundsRadius: 15,
+      canvasSize: 52,
+      palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary: 0x42f5d7, neonSecondary: 0x73f2ff, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'neon-flight-envelope', type: 'glow', x: 0, y: 0, radius: 17, color: 'neonPrimary', innerAlpha: 0.3, role: 'dominant projectile glow' },
+        { id: 'plasma-spear-core', type: 'ellipse', x: 0, y: -0.5, radiusX: 3.8, radiusY: 10.5, color: 'neonSecondary', strokeColor: 'white', strokeWidth: 1, role: 'bright projectile core' },
+        { id: 'copper-pressure-rail-left', type: 'line', from: [-7, 4], to: [-3, -8], strokeColor: 'metalWarm', strokeWidth: 2, role: 'salvage rail' },
+        { id: 'copper-pressure-rail-right', type: 'line', from: [7, 4], to: [3, -8], strokeColor: 'metalWarm', strokeWidth: 2, role: 'mirrored salvage rail' },
+        { id: 'hot-tail-glyph', type: 'polygon', points: [[0, 13], [4.5, 5], [0, 8], [-4.5, 5]], color: 'warning', strokeColor: 'outline', strokeWidth: 0.8, role: 'direction cue' }
+      ],
+      gameplayHints: { assetRole: 'neon-bolt', motionProfile: 'fast-forward', displayWidth: 28, displayHeight: 36, hitRadius: 8 },
+      animation: { emissiveFlicker: true, trail: 'plasma' }
+    })),
+    createForgeTemplate('projectile.plasma-orb', 'Plasma Orb', 'projectile', 'plasma-orb', ['projectile-motion', 'combat', 'hit-radius'], 'Round energy projectile with a luminous core, ring read, and tiny mechanical braces.', createTemplateAsset({
+      id: 'template.projectile.plasma-orb',
+      kind: 'projectile',
+      displayName: 'Plasma Orb',
+      role: 'plasma-orb',
+      boundsRadius: 18,
+      canvasSize: 58,
+      palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary: 0xff2fd6, neonSecondary: 0x42f5d7, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'orb-glow', type: 'glow', x: 0, y: 0, radius: 20, color: 'neonPrimary', innerAlpha: 0.32 },
+        { id: 'orb-core', type: 'ellipse', x: 0, y: 0, radiusX: 8, radiusY: 8, color: 'neonPrimary', strokeColor: 'white', strokeWidth: 1 },
+        { id: 'holo-ring', type: 'ring', x: 0, y: 0, radius: 13, strokeColor: 'neonSecondary', strokeWidth: 2, blend: 'lighter' },
+        { id: 'brace-left', type: 'line', from: [-15, 0], to: [-8, 0], strokeColor: 'metalWarm', strokeWidth: 2 },
+        { id: 'brace-right', type: 'line', from: [15, 0], to: [8, 0], strokeColor: 'metalWarm', strokeWidth: 2 }
+      ],
+      gameplayHints: { assetRole: 'plasma-orb', motionProfile: 'slow-floating', displayWidth: 34, displayHeight: 34, hitRadius: 10 },
+      animation: { idlePulse: true, emissiveFlicker: true, trail: 'ion' }
+    })),
+    createForgeTemplate('projectile.missile', 'Riveted Missile', 'projectile', 'missile', ['projectile-motion', 'combat', 'hit-radius'], 'Directional missile silhouette with hot warning strips, dark shell, and neon exhaust.', createTemplateAsset({
+      id: 'template.projectile.missile',
+      kind: 'projectile',
+      displayName: 'Riveted Missile',
+      role: 'missile',
+      boundsRadius: 20,
+      canvasSize: 64,
+      palette: { metalDark: 0x111a24, metalWarm: 0xb0793f, neonPrimary: 0x69f0ae, neonSecondary: 0x73f2ff, warning: 0xff5964, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'exhaust-glow', type: 'glow', x: 0, y: 12, radius: 16, color: 'neonPrimary', innerAlpha: 0.28 },
+        { id: 'missile-body', type: 'polygon', points: [[0, -22], [9, -5], [7, 16], [0, 22], [-7, 16], [-9, -5]], color: 'metalDark', strokeColor: 'outline', strokeWidth: 1.2 },
+        { id: 'warning-strip', type: 'line', from: [0, 14], to: [0, -12], strokeColor: 'warning', strokeWidth: 3, blend: 'lighter' },
+        { id: 'fin-left', type: 'polygon', points: [[-7, 8], [-17, 18], [-6, 16]], color: 'metalWarm', strokeColor: 'outline', strokeWidth: 1 },
+        { id: 'fin-right', type: 'polygon', points: [[7, 8], [17, 18], [6, 16]], color: 'metalWarm', strokeColor: 'outline', strokeWidth: 1 }
+      ],
+      gameplayHints: { assetRole: 'missile', motionProfile: 'guided-forward', displayWidth: 34, displayHeight: 44, hitRadius: 10 },
+      animation: { emissiveFlicker: true, trail: 'spark' }
+    })),
+    createForgeTemplate('weapon.icon.cannon', 'Pressure Cannon Icon', 'weapon', 'weapon-icon-cannon', ['weapon-icon', 'combat'], 'Compact weapon icon with holographic cannon rails and brass instrument framing.', createWeaponIconTemplateAsset('template.weapon.icon.cannon', 'Pressure Cannon Icon', 'weapon-icon-cannon', 0x42f5d7, 0xff2fd6, 'cannon')),
+    createForgeTemplate('weapon.icon.beam', 'Beam Cutter Icon', 'weapon', 'weapon-icon-beam', ['weapon-icon', 'combat'], 'Beam weapon icon with a bright cutter line and focusing coil.', createWeaponIconTemplateAsset('template.weapon.icon.beam', 'Beam Cutter Icon', 'weapon-icon-beam', 0x69f0ae, 0x73f2ff, 'beam')),
+    createForgeTemplate('weapon.icon.shield', 'Shield Ram Icon', 'weapon', 'weapon-icon-shield', ['weapon-icon', 'combat'], 'Shield weapon icon with electric barrier arc and warning impact core.', createWeaponIconTemplateAsset('template.weapon.icon.shield', 'Shield Ram Icon', 'weapon-icon-shield', 0xffc857, 0xff5964, 'shield')),
+    createForgeTemplate('effect.shock-ring', 'Ion Shock Ring', 'effect', 'shock-ring', ['combat', 'starfield'], 'Brief crisp neon shock ring with minimal haze and hot mechanical spark marks.', createTemplateAsset({
+      id: 'template.effect.shock-ring',
+      kind: 'effect',
+      displayName: 'Ion Shock Ring',
+      role: 'shock-ring',
+      boundsRadius: 34,
+      canvasSize: 92,
+      palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary: 0x73f2ff, neonSecondary: 0xff2fd6, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'ring-glow', type: 'glow', x: 0, y: 0, radius: 34, color: 'neonPrimary', innerAlpha: 0.16 },
+        { id: 'shock-ring', type: 'ring', x: 0, y: 0, radius: 27, strokeColor: 'neonPrimary', strokeWidth: 4, blend: 'lighter' },
+        { id: 'magenta-break', type: 'path', d: 'M -24 -6 Q 0 -20 24 -6', fill: false, strokeColor: 'neonSecondary', strokeWidth: 2, blend: 'lighter' },
+        { id: 'spark-a', type: 'line', from: [-12, 24], to: [-18, 32], strokeColor: 'warning', strokeWidth: 2 },
+        { id: 'spark-b', type: 'line', from: [15, -24], to: [23, -31], strokeColor: 'warning', strokeWidth: 2 }
+      ],
+      gameplayHints: { assetRole: 'shock-ring', motionProfile: 'expanding-burst', displayWidth: 72, displayHeight: 72, hitRadius: 30 },
+      animation: { idlePulse: true, emissiveFlicker: true, trail: 'none' }
+    })),
+    createForgeTemplate('pickup.scrap-shard', 'Neon Scrap Shard', 'pickup', 'scrap-shard', ['combat', 'minimap'], 'Pickup shard with neon value read and small salvage shard frame.', createTemplateAsset({
+      id: 'template.pickup.scrap-shard',
+      kind: 'pickup',
+      displayName: 'Neon Scrap Shard',
+      role: 'scrap-shard',
+      boundsRadius: 18,
+      canvasSize: 54,
+      palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary: 0x69f0ae, neonSecondary: 0x42f5d7, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'value-glow', type: 'glow', x: 0, y: 0, radius: 18, color: 'neonPrimary', innerAlpha: 0.28 },
+        { id: 'scrap-shard', type: 'polygon', points: [[0, -17], [12, -3], [6, 16], [-10, 11], [-14, -5]], color: 'metalWarm', strokeColor: 'outline', strokeWidth: 1.2 },
+        { id: 'neon-cut', type: 'line', from: [-8, 7], to: [8, -8], strokeColor: 'neonPrimary', strokeWidth: 3, blend: 'lighter' }
+      ],
+      gameplayHints: { assetRole: 'scrap-shard', iconSize: 24, displayWidth: 30, displayHeight: 30 },
+      animation: { idlePulse: true, emissiveFlicker: true, trail: 'spark' }
+    })),
+    createForgeTemplate('ui-icon.hologlyph', 'Hologlyph Icon', 'ui-icon', 'hologlyph', ['weapon-icon', 'minimap'], 'Readable holographic UI symbol first, brass frame second.', createTemplateAsset({
+      id: 'template.ui-icon.hologlyph',
+      kind: 'ui-icon',
+      displayName: 'Hologlyph Icon',
+      role: 'hologlyph',
+      boundsRadius: 24,
+      canvasSize: 64,
+      palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary: 0x42f5d7, neonSecondary: 0xff2fd6, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+      layers: [
+        { id: 'glyph-glow', type: 'glow', x: 0, y: 0, radius: 22, color: 'neonPrimary', innerAlpha: 0.2 },
+        { id: 'instrument-frame', type: 'ring', x: 0, y: 0, radius: 21, strokeColor: 'metalWarm', strokeWidth: 2 },
+        { id: 'holo-chevron', type: 'polygon', points: [[0, -16], [15, 0], [6, 0], [6, 15], [-6, 15], [-6, 0], [-15, 0]], color: 'neonPrimary', strokeColor: 'white', strokeWidth: 1, blend: 'lighter' }
+      ],
+      gameplayHints: { assetRole: 'hologlyph', iconSize: 32 },
+      animation: { idlePulse: true, emissiveFlicker: true, trail: 'none' }
+    }))
+  ];
+}
+
+function createForgeTemplate(id: ForgeAssetTemplateId, displayName: string, kind: ForgeAssetKind, role: string, previewModes: string[], aiGuidance: string, asset: ForgeAsset): ForgeAssetTemplate {
+  return { id, displayName, kind, role, previewModes, aiGuidance, asset };
+}
+
+function createTemplateAsset(input: {
+  id: string;
+  kind: ForgeAssetKind;
+  displayName: string;
+  role: string;
+  boundsRadius: number;
+  canvasSize: number;
+  palette: ForgePalette;
+  layers: ForgeVectorLayer[];
+  gameplayHints: Record<string, unknown>;
+  animation?: ForgeAnimationRecipe;
+}): ForgeAsset {
+  return {
+    type: 'starvivors-forge-asset',
+    version: 1,
+    id: input.id,
+    kind: input.kind,
+    displayName: input.displayName,
+    status: 'Idea',
+    tags: [input.kind, input.role, 'template', 'neon-forward-salvagepunk'],
+    notes: `Reusable ${input.kind} Forge template for ${input.role}.`,
+    styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
+    palette: input.palette,
+    boundsRadius: input.boundsRadius,
+    canvasSize: input.canvasSize,
+    layers: input.layers,
+    animation: input.animation,
+    gameplayHints: {
+      ...input.gameplayHints,
+      assetRole: input.role
+    },
+    savedAt: new Date().toISOString()
+  };
+}
+
+function createWeaponIconTemplateAsset(id: string, displayName: string, role: string, neonPrimary: number, neonSecondary: number, shape: 'cannon' | 'beam' | 'shield'): ForgeAsset {
+  const radius = 34;
+  const symbolLayers: ForgeVectorLayer[] = shape === 'shield'
+    ? [
+        { id: 'shield-neon-arc', type: 'path', d: `M ${-radius * 0.45} ${radius * 0.22} Q 0 ${-radius * 0.62} ${radius * 0.45} ${radius * 0.22}`, fill: false, strokeColor: 'neonPrimary', strokeWidth: 5, blend: 'lighter', role: 'shield arc' },
+        { id: 'warning-impact-core', type: 'ellipse', x: 0, y: 4, radiusX: 7, radiusY: 12, color: 'warning', strokeColor: 'outline', strokeWidth: 1, role: 'impact core' }
+      ]
+    : shape === 'beam'
+      ? [
+          { id: 'beam-cutter-line', type: 'line', from: [0, radius * 0.52], to: [0, -radius * 0.58], strokeColor: 'neonPrimary', strokeWidth: 6, blend: 'lighter', role: 'beam cutter' },
+          { id: 'salvage-focusing-coil', type: 'ring', x: 0, y: -radius * 0.16, radius: 12, strokeColor: 'metalWarm', strokeWidth: 3, role: 'focusing coil' }
+        ]
+      : [
+          { id: 'pressure-cannon-barrel', type: 'rect', x: -5, y: -radius * 0.58, width: 10, height: radius * 1.05, color: 'metalWarm', strokeColor: 'outline', strokeWidth: 1, role: 'cannon barrel' },
+          { id: 'cyan-energy-rail', type: 'line', from: [-12, radius * 0.42], to: [-12, -radius * 0.44], strokeColor: 'neonPrimary', strokeWidth: 3, blend: 'lighter', role: 'left energy rail' },
+          { id: 'magenta-energy-rail', type: 'line', from: [12, radius * 0.42], to: [12, -radius * 0.44], strokeColor: 'neonSecondary', strokeWidth: 3, blend: 'lighter', role: 'right energy rail' }
+        ];
+
+  return createTemplateAsset({
+    id,
+    kind: 'weapon',
+    displayName,
+    role,
+    boundsRadius: radius,
+    canvasSize: 84,
+    palette: { metalDark: 0x071018, metalWarm: 0xb0793f, neonPrimary, neonSecondary, warning: 0xffc857, outline: 0xf2fbff, white: 0xf2fbff },
+    layers: [
+      { id: 'holographic-icon-aura', type: 'glow', x: 0, y: 0, radius: radius * 0.9, color: 'neonPrimary', innerAlpha: 0.24, role: 'neon icon aura' },
+      { id: 'brass-instrument-frame', type: 'ring', x: 0, y: 0, radius: radius * 0.72, strokeColor: 'metalWarm', strokeWidth: 3, role: 'salvage instrument frame' },
+      { id: 'dark-mechanical-backplate', type: 'polygon', points: createRegularPolygon(6, radius * 0.62, Math.PI / 6), color: 'metalDark', strokeColor: 'outline', strokeWidth: 1.2, role: 'readable weapon silhouette' },
+      ...symbolLayers
+    ],
+    gameplayHints: { assetRole: role, iconSize: 42, behaviorType: shape },
+    animation: { idlePulse: true, emissiveFlicker: true, trail: 'none' }
+  });
 }
 
 export function convertProjectileVisualDefinitionToForgeAsset(
@@ -1052,6 +1519,10 @@ function normalizeForgeId(value: string): string {
   return slug || 'asset';
 }
 
+function cloneForgeAsset(asset: ForgeAsset): ForgeAsset {
+  return JSON.parse(JSON.stringify(asset)) as ForgeAsset;
+}
+
 function createForgeRegistryEntrySnippet(visualAssetId: string, asset: ForgeAsset, notes?: string): string {
   const registryEntry = {
     visualAssetId,
@@ -1086,6 +1557,9 @@ function collectForgeAssetCandidates(value: unknown): unknown[] {
     assets?: unknown[];
     asset?: unknown;
   };
+  if (candidate?.type === 'starvivors-forge-ai-response' && Array.isArray(candidate.assets)) {
+    return candidate.assets;
+  }
   if (candidate?.type === 'starvivors-forge-asset-batch' && Array.isArray(candidate.assets)) {
     return candidate.assets;
   }
@@ -1138,6 +1612,14 @@ function isForgePromotionBundle(value: unknown): value is ForgePromotionBundle {
     candidate.version === 1 &&
     candidate.styleGuideVersion === FORGE_STYLE_GUIDE_VERSION &&
     isForgeAsset(candidate.asset);
+}
+
+function isForgeAiResponse(value: unknown): value is ForgeAiResponse {
+  const candidate = value as Partial<ForgeAiResponse>;
+  return candidate?.type === 'starvivors-forge-ai-response' &&
+    candidate.version === 1 &&
+    candidate.styleGuideVersion === FORGE_STYLE_GUIDE_VERSION &&
+    Array.isArray(candidate.assets);
 }
 
 function isForgeAssetKind(value: unknown): value is ForgeAssetKind {

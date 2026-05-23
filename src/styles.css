@@ -240,6 +240,20 @@ canvas {
   font-size: 10px;
 }
 
+.enemy-lab-import-report {
+  min-height: 42px;
+  margin-top: 8px;
+  padding: 7px;
+  border: 1px solid rgba(255, 200, 87, 0.2);
+  border-radius: 6px;
+  background: rgba(5, 9, 18, 0.86);
+  color: rgba(242, 251, 255, 0.72);
+  white-space: pre-wrap;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .enemy-lab-subtitle {
   margin-top: 8px;
   color: rgba(242, 251, 255, 0.72);

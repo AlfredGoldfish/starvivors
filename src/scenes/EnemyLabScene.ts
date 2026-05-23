@@ -3,7 +3,6 @@ import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
-import { getWeaponDefinition } from '../data/weapons';
 import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
 import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
 import { ENEMY_LAB_DEFINITIONS, type EnemyLabDefinition } from '../data/enemyLabDefinitions';
@@ -72,25 +71,32 @@ import {
   FORGE_ASSET_STATUSES,
   FORGE_STYLE_GUIDE_VERSION,
   convertEnemyVisualDefinitionToForgeAsset,
-  convertProjectileVisualDefinitionToForgeAsset,
-  convertWeaponDefinitionToForgeAsset,
+  createForgeAiTask,
   createForgeAiBrief,
   createForgeAssetTexture,
+  createForgeAssetFromTemplate,
   createForgeContactSheetData,
+  createForgeRepairPrompt,
   createForgeProductionPromotionBundle,
   createForgeProductionPromotionMarkdown,
   createForgePromotionBundle,
   createForgePromotionMarkdown,
   createForgeVisualAssetId,
+  getForgeAssetTemplates,
   getForgeTextureKey,
   getNeonForwardSalvagepunkStyleGuide,
   isForgeAssetApprovedForPromotion,
   loadAssetForgeStorageState,
   parseForgeAssetImport,
+  parseForgeAiResponse,
   parseForgeAssetImports,
   renderForgeAssetToSvg,
   saveAssetForgeStorageState,
+  validateForgeAssetForAi,
   type ForgeAsset,
+  type ForgeAiTaskType,
+  type ForgeAssetKind,
+  type ForgeAssetTemplateId,
   type ForgePalette,
   type ForgeVectorLayer
 } from '../systems/assetForge';
@@ -175,6 +181,12 @@ interface EnemyLabOverlayRefs {
   forgeLayerAlpha: HTMLInputElement;
   forgeLayerStrokeWidth: HTMLInputElement;
   forgeBatchCount: HTMLInputElement;
+  forgeAiTaskType: HTMLSelectElement;
+  forgeAiAssetKind: HTMLSelectElement;
+  forgeAiTemplate: HTMLSelectElement;
+  forgeAiRole: HTMLInputElement;
+  forgeAiProductionTarget: HTMLInputElement;
+  forgeImportReport: HTMLDivElement;
   forgePaletteInputs: Record<keyof ForgePalette, HTMLInputElement>;
   enemySelect: HTMLSelectElement;
   variantSelect: HTMLSelectElement;
@@ -225,6 +237,8 @@ const FORGE_PALETTE_KEYS: Array<keyof ForgePalette> = [
   'white'
 ];
 const FORGE_COLOR_OPTIONS: Array<keyof ForgePalette> = [...FORGE_PALETTE_KEYS];
+const FORGE_ASSET_KIND_OPTIONS: ForgeAssetKind[] = ['enemy', 'ship', 'weapon', 'projectile', 'beam', 'effect', 'pickup', 'ui-icon', 'radar-icon', 'telegraph'];
+const FORGE_AI_TASK_OPTIONS: ForgeAiTaskType[] = ['generate', 'batch', 'revise', 'repair', 'promotion-prep'];
 type ForgePreviewMode = 'combat' | 'projectile-motion' | 'weapon-icon' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
 
 export class EnemyLabScene extends Phaser.Scene {
@@ -245,6 +259,13 @@ export class EnemyLabScene extends Phaser.Scene {
   private selectedForgeLayerIndex = 0;
   private forgePreviewMode: ForgePreviewMode = 'combat';
   private forgeBatchCount = 8;
+  private forgeAiTaskType: ForgeAiTaskType = 'batch';
+  private forgeAiAssetKind: ForgeAssetKind = 'projectile';
+  private forgeAiTemplateId: ForgeAssetTemplateId = 'projectile.neon-bolt';
+  private forgeAiRole = 'neon-bolt';
+  private forgeAiProductionTarget = '';
+  private lastForgeValidationReport = 'No AI validation report yet.';
+  private lastForgeRepairPrompt = '';
   private selectedSquadIndex = 0;
   private selectedCustomSquadId = '';
   private selectedSquadEntryIndex = -1;
@@ -586,7 +607,7 @@ export class EnemyLabScene extends Phaser.Scene {
     rotation: number,
     owner: 'player' | 'enemy'
   ): Phaser.GameObjects.Container {
-    const forgeAsset = owner === 'player' ? getForgeAssetDefinition('forge.projectile.pulse-cannon-bolt') : undefined;
+    const forgeAsset = owner === 'player' ? getForgeAssetDefinition('forge.projectile.neon-bolt-01') : undefined;
     if (forgeAsset) {
       const textureKey = getForgeTextureKey(forgeAsset.id);
       createForgeAssetTexture(this, forgeAsset, textureKey);
@@ -981,12 +1002,22 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportForgePromotion">Forge Promotion</button>
           <button data-action="promoteForgeAsset">Promote Approved</button>
         </div>
-        <div class="enemy-lab-subtitle">AI Batch</div>
-        <label>Batch size <input data-field="forgeBatchCount" type="number" min="1" max="40" step="1" value="8"></label>
-        <div class="enemy-lab-row">
-          <button data-action="exportForgeBatchBrief">Batch AI Brief</button>
-          <button data-action="importForgeBatch">Import Batch</button>
+        <div class="enemy-lab-subtitle">AI Workbench</div>
+        <div class="enemy-lab-grid">
+          <label>Task <select data-field="forgeAiTaskType"></select></label>
+          <label>Kind <select data-field="forgeAiAssetKind"></select></label>
+          <label>Template <select data-field="forgeAiTemplate"></select></label>
+          <label>Batch <input data-field="forgeBatchCount" type="number" min="1" max="40" step="1" value="8"></label>
         </div>
+        <label>Role <input data-field="forgeAiRole" type="text" maxlength="48" value="neon-bolt"></label>
+        <label>Target <input data-field="forgeAiProductionTarget" type="text" maxlength="72" placeholder="optional production attachment"></label>
+        <div class="enemy-lab-row">
+          <button data-action="exportForgeAiTask">Export AI Task</button>
+          <button data-action="importForgeAiResponse">Import AI Response</button>
+          <button data-action="validateForgeAsset">Validate Selected</button>
+          <button data-action="exportForgeRepairPrompt">Export Repair Prompt</button>
+        </div>
+        <div class="enemy-lab-import-report" data-field="forgeImportReport">No AI validation report yet.</div>
       </section>
       <section class="enemy-lab-panel">
         <div class="enemy-lab-panel-title">Forge Editor</div>
@@ -1004,8 +1035,8 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-forge-preview" data-field="forgePreview"></div>
         <div class="enemy-lab-row">
           <button data-action="createForgeDraft">Create Draft</button>
-          <button data-action="createProjectileForgeDraft">Pulse Projectile</button>
-          <button data-action="createWeaponForgeDraft">Pulse Weapon</button>
+          <button data-action="createProjectileForgeDraft">New Projectile</button>
+          <button data-action="createWeaponForgeDraft">New Weapon Icon</button>
           <button data-action="saveForgeAsset">Save Forge</button>
           <button data-action="deleteForgeAsset" class="enemy-lab-danger-button">Delete Forge</button>
         </div>
@@ -1156,6 +1187,12 @@ export class EnemyLabScene extends Phaser.Scene {
     const forgeLayerAlpha = root.querySelector<HTMLInputElement>('[data-field="forgeLayerAlpha"]');
     const forgeLayerStrokeWidth = root.querySelector<HTMLInputElement>('[data-field="forgeLayerStrokeWidth"]');
     const forgeBatchCount = root.querySelector<HTMLInputElement>('[data-field="forgeBatchCount"]');
+    const forgeAiTaskType = root.querySelector<HTMLSelectElement>('[data-field="forgeAiTaskType"]');
+    const forgeAiAssetKind = root.querySelector<HTMLSelectElement>('[data-field="forgeAiAssetKind"]');
+    const forgeAiTemplate = root.querySelector<HTMLSelectElement>('[data-field="forgeAiTemplate"]');
+    const forgeAiRole = root.querySelector<HTMLInputElement>('[data-field="forgeAiRole"]');
+    const forgeAiProductionTarget = root.querySelector<HTMLInputElement>('[data-field="forgeAiProductionTarget"]');
+    const forgeImportReport = root.querySelector<HTMLDivElement>('[data-field="forgeImportReport"]');
     const forgePaletteInputs = Object.fromEntries(
       FORGE_PALETTE_KEYS.map((key) => [key, root.querySelector<HTMLInputElement>(`[data-palette="${key}"]`)])
     ) as Record<keyof ForgePalette, HTMLInputElement | null>;
@@ -1202,6 +1239,12 @@ export class EnemyLabScene extends Phaser.Scene {
       !forgeLayerAlpha ||
       !forgeLayerStrokeWidth ||
       !forgeBatchCount ||
+      !forgeAiTaskType ||
+      !forgeAiAssetKind ||
+      !forgeAiTemplate ||
+      !forgeAiRole ||
+      !forgeAiProductionTarget ||
+      !forgeImportReport ||
       Object.values(forgePaletteInputs).some((input) => !input) ||
       !variantSelect ||
       !variantName ||
@@ -1250,6 +1293,13 @@ export class EnemyLabScene extends Phaser.Scene {
     for (const status of FORGE_ASSET_STATUSES) {
       forgeAssetStatus.add(new Option(status, status));
     }
+    for (const taskType of FORGE_AI_TASK_OPTIONS) {
+      forgeAiTaskType.add(new Option(taskType, taskType));
+    }
+    for (const kind of FORGE_ASSET_KIND_OPTIONS) {
+      forgeAiAssetKind.add(new Option(kind, kind));
+    }
+    this.populateForgeTemplateSelect(forgeAiTemplate, this.forgeAiAssetKind);
 
     this.overlay = {
       root,
@@ -1264,6 +1314,12 @@ export class EnemyLabScene extends Phaser.Scene {
       forgeLayerAlpha,
       forgeLayerStrokeWidth,
       forgeBatchCount,
+      forgeAiTaskType,
+      forgeAiAssetKind,
+      forgeAiTemplate,
+      forgeAiRole,
+      forgeAiProductionTarget,
+      forgeImportReport,
       forgePaletteInputs: forgePaletteInputs as Record<keyof ForgePalette, HTMLInputElement>,
       enemySelect,
       variantSelect,
@@ -1332,6 +1388,34 @@ export class EnemyLabScene extends Phaser.Scene {
     }
     forgeBatchCount.addEventListener('input', () => {
       this.forgeBatchCount = Phaser.Math.Clamp(Math.round(Number(forgeBatchCount.value) || 8), 1, 40);
+    });
+    forgeAiTaskType.addEventListener('change', () => {
+      this.forgeAiTaskType = this.normalizeForgeAiTaskType(forgeAiTaskType.value);
+      this.syncAiWorkbenchControlsFromState();
+    });
+    forgeAiAssetKind.addEventListener('change', () => {
+      this.forgeAiAssetKind = this.normalizeForgeAssetKind(forgeAiAssetKind.value);
+      const template = getForgeAssetTemplates(this.forgeAiAssetKind)[0];
+      if (template) {
+        this.forgeAiTemplateId = template.id;
+        this.forgeAiRole = template.role;
+      }
+      this.syncAiWorkbenchControlsFromState();
+    });
+    forgeAiTemplate.addEventListener('change', () => {
+      this.forgeAiTemplateId = this.normalizeForgeTemplateId(forgeAiTemplate.value);
+      const template = getForgeAssetTemplates().find((candidate) => candidate.id === this.forgeAiTemplateId);
+      if (template) {
+        this.forgeAiAssetKind = template.kind;
+        this.forgeAiRole = template.role;
+      }
+      this.syncAiWorkbenchControlsFromState();
+    });
+    forgeAiRole.addEventListener('input', () => {
+      this.forgeAiRole = forgeAiRole.value.trim() || this.forgeAiRole;
+    });
+    forgeAiProductionTarget.addEventListener('input', () => {
+      this.forgeAiProductionTarget = forgeAiProductionTarget.value.trim();
     });
     variantSelect.addEventListener('change', () => {
       this.selectedVariantId = variantSelect.value;
@@ -1435,6 +1519,10 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'exportForgeJson') this.exportSelectedForgeJson();
       if (action === 'exportContactSheet') this.exportForgeContactSheet();
       if (action === 'importForgeAsset') this.importForgeAsset();
+      if (action === 'exportForgeAiTask') this.exportForgeAiTask();
+      if (action === 'importForgeAiResponse') this.importForgeAiResponse();
+      if (action === 'validateForgeAsset') this.validateSelectedForgeAsset();
+      if (action === 'exportForgeRepairPrompt') this.exportForgeRepairPrompt();
       if (action === 'exportForgePromotion') this.exportForgePromotionBundle();
       if (action === 'promoteForgeAsset') this.promoteSelectedForgeAsset();
       if (action === 'exportForgeBatchBrief') this.exportForgeBatchAiBrief();
@@ -1614,6 +1702,14 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
+  private populateForgeTemplateSelect(select: HTMLSelectElement, kind: ForgeAssetKind): void {
+    select.replaceChildren();
+    const templates = getForgeAssetTemplates(kind);
+    for (const template of templates) {
+      select.add(new Option(`${template.displayName} (${template.id})`, template.id));
+    }
+  }
+
   private persistForgePaletteFromControls(): void {
     const asset = this.ensureForgeDraftForEditing();
     if (!asset || !this.overlay) {
@@ -1680,31 +1776,35 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private createProjectileForgeDraft(): void {
-    const weapon = getWeaponDefinition('pulse-cannon');
-    const draft = this.cloneForgeAsset(convertProjectileVisualDefinitionToForgeAsset(weapon));
-    draft.id = `forge.projectile.${slugify(weapon.displayName)}.${Date.now()}`;
-    draft.displayName = `${weapon.displayName} Projectile Draft`;
-    draft.status = 'Visual Pass';
-    draft.savedAt = new Date().toISOString();
+    const draft = createForgeAssetFromTemplate('projectile.neon-bolt', {
+      displayName: 'New Projectile Draft',
+      role: 'neon-bolt',
+      productionTarget: this.forgeAiProductionTarget || undefined
+    });
     this.presetState.forgeAssets.push(draft);
     this.selectedForgeAssetId = draft.id;
     this.selectedForgeLayerIndex = 0;
     this.forgePreviewMode = 'projectile-motion';
+    this.forgeAiAssetKind = 'projectile';
+    this.forgeAiTemplateId = 'projectile.neon-bolt';
+    this.forgeAiRole = 'neon-bolt';
     this.savePresetState();
     this.syncForgeControlsFromState();
   }
 
   private createWeaponForgeDraft(): void {
-    const weapon = getWeaponDefinition('pulse-cannon');
-    const draft = this.cloneForgeAsset(convertWeaponDefinitionToForgeAsset(weapon));
-    draft.id = `forge.weapon.${slugify(weapon.displayName)}.${Date.now()}`;
-    draft.displayName = `${weapon.displayName} Weapon Draft`;
-    draft.status = 'Visual Pass';
-    draft.savedAt = new Date().toISOString();
+    const draft = createForgeAssetFromTemplate('weapon.icon.cannon', {
+      displayName: 'New Weapon Icon Draft',
+      role: 'weapon-icon-cannon',
+      productionTarget: this.forgeAiProductionTarget || undefined
+    });
     this.presetState.forgeAssets.push(draft);
     this.selectedForgeAssetId = draft.id;
     this.selectedForgeLayerIndex = 0;
     this.forgePreviewMode = 'weapon-icon';
+    this.forgeAiAssetKind = 'weapon';
+    this.forgeAiTemplateId = 'weapon.icon.cannon';
+    this.forgeAiRole = 'weapon-icon-cannon';
     this.savePresetState();
     this.syncForgeControlsFromState();
   }
@@ -2025,20 +2125,47 @@ export class EnemyLabScene extends Phaser.Scene {
   private importForgeAsset(): void {
     loadMarkdownFile((contents) => {
       const result = parseForgeAssetImports(contents);
-      if (result.assets.length === 0) {
-        console.warn(`Unable to import Forge asset batch. Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`, result.errors);
-        return;
-      }
-
-      const importedAssets = result.assets.map((asset, index) => this.createImportedForgeDraft(asset, index));
-      this.presetState.forgeAssets = [...this.presetState.forgeAssets, ...importedAssets];
-      this.selectedForgeAssetId = importedAssets[0]?.id ?? this.selectedForgeAssetId;
-      this.savePresetState();
-      this.syncOverlayFromState();
-      if (result.rejectedCount > 0) {
-        console.warn(`Imported ${importedAssets.length} Forge assets; rejected ${result.rejectedCount}.`, result.errors);
-      }
+      this.applyForgeImportResult(result, 'Forge import');
     });
+  }
+
+  private importForgeAiResponse(): void {
+    loadMarkdownFile((contents) => {
+      const result = parseForgeAiResponse(contents);
+      this.applyForgeImportResult(result, 'AI response import');
+    });
+  }
+
+  private applyForgeImportResult(result: ReturnType<typeof parseForgeAssetImports>, label: string): void {
+    if (result.assets.length === 0) {
+      this.setForgeImportReport(`${label} failed.\n${result.errors.join('\n') || `Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`}`);
+      console.warn(`Unable to import Forge assets. Expected styleGuideVersion ${FORGE_STYLE_GUIDE_VERSION}.`, result.errors);
+      return;
+    }
+
+    const importedAssets = result.assets.map((asset, index) => {
+      const imported = this.createImportedForgeDraft(asset, index);
+      const selfCheck = result.response?.selfChecks?.[asset.id];
+      if (selfCheck) {
+        imported.gameplayHints = {
+          ...imported.gameplayHints,
+          aiSelfCheck: selfCheck.roleCue
+        };
+      }
+      return imported;
+    });
+    this.presetState.forgeAssets = [...this.presetState.forgeAssets, ...importedAssets];
+    this.selectedForgeAssetId = importedAssets[0]?.id ?? this.selectedForgeAssetId;
+    this.lastForgeRepairPrompt = result.validationReports
+      .filter((report) => !report.valid || report.warnings.length > 0)
+      .map((report) => report.repairPrompt)
+      .join('\n\n');
+    this.setForgeImportReport(this.formatForgeImportReport(label, result.assets.length, result.rejectedCount, result.validationReports));
+    this.savePresetState();
+    this.syncOverlayFromState();
+    if (result.rejectedCount > 0) {
+      console.warn(`Imported ${importedAssets.length} Forge assets; rejected ${result.rejectedCount}.`, result.errors);
+    }
   }
 
   private exportForgeBatchAiBrief(): void {
@@ -2059,6 +2186,59 @@ export class EnemyLabScene extends Phaser.Scene {
           'Generate distinct enemy asset variations that can be imported directly into the Asset Forge draft list.'
         ].join('\n')
       }),
+      'text/markdown'
+    );
+  }
+
+  private exportForgeAiTask(): void {
+    const selectedAsset = this.getSelectedForgeAsset();
+    const task = createForgeAiTask({
+      targetLabel: `${this.forgeAiRole || this.forgeAiAssetKind} Asset Forge Task`,
+      targetKind: this.forgeAiAssetKind,
+      taskType: this.forgeAiTaskType,
+      templateId: this.forgeAiTemplateId,
+      batchCount: this.forgeBatchCount,
+      role: this.forgeAiRole,
+      productionTarget: this.forgeAiProductionTarget || undefined,
+      selectedAsset,
+      context: [
+        `Selected Forge asset: ${selectedAsset.displayName}`,
+        `Selected preview mode: ${this.forgePreviewMode}`,
+        `Existing stored Forge drafts: ${this.presetState.forgeAssets.length}`,
+        'Manual import/export mode is active; no in-app AI provider is configured.'
+      ].join('\n')
+    });
+
+    downloadTextFile(
+      `forge-ai-task-${slugify(task.targetLabel)}-${this.time.now.toFixed(0)}.md`,
+      createForgeAiBrief({
+        targetLabel: task.targetLabel,
+        targetKind: task.targetKind,
+        taskType: task.taskType,
+        templateId: task.templateId,
+        batchCount: task.batchCount,
+        role: task.role,
+        productionTarget: task.productionTarget,
+        selectedAsset: task.selectedAsset,
+        context: task.context
+      }),
+      'text/markdown'
+    );
+  }
+
+  private validateSelectedForgeAsset(): void {
+    const report = validateForgeAssetForAi(this.getSelectedForgeAsset());
+    this.lastForgeRepairPrompt = report.repairPrompt;
+    this.setForgeImportReport(this.formatForgeValidationReport('Selected asset validation', report));
+  }
+
+  private exportForgeRepairPrompt(): void {
+    const asset = this.getSelectedForgeAsset();
+    const report = validateForgeAssetForAi(asset);
+    const prompt = this.lastForgeRepairPrompt || createForgeRepairPrompt(report, asset);
+    downloadTextFile(
+      `forge-repair-prompt-${slugify(asset.displayName)}-${this.time.now.toFixed(0)}.md`,
+      prompt,
       'text/markdown'
     );
   }
@@ -2517,6 +2697,31 @@ export class EnemyLabScene extends Phaser.Scene {
     saveAssetForgeStorageState({ assets: this.presetState.forgeAssets });
   }
 
+  private setForgeImportReport(report: string): void {
+    this.lastForgeValidationReport = report;
+    if (this.overlay) {
+      this.overlay.forgeImportReport.textContent = report;
+    }
+  }
+
+  private formatForgeImportReport(label: string, importedCount: number, rejectedCount: number, reports: Array<ReturnType<typeof validateForgeAssetForAi>>): string {
+    const warnings = reports.flatMap((report) => report.warnings.map((warning) => `${report.assetName ?? report.assetId ?? 'Asset'}: ${warning}`));
+    const errors = reports.flatMap((report) => report.errors.map((error) => `${report.assetName ?? report.assetId ?? 'Asset'}: ${error}`));
+    return [
+      `${label}: imported ${importedCount}, rejected ${rejectedCount}.`,
+      errors.length > 0 ? `Errors:\n${errors.join('\n')}` : 'Errors: none.',
+      warnings.length > 0 ? `Warnings:\n${warnings.join('\n')}` : 'Warnings: none.'
+    ].join('\n');
+  }
+
+  private formatForgeValidationReport(label: string, report: ReturnType<typeof validateForgeAssetForAi>): string {
+    return [
+      `${label}: ${report.valid ? 'valid' : 'invalid'} (${report.assetName ?? report.assetId ?? 'selected asset'}).`,
+      report.errors.length > 0 ? `Errors:\n${report.errors.join('\n')}` : 'Errors: none.',
+      report.warnings.length > 0 ? `Warnings:\n${report.warnings.join('\n')}` : 'Warnings: none.'
+    ].join('\n');
+  }
+
   private readNumberInput(input: HTMLInputElement, fallback: number, clampValue = true): number {
     const value = Number(input.value);
     const min = input.min === '' ? Number.NEGATIVE_INFINITY : Number(input.min);
@@ -2929,6 +3134,20 @@ export class EnemyLabScene extends Phaser.Scene {
       : 'combat';
   }
 
+  private normalizeForgeAiTaskType(value: string): ForgeAiTaskType {
+    return FORGE_AI_TASK_OPTIONS.includes(value as ForgeAiTaskType) ? value as ForgeAiTaskType : 'batch';
+  }
+
+  private normalizeForgeAssetKind(value: string): ForgeAssetKind {
+    return FORGE_ASSET_KIND_OPTIONS.includes(value as ForgeAssetKind) ? value as ForgeAssetKind : 'projectile';
+  }
+
+  private normalizeForgeTemplateId(value: string): ForgeAssetTemplateId {
+    return getForgeAssetTemplates().some((template) => template.id === value)
+      ? value as ForgeAssetTemplateId
+      : 'projectile.neon-bolt';
+  }
+
   private getForgeColorControlValue(color: ForgeVectorLayer['color']): string {
     return typeof color === 'string' && FORGE_COLOR_OPTIONS.includes(color) ? color : '';
   }
@@ -2963,10 +3182,29 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.fireRateMultiplier.value = String(this.enemyFireRateMultiplier);
     this.overlay.deconflictionStrength.value = String(this.enemyDeconflictionStrength);
     this.overlay.forgeBatchCount.value = String(this.forgeBatchCount);
+    this.syncAiWorkbenchControlsFromState();
     this.syncVariantControlsFromState();
     this.syncSquadControlsFromState();
     this.syncForgeControlsFromState();
     this.syncActionButtonStates();
+  }
+
+  private syncAiWorkbenchControlsFromState(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    this.populateForgeTemplateSelect(this.overlay.forgeAiTemplate, this.forgeAiAssetKind);
+    if (!getForgeAssetTemplates(this.forgeAiAssetKind).some((template) => template.id === this.forgeAiTemplateId)) {
+      this.forgeAiTemplateId = getForgeAssetTemplates(this.forgeAiAssetKind)[0]?.id ?? 'projectile.neon-bolt';
+    }
+    this.overlay.forgeAiTaskType.value = this.forgeAiTaskType;
+    this.overlay.forgeAiAssetKind.value = this.forgeAiAssetKind;
+    this.overlay.forgeAiTemplate.value = this.forgeAiTemplateId;
+    this.overlay.forgeAiRole.value = this.forgeAiRole;
+    this.overlay.forgeAiProductionTarget.value = this.forgeAiProductionTarget;
+    this.overlay.forgeBatchCount.value = String(this.forgeBatchCount);
+    this.overlay.forgeImportReport.textContent = this.lastForgeValidationReport;
   }
 
   private updateOverlayStatus(time: number): void {

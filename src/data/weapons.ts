@@ -102,7 +102,7 @@ export const pulseCannon: WeaponRegistryEntry = {
   projectileSpeed: pulseCannonBalance.projectileSpeed,
   projectileLifetimeSeconds: pulseCannonBalance.projectileLifetimeSeconds,
   projectileRange: pulseCannonBalance.projectileRange,
-  projectileVisualAssetId: 'forge.projectile.pulse-cannon-bolt',
+  projectileVisualAssetId: 'forge.projectile.neon-bolt-01',
   projectileVisual: {
     glowColor: 0x42f5d7,
     glowAlpha: 0.3,

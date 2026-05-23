@@ -8,15 +8,15 @@ export interface ForgeAssetRegistryEntry {
   notes?: string;
 }
 
-export const pulseCannonProjectileForgeAsset: ForgeAsset = {
+export const neonBoltProjectileForgeAsset: ForgeAsset = {
   type: 'starvivors-forge-asset',
   version: 1,
-  id: 'forge.projectile.pulse-cannon-bolt',
+  id: 'forge.projectile.neon-bolt-01',
   kind: 'projectile',
-  displayName: 'Pulse Cannon Bolt',
+  displayName: 'Neon Bolt 01',
   status: 'Implemented',
-  tags: ['weapon', 'projectile', 'pulse-cannon', 'pulse', 'neon-forward-salvagepunk'],
-  notes: 'Built-in projectile recipe for Pulse Cannon. Cached at runtime as a Phaser texture; neon plasma read stays dominant over brass rails.',
+  tags: ['weapon', 'projectile', 'neon-bolt', 'fast-forward', 'neon-forward-salvagepunk'],
+  notes: 'Built-in reusable projectile recipe. Cached at runtime as a Phaser texture; neon plasma read stays dominant over brass rails.',
   styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
   palette: {
     metalDark: 0x071018,
@@ -41,7 +41,8 @@ export const pulseCannonProjectileForgeAsset: ForgeAsset = {
     trail: 'plasma'
   },
   gameplayHints: {
-    sourceWeaponId: 'pulse-cannon',
+    assetRole: 'neon-bolt',
+    motionProfile: 'fast-forward',
     displayWidth: 28,
     displayHeight: 36,
     hitRadius: 8
@@ -51,11 +52,11 @@ export const pulseCannonProjectileForgeAsset: ForgeAsset = {
 
 export const forgeAssetRegistry: ForgeAssetRegistryEntry[] = [
   {
-    visualAssetId: 'forge.projectile.pulse-cannon-bolt',
-    asset: pulseCannonProjectileForgeAsset,
+    visualAssetId: 'forge.projectile.neon-bolt-01',
+    asset: neonBoltProjectileForgeAsset,
     source: 'asset-forge',
     status: 'implemented',
-    notes: 'Phase 16E built-in cached projectile texture for Pulse Cannon.'
+    notes: 'Phase 16E built-in cached generic projectile texture; Pulse Cannon is the first runtime consumer.'
   }
 ];
 
