@@ -63,11 +63,17 @@ export interface GameplayHudCallbacks {
   requestEject: () => void;
 }
 
+export interface GameplayHudOptions {
+  statusIconTextureKey?: string;
+}
+
 export class GameplayHudSystem {
   private readonly scene: Phaser.Scene;
   private readonly callbacks: GameplayHudCallbacks;
+  private readonly options: GameplayHudOptions;
   private hudGraphics?: Phaser.GameObjects.Graphics;
   private hudText?: Phaser.GameObjects.Text;
+  private statusIcon?: Phaser.GameObjects.Image;
   private hotbarGraphics?: Phaser.GameObjects.Graphics;
   private hotbarTexts: Partial<Record<WeaponHotbarSlotType, Phaser.GameObjects.Text>> = {};
   private hotbarZones: Partial<Record<WeaponHotbarSlotType, Phaser.GameObjects.Zone>> = {};
@@ -82,9 +88,10 @@ export class GameplayHudSystem {
   private openPickerSlot: WeaponHotbarSlotType | null = null;
   private hoveredSlot: WeaponHotbarSlotType | null = null;
 
-  constructor(scene: Phaser.Scene, callbacks: GameplayHudCallbacks) {
+  constructor(scene: Phaser.Scene, callbacks: GameplayHudCallbacks, options: GameplayHudOptions = {}) {
     this.scene = scene;
     this.callbacks = callbacks;
+    this.options = options;
   }
 
   create(): void {
@@ -100,6 +107,13 @@ export class GameplayHudSystem {
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(1000);
+    if (this.options.statusIconTextureKey && this.scene.textures.exists(this.options.statusIconTextureKey)) {
+      this.statusIcon = this.scene.add
+        .image(0, 0, this.options.statusIconTextureKey)
+        .setDisplaySize(28, 28)
+        .setScrollFactor(0)
+        .setDepth(1001);
+    }
     this.hotbarGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1002);
     this.pickerGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1003);
     this.tooltipGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1005).setVisible(false);
@@ -201,6 +215,9 @@ export class GameplayHudSystem {
           `Secondary ${snapshot.secondaryWeaponName}\n` +
           `${snapshot.mainWeaponUpgradeSummary}`
       );
+    this.statusIcon
+      ?.setPosition(this.scene.scale.width - HUD_MARGIN - 324, HUD_MARGIN + 28)
+      .setVisible(true);
 
     this.drawBars(snapshot);
     this.drawHotbar();

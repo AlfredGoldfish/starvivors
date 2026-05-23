@@ -15,6 +15,7 @@ Phase 16 starts the SVG/vector asset pipeline by turning the Enemy Lab into the 
 - Phase 16D adds the production promotion bridge: enemy definitions can reference optional `visualAssetId`, runtime visuals resolve Forge registry assets first and keep embedded visuals as fallback, Forge drafts have status controls, approved assets can be marked `Promoted`, and the lab exports source-ready registry/definition patch bundles.
 - Phase 16E starts expansion beyond enemies with a generic AI-first Forge workflow: reusable templates can create projectiles, weapon icons, effects, pickups, and UI icons; Pulse Cannon now consumes the generic `forge.projectile.neon-bolt-01` projectile asset as the first runtime proof.
 - Phase 16E also adds AI task/response/validation/repair protocol support so external AI can receive a machine-readable task package, return assets or batches, get validation feedback, and repair failed imports.
+- Phase 16F closes the initial pipeline acceptance target: Interceptor, tier-1 scrap, Scout, Pulse Cannon projectile, and a HUD status icon all have built-in registered Forge assets with cached Phaser texture consumers and PNG/embedded fallbacks.
 - Existing Enemy Lab variants, squads, behavior testing, diagnostics, and preset import/export remain compatible.
 - Enemy Lab AI briefs and promotion reports now include the Neon-Forward Salvagepunk style guide so AI-generated assets inherit the visual direction.
 

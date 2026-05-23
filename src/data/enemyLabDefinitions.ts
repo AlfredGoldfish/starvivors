@@ -125,6 +125,7 @@ export const ENEMY_LAB_DEFINITIONS: EnemyLabDefinition[] = [
     displayName: 'Scout',
     role: 'chaser',
     tier: 1,
+    visualAssetId: 'forge.enemy.scout-01',
     visual: {
       hullShape: 'kite',
       size: 42,

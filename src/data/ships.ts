@@ -80,6 +80,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   speedRating: string;
   handlingRating: string;
   unlockCostCredits?: number;
+  visualAssetId?: string;
   textureKey: string;
   displaySize: number;
   visualRotation: number;
@@ -159,6 +160,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     ],
     speedRating: 'Fast',
     handlingRating: 'Responsive',
+    visualAssetId: 'forge.ship.interceptor-01',
     textureKey: 'player-ship-spaceship-1',
     displaySize: 118,
     visualRotation: Math.PI,

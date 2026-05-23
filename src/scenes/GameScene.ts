@@ -45,6 +45,7 @@ import {
 import { getRareEventDefinition, isRareEventDefinitionId, type RareEventDefinitionId } from '../data/rareEvents';
 import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
+import { createForgeRegistryTextures, resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
   PERMANENT_UPGRADE_DEFINITIONS,
@@ -887,10 +888,16 @@ export class GameScene extends Phaser.Scene {
     });
     createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
     this.minimap = new MinimapSystem(this);
-    this.gameplayHud = new GameplayHudSystem(this, {
-      assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId),
-      requestEject: () => this.openEjectConfirmation()
-    });
+    this.gameplayHud = new GameplayHudSystem(
+      this,
+      {
+        assignWeaponSlot: (slot, weaponId) => this.assignWeaponHotbarSlot(slot, weaponId),
+        requestEject: () => this.openEjectConfirmation()
+      },
+      {
+        statusIconTextureKey: resolveForgeTextureKey(this, 'forge.ui-icon.hud-status-01', '')
+      }
+    );
     this.upgradeOverlayUi = new UpgradeOverlayUiController<UpgradeOverlayChoice>({
       scene: this,
       onUpgradeButtonClick: () => this.handleUpgradeButtonClick(),
@@ -4994,6 +5001,7 @@ export class GameScene extends Phaser.Scene {
 
   private createBackgroundTextures(): void {
     this.starfield.createTextures();
+    createForgeRegistryTextures(this);
   }
 
   private createStarfield(): void {
@@ -5002,7 +5010,7 @@ export class GameScene extends Phaser.Scene {
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
     const shipDefinition = this.getSelectedShipDefinition();
-    const sprite = this.add.image(0, 0, shipDefinition.textureKey);
+    const sprite = this.add.image(0, 0, this.getShipTextureKey(shipDefinition));
     sprite.setOrigin(0.5, 0.5);
     sprite.setDisplaySize(shipDefinition.displaySize, shipDefinition.displaySize);
     sprite.setRotation(shipDefinition.visualRotation);
@@ -5017,6 +5025,10 @@ export class GameScene extends Phaser.Scene {
     ship.setDepth(10);
 
     return ship;
+  }
+
+  private getShipTextureKey(ship: ShipRegistryEntry): string {
+    return resolveForgeTextureKey(this, ship.visualAssetId, ship.textureKey);
   }
 
   private createWorldEvents(center: Phaser.Math.Vector2): void {
@@ -6657,7 +6669,7 @@ export class GameScene extends Phaser.Scene {
 
     if (style === 'player') {
       const ship = this.getSelectedShipDefinition();
-      this.emitDeathShards(ship.textureKey, x, y, ship.displaySize, this.player.rotation + ship.visualRotation, inheritedVelocity, style);
+      this.emitDeathShards(this.getShipTextureKey(ship), x, y, ship.displaySize, this.player.rotation + ship.visualRotation, inheritedVelocity, style);
       return;
     }
 
@@ -7019,7 +7031,7 @@ export class GameScene extends Phaser.Scene {
       children.push(glow);
     }
 
-    const visual = this.add.image(0, 0, isUpgradePickup ? UPGRADE_CRATE_PICKUP_TEXTURE_KEY : SCRAP_PICKUP_TIER_1_TEXTURE_KEY);
+    const visual = this.add.image(0, 0, isUpgradePickup ? UPGRADE_CRATE_PICKUP_TEXTURE_KEY : this.getScrapPickupTextureKey(1));
 
     visual.setOrigin(0.5, 0.5);
     visual.setDisplaySize(SCRAP_PICKUP_DISPLAY_SIZE, SCRAP_PICKUP_DISPLAY_SIZE);
@@ -7047,7 +7059,7 @@ export class GameScene extends Phaser.Scene {
       return SCRAP_PICKUP_TIER_2_TEXTURE_KEY;
     }
 
-    return SCRAP_PICKUP_TIER_1_TEXTURE_KEY;
+    return resolveForgeTextureKey(this, 'forge.pickup.scrap-shard-01', SCRAP_PICKUP_TIER_1_TEXTURE_KEY);
   }
 
   private getScrapPickupVisualScale(value: number): number {
@@ -10343,7 +10355,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     this.emitDeathShards(
-      ship.textureKey,
+      this.getShipTextureKey(ship),
       this.player.x,
       this.player.y,
       ship.displaySize,

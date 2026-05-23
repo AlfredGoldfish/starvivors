@@ -9,6 +9,7 @@ import {
   type ShipId,
   type ShipRegistryEntry
 } from '../data/ships';
+import { resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import { type WeaponLoadoutState, type WeaponMkLevels } from '../systems/progressionStorage';
 import { addPreRunNav, type PreRunNavConfig } from './preRunHubScreen';
@@ -176,7 +177,7 @@ function renderShipRoster(
 
     const skin = getSelectedSkin(config, ship);
     const preview = config.scene.add
-      .image(rowX + 32, rowY + rowHeight / 2, ship.textureKey)
+      .image(rowX + 32, rowY + rowHeight / 2, getShipPreviewTextureKey(config.scene, ship))
       .setDisplaySize(48, 48)
       .setRotation(ship.visualRotation)
       .setAlpha(unlocked ? 1 : 0.5);
@@ -230,7 +231,7 @@ function renderHullPanel(
   const contentX = x + 20;
   const contentWidth = width - 40;
   const image = config.scene.add
-    .image(x + width / 2, imageY, ship.textureKey)
+    .image(x + width / 2, imageY, getShipPreviewTextureKey(config.scene, ship))
     .setDisplaySize(ship.displaySize * 0.92, ship.displaySize * 0.92)
     .setRotation(ship.visualRotation)
     .setAlpha(unlocked ? 1 : 0.5);
@@ -291,6 +292,10 @@ function renderHullPanel(
     isActionActive: config.isActionActive,
     resetCursor: config.resetCursor
   });
+}
+
+function getShipPreviewTextureKey(scene: Phaser.Scene, ship: ShipRegistryEntry): string {
+  return resolveForgeTextureKey(scene, ship.visualAssetId, ship.textureKey);
 }
 
 function renderShipStatBars(
