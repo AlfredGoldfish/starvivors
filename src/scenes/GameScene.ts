@@ -743,6 +743,7 @@ export class GameScene extends Phaser.Scene {
   private controlKeys = new Map<string, Phaser.Input.Keyboard.Key>();
   private awaitingBinding?: { action: RunControlAction; slot: BindingSlot };
   private debugMenuKey!: Phaser.Input.Keyboard.Key;
+  private diagnosticsOverlayKey!: Phaser.Input.Keyboard.Key;
   private secretControlKey!: Phaser.Input.Keyboard.Key;
   private escapeKey!: Phaser.Input.Keyboard.Key;
   private upgradeChoiceKeys!: Phaser.Input.Keyboard.Key[];
@@ -831,6 +832,7 @@ export class GameScene extends Phaser.Scene {
   private debugMenuHost?: DebugMenuHost;
   private secretControlOverlay?: SecretControlOverlayController;
   private debugMenuOpenedAt = 0;
+  private diagnosticsOverlayVisible = false;
   private totalDebugPauseMs = 0;
   private permanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.permanentUpgradeLevels };
   private activePermanentUpgradeLevels: Record<PermanentUpgradeId, number> = { ...this.progressionState.activePermanentUpgradeLevels };
@@ -1033,6 +1035,7 @@ export class GameScene extends Phaser.Scene {
     this.input.mouse?.disableContextMenu();
     this.rebuildControlKeys();
     this.debugMenuKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.Z);
+    this.diagnosticsOverlayKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.X);
     this.secretControlKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.F10);
     this.escapeKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ESC);
     this.upgradeChoiceKeys = [
@@ -4247,10 +4250,10 @@ export class GameScene extends Phaser.Scene {
     this.debugText = this.add
       .text(16, 16, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
+        fontSize: '12px',
         color: '#c8f7ff',
-        backgroundColor: 'rgba(2, 4, 10, 0.72)',
-        padding: { x: 10, y: 8 }
+        backgroundColor: 'rgba(2, 4, 10, 0.64)',
+        padding: { x: 7, y: 4 }
       })
       .setScrollFactor(0)
       .setDepth(1000);
@@ -7900,6 +7903,19 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDebugMenuInput(time: number): void {
+    if (
+      this.diagnosticsOverlayKey &&
+      Phaser.Input.Keyboard.JustDown(this.diagnosticsOverlayKey) &&
+      this.isGameplayWorldActive() &&
+      !this.isUpgradeOverlayOpen &&
+      !this.isPauseMenuOpen &&
+      !(this.debugMenuHost?.isOpen() ?? false)
+    ) {
+      this.diagnosticsOverlayVisible = !this.diagnosticsOverlayVisible;
+      this.nextDebugUpdateAt = 0;
+      this.updateDebugText(time);
+    }
+
     if (!this.debugMenuHost?.isCreated() || !this.isDebugMenuAvailable()) {
       return;
     }
@@ -13581,6 +13597,16 @@ export class GameScene extends Phaser.Scene {
     this.nextDebugUpdateAt = time + DEBUG_UPDATE_INTERVAL_MS;
 
     const fps = Math.round(this.game.loop.actualFps);
+    if (!this.diagnosticsOverlayVisible) {
+      this.debugText
+        .setPosition(16, 16)
+        .setFontSize(12)
+        .setColor('#73f2ff')
+        .setBackgroundColor('rgba(2, 4, 10, 0.64)')
+        .setText(`FPS ${fps}`);
+      return;
+    }
+
     const viewportWidth = this.scale.width;
     const viewportHeight = this.scale.height;
     const enemyScaling = this.getEnemyTimeScaling(time);
@@ -13597,7 +13623,12 @@ export class GameScene extends Phaser.Scene {
       ? `Black hole: visual x${this.debugBlackHoleVisualScale.toFixed(1)} / core x${this.debugBlackHoleCoreScale.toFixed(1)} / field x${this.debugBlackHoleInfluenceRadiusScale.toFixed(1)}\n`
       : '';
 
-    this.debugText.setText(
+    this.debugText
+      .setPosition(16, 16)
+      .setFontSize(13)
+      .setColor('#c8f7ff')
+      .setBackgroundColor('rgba(2, 4, 10, 0.78)')
+      .setText(
       `FPS: ${fps}\n` +
         `Viewport: ${viewportWidth} x ${viewportHeight}\n` +
         `Arena: ${this.arena.width} x ${this.arena.height} / sector ${this.sectorScale}x\n` +
@@ -13624,8 +13655,8 @@ export class GameScene extends Phaser.Scene {
         `Collision visuals: ${this.debugState.collisionDebugEnabled ? 'on' : 'off'}\n` +
         blackHoleDebugLine +
         debugWeaponLine +
-        `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
-    );
+          `Asteroid view: ${this.asteroidCameraViewCount} direct / ${this.asteroidWrappedViewCount} wrapped / ${this.asteroidWrapMirrorCount} mirrored`
+      );
   }
 
   private handleResize(): void {

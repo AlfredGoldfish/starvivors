@@ -99,10 +99,13 @@ export class GameplayHudSystem {
     this.hudText = this.scene.add
       .text(this.scene.scale.width - HUD_MARGIN, HUD_MARGIN, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
+        fontSize: '13px',
         color: '#f2fbff',
         backgroundColor: 'rgba(2, 4, 10, 0.72)',
-        padding: { x: 10, y: 7 }
+        padding: { x: 9, y: 7 },
+        fixedWidth: 376,
+        lineSpacing: 2,
+        wordWrap: { width: 358, useAdvancedWrap: true }
       })
       .setOrigin(1, 0)
       .setScrollFactor(0)
@@ -190,33 +193,29 @@ export class GameplayHudSystem {
     }
 
     this.latestSnapshot = snapshot;
-    const upgradeStatus =
-      snapshot.bankedUpgrades > 0 ? `Upgrade available x${snapshot.bankedUpgrades}  Press U` : 'No upgrade banked';
+    const hudX = this.scene.scale.width - HUD_MARGIN;
+    const hudY = HUD_MARGIN + 50;
+    const upgradeStatus = snapshot.bankedUpgrades > 0 ? `UPGRADES x${snapshot.bankedUpgrades} READY` : 'UPGRADES none';
     const shieldStatus = snapshot.hasRammingShield
-      ? `Shield ${Math.ceil(snapshot.rammingShieldHp)} / ${Math.round(snapshot.rammingShieldMaxHp)}${snapshot.rammingShieldHp <= 0 ? '  BROKEN' : ''}\n` +
-        `Shield dash ${snapshot.rammingShieldDashCharges} / ${snapshot.rammingShieldDashMaxCharges}${snapshot.isRammingShieldEmpowered ? '  EMPOWERED' : ''}\n`
+      ? `\nSHIELD ${Math.ceil(snapshot.rammingShieldHp)}/${Math.round(snapshot.rammingShieldMaxHp)}` +
+        `  DASH ${snapshot.rammingShieldDashCharges}/${snapshot.rammingShieldDashMaxCharges}${snapshot.isRammingShieldEmpowered ? '  EMP' : ''}`
       : '';
+    const missionLine = `${snapshot.contractStatusLine}`.replace(/^Contract /, 'MISSION ');
+    const weaponsLine = `WEAPONS P ${snapshot.primaryWeaponName} | S ${snapshot.secondaryWeaponName} | A ${snapshot.autoWeaponName}`;
 
     this.hudText
-      .setPosition(this.scene.scale.width - HUD_MARGIN, HUD_MARGIN)
+      .setPosition(hudX, hudY)
       .setText(
-        `Time ${this.formatSurvivalTime(snapshot.timeSeconds)}\n` +
-          `Hull ${Math.round(snapshot.playerHull)} / ${Math.round(snapshot.maxHull)}  ${snapshot.status}\n` +
+        `RUN ${this.formatSurvivalTime(snapshot.timeSeconds)}  ${snapshot.missionName} ${snapshot.missionStatus}\n` +
+          `HULL ${Math.round(snapshot.playerHull)}/${Math.round(snapshot.maxHull)} ${snapshot.status}  FUEL ${Math.ceil(snapshot.fuel)}/${snapshot.maxFuel}${snapshot.isFuelEmergency ? ' EMERGENCY' : ''}` +
           shieldStatus +
-          `Fuel ${Math.ceil(snapshot.fuel)} / ${snapshot.maxFuel}${snapshot.isFuelEmergency ? '  EMERGENCY' : ''}\n` +
-          `${snapshot.contractStatusLine}\n` +
-          `XP ${snapshot.playerXp} / ${snapshot.nextXpThreshold}\n` +
-          `Scrap ${snapshot.runScrapTotal}  Spent ${snapshot.scrapSpentThisRun}  Reroll ${snapshot.nextRerollCost}\n` +
-          `Scanner ${snapshot.sectorScannerStatus}\n` +
-          `Banked upgrades ${snapshot.bankedUpgrades}\n` +
-          `${upgradeStatus}\n` +
-          `Auto ${snapshot.autoWeaponName} ${snapshot.weaponStatus}\n` +
-          `Primary ${snapshot.primaryWeaponName}\n` +
-          `Secondary ${snapshot.secondaryWeaponName}\n` +
-          `${snapshot.mainWeaponUpgradeSummary}`
+          `\n${missionLine}\n` +
+          `XP ${snapshot.playerXp}/${snapshot.nextXpThreshold}  SCRAP ${snapshot.runScrapTotal}  SPENT ${snapshot.scrapSpentThisRun}\n` +
+          `SCANNER ${snapshot.sectorScannerStatus}  REROLL ${snapshot.nextRerollCost}  ${upgradeStatus}\n` +
+          weaponsLine
       );
     this.statusIcon
-      ?.setPosition(this.scene.scale.width - HUD_MARGIN - 324, HUD_MARGIN + 28)
+      ?.setPosition(Math.max(24, hudX - 404), hudY + 18)
       .setVisible(true);
 
     this.drawBars(snapshot);
