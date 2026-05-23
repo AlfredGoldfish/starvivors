@@ -109,6 +109,11 @@ export interface GameplayHudSnapshotInput {
   missionStatus: string;
   missionObjectiveDistance: number;
   missionObjectiveRadius: number;
+  missionDisplayName: string;
+  missionObjectiveLabel: string;
+  missionDescription: string;
+  missionDifficulty: string;
+  missionRewardPreview: string;
   runScrapTotal: number;
   scrapSpentThisRun: number;
   nextRerollCost: number;
@@ -260,6 +265,11 @@ export function buildGameplayHudSnapshot(input: GameplayHudSnapshotInput): Gamep
     missionStatus: input.missionStatus,
     missionObjectiveDistance: input.missionObjectiveDistance,
     missionObjectiveRadius: input.missionObjectiveRadius,
+    missionDisplayName: input.missionDisplayName,
+    missionObjectiveLabel: input.missionObjectiveLabel,
+    missionDescription: input.missionDescription,
+    missionDifficulty: input.missionDifficulty,
+    missionRewardPreview: input.missionRewardPreview,
     runScrapTotal: input.runScrapTotal,
     scrapSpentThisRun: input.scrapSpentThisRun,
     nextRerollCost: input.nextRerollCost,

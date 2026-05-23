@@ -1642,7 +1642,8 @@ export class GameScene extends Phaser.Scene {
       runHarnessWorldImpactCleanup: () => this.runTestHarnessWorldImpactCleanup(),
       runHarnessVelocityLimiter: () => this.runTestHarnessVelocityLimiter(),
       runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
-      runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers()
+      runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
+      runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog()
     });
   }
 
@@ -2066,6 +2067,15 @@ export class GameScene extends Phaser.Scene {
         wholeNumbers
       })
     );
+  }
+
+  private runTestHarnessHudMissionLog(): void {
+    document.body.setAttribute('data-starvivors-hud-mission-log-harness', 'pending');
+    this.time.delayedCall(1000, () => {
+      this.gameplayHud.openMissionLog();
+      this.updateGameplayHud(this.time.now);
+      document.body.setAttribute('data-starvivors-hud-mission-log-harness', 'pass');
+    });
   }
 
   private runTestHarnessSmoke(): void {
@@ -7988,6 +7998,7 @@ export class GameScene extends Phaser.Scene {
       if (this.debugMenuHost.isOpen()) {
         this.closeDebugMenu(time);
       } else {
+        this.gameplayHud.closeMissionLog();
         this.openDebugMenu(time);
       }
     }
@@ -8079,6 +8090,7 @@ export class GameScene extends Phaser.Scene {
 
     if (!this.isUpgradeOverlayOpen) {
       if (this.bankedUpgrades > 0 && this.isControlJustDown('upgrade')) {
+        this.gameplayHud.closeMissionLog();
         this.openUpgradeOverlay(time);
       }
 
@@ -8129,6 +8141,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.isPauseJustDown()) {
+      if (this.gameplayHud.closeMissionLog()) {
+        this.suppressPauseToggleUntil = time + 120;
+        return;
+      }
+
       if (this.isPauseMenuOpen) {
         if (this.pauseMenuTab === 'pause') {
           this.closePauseMenu(time);
@@ -8147,6 +8164,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.gameplayHud.closeMissionLog();
     this.isPauseMenuOpen = true;
     this.pauseMenuTab = tab;
     this.pauseMenuOpenedAt = time;
@@ -8317,6 +8335,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.gameplayHud.closeMissionLog();
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
@@ -8337,6 +8356,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.gameplayHud.closeMissionLog();
     this.specialUpgradeOverlayChoices = choices;
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
@@ -10672,6 +10692,7 @@ export class GameScene extends Phaser.Scene {
 
   private showResultsScreen(): void {
     this.gameFlowState = 'results';
+    this.gameplayHud.closeMissionLog();
     this.sectorScannerArrow?.setVisible(false);
     this.destroyResultsScreen();
 
@@ -11568,6 +11589,7 @@ export class GameScene extends Phaser.Scene {
     const isPointerBlockedByDebugMenu =
       (this.debugMenuHost?.containsPointer(pointer) ?? false) ||
       (this.secretControlOverlay?.containsPointer(pointer) ?? false);
+    const isPointerBlockedByHud = this.gameplayHud.containsPointer(pointer);
 
     updateActivePlayerWeaponRuntime({
       state: this.playerWeapons,
@@ -11575,9 +11597,9 @@ export class GameScene extends Phaser.Scene {
       deltaSeconds,
       isPlayerDead: this.isPlayerDead,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-      isPrimaryFiring: this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && pointer.leftButtonDown()),
-      isSecondaryFiring: pointer.rightButtonDown(),
-      isSecondaryBlocked: isPointerBlockedByDebugMenu,
+      isPrimaryFiring: this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && !isPointerBlockedByHud && pointer.leftButtonDown()),
+      isSecondaryFiring: !isPointerBlockedByHud && pointer.rightButtonDown(),
+      isSecondaryBlocked: isPointerBlockedByDebugMenu || isPointerBlockedByHud,
       getActiveAutoWeapon: () => this.getEffectiveAutoWeaponDefinition(),
       getActivePrimaryWeapon: () => this.getActivePrimaryWeaponDefinition(),
       getActiveSecondaryWeapon: () => this.getActiveSecondaryWeaponDefinition(),
@@ -13493,6 +13515,7 @@ export class GameScene extends Phaser.Scene {
       this.progressionState.sectorScannerLevel,
       isSectorScannerAvailable(this.progressionState)
     );
+    const missionDefinition = this.missionRuntime?.definition ?? this.getSelectedMissionDefinition();
 
     return buildGameplayHudSnapshot({
       timeSeconds: elapsedSeconds,
@@ -13506,10 +13529,15 @@ export class GameScene extends Phaser.Scene {
       nextXpThreshold: this.nextXpThreshold,
       fuel: this.fuel,
       maxFuel: RUN_FUEL_MAX,
-      missionName: this.missionRuntime?.definition.shortName ?? this.getSelectedMissionDefinition().shortName,
+      missionName: missionDefinition.shortName,
       missionStatus: this.getMissionHudStatus(),
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
       missionObjectiveRadius: this.missionRuntime?.objective.radius ?? 0,
+      missionDisplayName: missionDefinition.displayName,
+      missionObjectiveLabel: missionDefinition.objectiveLabel,
+      missionDescription: missionDefinition.description,
+      missionDifficulty: missionDefinition.difficulty,
+      missionRewardPreview: missionDefinition.rewardPreview,
       runScrapTotal: this.runScrapTotal,
       scrapSpentThisRun: this.runScrapSpent,
       nextRerollCost: this.getNextRerollCost(),
