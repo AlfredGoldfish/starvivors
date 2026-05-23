@@ -6,7 +6,20 @@ import type { BlackHoleSystem } from './blackHole';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import type { RareEventMinimapMarker } from './rareEventRuntime';
 import type { SectorScannerTarget } from './sectorScanner';
-import { getSectorRegionColor, type SectorRegion } from './sectorGeneration';
+import { getSectorRegionColor, type SectorRegion, type SectorRegionType } from './sectorGeneration';
+
+export interface SectorSignalRadarMarker {
+  id: string;
+  label: string;
+  type: SectorRegionType;
+  x: number;
+  y: number;
+  signalStrength: number;
+  danger: number;
+  resource: number;
+  active: boolean;
+  distance: number;
+}
 
 export interface MinimapSnapshot {
   arena: ArenaSize;
@@ -41,11 +54,14 @@ export interface MinimapSnapshot {
   scrapPickups: ScrapPickup[];
   blackHole?: BlackHoleSystem;
   sectorRegions?: SectorRegion[];
+  sectorSignals?: SectorSignalRadarMarker[];
 }
 
 export class MinimapSystem {
   private readonly scene: Phaser.Scene;
   private graphics?: Phaser.GameObjects.Graphics;
+  private headerText?: Phaser.GameObjects.Text;
+  private signalText?: Phaser.GameObjects.Text;
   private visible = true;
 
   constructor(scene: Phaser.Scene) {
@@ -54,6 +70,24 @@ export class MinimapSystem {
 
   create(): void {
     this.graphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1000);
+    this.headerText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '10px',
+        color: '#f2fbff'
+      })
+      .setScrollFactor(0)
+      .setDepth(1001);
+    this.signalText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '10px',
+        color: '#a8c7ff',
+        align: 'right'
+      })
+      .setOrigin(1, 0)
+      .setScrollFactor(0)
+      .setDepth(1001);
   }
 
   reset(): void {
@@ -70,14 +104,23 @@ export class MinimapSystem {
   }
 
   update(snapshot: MinimapSnapshot): void {
-    if (!this.graphics || !snapshot.player) {
+    if (!this.graphics) {
       return;
     }
 
     this.graphics.clear();
-    this.graphics.setVisible(this.visible && !snapshot.isUpgradeOverlayOpen);
+    if (!snapshot.player) {
+      this.headerText?.setVisible(false);
+      this.signalText?.setVisible(false);
+      return;
+    }
 
-    if (!this.visible || snapshot.isUpgradeOverlayOpen) {
+    const shouldShow = this.visible && !snapshot.isUpgradeOverlayOpen;
+    this.graphics.setVisible(shouldShow);
+    this.headerText?.setVisible(shouldShow);
+    this.signalText?.setVisible(shouldShow);
+
+    if (!shouldShow) {
       return;
     }
 
@@ -88,12 +131,15 @@ export class MinimapSystem {
     const innerWidth = MINIMAP_WIDTH - MINIMAP_PADDING * 2;
     const innerHeight = MINIMAP_HEIGHT - MINIMAP_PADDING * 2;
 
-    this.graphics.fillStyle(0x02040a, 0.72);
+    this.graphics.fillStyle(0x02040a, 0.78);
     this.graphics.fillRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
-    this.graphics.lineStyle(1, 0x52627f, 0.86);
+    this.graphics.lineStyle(1, 0x52627f, 0.9);
     this.graphics.strokeRoundedRect(mapX, mapY, MINIMAP_WIDTH, MINIMAP_HEIGHT, 6);
-    this.graphics.lineStyle(1, 0x42f5d7, 0.42);
+    this.graphics.lineStyle(1, 0x42f5d7, 0.46);
     this.graphics.strokeRect(innerX, innerY, innerWidth, innerHeight);
+    this.drawRadarGrid(innerX, innerY, innerWidth, innerHeight);
+    this.drawSectorRegions(snapshot, innerX, innerY, innerWidth, innerHeight);
+    this.drawSectorSignals(snapshot, innerX, innerY, innerWidth, innerHeight);
 
     if (snapshot.camera) {
       this.drawCameraViewport(snapshot.camera, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
@@ -172,22 +218,6 @@ export class MinimapSystem {
       this.graphics.strokeCircle(position.x, position.y, 12);
       this.graphics.fillStyle(0xb88cff, 0.95);
       this.graphics.fillTriangle(position.x, position.y - 7, position.x - 6, position.y + 5, position.x + 6, position.y + 5);
-    }
-
-    for (const region of snapshot.sectorRegions ?? []) {
-      const position = this.getPosition(region.x, region.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
-      const radius = Phaser.Math.Clamp((region.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 5, 13);
-      const color = getSectorRegionColor(region.type);
-
-      this.graphics.fillStyle(color, region.type === 'safe-drift' ? 0.08 : 0.14);
-      this.graphics.fillCircle(position.x, position.y, radius);
-      this.graphics.lineStyle(1, color, region.type === 'enemy-territory' ? 0.82 : 0.58);
-      this.graphics.strokeCircle(position.x, position.y, radius);
-
-      if (region.signalStrength >= 0.7) {
-        this.graphics.fillStyle(color, 0.96);
-        this.graphics.fillTriangle(position.x, position.y - 5.2, position.x - 4.5, position.y + 3.8, position.x + 4.5, position.y + 3.8);
-      }
     }
 
     for (const asteroid of snapshot.basicAsteroids) {
@@ -283,6 +313,7 @@ export class MinimapSystem {
     this.graphics.fillCircle(playerPosition.x, playerPosition.y, 4.2);
     this.graphics.lineStyle(1, 0xf2fbff, 0.95);
     this.graphics.strokeCircle(playerPosition.x, playerPosition.y, 5.6);
+    this.updateRadarLabels(snapshot, mapX, mapY);
   }
 
   private getPosition(
@@ -318,6 +349,124 @@ export class MinimapSystem {
     this.graphics?.lineStyle(1, 0xf2fbff, 0.34);
     this.graphics?.strokeRect(center.x - viewportWidth / 2, center.y - viewportHeight / 2, viewportWidth, viewportHeight);
   }
+
+  private drawRadarGrid(mapX: number, mapY: number, mapWidth: number, mapHeight: number): void {
+    if (!this.graphics) {
+      return;
+    }
+
+    this.graphics.lineStyle(1, 0x52627f, 0.16);
+    for (let index = 1; index < 4; index += 1) {
+      const x = mapX + (mapWidth * index) / 4;
+      const y = mapY + (mapHeight * index) / 4;
+      this.graphics.lineBetween(x, mapY, x, mapY + mapHeight);
+      this.graphics.lineBetween(mapX, y, mapX + mapWidth, y);
+    }
+
+    this.graphics.lineStyle(1, 0x42f5d7, 0.18);
+    this.graphics.lineBetween(mapX + mapWidth / 2, mapY, mapX + mapWidth / 2, mapY + mapHeight);
+    this.graphics.lineBetween(mapX, mapY + mapHeight / 2, mapX + mapWidth, mapY + mapHeight / 2);
+  }
+
+  private drawSectorRegions(
+    snapshot: MinimapSnapshot,
+    mapX: number,
+    mapY: number,
+    mapWidth: number,
+    mapHeight: number
+  ): void {
+    if (!this.graphics) {
+      return;
+    }
+
+    for (const region of snapshot.sectorRegions ?? []) {
+      const position = this.getPosition(region.x, region.y, mapX, mapY, mapWidth, mapHeight, snapshot.arena);
+      const radius = Phaser.Math.Clamp((region.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * mapWidth, 5, 14);
+      const color = getSectorRegionColor(region.type);
+      const alpha = region.type === 'safe-drift' ? 0.06 : 0.11 + region.signalStrength * 0.04;
+
+      this.graphics.fillStyle(color, alpha);
+      this.graphics.fillCircle(position.x, position.y, radius);
+      this.graphics.lineStyle(1, color, region.type === 'enemy-territory' ? 0.48 : 0.32);
+      this.graphics.strokeCircle(position.x, position.y, radius);
+    }
+  }
+
+  private drawSectorSignals(
+    snapshot: MinimapSnapshot,
+    mapX: number,
+    mapY: number,
+    mapWidth: number,
+    mapHeight: number
+  ): void {
+    if (!this.graphics) {
+      return;
+    }
+
+    for (const signal of snapshot.sectorSignals ?? []) {
+      const position = this.getPosition(signal.x, signal.y, mapX, mapY, mapWidth, mapHeight, snapshot.arena);
+      const color = getSectorRegionColor(signal.type);
+      const radius = Phaser.Math.Clamp(3.4 + signal.signalStrength * 3.2, 4, 7.2);
+      const alpha = signal.active ? 0.98 : 0.58;
+
+      this.graphics.lineStyle(1, color, alpha * 0.7);
+      this.graphics.strokeCircle(position.x, position.y, radius + 4);
+      this.graphics.fillStyle(color, alpha);
+      this.graphics.fillTriangle(
+        position.x,
+        position.y - radius,
+        position.x - radius * 0.86,
+        position.y + radius * 0.72,
+        position.x + radius * 0.86,
+        position.y + radius * 0.72
+      );
+
+      if (signal.danger >= 0.7) {
+        this.graphics.lineStyle(1, 0xff5964, alpha * 0.78);
+        this.graphics.strokeCircle(position.x, position.y, radius + 7);
+      } else if (signal.resource >= 0.7) {
+        this.graphics.lineStyle(1, 0xffc857, alpha * 0.72);
+        this.graphics.lineBetween(position.x - radius - 4, position.y, position.x + radius + 4, position.y);
+      }
+    }
+  }
+
+  private updateRadarLabels(snapshot: MinimapSnapshot, mapX: number, mapY: number): void {
+    const signals = snapshot.sectorSignals ?? [];
+    const nearest = [...signals].sort((first, second) => first.distance - second.distance)[0];
+    const highSignalCount = signals.filter((signal) => signal.signalStrength >= 0.7).length;
+
+    this.headerText
+      ?.setPosition(mapX + 8, mapY + 6)
+      .setText(`RADAR M  SIG ${signals.length}${highSignalCount > 0 ? `/${highSignalCount}` : ''}`);
+
+    this.signalText
+      ?.setPosition(mapX + MINIMAP_WIDTH - 8, mapY + 6)
+      .setText(nearest ? `${getSignalShortLabel(nearest.type)} ${formatRadarDistance(nearest.distance)}` : 'NO SIGNAL');
+  }
+}
+
+function getSignalShortLabel(type: SectorRegionType): string {
+  switch (type) {
+    case 'safe-drift':
+      return 'SAFE';
+    case 'salvage-field':
+      return 'SCRAP';
+    case 'asteroid-belt':
+      return 'ROCK';
+    case 'enemy-territory':
+      return 'HOSTILE';
+    case 'anomaly-signal':
+      return 'ANOM';
+  }
+}
+
+function formatRadarDistance(distance: number): string {
+  if (distance >= 1000) {
+    return `${(distance / 1000).toFixed(1)}k`;
+  }
+
+  return `${Math.round(distance)}`;
 }
 
 function getLiveEnemyMinimapColor(enemy: EnemyLabInstance): number {

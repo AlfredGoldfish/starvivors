@@ -89,6 +89,7 @@ export interface MinimapSnapshotInput {
   scrapPickups: ScrapPickup[];
   blackHole?: BlackHoleSystem;
   sectorRegions?: SectorRegion[];
+  sectorSignals?: MinimapSnapshot['sectorSignals'];
 }
 
 export interface GameplayHudSnapshotInput {
@@ -213,7 +214,8 @@ export function buildMinimapSnapshot(input: MinimapSnapshotInput): MinimapSnapsh
     liveEnemies: input.liveEnemies,
     scrapPickups: input.scrapPickups,
     blackHole: input.blackHole,
-    sectorRegions: input.sectorRegions
+    sectorRegions: input.sectorRegions,
+    sectorSignals: input.sectorSignals
   };
 }
 

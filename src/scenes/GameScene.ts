@@ -13308,7 +13308,19 @@ export class GameScene extends Phaser.Scene {
       liveEnemies: this.liveEnemies,
       scrapPickups: this.scrapPickups,
       blackHole: this.blackHole,
-      sectorRegions: this.sectorLayout.regions
+      sectorRegions: this.sectorLayout.regions,
+      sectorSignals: this.sectorSignalSpawns.map((spawn) => ({
+        id: spawn.id,
+        label: spawn.region.label,
+        type: spawn.region.type,
+        x: spawn.region.x,
+        y: spawn.region.y,
+        signalStrength: spawn.region.signalStrength,
+        danger: spawn.region.danger,
+        resource: spawn.region.resource,
+        active: this.activeSectorSignals.has(spawn.id),
+        distance: this.player ? this.getDistanceFromPlayer(spawn.region.x, spawn.region.y) : 0
+      }))
     });
   }
 
