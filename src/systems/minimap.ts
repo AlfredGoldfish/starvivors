@@ -4,9 +4,54 @@ import { MINIMAP_HEIGHT, MINIMAP_MARGIN, MINIMAP_PADDING, MINIMAP_WIDTH } from '
 import type { BasicAsteroid, BasicEnemy, ScrapPickup, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
 import type { BlackHoleSystem } from './blackHole';
 import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { RadarLevel } from './progressionStorage';
 import type { RareEventMinimapMarker } from './rareEventRuntime';
-import type { SectorScannerTarget } from './sectorScanner';
+import type { SectorScannerSnapshot, SectorScannerTarget } from './sectorScanner';
 import { getSectorRegionColor, type SectorRegion, type SectorRegionType } from './sectorGeneration';
+
+export interface MinimapCapabilities {
+  radarLevel: RadarLevel;
+  radarOnline: boolean;
+  showFrame: boolean;
+  showPlayer: boolean;
+  showCameraBounds: boolean;
+  showMissionObjective: boolean;
+  showSectorSignals: boolean;
+  showResourcePips: boolean;
+  showResourceRegions: boolean;
+  showThreatPips: boolean;
+  showDangerRegions: boolean;
+  showWorldEvents: boolean;
+  showRareEvents: boolean;
+  showBlackHoleAnomalies: boolean;
+  showScannerTarget: boolean;
+}
+
+export function getMinimapCapabilities(
+  radarLevel: RadarLevel,
+  sectorScannerSnapshot: SectorScannerSnapshot
+): MinimapCapabilities {
+  const radarOnline = radarLevel >= 1;
+  const showThreatFeed = radarLevel >= 4;
+
+  return {
+    radarLevel,
+    radarOnline,
+    showFrame: radarOnline,
+    showPlayer: radarOnline,
+    showCameraBounds: radarOnline,
+    showMissionObjective: radarOnline,
+    showSectorSignals: radarLevel >= 2,
+    showResourcePips: radarLevel >= 3,
+    showResourceRegions: radarLevel >= 3,
+    showThreatPips: showThreatFeed,
+    showDangerRegions: showThreatFeed,
+    showWorldEvents: showThreatFeed,
+    showRareEvents: showThreatFeed,
+    showBlackHoleAnomalies: showThreatFeed,
+    showScannerTarget: showThreatFeed && sectorScannerSnapshot.showMinimap
+  };
+}
 
 export interface SectorSignalRadarMarker {
   id: string;
@@ -23,6 +68,7 @@ export interface SectorSignalRadarMarker {
 
 export interface MinimapSnapshot {
   arena: ArenaSize;
+  capabilities: MinimapCapabilities;
   player?: Phaser.GameObjects.Container;
   camera?: {
     centerX: number;
@@ -115,7 +161,7 @@ export class MinimapSystem {
       return;
     }
 
-    const shouldShow = this.visible && !snapshot.isUpgradeOverlayOpen;
+    const shouldShow = snapshot.capabilities.showFrame && this.visible && !snapshot.isUpgradeOverlayOpen;
     this.graphics.setVisible(shouldShow);
     this.headerText?.setVisible(shouldShow);
     this.signalText?.setVisible(shouldShow);
@@ -139,13 +185,15 @@ export class MinimapSystem {
     this.graphics.strokeRect(innerX, innerY, innerWidth, innerHeight);
     this.drawRadarGrid(innerX, innerY, innerWidth, innerHeight);
     this.drawSectorRegions(snapshot, innerX, innerY, innerWidth, innerHeight);
-    this.drawSectorSignals(snapshot, innerX, innerY, innerWidth, innerHeight);
+    if (snapshot.capabilities.showSectorSignals) {
+      this.drawSectorSignals(snapshot, innerX, innerY, innerWidth, innerHeight);
+    }
 
-    if (snapshot.camera) {
+    if (snapshot.camera && snapshot.capabilities.showCameraBounds) {
       this.drawCameraViewport(snapshot.camera, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
     }
 
-    if (snapshot.missionObjective) {
+    if (snapshot.missionObjective && snapshot.capabilities.showMissionObjective) {
       const position = this.getPosition(snapshot.missionObjective.x, snapshot.missionObjective.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const markerRadius = Phaser.Math.Clamp((snapshot.missionObjective.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 3.5, 6.8);
       const color = snapshot.missionObjective.status === 'completed'
@@ -162,7 +210,7 @@ export class MinimapSystem {
       this.graphics.fillTriangle(position.x, position.y - 5, position.x - 4.6, position.y + 4, position.x + 4.6, position.y + 4);
     }
 
-    for (const event of snapshot.worldEvents ?? []) {
+    if (snapshot.capabilities.showWorldEvents) for (const event of snapshot.worldEvents ?? []) {
       const position = this.getPosition(event.x, event.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const dangerRadius = Phaser.Math.Clamp((event.dangerRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 7, 18);
       const markerRadius = Phaser.Math.Clamp((event.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 4.5, 8);
@@ -176,7 +224,7 @@ export class MinimapSystem {
       this.graphics.fillRect(position.x - 3.4, position.y - 3.4, 6.8, 6.8);
     }
 
-    for (const event of snapshot.rareEvents ?? []) {
+    if (snapshot.capabilities.showRareEvents) for (const event of snapshot.rareEvents ?? []) {
       const position = this.getPosition(event.x, event.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const dangerRadius = Phaser.Math.Clamp((event.dangerRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 8, 20);
       const objectiveRadius = Phaser.Math.Clamp((event.objectiveRadius / Math.min(snapshot.arena.width, snapshot.arena.height)) * innerWidth, 4.8, 8.8);
@@ -210,7 +258,7 @@ export class MinimapSystem {
       }
     }
 
-    if (snapshot.scannerTarget) {
+    if (snapshot.scannerTarget && snapshot.capabilities.showScannerTarget) {
       const position = this.getPosition(snapshot.scannerTarget.x, snapshot.scannerTarget.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       this.graphics.lineStyle(2, 0xb88cff, 0.94);
       this.graphics.strokeCircle(position.x, position.y, 9);
@@ -220,7 +268,7 @@ export class MinimapSystem {
       this.graphics.fillTriangle(position.x, position.y - 7, position.x - 6, position.y + 5, position.x + 6, position.y + 5);
     }
 
-    for (const asteroid of snapshot.basicAsteroids) {
+    if (snapshot.capabilities.showResourcePips) for (const asteroid of snapshot.basicAsteroids) {
       const position = this.getPosition(asteroid.body.x, asteroid.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const markerRadius = 1.3 + asteroid.tier * 0.55;
 
@@ -228,7 +276,7 @@ export class MinimapSystem {
       this.graphics.fillCircle(position.x, position.y, markerRadius);
     }
 
-    for (const enemy of snapshot.basicEnemies) {
+    if (snapshot.capabilities.showThreatPips) for (const enemy of snapshot.basicEnemies) {
       const position = this.getPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
 
       this.graphics.fillStyle(0xffc857, 0.88);
@@ -242,14 +290,14 @@ export class MinimapSystem {
       );
     }
 
-    for (const enemy of snapshot.shooterEnemies) {
+    if (snapshot.capabilities.showThreatPips) for (const enemy of snapshot.shooterEnemies) {
       const position = this.getPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
 
       this.graphics.fillStyle(0xff5964, 0.92);
       this.graphics.fillRect(position.x - 2.8, position.y - 2.8, 5.6, 5.6);
     }
 
-    for (const enemy of snapshot.tankEnemies) {
+    if (snapshot.capabilities.showThreatPips) for (const enemy of snapshot.tankEnemies) {
       const position = this.getPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
 
       this.graphics.fillStyle(0xb48cff, 0.94);
@@ -258,7 +306,7 @@ export class MinimapSystem {
       this.graphics.strokeCircle(position.x, position.y, 5.4);
     }
 
-    for (const enemy of snapshot.liveEnemies ?? []) {
+    if (snapshot.capabilities.showThreatPips) for (const enemy of snapshot.liveEnemies ?? []) {
       const position = this.getPosition(enemy.body.x, enemy.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const color = getLiveEnemyMinimapColor(enemy);
 
@@ -281,7 +329,7 @@ export class MinimapSystem {
       }
     }
 
-    for (const scrap of snapshot.scrapPickups) {
+    if (snapshot.capabilities.showResourcePips) for (const scrap of snapshot.scrapPickups) {
       const position = this.getPosition(scrap.body.x, scrap.body.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
       const color = scrap.value >= 76 ? 0xff6f3c : scrap.value >= 26 ? 0xffc857 : scrap.value >= 5 ? 0x52ff9a : 0x73f2ff;
       const radius = scrap.value >= 26 ? 2.4 : scrap.value >= 5 ? 2.1 : 1.8;
@@ -290,7 +338,7 @@ export class MinimapSystem {
       this.graphics.fillCircle(position.x, position.y, radius);
     }
 
-    if (snapshot.blackHole) {
+    if (snapshot.blackHole && snapshot.capabilities.showBlackHoleAnomalies) {
       const position = this.getPosition(
         snapshot.blackHole.body.x,
         snapshot.blackHole.body.y,
@@ -309,10 +357,12 @@ export class MinimapSystem {
 
     const playerPosition = this.getPosition(snapshot.player.x, snapshot.player.y, innerX, innerY, innerWidth, innerHeight, snapshot.arena);
 
-    this.graphics.fillStyle(0x42f5d7, 1);
-    this.graphics.fillCircle(playerPosition.x, playerPosition.y, 4.2);
-    this.graphics.lineStyle(1, 0xf2fbff, 0.95);
-    this.graphics.strokeCircle(playerPosition.x, playerPosition.y, 5.6);
+    if (snapshot.capabilities.showPlayer) {
+      this.graphics.fillStyle(0x42f5d7, 1);
+      this.graphics.fillCircle(playerPosition.x, playerPosition.y, 4.2);
+      this.graphics.lineStyle(1, 0xf2fbff, 0.95);
+      this.graphics.strokeCircle(playerPosition.x, playerPosition.y, 5.6);
+    }
     this.updateRadarLabels(snapshot, mapX, mapY);
   }
 
@@ -380,6 +430,16 @@ export class MinimapSystem {
     }
 
     for (const region of snapshot.sectorRegions ?? []) {
+      const isResourceRegion = region.type === 'salvage-field' || region.type === 'asteroid-belt';
+      const isDangerRegion = region.type === 'enemy-territory' || region.type === 'anomaly-signal';
+      if (
+        (isResourceRegion && !snapshot.capabilities.showResourceRegions) ||
+        (isDangerRegion && !snapshot.capabilities.showDangerRegions) ||
+        (!isResourceRegion && !isDangerRegion)
+      ) {
+        continue;
+      }
+
       const position = this.getPosition(region.x, region.y, mapX, mapY, mapWidth, mapHeight, snapshot.arena);
       const radius = Phaser.Math.Clamp((region.radius / Math.min(snapshot.arena.width, snapshot.arena.height)) * mapWidth, 5, 14);
       const color = getSectorRegionColor(region.type);
@@ -432,17 +492,25 @@ export class MinimapSystem {
   }
 
   private updateRadarLabels(snapshot: MinimapSnapshot, mapX: number, mapY: number): void {
-    const signals = snapshot.sectorSignals ?? [];
+    const signals = snapshot.capabilities.showSectorSignals ? snapshot.sectorSignals ?? [] : [];
     const nearest = [...signals].sort((first, second) => first.distance - second.distance)[0];
     const highSignalCount = signals.filter((signal) => signal.signalStrength >= 0.7).length;
 
     this.headerText
       ?.setPosition(mapX + 8, mapY + 6)
-      .setText(`RADAR M  SIG ${signals.length}${highSignalCount > 0 ? `/${highSignalCount}` : ''}`);
+      .setText(
+        snapshot.capabilities.showSectorSignals
+          ? `RADAR L${snapshot.capabilities.radarLevel}  SIG ${signals.length}${highSignalCount > 0 ? `/${highSignalCount}` : ''}`
+          : `RADAR L${snapshot.capabilities.radarLevel}  SCOPE`
+      );
 
     this.signalText
       ?.setPosition(mapX + MINIMAP_WIDTH - 8, mapY + 6)
-      .setText(nearest ? `${getSignalShortLabel(nearest.type)} ${formatRadarDistance(nearest.distance)}` : 'NO SIGNAL');
+      .setText(
+        snapshot.capabilities.showSectorSignals
+          ? nearest ? `${getSignalShortLabel(nearest.type)} ${formatRadarDistance(nearest.distance)}` : 'NO SIGNAL'
+          : 'BASIC FEED'
+      );
   }
 }
 

@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import { HUD_BAR_HEIGHT, HUD_BAR_WIDTH, HUD_MARGIN, HUD_RIGHT_BAR_Y } from '../scenes/gameConstants';
+import { HUD_MARGIN } from '../scenes/gameConstants';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
 
 export type WeaponHotbarSlotType = 'auto' | 'primary' | 'secondary';
@@ -39,7 +39,10 @@ export interface GameplayHudSnapshot {
   scrapSpentThisRun: number;
   nextRerollCost: number;
   bankedUpgrades: number;
+  radarStatus: string;
+  radarLevel: number;
   sectorScannerStatus: string;
+  sectorScannerCompleted: boolean;
   contractStatusLine: string;
   autoWeaponName: string;
   primaryWeaponName: string;
@@ -49,6 +52,9 @@ export interface GameplayHudSnapshot {
   hullProgress: number;
   xpProgress: number;
   weaponProgress: number;
+  isHullCritical: boolean;
+  isUpgradeReady: boolean;
+  isMissionDanger: boolean;
   hasRammingShield: boolean;
   rammingShieldHp: number;
   rammingShieldMaxHp: number;
@@ -73,6 +79,10 @@ export class GameplayHudSystem {
   private readonly options: GameplayHudOptions;
   private hudGraphics?: Phaser.GameObjects.Graphics;
   private hudText?: Phaser.GameObjects.Text;
+  private xpTimerText?: Phaser.GameObjects.Text;
+  private missionText?: Phaser.GameObjects.Text;
+  private warningText?: Phaser.GameObjects.Text;
+  private dashboardTexts: Phaser.GameObjects.Text[] = [];
   private statusIcon?: Phaser.GameObjects.Image;
   private hotbarGraphics?: Phaser.GameObjects.Graphics;
   private hotbarTexts: Partial<Record<WeaponHotbarSlotType, Phaser.GameObjects.Text>> = {};
@@ -95,21 +105,66 @@ export class GameplayHudSystem {
   }
 
   create(): void {
+    this.dashboardTexts = [];
+    this.hotbarTexts = {};
+    this.hotbarZones = {};
+    this.pickerTexts = [];
+    this.pickerZones = [];
+    this.openPickerSlot = null;
+    this.hoveredSlot = null;
+
     this.hudGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1000);
     this.hudText = this.scene.add
-      .text(this.scene.scale.width - HUD_MARGIN, HUD_MARGIN, '', {
+      .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
+        fontSize: '14px',
         color: '#f2fbff',
-        backgroundColor: 'rgba(2, 4, 10, 0.72)',
-        padding: { x: 9, y: 7 },
-        fixedWidth: 376,
-        lineSpacing: 2,
-        wordWrap: { width: 358, useAdvancedWrap: true }
+        fixedWidth: 380,
+        lineSpacing: 3,
+        wordWrap: { width: 368, useAdvancedWrap: true }
       })
-      .setOrigin(1, 0)
+      .setOrigin(0, 0)
       .setScrollFactor(0)
-      .setDepth(1000);
+      .setDepth(1002);
+    this.xpTimerText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '16px',
+        color: '#f2fbff',
+        align: 'center',
+        fixedWidth: 560
+      })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(1002);
+    this.missionText = this.hudText;
+    this.warningText = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        color: '#02040a',
+        align: 'center',
+        fixedWidth: 620
+      })
+      .setOrigin(0.5, 0)
+      .setScrollFactor(0)
+      .setDepth(1002);
+    for (let i = 0; i < 4; i += 1) {
+      const text = this.scene.add
+        .text(0, 0, '', {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: '12px',
+          color: '#f2fbff',
+          align: 'center',
+          fixedWidth: 152,
+          lineSpacing: 2,
+          wordWrap: { width: 144, useAdvancedWrap: true }
+        })
+        .setOrigin(0.5, 0.5)
+        .setScrollFactor(0)
+        .setDepth(1010);
+      this.dashboardTexts.push(text);
+    }
     if (this.options.statusIconTextureKey && this.scene.textures.exists(this.options.statusIconTextureKey)) {
       this.statusIcon = this.scene.add
         .image(0, 0, this.options.statusIconTextureKey)
@@ -136,15 +191,15 @@ export class GameplayHudSystem {
       const text = this.scene.add
         .text(0, 0, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '11px',
+          fontSize: '12px',
           color: '#f2fbff',
           align: 'center',
-          fixedWidth: 92
+          fixedWidth: 108
         })
         .setOrigin(0.5, 0.5)
         .setScrollFactor(0)
         .setDepth(1004);
-      const zone = this.scene.add.zone(0, 0, 96, 52).setScrollFactor(0).setDepth(1007).setInteractive({ useHandCursor: true });
+      const zone = this.scene.add.zone(0, 0, 112, 58).setScrollFactor(0).setDepth(1007).setInteractive({ useHandCursor: true });
 
       zone.on('pointerover', () => {
         this.hoveredSlot = slot;
@@ -166,17 +221,17 @@ export class GameplayHudSystem {
     this.ejectText = this.scene.add
       .text(0, 0, 'EJECT', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
+        fontSize: '13px',
         color: '#ffb3b8',
         align: 'center',
-        fixedWidth: 64
+        fixedWidth: 74
       })
       .setOrigin(0.5)
       .setScrollFactor(0)
       .setDepth(1004);
 
     this.ejectZone = this.scene.add
-      .zone(0, 0, 68, 40)
+      .zone(0, 0, 78, 44)
       .setScrollFactor(0)
       .setDepth(1007)
       .setInteractive({ useHandCursor: true });
@@ -188,35 +243,29 @@ export class GameplayHudSystem {
   }
 
   update(snapshot: GameplayHudSnapshot): void {
-    if (!this.hudText || !this.hudGraphics) {
+    if (!this.hudText || !this.hudGraphics || !this.xpTimerText || !this.missionText || !this.warningText) {
       return;
     }
 
     this.latestSnapshot = snapshot;
-    const hudX = this.scene.scale.width - HUD_MARGIN;
-    const hudY = HUD_MARGIN + 50;
-    const upgradeStatus = snapshot.bankedUpgrades > 0 ? `UPGRADES x${snapshot.bankedUpgrades} READY` : 'UPGRADES none';
-    const shieldStatus = snapshot.hasRammingShield
-      ? `\nSHIELD ${Math.ceil(snapshot.rammingShieldHp)}/${Math.round(snapshot.rammingShieldMaxHp)}` +
-        `  DASH ${snapshot.rammingShieldDashCharges}/${snapshot.rammingShieldDashMaxCharges}${snapshot.isRammingShieldEmpowered ? '  EMP' : ''}`
-      : '';
-    const missionLine = `${snapshot.contractStatusLine}`.replace(/^Contract /, 'MISSION ');
-    const weaponsLine = `WEAPONS P ${snapshot.primaryWeaponName} | S ${snapshot.secondaryWeaponName} | A ${snapshot.autoWeaponName}`;
+    const topLayout = this.getTopHudLayout();
+    const distance = Math.max(0, Math.round(snapshot.missionObjectiveDistance - snapshot.missionObjectiveRadius));
 
-    this.hudText
-      .setPosition(hudX, hudY)
+    this.xpTimerText
+      .setPosition(topLayout.xpX + topLayout.xpWidth / 2, topLayout.y + 12)
+      .setText(`XP ${snapshot.playerXp}/${snapshot.nextXpThreshold}     RUN ${this.formatSurvivalTime(snapshot.timeSeconds)}`);
+    this.missionText
+      .setPosition(topLayout.missionX + 18, topLayout.y + 12)
       .setText(
-        `RUN ${this.formatSurvivalTime(snapshot.timeSeconds)}  ${snapshot.missionName} ${snapshot.missionStatus}\n` +
-          `HULL ${Math.round(snapshot.playerHull)}/${Math.round(snapshot.maxHull)} ${snapshot.status}  FUEL ${Math.ceil(snapshot.fuel)}/${snapshot.maxFuel}${snapshot.isFuelEmergency ? ' EMERGENCY' : ''}` +
-          shieldStatus +
-          `\n${missionLine}\n` +
-          `XP ${snapshot.playerXp}/${snapshot.nextXpThreshold}  SCRAP ${snapshot.runScrapTotal}  SPENT ${snapshot.scrapSpentThisRun}\n` +
-          `SCANNER ${snapshot.sectorScannerStatus}  REROLL ${snapshot.nextRerollCost}  ${upgradeStatus}\n` +
-          weaponsLine
+        `${snapshot.missionName}  ${snapshot.missionStatus}\n` +
+          `${snapshot.contractStatusLine.replace(/^Contract /, '')}\n` +
+          `RANGE ${distance}m`
       );
     this.statusIcon
-      ?.setPosition(Math.max(24, hudX - 404), hudY + 18)
+      ?.setPosition(Math.max(28, topLayout.missionX - 22), topLayout.y + 39)
       .setVisible(true);
+    this.updateDashboardTexts(snapshot);
+    this.updateWarningText(snapshot);
 
     this.drawBars(snapshot);
     this.drawHotbar();
@@ -228,39 +277,147 @@ export class GameplayHudSystem {
     }
 
     const centerX = this.scene.scale.width / 2;
-    const xpX = centerX - HUD_BAR_WIDTH / 2;
-    const xpY = HUD_MARGIN;
-    const hullX = this.scene.scale.width - HUD_MARGIN - HUD_BAR_WIDTH;
-    const hullY = HUD_RIGHT_BAR_Y;
-    const pulseY = hullY + 26;
-    const shieldY = pulseY + 26;
-    const fuelY = xpY + 26;
+    const topLayout = this.getTopHudLayout();
+    const xpBarY = topLayout.y + 47;
 
     this.hudGraphics.clear();
-    this.drawBar(xpX, xpY, Phaser.Math.Clamp(snapshot.xpProgress, 0, 1), 0x42f5d7);
-    this.drawBar(xpX, fuelY, Phaser.Math.Clamp(snapshot.fuelProgress, 0, 1), snapshot.isFuelEmergency ? 0xff5964 : 0xffc857);
-    this.drawBar(hullX, hullY, Phaser.Math.Clamp(snapshot.hullProgress, 0, 1), 0xff5964);
-    this.drawBar(hullX, pulseY, Phaser.Math.Clamp(snapshot.weaponProgress, 0, 1), 0xffc857);
+    this.drawCockpitPanel(this.hudGraphics, topLayout.xpX, topLayout.y, topLayout.xpWidth, topLayout.height, 0x42f5d7);
+    this.drawSegmentedBar(
+      topLayout.xpX + 16,
+      xpBarY,
+      topLayout.xpWidth - 32,
+      18,
+      Phaser.Math.Clamp(snapshot.xpProgress, 0, 1),
+      0x42f5d7
+    );
 
+    this.drawCockpitPanel(
+      this.hudGraphics,
+      topLayout.missionX,
+      topLayout.y,
+      topLayout.missionWidth,
+      topLayout.height,
+      snapshot.isMissionDanger ? 0xff5964 : 0xffc857
+    );
+    this.drawWarningChips(snapshot);
+  }
+
+  private updateDashboardTexts(snapshot: GameplayHudSnapshot): void {
+    if (this.dashboardTexts.length < 4) {
+      return;
+    }
+
+    const shieldLine = snapshot.hasRammingShield
+      ? `SHD ${Math.ceil(snapshot.rammingShieldHp)}/${Math.round(snapshot.rammingShieldMaxHp)} D${snapshot.rammingShieldDashCharges}/${snapshot.rammingShieldDashMaxCharges}`
+      : snapshot.status;
+    const upgradeLine = snapshot.bankedUpgrades > 0 ? `BANK ${snapshot.bankedUpgrades} READY` : `REROLL ${snapshot.nextRerollCost}`;
+    const positions = this.getDashboardInfoPositions();
+
+    const lines = [
+      `HULL ${Math.round(snapshot.playerHull)}/${Math.round(snapshot.maxHull)}\n${shieldLine}`,
+      `FUEL ${Math.ceil(snapshot.fuel)}/${snapshot.maxFuel}\n${snapshot.isFuelEmergency ? 'EMERGENCY' : 'THRUST READY'}`,
+      `SCRAP ${snapshot.runScrapTotal}\n${upgradeLine}`,
+      `RAD L${snapshot.radarLevel} ${snapshot.radarStatus}\nSCN ${snapshot.sectorScannerStatus}`
+    ];
+
+    this.dashboardTexts.forEach((text, index) => {
+      text
+        .setVisible(true)
+        .setDepth(1010)
+        .setPosition(positions[index].x, positions[index].y)
+        .setText(lines[index] ?? '');
+      this.scene.children.bringToTop(text);
+    });
+  }
+
+  private updateWarningText(snapshot: GameplayHudSnapshot): void {
+    if (!this.warningText) {
+      return;
+    }
+
+    const warnings = this.getWarningLabels(snapshot);
+    this.warningText
+      .setPosition(this.scene.scale.width / 2, this.getTopHudLayout().y + this.getTopHudLayout().height + 10)
+      .setText(warnings.join('   '))
+      .setVisible(warnings.length > 0);
+  }
+
+  private drawWarningChips(snapshot: GameplayHudSnapshot): void {
+    if (!this.hudGraphics) {
+      return;
+    }
+
+    const warnings = this.getWarningLabels(snapshot);
+    if (warnings.length <= 0) {
+      return;
+    }
+
+    const totalWidth = Math.min(680, 108 + warnings.join('').length * 8);
+    const x = this.scene.scale.width / 2 - totalWidth / 2;
+    const topLayout = this.getTopHudLayout();
+    const y = topLayout.y + topLayout.height + 6;
+    this.hudGraphics.fillStyle(snapshot.isFuelEmergency || snapshot.isHullCritical ? 0xff5964 : 0xffc857, 0.88);
+    this.hudGraphics.fillRoundedRect(x, y, totalWidth, 24, 6);
+    this.hudGraphics.lineStyle(1, 0xf2fbff, 0.42);
+    this.hudGraphics.strokeRoundedRect(x, y, totalWidth, 24, 6);
+  }
+
+  private getWarningLabels(snapshot: GameplayHudSnapshot): string[] {
+    return [
+      snapshot.isFuelEmergency ? 'FUEL EMERGENCY' : '',
+      snapshot.isHullCritical ? 'LOW HULL' : '',
+      snapshot.isUpgradeReady ? `UPGRADE x${snapshot.bankedUpgrades}` : '',
+      snapshot.isMissionDanger ? 'MISSION DANGER' : '',
+      snapshot.sectorScannerCompleted ? 'SCAN COMPLETE' : ''
+    ].filter(Boolean);
+  }
+
+  private drawDashboardMeters(snapshot: GameplayHudSnapshot): void {
+    if (!this.hotbarGraphics) {
+      return;
+    }
+
+    const layout = this.getDashboardLayout();
+    const positions = this.getDashboardInfoPositions();
+    const meterWidth = layout.infoBayWidth - 24;
+    this.drawMiniMeter(
+      positions[0].x - meterWidth / 2,
+      positions[0].y + 27,
+      Phaser.Math.Clamp(snapshot.hullProgress, 0, 1),
+      snapshot.isHullCritical ? 0xff5964 : 0x52ff9a,
+      meterWidth
+    );
+    this.drawMiniMeter(
+      positions[1].x - meterWidth / 2,
+      positions[1].y + 27,
+      Phaser.Math.Clamp(snapshot.fuelProgress, 0, 1),
+      snapshot.isFuelEmergency ? 0xff5964 : 0xffc857,
+      meterWidth
+    );
     if (snapshot.hasRammingShield) {
       const shieldProgress = snapshot.rammingShieldMaxHp > 0 ? snapshot.rammingShieldHp / snapshot.rammingShieldMaxHp : 0;
-      this.drawBar(hullX, shieldY, Phaser.Math.Clamp(shieldProgress, 0, 1), 0x42f5d7);
+      this.drawMiniMeter(positions[0].x - meterWidth / 2, positions[0].y + 34, Phaser.Math.Clamp(shieldProgress, 0, 1), 0x42f5d7, meterWidth);
     }
   }
 
-  private drawBar(x: number, y: number, progress: number, color: number): void {
+  private drawSegmentedBar(x: number, y: number, width: number, height: number, progress: number, color: number): void {
     if (!this.hudGraphics) {
       return;
     }
 
     this.hudGraphics.fillStyle(0x02040a, 0.76);
-    this.hudGraphics.fillRoundedRect(x - 2, y - 2, HUD_BAR_WIDTH + 4, HUD_BAR_HEIGHT + 4, 4);
-    this.hudGraphics.lineStyle(1, 0x52627f, 0.78);
-    this.hudGraphics.strokeRoundedRect(x - 2, y - 2, HUD_BAR_WIDTH + 4, HUD_BAR_HEIGHT + 4, 4);
+    this.hudGraphics.fillRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
+    this.hudGraphics.lineStyle(1, 0xc89452, 0.72);
+    this.hudGraphics.strokeRoundedRect(x - 2, y - 2, width + 4, height + 4, 4);
     this.hudGraphics.fillStyle(0x111a24, 0.92);
-    this.hudGraphics.fillRect(x, y, HUD_BAR_WIDTH, HUD_BAR_HEIGHT);
+    this.hudGraphics.fillRect(x, y, width, height);
     this.hudGraphics.fillStyle(color, 0.88);
-    this.hudGraphics.fillRect(x, y, HUD_BAR_WIDTH * progress, HUD_BAR_HEIGHT);
+    this.hudGraphics.fillRect(x, y, width * progress, height);
+    this.hudGraphics.lineStyle(1, 0x02040a, 0.44);
+    for (let index = 1; index < 12; index += 1) {
+      const tickX = x + (width * index) / 12;
+      this.hudGraphics.lineBetween(tickX, y, tickX, y + height);
+    }
   }
 
   private drawHotbar(): void {
@@ -273,6 +430,7 @@ export class GameplayHudSystem {
 
     this.hotbarGraphics.clear();
     this.drawDashboardShell();
+    this.drawDashboardMeters(this.latestSnapshot);
 
     for (const slotSnapshot of slots) {
       const position = positions[slotSnapshot.slot];
@@ -287,11 +445,11 @@ export class GameplayHudSystem {
       const strokeColor = slotSnapshot.slot === 'auto' ? 0x42f5d7 : slotSnapshot.slot === 'primary' ? 0xffc857 : 0xa8c7ff;
 
       this.hotbarGraphics.fillStyle(fillColor, 0.9);
-      this.hotbarGraphics.fillRoundedRect(position.x - 48, position.y - 26, 96, 52, 7);
+      this.hotbarGraphics.fillRoundedRect(position.x - 56, position.y - 29, 112, 58, 7);
       this.hotbarGraphics.lineStyle(isOpen ? 3 : 2, strokeColor, isOpen ? 1 : 0.78);
-      this.hotbarGraphics.strokeRoundedRect(position.x - 48, position.y - 26, 96, 52, 7);
+      this.hotbarGraphics.strokeRoundedRect(position.x - 56, position.y - 29, 112, 58, 7);
       this.hotbarGraphics.fillStyle(strokeColor, 0.7);
-      this.hotbarGraphics.fillRect(position.x - 46, position.y + 22, 92 * Phaser.Math.Clamp(slotSnapshot.cooldownProgress, 0, 1), 2);
+      this.hotbarGraphics.fillRect(position.x - 52, position.y + 24, 104 * Phaser.Math.Clamp(slotSnapshot.cooldownProgress, 0, 1), 3);
 
       text.setPosition(position.x, position.y).setText(`${slotSnapshot.controlLabel}\n${slotSnapshot.title}`);
       zone.setPosition(position.x, position.y);
@@ -308,19 +466,22 @@ export class GameplayHudSystem {
       return;
     }
 
-    const centerX = this.scene.scale.width / 2;
-    const bottomY = this.scene.scale.height - 16;
-    const width = 660;
-    const height = 138;
+    const layout = this.getDashboardLayout();
 
-    this.hotbarGraphics.fillStyle(0x02040a, 0.8);
-    this.hotbarGraphics.fillEllipse(centerX, bottomY, width, height);
-    this.hotbarGraphics.fillStyle(0x071018, 0.9);
-    this.hotbarGraphics.fillEllipse(centerX, bottomY + 8, width - 18, height - 20);
-    this.hotbarGraphics.lineStyle(2, 0x42f5d7, 0.84);
-    this.hotbarGraphics.strokeEllipse(centerX, bottomY, width, height);
-    this.hotbarGraphics.lineStyle(1, 0xffc857, 0.34);
-    this.hotbarGraphics.strokeEllipse(centerX, bottomY + 8, width - 42, height - 42);
+    this.drawCockpitPanel(this.hotbarGraphics, layout.x, layout.y, layout.width, layout.height, 0x42f5d7);
+    this.hotbarGraphics.lineStyle(1, 0xffc857, 0.28);
+    this.hotbarGraphics.lineBetween(layout.x + 20, layout.y + 70, layout.x + layout.width - 20, layout.y + 70);
+
+    for (const position of this.getDashboardInfoPositions()) {
+      this.hotbarGraphics.fillStyle(0x071018, 0.88);
+      this.hotbarGraphics.fillRoundedRect(position.x - layout.infoBayWidth / 2, position.y - 31, layout.infoBayWidth, 62, 6);
+      this.hotbarGraphics.lineStyle(1, 0xc89452, 0.48);
+      this.hotbarGraphics.strokeRoundedRect(position.x - layout.infoBayWidth / 2, position.y - 31, layout.infoBayWidth, 62, 6);
+    }
+
+    this.hotbarGraphics.lineStyle(1, 0xc89452, 0.28);
+    this.hotbarGraphics.lineBetween(layout.x + layout.width * 0.32, layout.y + 82, layout.x + layout.width * 0.32, layout.y + layout.height - 14);
+    this.hotbarGraphics.lineBetween(layout.x + layout.width * 0.68, layout.y + 82, layout.x + layout.width * 0.68, layout.y + layout.height - 14);
   }
 
   private drawEjectButton(): void {
@@ -328,15 +489,16 @@ export class GameplayHudSystem {
       return;
     }
 
-    const x = this.scene.scale.width / 2 + 252;
-    const y = this.scene.scale.height - 74;
+    const layout = this.getDashboardLayout();
+    const x = layout.x + layout.width - 78;
+    const y = layout.y + layout.height - 42;
 
     this.hotbarGraphics.fillStyle(0x241018, 0.96);
-    this.hotbarGraphics.fillRoundedRect(x - 34, y - 20, 68, 40, 7);
+    this.hotbarGraphics.fillRoundedRect(x - 39, y - 22, 78, 44, 7);
     this.hotbarGraphics.lineStyle(2, 0xff5964, 0.9);
-    this.hotbarGraphics.strokeRoundedRect(x - 34, y - 20, 68, 40, 7);
+    this.hotbarGraphics.strokeRoundedRect(x - 39, y - 22, 78, 44, 7);
     this.hotbarGraphics.fillStyle(0xff5964, 0.28);
-    this.hotbarGraphics.fillRect(x - 26, y + 13, 52, 2);
+    this.hotbarGraphics.fillRect(x - 29, y + 15, 58, 3);
     this.ejectText.setPosition(x, y).setVisible(true);
     this.ejectZone.setPosition(x, y).setVisible(true);
   }
@@ -433,13 +595,114 @@ export class GameplayHudSystem {
 
   private getHotbarPositions(): Record<WeaponHotbarSlotType, { x: number; y: number }> {
     const centerX = this.scene.scale.width / 2;
-    const baseY = this.scene.scale.height - 74;
+    const layout = this.getDashboardLayout();
+    const baseY = layout.y + layout.height - 42;
 
     return {
-      primary: { x: centerX - 128, y: baseY },
+      primary: { x: centerX - 136, y: baseY },
       auto: { x: centerX, y: baseY },
-      secondary: { x: centerX + 128, y: baseY }
+      secondary: { x: centerX + 136, y: baseY }
     };
+  }
+
+  private getDashboardInfoPositions(): Array<{ x: number; y: number }> {
+    const layout = this.getDashboardLayout();
+    const y = layout.y + 44;
+    const startX = layout.x + 18 + layout.infoBayWidth / 2;
+    const step = layout.infoBayWidth + layout.infoBayGap;
+
+    return [
+      { x: startX, y },
+      { x: startX + step, y },
+      { x: startX + step * 2, y },
+      { x: startX + step * 3, y }
+    ];
+  }
+
+  private getTopHudLayout(): {
+    x: number;
+    y: number;
+    xpX: number;
+    xpWidth: number;
+    missionX: number;
+    missionWidth: number;
+    height: number;
+  } {
+    const margin = HUD_MARGIN + 2;
+    const gap = 14;
+    const height = 82;
+    const missionWidth = Phaser.Math.Clamp(this.scene.scale.width * 0.42, 330, 410);
+    const availableWidth = this.scene.scale.width - margin * 2 - gap - missionWidth;
+    const xpWidth = Phaser.Math.Clamp(availableWidth, 330, 640);
+    const groupWidth = xpWidth + gap + missionWidth;
+    const x = Math.max(margin, (this.scene.scale.width - groupWidth) / 2);
+
+    return {
+      x,
+      y: HUD_MARGIN + 2,
+      xpX: x,
+      xpWidth,
+      missionX: x + xpWidth + gap,
+      missionWidth,
+      height
+    };
+  }
+
+  private getDashboardLayout(): {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    infoBayWidth: number;
+    infoBayGap: number;
+  } {
+    const width = Math.min(1040, this.scene.scale.width - 28);
+    const height = 166;
+    const x = this.scene.scale.width / 2 - width / 2;
+    const y = this.scene.scale.height - height - 14;
+    const infoBayGap = 10;
+    const infoBayWidth = Math.min(172, (width - 36 - infoBayGap * 3) / 4);
+
+    return { x, y, width, height, infoBayWidth, infoBayGap };
+  }
+
+  private drawCockpitPanel(
+    graphics: Phaser.GameObjects.Graphics,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+    accentColor: number
+  ): void {
+    graphics.fillStyle(0x02040a, 0.82);
+    graphics.fillRoundedRect(x, y, width, height, 7);
+    graphics.fillStyle(0x111a24, 0.88);
+    graphics.fillRoundedRect(x + 4, y + 4, width - 8, height - 8, 5);
+    graphics.lineStyle(2, 0x2a3444, 0.9);
+    graphics.strokeRoundedRect(x, y, width, height, 7);
+    graphics.lineStyle(1, 0xc89452, 0.58);
+    graphics.strokeRoundedRect(x + 5, y + 5, width - 10, height - 10, 5);
+    graphics.lineStyle(1, accentColor, 0.68);
+    graphics.lineBetween(x + 14, y + height - 8, x + width - 14, y + height - 8);
+    graphics.fillStyle(0xc89452, 0.72);
+    graphics.fillCircle(x + 11, y + 11, 1.8);
+    graphics.fillCircle(x + width - 11, y + 11, 1.8);
+    graphics.fillCircle(x + 11, y + height - 11, 1.8);
+    graphics.fillCircle(x + width - 11, y + height - 11, 1.8);
+  }
+
+  private drawMiniMeter(x: number, y: number, progress: number, color: number, width = 104): void {
+    if (!this.hotbarGraphics) {
+      return;
+    }
+
+    const height = 4;
+    this.hotbarGraphics.fillStyle(0x02040a, 0.78);
+    this.hotbarGraphics.fillRect(x, y, width, height);
+    this.hotbarGraphics.fillStyle(color, 0.9);
+    this.hotbarGraphics.fillRect(x, y, width * progress, height);
+    this.hotbarGraphics.lineStyle(1, 0x52627f, 0.48);
+    this.hotbarGraphics.strokeRect(x, y, width, height);
   }
 
   private formatSurvivalTime(totalSeconds: number): string {

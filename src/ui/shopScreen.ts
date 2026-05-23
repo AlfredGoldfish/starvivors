@@ -14,6 +14,8 @@ export interface ShopScreenConfig {
   scene: Phaser.Scene;
   backTarget: ShopBackTarget;
   totalCredits: number;
+  radarLevel: number;
+  radarCost: number | null;
   isSectorScannerAvailable: boolean;
   sectorScannerLevel: number;
   sectorScannerCost: number | null;
@@ -27,6 +29,7 @@ export interface ShopScreenConfig {
   nav?: Omit<PreRunNavConfig, 'scene' | 'container' | 'actionZones' | 'activeTab'>;
   onPurchasePermanentUpgrade: (upgrade: PermanentUpgradeDefinition) => void;
   onAdjustActivePermanentUpgradeLevel: (id: PermanentUpgradeId, delta: number) => void;
+  onPurchaseRadar: () => void;
   onPurchaseSectorScanner: () => void;
   onBack: () => void;
 }
@@ -89,7 +92,8 @@ export function createShopScreen(config: ShopScreenConfig): ScreenHandle {
     .setDepth(1300);
 
   const shopCards = [...PERMANENT_UPGRADE_DEFINITIONS];
-  const scannerCardIndex = shopCards.length;
+  const radarCardIndex = shopCards.length;
+  const scannerCardIndex = shopCards.length + 1;
 
   for (let i = 0; i < shopCards.length; i += 1) {
     const column = i % columnCount;
@@ -189,6 +193,90 @@ export function createShopScreen(config: ShopScreenConfig): ScreenHandle {
       label: '+',
       callback: () => config.onAdjustActivePermanentUpgradeLevel(upgrade.id, 1),
       isEnabled: canIncreaseActive,
+      isActionActive: config.isActionActive,
+      resetCursor: config.resetCursor
+    });
+  }
+
+  {
+    const column = radarCardIndex % columnCount;
+    const row = Math.floor(radarCardIndex / columnCount);
+    const rowX = gridX + column * (cardWidth + columnGap);
+    const rowY = gridTop + row * (cardHeight + rowGap);
+    const radarMaxed = config.radarLevel >= 4;
+    const radarLabel = radarMaxed ? 'Maxed' : config.radarLevel <= 0 ? 'Buy' : 'Upg';
+    const radarCostLabel = radarMaxed ? 'Maxed' : `Cost ${config.radarCost ?? 0}`;
+    const radarName = config.radarLevel <= 0
+      ? 'Radar Array'
+      : config.radarLevel === 1
+        ? 'Salvaged Scope'
+        : config.radarLevel === 2
+          ? 'Signal Decoder'
+          : config.radarLevel === 3
+            ? 'Resource Sweep'
+            : 'Threat Feed';
+    const radarDescription = config.radarLevel <= 0
+      ? 'Unlocks the cockpit minimap frame.'
+      : config.radarLevel === 1
+        ? 'Adds sector signal decoding.'
+        : config.radarLevel === 2
+          ? 'Adds scrap and resource pips.'
+          : config.radarLevel === 3
+            ? 'Adds threats, events, and anomalies.'
+            : 'All radar layers online.';
+    const canBuyRadar = !radarMaxed && config.radarCost !== null && config.totalCredits >= config.radarCost;
+
+    background.fillStyle(0x111a24, 0.94);
+    background.fillRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
+    background.lineStyle(1, 0x52627f, 0.82);
+    background.strokeRoundedRect(rowX, rowY, cardWidth, cardHeight, 6);
+    background.fillStyle(0x42f5d7, 0.18);
+    background.fillRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
+    background.lineStyle(1, 0x42f5d7, 0.8);
+    background.strokeRoundedRect(rowX + 9, rowY + (cardHeight - badgeSize) / 2, badgeSize, badgeSize, 5);
+
+    const badgeText = config.scene.add
+      .text(rowX + 9 + badgeSize / 2, rowY + cardHeight / 2, 'RAD', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: columnCount === 2 ? '11px' : '10px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0.5, 0.5);
+    container.add(badgeText);
+
+    const rowText = config.scene.add
+      .text(
+        rowX + textInset,
+        rowY + (columnCount === 2 ? 7 : 5),
+        `${radarName}  Lv ${config.radarLevel}/4\n${radarDescription}  ${radarCostLabel}`,
+        {
+          fontFamily: 'Consolas, "Courier New", monospace',
+          fontSize: columnCount === 2 ? '12px' : '11px',
+          color: '#f2fbff',
+          fixedWidth: textWidth,
+          lineSpacing: 1,
+          wordWrap: { width: textWidth, useAdvancedWrap: true }
+        }
+      )
+      .setOrigin(0, 0);
+    container.add(rowText);
+
+    const controlsX = rowX + cardWidth - controlsWidth - 12;
+    const controlsY = rowY + (cardHeight - buttonHeight) / 2;
+
+    addScreenButton({
+      scene: config.scene,
+      container,
+      actionZones,
+      screenCenterX: centerX,
+      screenCenterY: centerY,
+      x: controlsX + buttonWidth / 2,
+      y: controlsY,
+      width: buttonWidth,
+      height: buttonHeight,
+      label: radarLabel,
+      callback: config.onPurchaseRadar,
+      isEnabled: canBuyRadar,
       isActionActive: config.isActionActive,
       resetCursor: config.resetCursor
     });

@@ -343,7 +343,7 @@ import {
   markPairCooldown
 } from '../systems/playerContactRuntime';
 import { GameplayHudSystem, type GameplayHudSnapshot, type WeaponHotbarSlotSnapshot } from '../systems/gameplayHud';
-import { MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
+import { getMinimapCapabilities, MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import {
   generateSectorLayout,
   getSectorRegionColor,
@@ -376,6 +376,8 @@ import {
 } from '../systems/rareEventRuntime';
 import { createRareEventBody as createRareEventBodySystem } from '../systems/rareEventVisuals';
 import {
+  getNextRadarLevel,
+  getRadarUpgradeCost,
   getNextSectorScannerLevel,
   getSectorScannerCost,
   isSectorScannerAvailable,
@@ -587,6 +589,7 @@ const ASTEROID_TEXTURES = [
 
 const REROLL_BASE_COST = 5;
 const REROLL_DEBUG_BASE_COST = 10;
+const PLAYER_SHIP_VISUAL_SCALE = 0.5;
 const DEATH_SHARD_MAX_ACTIVE = 180;
 const ASTEROID_DEATH_SHARD_BURST_LIMIT = 24;
 const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
@@ -1816,6 +1819,10 @@ export class GameScene extends Phaser.Scene {
         this.recordUnlockedRewards([hook as RewardHookId]);
         return this.getTestHarnessState();
       },
+      purchaseRadarUpgrade: () => {
+        this.purchaseRadarUpgrade();
+        return this.getTestHarnessState();
+      },
       purchaseSectorScanner: () => {
         this.purchaseSectorScanner();
         return this.getTestHarnessState();
@@ -1875,8 +1882,7 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       toggleMinimap: () => {
-        this.minimap.toggle();
-        this.updateMinimap();
+        this.toggleMinimapIfUnlocked();
         return this.getTestHarnessState();
       }
     };
@@ -1955,6 +1961,8 @@ export class GameScene extends Phaser.Scene {
       hasPaidRunCredits: this.hasPaidRunCredits,
       unlockedRewardHooks: [...this.progressionState.unlockedRewardHooks],
       lastRunUnlockedRewards: [...this.lastRunUnlockedRewards],
+      radarLevel: this.progressionState.radarLevel,
+      radarStatus: this.getRadarHudStatus(),
       sectorScannerAvailable: scannerSnapshot.available,
       sectorScannerLevel: scannerSnapshot.level,
       sectorScannerProgress: scannerSnapshot.scanProgress,
@@ -1993,7 +2001,7 @@ export class GameScene extends Phaser.Scene {
       playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
       playerMaxSpeed: this.getPlayerMaxSpeed(),
       playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
-      isMinimapVisible: this.minimap.isVisible(),
+      isMinimapVisible: this.progressionState.radarLevel > 0 && this.minimap.isVisible(),
       enemies: this.getLiveEnemyLegacyCount('chaser'),
       shooterEnemies: this.getLiveEnemyLegacyCount('shooter'),
       tankEnemies: this.getLiveEnemyLegacyCount('tank'),
@@ -2109,6 +2117,8 @@ export class GameScene extends Phaser.Scene {
     const hullUpgrade = selectUpgradeById('hull-plating');
     const engineUpgrade = selectUpgradeById('engine-tuning');
     const damageControlUpgrade = selectUpgradeById('damage-control');
+    const radarCredits = harness.addCredits(50);
+    const radarPurchased = harness.purchaseRadarUpgrade();
     const minimapOff = harness.toggleMinimap();
     const minimapOn = harness.toggleMinimap();
     const dead = harness.killPlayer();
@@ -2162,6 +2172,8 @@ export class GameScene extends Phaser.Scene {
       !damageControlUpgrade.isUpgradeOverlayOpen &&
       damageControlUpgrade.damageControlLevel === 1 &&
       damageControlUpgrade.playerInvulnerabilityMs === PLAYER_DAMAGE_INVULNERABILITY_MS + DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS &&
+      radarCredits.totalCredits >= 50 &&
+      radarPurchased.radarLevel === 1 &&
       !minimapOff.isMinimapVisible &&
       minimapOn.isMinimapVisible &&
       dead.isPlayerDead &&
@@ -2211,6 +2223,8 @@ export class GameScene extends Phaser.Scene {
         hullUpgrade,
         engineUpgrade,
         damageControlUpgrade,
+        radarCredits,
+        radarPurchased,
         minimapOff,
         minimapOn,
         dead,
@@ -2698,6 +2712,8 @@ export class GameScene extends Phaser.Scene {
     }
     const cameraSettled = harness.getState();
 
+    harness.addCredits(50);
+    const radarPurchased = harness.purchaseRadarUpgrade();
     const minimapBefore = harness.getState();
     const minimapOff = harness.toggleMinimap();
     const minimapOn = harness.toggleMinimap();
@@ -2712,7 +2728,11 @@ export class GameScene extends Phaser.Scene {
       cameraAhead.cameraFollowOffsetX > -42 &&
       Math.abs(cameraAhead.cameraFollowOffsetY) < 1 &&
       Math.abs(cameraSettled.cameraFollowOffsetX) < Math.abs(cameraAhead.cameraFollowOffsetX);
-    const minimapPass = minimapBefore.isMinimapVisible && !minimapOff.isMinimapVisible && minimapOn.isMinimapVisible;
+    const minimapPass =
+      radarPurchased.radarLevel === 1 &&
+      minimapBefore.isMinimapVisible &&
+      !minimapOff.isMinimapVisible &&
+      minimapOn.isMinimapVisible;
 
     const pass =
       configuredScalePass &&
@@ -4714,6 +4734,8 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       backTarget,
       totalCredits: this.totalCredits,
+      radarLevel: this.progressionState.radarLevel,
+      radarCost: getRadarUpgradeCost(this.progressionState),
       isSectorScannerAvailable: isSectorScannerAvailable(this.progressionState),
       sectorScannerLevel: this.progressionState.sectorScannerLevel,
       sectorScannerCost: getSectorScannerCost(this.progressionState),
@@ -4727,6 +4749,7 @@ export class GameScene extends Phaser.Scene {
       nav: backTarget === 'mainMenu' ? this.getPreRunNavConfig() : undefined,
       onPurchasePermanentUpgrade: (upgrade) => this.purchasePermanentUpgrade(upgrade),
       onAdjustActivePermanentUpgradeLevel: (id, delta) => this.adjustActivePermanentUpgradeLevel(id, delta),
+      onPurchaseRadar: () => this.purchaseRadarUpgrade(),
       onPurchaseSectorScanner: () => this.purchaseSectorScanner(),
       onBack: () => this.handleShopBack()
     });
@@ -4894,6 +4917,23 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  private purchaseRadarUpgrade(): void {
+    const nextLevel = getNextRadarLevel(this.progressionState);
+    const cost = getRadarUpgradeCost(this.progressionState);
+
+    if (!nextLevel || cost === null || this.totalCredits < cost) {
+      return;
+    }
+
+    this.totalCredits -= cost;
+    this.progressionState.radarLevel = nextLevel;
+    this.saveProgression();
+    this.updateMinimap();
+    if (this.gameFlowState === 'shop') {
+      this.showShop(this.shopBackTarget);
+    }
+  }
+
   private purchaseSectorScanner(): void {
     const nextLevel = getNextSectorScannerLevel(this.progressionState);
     const cost = getSectorScannerCost(this.progressionState);
@@ -5015,7 +5055,7 @@ export class GameScene extends Phaser.Scene {
     const shipDefinition = this.getSelectedShipDefinition();
     const sprite = this.add.image(0, 0, this.getShipTextureKey(shipDefinition));
     sprite.setOrigin(0.5, 0.5);
-    sprite.setDisplaySize(shipDefinition.displaySize, shipDefinition.displaySize);
+    sprite.setDisplaySize(shipDefinition.displaySize * PLAYER_SHIP_VISUAL_SCALE, shipDefinition.displaySize * PLAYER_SHIP_VISUAL_SCALE);
     sprite.setRotation(shipDefinition.visualRotation);
     this.playerSprite = sprite;
 
@@ -7764,6 +7804,21 @@ export class GameScene extends Phaser.Scene {
     return `${Math.floor(snapshot.scanProgress * 100)}%`;
   }
 
+  private getRadarHudStatus(): string {
+    switch (this.progressionState.radarLevel) {
+      case 0:
+        return 'OFFLINE';
+      case 1:
+        return 'SCOPE';
+      case 2:
+        return 'SIGNAL';
+      case 3:
+        return 'SWEEP';
+      case 4:
+        return 'THREAT';
+    }
+  }
+
   private openEjectConfirmation(): void {
     if (
       !this.isGameplayWorldActive() ||
@@ -8011,7 +8066,7 @@ export class GameScene extends Phaser.Scene {
 
   private updateUpgradeOverlayInput(time: number): void {
     if (this.isControlJustDown('minimap')) {
-      this.minimap.toggle();
+      this.toggleMinimapIfUnlocked();
     }
 
     if (this.isPlayerDead) {
@@ -8047,6 +8102,17 @@ export class GameScene extends Phaser.Scene {
         return;
       }
     }
+  }
+
+  private toggleMinimapIfUnlocked(): boolean {
+    if (this.progressionState.radarLevel <= 0) {
+      this.updateMinimap();
+      return false;
+    }
+
+    const visible = this.minimap.toggle();
+    this.updateMinimap();
+    return visible;
   }
 
   private updatePauseMenuInput(time: number): void {
@@ -13355,12 +13421,14 @@ export class GameScene extends Phaser.Scene {
       this.progressionState.sectorScannerLevel,
       isSectorScannerAvailable(this.progressionState)
     );
-    const scannerTarget = scannerSnapshot.showMinimap
+    const capabilities = getMinimapCapabilities(this.progressionState.radarLevel, scannerSnapshot);
+    const scannerTarget = capabilities.showScannerTarget
       ? getSectorScannerTarget(this.sectorScannerRuntime, this.getSectorScannerTargets())
       : undefined;
 
     return buildMinimapSnapshot({
       arena: this.arena,
+      capabilities,
       player: this.player,
       camera: {
         centerX: camera.scrollX + camera.width / 2,
@@ -13420,6 +13488,11 @@ export class GameScene extends Phaser.Scene {
     const secondaryWeapon = this.getActiveSecondaryWeaponDefinition();
     const weaponCooldownMs = this.getActiveAutoWeaponCooldownMs();
     const weaponRemainingMs = Math.max(0, this.playerWeapons.nextAutoWeaponFireAt - time);
+    const scannerSnapshot = getSectorScannerSnapshot(
+      this.sectorScannerRuntime,
+      this.progressionState.sectorScannerLevel,
+      isSectorScannerAvailable(this.progressionState)
+    );
 
     return buildGameplayHudSnapshot({
       timeSeconds: elapsedSeconds,
@@ -13441,7 +13514,10 @@ export class GameScene extends Phaser.Scene {
       scrapSpentThisRun: this.runScrapSpent,
       nextRerollCost: this.getNextRerollCost(),
       bankedUpgrades: this.bankedUpgrades,
+      radarStatus: this.getRadarHudStatus(),
+      radarLevel: this.progressionState.radarLevel,
       sectorScannerStatus: this.getSectorScannerHudStatus(),
+      sectorScannerCompleted: scannerSnapshot.completed,
       contractStatusLine: this.getContractStatusLine(),
       activeWeapon,
       primaryWeapon,
@@ -13692,12 +13768,7 @@ export class GameScene extends Phaser.Scene {
 
     const fps = Math.round(this.game.loop.actualFps);
     if (!this.diagnosticsOverlayVisible) {
-      this.debugText
-        .setPosition(16, 16)
-        .setFontSize(12)
-        .setColor('#73f2ff')
-        .setBackgroundColor('rgba(2, 4, 10, 0.64)')
-        .setText(`FPS ${fps}`);
+      this.debugText.setVisible(false).setText('');
       return;
     }
 
@@ -13718,6 +13789,7 @@ export class GameScene extends Phaser.Scene {
       : '';
 
     this.debugText
+      .setVisible(true)
       .setPosition(16, 16)
       .setFontSize(13)
       .setColor('#c8f7ff')

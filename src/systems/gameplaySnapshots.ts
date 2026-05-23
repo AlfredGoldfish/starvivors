@@ -5,7 +5,7 @@ import type { BlackHoleSystem } from './blackHole';
 import type { CollisionDebugOverlaySnapshot } from './collisionDebugOverlay';
 import type { EnemyLabInstance } from './enemyLabSpawner';
 import type { GameplayHudSnapshot, WeaponHotbarSlotSnapshot } from './gameplayHud';
-import type { MinimapSnapshot } from './minimap';
+import type { MinimapCapabilities, MinimapSnapshot } from './minimap';
 import type { PerformanceProfilerCounts, PerformanceProfilerFlags } from './performanceProfiler';
 import type { RammingShieldCollider } from './rammingShield';
 import type { RareEventMinimapMarker } from './rareEventRuntime';
@@ -77,6 +77,7 @@ export interface CollisionDebugOverlaySnapshotInput {
 
 export interface MinimapSnapshotInput {
   arena: ArenaSize;
+  capabilities: MinimapCapabilities;
   player?: Phaser.GameObjects.Container;
   camera: MinimapSnapshot['camera'];
   missionObjective?: MinimapSnapshot['missionObjective'];
@@ -112,7 +113,10 @@ export interface GameplayHudSnapshotInput {
   scrapSpentThisRun: number;
   nextRerollCost: number;
   bankedUpgrades: number;
+  radarStatus: string;
+  radarLevel: number;
   sectorScannerStatus: string;
+  sectorScannerCompleted: boolean;
   contractStatusLine: string;
   activeWeapon?: WeaponRegistryEntry;
   primaryWeapon?: WeaponRegistryEntry;
@@ -200,6 +204,7 @@ export function buildCollisionDebugOverlaySnapshot(
 export function buildMinimapSnapshot(input: MinimapSnapshotInput): MinimapSnapshot {
   return {
     arena: input.arena,
+    capabilities: input.capabilities,
     player: input.player,
     camera: input.camera,
     missionObjective: input.missionObjective,
@@ -235,6 +240,10 @@ export function buildGameplayHudSnapshot(input: GameplayHudSnapshotInput): Gamep
   const xpProgress = input.nextXpThreshold > 0 ? input.playerXp / input.nextXpThreshold : 0;
   const weaponProgress = input.weaponCooldownMs > 0 ? 1 - input.weaponRemainingMs / input.weaponCooldownMs : 1;
   const weaponStatus = input.weaponRemainingMs <= 0 ? 'Ready' : `Cooling ${Math.ceil(input.weaponRemainingMs / 1000)}s`;
+  const missionDanger =
+    input.missionStatus === 'ACTIVE' &&
+    input.missionObjectiveRadius > 0 &&
+    input.missionObjectiveDistance <= input.missionObjectiveRadius * 2.5;
 
   return {
     timeSeconds: input.timeSeconds,
@@ -255,7 +264,10 @@ export function buildGameplayHudSnapshot(input: GameplayHudSnapshotInput): Gamep
     scrapSpentThisRun: input.scrapSpentThisRun,
     nextRerollCost: input.nextRerollCost,
     bankedUpgrades: input.bankedUpgrades,
+    radarStatus: input.radarStatus,
+    radarLevel: input.radarLevel,
     sectorScannerStatus: input.sectorScannerStatus,
+    sectorScannerCompleted: input.sectorScannerCompleted,
     contractStatusLine: input.contractStatusLine,
     autoWeaponName: input.activeWeapon ? input.activeWeapon.displayName : 'Empty',
     primaryWeaponName: input.primaryWeapon ? input.primaryWeapon.displayName : 'Empty',
@@ -265,6 +277,9 @@ export function buildGameplayHudSnapshot(input: GameplayHudSnapshotInput): Gamep
     hullProgress,
     xpProgress,
     weaponProgress,
+    isHullCritical: hullProgress <= 0.32,
+    isUpgradeReady: input.bankedUpgrades > 0,
+    isMissionDanger: missionDanger,
     hasRammingShield: input.hasRammingShield,
     rammingShieldHp: input.rammingShieldHp,
     rammingShieldMaxHp: input.rammingShieldMaxHp,

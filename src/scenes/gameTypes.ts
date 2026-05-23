@@ -122,6 +122,8 @@ export interface StarvivorsTestHarnessState {
   hasPaidRunCredits: boolean;
   unlockedRewardHooks: string[];
   lastRunUnlockedRewards: string[];
+  radarLevel: number;
+  radarStatus: string;
   sectorScannerAvailable: boolean;
   sectorScannerLevel: number;
   sectorScannerProgress: number;
@@ -200,6 +202,7 @@ export interface StarvivorsTestHarness {
   toggleFuelDrainMode: () => StarvivorsTestHarnessState;
   resetProgression: () => StarvivorsTestHarnessState;
   unlockRewardHook: (hook: string) => StarvivorsTestHarnessState;
+  purchaseRadarUpgrade: () => StarvivorsTestHarnessState;
   purchaseSectorScanner: () => StarvivorsTestHarnessState;
   fastForwardScanner: () => StarvivorsTestHarnessState;
   addRunScrap: (amount: number) => StarvivorsTestHarnessState;

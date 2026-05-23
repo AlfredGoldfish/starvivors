@@ -13,6 +13,7 @@ export type RewardHookId =
   | 'sector-scanner.hunter-swarm';
 
 export type SectorScannerLevel = 0 | 1 | 2 | 3;
+export type RadarLevel = 0 | 1 | 2 | 3 | 4;
 export type WeaponLoadoutState = Record<WeaponSlotType, Array<WeaponId | null>>;
 export type WeaponMkLevels = Partial<Record<WeaponId, number>>;
 
@@ -28,6 +29,7 @@ export interface ProgressionState {
   permanentUpgradeLevels: Record<PermanentUpgradeId, number>;
   activePermanentUpgradeLevels: Record<PermanentUpgradeId, number>;
   unlockedRewardHooks: RewardHookId[];
+  radarLevel: RadarLevel;
   sectorScannerLevel: SectorScannerLevel;
   unlockedWeaponIds: WeaponId[];
   weaponLoadout: WeaponLoadoutState;
@@ -43,6 +45,13 @@ export const SECTOR_SCANNER_COSTS: Record<Exclude<SectorScannerLevel, 0>, number
   3: 175
 };
 
+export const RADAR_UPGRADE_COSTS: Record<Exclude<RadarLevel, 0>, number> = {
+  1: 50,
+  2: 100,
+  3: 150,
+  4: 225
+};
+
 export function createDefaultProgressionState(): ProgressionState {
   return {
     schemaVersion: 1,
@@ -53,6 +62,7 @@ export function createDefaultProgressionState(): ProgressionState {
     permanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
     activePermanentUpgradeLevels: { ...INITIAL_PERMANENT_UPGRADE_LEVELS },
     unlockedRewardHooks: [],
+    radarLevel: 0,
     sectorScannerLevel: 0,
     unlockedWeaponIds: [...DEFAULT_UNLOCKED_WEAPON_IDS],
     weaponLoadout: createDefaultWeaponLoadout(),
@@ -119,12 +129,26 @@ export function normalizeProgressionState(value: unknown): ProgressionState {
     permanentUpgradeLevels,
     activePermanentUpgradeLevels: clampActiveUpgradeLevels(activePermanentUpgradeLevels, permanentUpgradeLevels),
     unlockedRewardHooks: normalizeUniqueArray(record.unlockedRewardHooks, []) as RewardHookId[],
+    radarLevel: normalizeRadarLevel(record.radarLevel),
     sectorScannerLevel: normalizeScannerLevel(record.sectorScannerLevel),
     unlockedWeaponIds: normalizeUnlockedWeaponIds(record.unlockedWeaponIds, base.unlockedWeaponIds),
     weaponLoadout: normalizeWeaponLoadout(record.weaponLoadout),
     weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels),
     secretControlUnlocked: record.secretControlUnlocked === true
   };
+}
+
+export function getNextRadarLevel(state: ProgressionState): Exclude<RadarLevel, 0> | null {
+  if (state.radarLevel >= 4) {
+    return null;
+  }
+
+  return (state.radarLevel + 1) as Exclude<RadarLevel, 0>;
+}
+
+export function getRadarUpgradeCost(state: ProgressionState): number | null {
+  const nextLevel = getNextRadarLevel(state);
+  return nextLevel ? RADAR_UPGRADE_COSTS[nextLevel] : null;
 }
 
 export function isSectorScannerAvailable(state: ProgressionState): boolean {
@@ -260,6 +284,11 @@ function normalizeUnlockedWeaponIds(value: unknown, fallback: WeaponId[]): Weapo
 function normalizeScannerLevel(value: unknown): SectorScannerLevel {
   const level = Math.max(0, Math.min(3, Math.floor(Number(value ?? 0))));
   return level as SectorScannerLevel;
+}
+
+function normalizeRadarLevel(value: unknown): RadarLevel {
+  const level = Math.max(0, Math.min(4, Math.floor(Number(value ?? 0))));
+  return level as RadarLevel;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
