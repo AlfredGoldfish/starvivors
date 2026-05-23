@@ -9,12 +9,13 @@ Phase 17 makes the 2.0 run structure readable during combat and at run end.
 - The HUD is being reframed into compact combat groups for run time, hull, fuel, mission state, rewards, scanner state, upgrades, and weapons.
 - Phase 16 Forge UI icon language is now available for HUD/radar readability work.
 - Phase 17B starts the radar readability pass: the minimap now draws sector context first, separates signal markers from general region tint, labels signal count/nearest signal, and keeps scanner target treatment visually distinct.
+- Phase 17C starts the run report pass: the results screen now summarizes outcome, rewards, mission state, ship/loadout, run upgrades, and sector context in readable report sections.
 
 ## Subphases
 
 - **17A HUD Reframe:** diagnostics hotkey, minimal FPS, compact combat HUD groups.
 - **17B Radar and Sector Signals:** minimap hierarchy, scanner reveal language, sector signal indicators. Started with signal marker snapshots, radar grid, nearest-signal readout, and stronger mission/event/scanner layering.
-- **17C Results and Build Summary:** clearer end-of-run report, rewards, mission result, ship/weapon/upgrade summary.
+- **17C Results and Build Summary:** clearer end-of-run report, rewards, mission result, ship/weapon/upgrade summary. Started with a wider report overlay and sectioned outcome/reward/build/upgrade/sector summaries.
 - **17D UI Consistency Pass:** align HUD, map, results, pause/settings, and ship select around the Neon-Forward Salvagepunk interface style.
 
 ## Deferred

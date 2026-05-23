@@ -251,7 +251,7 @@ import {
   resolveWorldImpactCollisions as resolveWorldImpactCollisionsSystem
 } from '../systems/worldImpacts';
 import { createCommandScreen, createSettingsHubScreen, createSplashScreen } from '../ui/preRunHubScreen';
-import { createResultsScreen } from '../ui/resultsScreen';
+import { createResultsScreen, type ResultsScreenSection } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
@@ -10613,6 +10613,7 @@ export class GameScene extends Phaser.Scene {
 
     this.resultsScreen = createResultsScreen({
       scene: this,
+      outcomeTitle: this.getResultsOutcomeTitle(),
       survivalTimeLabel: this.formatSurvivalTime(elapsedSeconds),
       scrapCollected: this.lastRunScrapTotal,
       scrapSpent: this.lastRunScrapSpent,
@@ -10625,6 +10626,7 @@ export class GameScene extends Phaser.Scene {
       runEndReason: this.getRunEndResultStatus(),
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
       scrapCreditMultiplier: this.getScrapCreditMultiplier(),
+      summarySections: this.getResultsSummarySections(),
       isActionActive: () => this.gameFlowState === 'results',
       resetCursor: () => this.resetUiCursor(),
       onRestartRun: () => this.startRun(),
@@ -10635,6 +10637,86 @@ export class GameScene extends Phaser.Scene {
     if (!this.debugMenuHost?.isCreated()) {
       this.createDebugMenu();
     }
+  }
+
+  private getResultsOutcomeTitle(): string {
+    switch (this.runEndReason) {
+      case 'mission':
+        return 'CONTRACT COMPLETE';
+      case 'eject':
+        return 'EJECTED WITH CARGO';
+      case 'death':
+        return 'SHIP DESTROYED';
+      case 'none':
+        return 'RUN IN PROGRESS';
+    }
+  }
+
+  private getResultsSummarySections(): ResultsScreenSection[] {
+    return [
+      {
+        title: 'Build',
+        lines: this.getResultsBuildLines()
+      },
+      {
+        title: 'Upgrades',
+        lines: this.getResultsUpgradeLines()
+      },
+      {
+        title: 'Sector',
+        lines: this.getResultsSectorLines()
+      }
+    ];
+  }
+
+  private getResultsBuildLines(): string[] {
+    const ship = this.getSelectedShipDefinition();
+    const primary = this.getActivePrimaryWeaponDefinition();
+    const secondary = this.getActiveSecondaryWeaponDefinition();
+    const auto = this.getEffectiveAutoWeaponDefinition();
+
+    return [
+      `Ship ${ship.displayName}`,
+      `Hull ${Math.round(this.playerHull)}/${this.getPlayerMaxHull()}`,
+      `XP ${this.playerXp}/${this.nextXpThreshold}`,
+      `Primary ${primary?.displayName ?? 'Empty'}`,
+      `Secondary ${secondary?.displayName ?? 'Empty'}`,
+      `Auto ${auto?.displayName ?? 'Empty'}`
+    ];
+  }
+
+  private getResultsUpgradeLines(): string[] {
+    const earned = Object.entries(this.runUpgradeLevels)
+      .filter(([, level]) => level > 0)
+      .map(([upgradeId, level]) => {
+        const definition = UPGRADE_CHOICES.find((upgrade) => upgrade.id === upgradeId);
+        return `${definition?.name ?? upgradeId} x${level}`;
+      });
+    const visible = earned.slice(0, 5);
+
+    return [
+      `Banked ${this.bankedUpgrades}`,
+      `Rerolls ${this.rerollsThisRun}`,
+      ...(visible.length > 0 ? visible : ['No run upgrades selected']),
+      ...(earned.length > visible.length ? [`+${earned.length - visible.length} more`] : [])
+    ];
+  }
+
+  private getResultsSectorLines(): string[] {
+    const activeWorldEvents = this.worldEvents.filter((event) => event.status === 'active').length;
+    const destroyedWorldEvents = this.worldEvents.filter((event) => event.status === 'destroyed').length;
+    const activeRareEvents = this.rareEvents.filter((event) => event.status === 'active').length;
+    const completedRareEvents = this.rareEvents.filter((event) => event.status === 'completed').length;
+
+    return [
+      `Seed ${this.sectorSeed}`,
+      `Scale ${this.sectorScale}x`,
+      `Regions ${this.sectorLayout.regions.length}`,
+      `Signals ${this.sectorSignalSpawns.length}`,
+      `World events ${activeWorldEvents} active / ${destroyedWorldEvents} cleared`,
+      `Rare events ${activeRareEvents} active / ${completedRareEvents} done`,
+      `Scanner ${this.getSectorScannerHudStatus()}`
+    ];
   }
 
   private continueCurrentRun(): void {
