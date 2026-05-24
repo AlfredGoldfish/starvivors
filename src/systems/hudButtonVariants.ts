@@ -81,7 +81,7 @@ export const HUD_BUTTON_VARIANTS: HudButtonVariantDefinition[] = [
   }
 ];
 
-export const DEFAULT_HUD_BUTTON_VARIANT: HudButtonVariant = 10;
+export const DEFAULT_HUD_BUTTON_VARIANT: HudButtonVariant = 4;
 
 export function isHudButtonVariant(value: number): value is HudButtonVariant {
   return Number.isInteger(value) && value >= 1 && value <= 10;
@@ -94,4 +94,3 @@ export function clampHudButtonVariant(value: number): HudButtonVariant {
 export function getHudButtonVariantDefinition(variant: HudButtonVariant): HudButtonVariantDefinition {
   return HUD_BUTTON_VARIANTS.find((candidate) => candidate.id === variant) ?? HUD_BUTTON_VARIANTS[HUD_BUTTON_VARIANTS.length - 1];
 }
-

@@ -90,6 +90,12 @@ interface HudControlRect {
   height: number;
 }
 
+interface DashboardButtonRects {
+  weapons: Record<WeaponHotbarSlotType, HudControlRect>;
+  mission: HudControlRect;
+  eject: HudControlRect;
+}
+
 interface DashboardButtonChrome {
   accentColor: number;
   fillColor?: number;
@@ -907,20 +913,17 @@ export class GameplayHudSystem {
     return this.buttonVariant;
   }
 
-  private getDashboardButtonRects(): {
-    weapons: Record<WeaponHotbarSlotType, HudControlRect>;
-    mission: HudControlRect;
-    eject: HudControlRect;
-  } {
+  private getDashboardButtonRects(): DashboardButtonRects {
     const layout = this.getDashboardLayout();
     const centerX = this.scene.scale.width / 2;
     const bottomY = layout.y + layout.height - 42;
     const topY = layout.y + 44;
     const rightX = layout.x + layout.width - 92;
+    let rects: DashboardButtonRects;
 
     switch (this.buttonVariant) {
       case 1:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 144, y: bottomY, width: 126, height: 62 },
             auto: { x: centerX, y: bottomY, width: 126, height: 62 },
@@ -929,8 +932,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 174, y: topY, width: 142, height: 64 },
           eject: { x: rightX, y: bottomY, width: 88, height: 48 }
         };
+        break;
       case 2:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 165, y: bottomY + 6, width: 132, height: 54 },
             auto: { x: centerX - 31, y: bottomY + 6, width: 132, height: 54 },
@@ -939,8 +943,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 214, y: bottomY + 6, width: 136, height: 54 },
           eject: { x: layout.x + layout.width - 74, y: bottomY + 6, width: 88, height: 54 }
         };
+        break;
       case 3:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 148, y: bottomY - 2, width: 118, height: 72 },
             auto: { x: centerX, y: bottomY - 2, width: 118, height: 72 },
@@ -949,18 +954,20 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 182, y: topY, width: 138, height: 70 },
           eject: { x: rightX, y: bottomY, width: 86, height: 54 }
         };
+        break;
       case 4:
-        return {
+        rects = {
           weapons: {
-            primary: { x: centerX - 136, y: bottomY, width: 122, height: 56 },
-            auto: { x: centerX, y: bottomY, width: 122, height: 56 },
-            secondary: { x: centerX + 136, y: bottomY, width: 122, height: 56 }
+            primary: { x: centerX - 126, y: bottomY + 2, width: 112, height: 50 },
+            auto: { x: centerX, y: bottomY + 2, width: 112, height: 50 },
+            secondary: { x: centerX + 126, y: bottomY + 2, width: 112, height: 50 }
           },
-          mission: { x: layout.x + layout.width - 172, y: topY, width: 134, height: 62 },
-          eject: { x: rightX, y: bottomY, width: 84, height: 48 }
+          mission: { x: layout.x + layout.width - 160, y: topY + 1, width: 122, height: 54 },
+          eject: { x: layout.x + layout.width - 84, y: bottomY + 2, width: 76, height: 44 }
         };
+        break;
       case 5:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 140, y: bottomY, width: 124, height: 60 },
             auto: { x: centerX, y: bottomY, width: 124, height: 60 },
@@ -969,8 +976,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 174, y: topY, width: 142, height: 64 },
           eject: { x: rightX, y: bottomY, width: 88, height: 48 }
         };
+        break;
       case 6:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 132, y: bottomY, width: 132, height: 62 },
             auto: { x: centerX, y: bottomY, width: 132, height: 62 },
@@ -979,8 +987,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 178, y: topY, width: 144, height: 62 },
           eject: { x: rightX, y: bottomY, width: 88, height: 48 }
         };
+        break;
       case 7:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 154, y: bottomY - 2, width: 138, height: 72 },
             auto: { x: centerX, y: bottomY - 2, width: 138, height: 72 },
@@ -989,8 +998,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 190, y: topY, width: 158, height: 70 },
           eject: { x: layout.x + layout.width - 84, y: bottomY, width: 96, height: 54 }
         };
+        break;
       case 8:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 138, y: bottomY, width: 122, height: 60 },
             auto: { x: centerX, y: bottomY, width: 122, height: 60 },
@@ -999,8 +1009,9 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 188, y: topY + 2, width: 158, height: 72 },
           eject: { x: layout.x + layout.width - 84, y: bottomY, width: 92, height: 50 }
         };
+        break;
       case 9:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 164, y: bottomY, width: 150, height: 54 },
             auto: { x: centerX, y: bottomY, width: 150, height: 54 },
@@ -1009,9 +1020,10 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 178, y: topY, width: 146, height: 60 },
           eject: { x: layout.x + layout.width - 82, y: bottomY, width: 90, height: 48 }
         };
+        break;
       case 10:
       default:
-        return {
+        rects = {
           weapons: {
             primary: { x: centerX - 142, y: bottomY, width: 128, height: 64 },
             auto: { x: centerX, y: bottomY, width: 128, height: 64 },
@@ -1020,7 +1032,28 @@ export class GameplayHudSystem {
           mission: { x: layout.x + layout.width - 180, y: topY, width: 148, height: 66 },
           eject: { x: layout.x + layout.width - 82, y: bottomY, width: 90, height: 50 }
         };
+        break;
     }
+
+    return this.getCompactSwitchButtonRects(rects);
+  }
+
+  private getCompactSwitchButtonRects(rects: DashboardButtonRects): DashboardButtonRects {
+    const compact = (rect: HudControlRect, widthDelta: number, heightDelta: number): HudControlRect => ({
+      ...rect,
+      width: Math.max(68, rect.width - widthDelta),
+      height: Math.max(40, rect.height - heightDelta)
+    });
+
+    return {
+      weapons: {
+        primary: compact(rects.weapons.primary, 10, 6),
+        auto: compact(rects.weapons.auto, 10, 6),
+        secondary: compact(rects.weapons.secondary, 10, 6)
+      },
+      mission: compact(rects.mission, 12, 8),
+      eject: compact(rects.eject, 8, 4)
+    };
   }
 
   private getWeaponButtonTextConfig(slot: WeaponHotbarSlotSnapshot): {
@@ -1087,7 +1120,7 @@ export class GameplayHudSystem {
       return `MISSION\n${status}\n${distance}`;
     }
 
-    return `MISSION\n${status} ${distance}`;
+    return `MISSION\n${status}\n${distance}`;
   }
 
   private getSlotGlyph(slot: WeaponHotbarSlotType): string {
@@ -1114,20 +1147,23 @@ export class GameplayHudSystem {
     const alpha = chrome.disabled ? 0.58 : 0.92;
     const fill = chrome.fillColor ?? 0x071018;
     const radius = this.getButtonCornerRadius(chrome.kind);
-    const strokeWidth = active || chrome.danger ? 3 : this.buttonVariant === 1 ? 2.5 : 2;
+    const raisedSwitchChrome = this.usesRaisedSwitchChrome();
+    const strokeWidth = active || chrome.danger ? 3 : raisedSwitchChrome ? 2.25 : this.buttonVariant === 1 ? 2.5 : 2;
 
-    if (active || chrome.danger || this.buttonVariant === 10) {
+    if (active || chrome.danger || this.buttonVariant === 10 || raisedSwitchChrome) {
       graphics.lineStyle(7, accent, active || chrome.danger ? 0.12 + dangerPulse : 0.07);
       graphics.strokeRoundedRect(x - 2, y - 2, rect.width + 4, rect.height + 4, radius + 2);
     }
 
-    if (this.buttonVariant === 4) {
+    if (raisedSwitchChrome) {
       graphics.fillStyle(0x02040a, 0.72);
       graphics.fillRoundedRect(x + 3, y + 4, rect.width, rect.height, radius);
-      graphics.fillStyle(0x1b2634, alpha);
+      graphics.fillStyle(chrome.danger ? 0x2a1117 : 0x1b2634, alpha);
       graphics.fillRoundedRect(x, y, rect.width, rect.height, radius);
       graphics.fillStyle(0xf2fbff, active ? 0.16 : 0.08);
       graphics.fillRoundedRect(x + 4, y + 4, rect.width - 8, Math.max(8, rect.height * 0.28), radius);
+      graphics.fillStyle(fill, chrome.danger ? 0.22 : 0.16);
+      graphics.fillRoundedRect(x + 6, y + 10, rect.width - 12, rect.height - 18, Math.max(2, radius - 2));
     } else {
       graphics.fillStyle(fill, alpha);
       graphics.fillRoundedRect(x, y, rect.width, rect.height, radius);
@@ -1141,7 +1177,7 @@ export class GameplayHudSystem {
     graphics.strokeRoundedRect(x + 5, y + 5, rect.width - 10, rect.height - 10, Math.max(1, radius - 2));
 
     const progress = Phaser.Math.Clamp(chrome.progress ?? 1, 0, 1);
-    const meterHeight = this.buttonVariant === 9 ? 6 : 4;
+    const meterHeight = this.buttonVariant === 9 ? 6 : raisedSwitchChrome ? 5 : 4;
     const meterInset = this.buttonVariant === 2 ? 0 : 10;
     const meterY = y + rect.height - meterHeight - (this.buttonVariant === 2 ? 0 : 6);
     graphics.fillStyle(0x02040a, 0.72);
@@ -1167,6 +1203,19 @@ export class GameplayHudSystem {
     const x = rect.x - rect.width / 2;
     const y = rect.y - rect.height / 2;
     const accent = chrome.accentColor;
+
+    if (this.usesRaisedSwitchChrome()) {
+      graphics.fillStyle(0xc89452, chrome.disabled ? 0.22 : 0.48);
+      graphics.fillRect(x + 8, y + 7, rect.width - 16, 2);
+      graphics.lineStyle(1, 0x02040a, 0.5);
+      graphics.lineBetween(x + 7, y + rect.height - 9, x + rect.width - 7, y + rect.height - 9);
+      graphics.fillStyle(accent, chrome.disabled ? 0.18 : chrome.hovered || chrome.active ? 0.3 : 0.2);
+      graphics.fillRect(x + 10, y + rect.height - 15, rect.width - 20, 3);
+      graphics.fillStyle(0xf2fbff, chrome.hovered || chrome.active ? 0.18 : 0.09);
+      graphics.fillCircle(x + 9, y + 9, 1.35);
+      graphics.fillCircle(x + rect.width - 9, y + 9, 1.35);
+      return;
+    }
 
     switch (this.buttonVariant) {
       case 1:
@@ -1249,6 +1298,10 @@ export class GameplayHudSystem {
   }
 
   private getButtonCornerRadius(kind: DashboardButtonChrome['kind']): number {
+    if (this.usesRaisedSwitchChrome()) {
+      return 5;
+    }
+
     if (this.buttonVariant === 1 || this.buttonVariant === 2 || this.buttonVariant === 9) {
       return 3;
     }
@@ -1262,6 +1315,10 @@ export class GameplayHudSystem {
     }
 
     return 7;
+  }
+
+  private usesRaisedSwitchChrome(): boolean {
+    return true;
   }
 
   private resizeZone(zone: Phaser.GameObjects.Zone, rect: HudControlRect): void {
