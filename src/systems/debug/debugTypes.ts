@@ -10,6 +10,7 @@ import type {
   DebugWeaponStatKey
 } from './debugState';
 import type { DeathShardStyle, DeathShardTuningKey } from '../deathEffects';
+import type { HudButtonVariant } from '../hudButtonVariants';
 
 export type DebugEnemyType = 'chaser' | 'shooter' | 'tank';
 export type DebugAsteroidTier = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -156,6 +157,10 @@ export interface DebugMenuValues {
   weaponTuningSummaries: Record<WeaponId, string>;
   deathShardTuningSummaries: Record<DeathShardStyle, string>;
   spawnDirectorSummary: string;
+  hudButtonVariant: HudButtonVariant;
+  hudButtonVariantTitle: string;
+  hudButtonVariantDesignTarget: string;
+  hudButtonVariantResearchBasis: string;
 }
 
 export interface DebugMenuCallbacks {
@@ -276,6 +281,8 @@ export interface DebugMenuCallbacks {
   adjustStarfieldParallax: (layer: 'far' | 'mid' | 'near', direction: number) => void;
   toggleBackgroundStars: () => void;
   resetStarfieldParallax: () => void;
+  setHudButtonVariant: (variant: HudButtonVariant) => void;
+  cycleHudButtonVariant: (direction: -1 | 1) => void;
   toggleBlackHoleRadii: () => void;
   toggleBlackHoleFieldDamage: () => void;
   toggleCollisionDebug: () => void;

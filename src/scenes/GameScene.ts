@@ -343,6 +343,13 @@ import {
   markPairCooldown
 } from '../systems/playerContactRuntime';
 import { GameplayHudSystem, type GameplayHudSnapshot, type WeaponHotbarSlotSnapshot } from '../systems/gameplayHud';
+import {
+  DEFAULT_HUD_BUTTON_VARIANT,
+  HUD_BUTTON_VARIANTS,
+  clampHudButtonVariant,
+  getHudButtonVariantDefinition,
+  type HudButtonVariant
+} from '../systems/hudButtonVariants';
 import { getMinimapCapabilities, MinimapSystem, type MinimapSnapshot } from '../systems/minimap';
 import {
   generateSectorLayout,
@@ -846,6 +853,7 @@ export class GameScene extends Phaser.Scene {
   private nextDebugMenuRefreshAt = 0;
   private isDebugMenuRefreshDirty = true;
   private minimap!: MinimapSystem;
+  private hudButtonVariant: HudButtonVariant = DEFAULT_HUD_BUTTON_VARIANT;
   private debugBlackHoleInfluenceRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleDamageRadiusScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
   private debugBlackHoleVisualScale = DEBUG_BLACK_HOLE_RADIUS_SCALE_DEFAULT;
@@ -881,6 +889,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   create(): void {
+    this.hudButtonVariant = this.getConfiguredHudButtonVariant();
     this.combatFeedback = new CombatFeedbackSystem({
       scene: this,
       debugState: this.debugState,
@@ -900,7 +909,7 @@ export class GameScene extends Phaser.Scene {
         requestEject: () => this.openEjectConfirmation()
       },
       {
-        statusIconTextureKey: resolveForgeTextureKey(this, 'forge.ui-icon.hud-status-01', '')
+        hudButtonVariant: this.hudButtonVariant
       }
     );
     this.upgradeOverlayUi = new UpgradeOverlayUiController<UpgradeOverlayChoice>({
@@ -1315,6 +1324,8 @@ export class GameScene extends Phaser.Scene {
         adjustStarfieldParallax: (layer, direction) => this.runDebugMenuAction(() => this.adjustStarfieldParallax(layer, direction)),
         toggleBackgroundStars: () => this.runDebugMenuAction(() => this.toggleBackgroundStars()),
         resetStarfieldParallax: () => this.runDebugMenuAction(() => this.resetStarfieldParallax()),
+        setHudButtonVariant: (variant) => this.runDebugMenuAction(() => this.setHudButtonVariant(variant)),
+        cycleHudButtonVariant: (direction) => this.runDebugMenuAction(() => this.cycleHudButtonVariant(direction)),
         toggleBlackHoleRadii: () => this.runDebugMenuAction(() => {
           this.debugState.showBlackHoleRadii = !this.debugState.showBlackHoleRadii;
         }),
@@ -1508,6 +1519,7 @@ export class GameScene extends Phaser.Scene {
 
   private getDebugMenuValues() {
     const time = this.time.now;
+    const hudVariant = getHudButtonVariantDefinition(this.hudButtonVariant);
 
     return this.debugState.createMenuValues({
       runTimeSeconds: this.getSurvivalElapsedMs(time) / 1000,
@@ -1604,7 +1616,11 @@ export class GameScene extends Phaser.Scene {
         'ramming-shield': this.debugState.getWeaponTuningSummary(getWeaponDefinition('ramming-shield')),
         'salvage-beam': this.debugState.getWeaponTuningSummary(getWeaponDefinition('salvage-beam'))
       },
-      nextEnemySpawnSeconds: Math.max(0, Math.min(this.nextEnemySpawnAt, this.encounterDirectorState.nextEncounterAt) - time) / 1000
+      nextEnemySpawnSeconds: Math.max(0, Math.min(this.nextEnemySpawnAt, this.encounterDirectorState.nextEncounterAt) - time) / 1000,
+      hudButtonVariant: hudVariant.id,
+      hudButtonVariantTitle: hudVariant.title,
+      hudButtonVariantDesignTarget: hudVariant.designTarget,
+      hudButtonVariantResearchBasis: hudVariant.researchBasis
     });
   }
 
@@ -4316,6 +4332,11 @@ export class GameScene extends Phaser.Scene {
     return requestedSeed && requestedSeed.trim().length > 0
       ? requestedSeed.trim()
       : `sector-${Math.round(this.runStartedAt)}-${this.sectorScale}`;
+  }
+
+  private getConfiguredHudButtonVariant(): HudButtonVariant {
+    const query = new URLSearchParams(window.location.search);
+    return clampHudButtonVariant(Number(query.get('hudButtonVariant')));
   }
 
   private getConfiguredMissionId(): MissionDefinitionId {
@@ -8328,6 +8349,19 @@ export class GameScene extends Phaser.Scene {
 
   private toggleBackgroundStars(): void {
     this.starfield.toggleStars();
+  }
+
+  private setHudButtonVariant(variant: HudButtonVariant): void {
+    this.hudButtonVariant = variant;
+    this.gameplayHud.setHudButtonVariant(variant);
+    this.updateGameplayHud(this.time.now);
+  }
+
+  private cycleHudButtonVariant(direction: -1 | 1): void {
+    const currentIndex = HUD_BUTTON_VARIANTS.findIndex((variant) => variant.id === this.hudButtonVariant);
+    const safeIndex = currentIndex >= 0 ? currentIndex : HUD_BUTTON_VARIANTS.length - 1;
+    const nextIndex = (safeIndex + direction + HUD_BUTTON_VARIANTS.length) % HUD_BUTTON_VARIANTS.length;
+    this.setHudButtonVariant(HUD_BUTTON_VARIANTS[nextIndex].id);
   }
 
   private openUpgradeOverlay(time: number): void {

@@ -745,6 +745,10 @@ export class DebugState {
     nextEnemySpawnSeconds: number;
     shipTuningSummaries: Record<ShipId, string>;
     weaponTuningSummaries: Record<WeaponId, string>;
+    hudButtonVariant: DebugMenuValues['hudButtonVariant'];
+    hudButtonVariantTitle: string;
+    hudButtonVariantDesignTarget: string;
+    hudButtonVariantResearchBasis: string;
   }): DebugMenuValues {
     return {
       runTimeSeconds: snapshot.runTimeSeconds,
@@ -892,7 +896,11 @@ export class DebugState {
         blackHoleShip: this.getDeathShardTuningSummary('blackHoleShip'),
         blackHoleAsteroid: this.getDeathShardTuningSummary('blackHoleAsteroid')
       },
-      spawnDirectorSummary: `Spawner ${this.enemySpawningEnabled ? 'on' : 'off'} / next ${snapshot.nextEnemySpawnSeconds.toFixed(1)}s`
+      spawnDirectorSummary: `Spawner ${this.enemySpawningEnabled ? 'on' : 'off'} / next ${snapshot.nextEnemySpawnSeconds.toFixed(1)}s`,
+      hudButtonVariant: snapshot.hudButtonVariant,
+      hudButtonVariantTitle: snapshot.hudButtonVariantTitle,
+      hudButtonVariantDesignTarget: snapshot.hudButtonVariantDesignTarget,
+      hudButtonVariantResearchBasis: snapshot.hudButtonVariantResearchBasis
     };
   }
 

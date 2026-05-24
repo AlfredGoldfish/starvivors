@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import type { DebugAsteroidTier, DebugMenuCallbacks, DebugMenuValues } from '../systems/debug/debugTypes';
 import { formatIntegerDisplayUnits, toDisplayUnits } from '../systems/statUnits';
 import type { DeathShardStyle } from '../systems/deathEffects';
+import { HUD_BUTTON_VARIANTS } from '../systems/hudButtonVariants';
 
 export interface DebugMenuConfig {
   callbacks: DebugMenuCallbacks;
@@ -335,6 +336,9 @@ const DEBUG_TOOLTIPS: Record<string, string> = {
   'field-core-up': 'Increase black hole core visual scale.',
   'field-reset': 'Reset black hole field and visual tuning.',
   background: 'Current background star visibility and parallax values.',
+  'hud-button-variants': 'Live Phase 17H dashboard button variants. Each option is research-backed and can be compared without restarting the run.',
+  'hud-button-prev': 'Switch to the previous dashboard button variant.',
+  'hud-button-next': 'Switch to the next dashboard button variant.',
   'health-bars': 'Small world-space health bars. Player bar can always show; other bars reveal after player damage.',
   'health-bars-toggle': 'Toggle all world-space health bars.',
   'player-health-bar': 'Toggle the player ship health bar.',
@@ -1157,6 +1161,27 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
 
   function buildVisualsTab(): void {
     let y = CONTENT_TOP;
+    y = addSection('visuals', y, 'HUD Dashboard Variants');
+    addValue('hud-button-variants', 'visuals', y, VALUE_LINE_HEIGHT * 7);
+    y += VALUE_LINE_HEIGHT * 7 + BUTTON_GAP;
+    addButton('visuals', 'hud-button-prev', panelX + PANEL_PADDING, y, 154, 'Previous HUD', () => config.callbacks.cycleHudButtonVariant(-1));
+    addButton('visuals', 'hud-button-next', panelX + PANEL_PADDING + 162, y, 154, 'Next HUD', () => config.callbacks.cycleHudButtonVariant(1));
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    for (let index = 0; index < 5; index += 1) {
+      const variant = HUD_BUTTON_VARIANTS[index];
+      addButton('visuals', `hud-button-${variant.id}`, panelX + PANEL_PADDING + index * 104, y, 98, `${variant.id} ${variant.shortLabel}`, () =>
+        config.callbacks.setHudButtonVariant(variant.id)
+      );
+    }
+    y += BUTTON_HEIGHT + BUTTON_GAP;
+    for (let index = 5; index < HUD_BUTTON_VARIANTS.length; index += 1) {
+      const variant = HUD_BUTTON_VARIANTS[index];
+      addButton('visuals', `hud-button-${variant.id}`, panelX + PANEL_PADDING + (index - 5) * 104, y, 98, `${variant.id} ${variant.shortLabel}`, () =>
+        config.callbacks.setHudButtonVariant(variant.id)
+      );
+    }
+    y += BUTTON_HEIGHT + ROW_GAP;
+
     y = addSection('visuals', y, 'Health Bars');
     addValue('health-bars', 'visuals', y, VALUE_LINE_HEIGHT * 4);
     y += VALUE_LINE_HEIGHT * 4 + BUTTON_GAP;
@@ -1874,6 +1899,13 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         setButtonLabel('black-hole-warning-visuals', `Warning visuals: ${values.blackHoleWarningVisualsEnabled ? 'on' : 'off'}`);
       } else if (activeTab === 'visuals') {
         setValue(
+          'hud-button-variants',
+          `Variant ${values.hudButtonVariant}: ${values.hudButtonVariantTitle}\n` +
+            `Target: ${values.hudButtonVariantDesignTarget}\n` +
+            `Research: ${values.hudButtonVariantResearchBasis}\n` +
+            `Query: ?hudButtonVariant=${values.hudButtonVariant}`
+        );
+        setValue(
           'health-bars',
           `Bars: ${values.healthBarsEnabled ? 'on' : 'off'} / player ${values.playerHealthBarEnabled ? 'on' : 'off'}\nReveal: ${
             values.healthBarRevealOnPlayerDamage ? 'player damage' : 'always'
@@ -1896,6 +1928,14 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
         setButtonLabel('damage-number-colors', `Colors: ${values.damageNumberSourceColorsEnabled ? 'source' : 'single'}`);
         setButtonLabel('asteroid-damage-flash', `Asteroid flash: ${values.asteroidDamageFlashEnabled ? 'on' : 'off'}`);
         setButtonLabel('background-stars', `Background stars: ${values.backgroundStarsVisible ? 'on' : 'off'}`);
+        setButtonLabel('hud-button-prev', `Previous: ${values.hudButtonVariant === 1 ? 10 : values.hudButtonVariant - 1}`);
+        setButtonLabel('hud-button-next', `Next: ${values.hudButtonVariant === 10 ? 1 : values.hudButtonVariant + 1}`);
+        for (const variant of HUD_BUTTON_VARIANTS) {
+          setButtonLabel(
+            `hud-button-${variant.id}`,
+            `${values.hudButtonVariant === variant.id ? '*' : ''}${variant.id} ${variant.shortLabel}`
+          );
+        }
       }
     },
     destroy: () => {
