@@ -132,6 +132,7 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
   }
 
   createOverlay(): void {
+    this.destroyOverlayObjects();
     const layout = this.getLayout();
 
     this.upgradeOverlayBlocker = this.scene.add
@@ -212,6 +213,31 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
       .setDepth(1201);
 
     this.hideOverlay();
+  }
+
+  private destroyOverlayObjects(): void {
+    this.upgradeOverlayBlocker?.destroy();
+    this.upgradeOverlayGraphics?.destroy();
+    this.upgradeOverlayText?.destroy();
+    this.upgradeOverlayPromptText?.destroy();
+
+    for (const text of this.upgradeOverlayChoiceTexts) {
+      text.destroy();
+    }
+    for (const text of this.upgradeOverlayChoiceMetaTexts) {
+      text.destroy();
+    }
+    for (const hitZone of this.upgradeOverlayChoiceHitZones) {
+      hitZone.destroy();
+    }
+
+    this.upgradeOverlayBlocker = undefined;
+    this.upgradeOverlayGraphics = undefined;
+    this.upgradeOverlayText = undefined;
+    this.upgradeOverlayPromptText = undefined;
+    this.upgradeOverlayChoiceTexts.length = 0;
+    this.upgradeOverlayChoiceMetaTexts.length = 0;
+    this.upgradeOverlayChoiceHitZones.length = 0;
   }
 
   renderOverlay(state: UpgradeOverlayRenderState<TChoice>): void {

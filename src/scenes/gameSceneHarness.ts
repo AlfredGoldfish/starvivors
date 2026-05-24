@@ -35,6 +35,7 @@ export interface GameSceneHarnessAdapter {
   runHarnessEnemyScaling: HarnessRunner;
   runHarnessDirectCombatNumbers: HarnessRunner;
   runHarnessHudMissionLog: HarnessRunner;
+  runHarnessDebugMenuHangar: HarnessRunner;
 }
 
 type HarnessId =
@@ -66,7 +67,8 @@ type HarnessId =
   | 'velocityLimiter'
   | 'enemyScaling'
   | 'directCombatNumbers'
-  | 'hudMissionLog';
+  | 'hudMissionLog'
+  | 'debugMenuHangar';
 
 const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => void> = {
   smoke: (adapter) => {
@@ -109,7 +111,8 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
   hudMissionLog: (adapter) => {
     adapter.startRun();
     adapter.runHarnessHudMissionLog();
-  }
+  },
+  debugMenuHangar: (adapter) => adapter.runHarnessDebugMenuHangar()
 };
 
 export function installGameSceneHarness(adapter: GameSceneHarnessAdapter): void {

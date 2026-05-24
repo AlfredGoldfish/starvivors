@@ -1128,6 +1128,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createDebugMenu(): void {
+    this.debugMenuHost?.destroy();
     this.debugMenuHost = new DebugMenuHost({
       scene: this,
       getValues: () => this.getDebugMenuValues(),
@@ -1659,7 +1660,8 @@ export class GameScene extends Phaser.Scene {
       runHarnessVelocityLimiter: () => this.runTestHarnessVelocityLimiter(),
       runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
       runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
-      runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog()
+      runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog(),
+      runHarnessDebugMenuHangar: () => this.runTestHarnessDebugMenuHangar()
     });
   }
 
@@ -2092,6 +2094,56 @@ export class GameScene extends Phaser.Scene {
       this.updateGameplayHud(this.time.now);
       document.body.setAttribute('data-starvivors-hud-mission-log-harness', 'pass');
     });
+  }
+
+  private runTestHarnessDebugMenuHangar(): void {
+    const getDebugNumberInputCount = () =>
+      typeof document === 'undefined' ? 0 : document.querySelectorAll('input[data-debug-key]').length;
+
+    this.showShipSelect();
+    const initialInputCount = getDebugNumberInputCount();
+    this.openDebugMenu(this.time.now);
+    const opened = this.debugMenuHost?.isOpen() ?? false;
+    this.closeDebugMenu(this.time.now);
+    const closed = !(this.debugMenuHost?.isOpen() ?? true);
+
+    this.openDebugMenu(this.time.now);
+    const openedBeforeRebuild = this.debugMenuHost?.isOpen() ?? false;
+    const inputCountBeforeRebuild = getDebugNumberInputCount();
+    this.showShipSelect();
+    const closedAfterRebuild = !(this.debugMenuHost?.isOpen() ?? true);
+    const inputCountAfterRebuild = getDebugNumberInputCount();
+
+    this.openDebugMenu(this.time.now);
+    const reopened = this.debugMenuHost?.isOpen() ?? false;
+    this.closeDebugMenu(this.time.now);
+    const closedAfterReopen = !(this.debugMenuHost?.isOpen() ?? true);
+    const finalInputCount = getDebugNumberInputCount();
+
+    const inputCountStable =
+      initialInputCount > 0 &&
+      inputCountBeforeRebuild === initialInputCount &&
+      inputCountAfterRebuild === initialInputCount &&
+      finalInputCount === initialInputCount;
+    const pass = opened && closed && openedBeforeRebuild && closedAfterRebuild && reopened && closedAfterReopen && inputCountStable;
+
+    document.body.setAttribute('data-starvivors-debug-menu-hangar-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-debug-menu-hangar-harness-details',
+      JSON.stringify({
+        opened,
+        closed,
+        openedBeforeRebuild,
+        closedAfterRebuild,
+        reopened,
+        closedAfterReopen,
+        initialInputCount,
+        inputCountBeforeRebuild,
+        inputCountAfterRebuild,
+        finalInputCount,
+        inputCountStable
+      })
+    );
   }
 
   private runTestHarnessSmoke(): void {
