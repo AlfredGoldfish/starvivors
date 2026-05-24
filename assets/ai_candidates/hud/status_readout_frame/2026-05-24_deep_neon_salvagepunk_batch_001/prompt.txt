@@ -1,0 +1,17 @@
+Create a game-ready 2D asset candidate for Starvivors, a space survivors action game.
+
+Art direction: deep space + industrial punk + deep neon sci-fi. Dark gunmetal, worn metal, exposed bolts, subtle grime, cyan/magenta/amber neon accents, red emergency accents where appropriate. Strong silhouette, high contrast, readable over a dark moving starfield. Clean shape language, production-friendly, not overly noisy. All assets are generated on a pure #FFFFFF white background for manual background removal. Usable interior areas of UI/HUD frames should be filled with dark gray, gunmetal, dark glass, or appropriate in-world panel material, not white.
+
+Asset category: hud
+Asset type: status_readout_frame
+Use case: small reusable passive dashboard readout panel for live Phaser text and meters such as hull, shield, fuel, scrap, radar, and scanner
+View: flat orthographic
+Canvas: 512x256
+Background: pure #FFFFFF white background for manual background removal. No checkerboard. No transparent-background preview. No gradient. No texture. No scene. No environmental lighting on the background. No drop shadow on the background. The asset must be isolated, centered, and clearly separated from the white background.
+Style constraints: Create a reusable small sci-fi dashboard status readout frame for Starvivors. It should look like a cockpit instrument bay, not a clickable weapon button. The usable interior is dark gray/gunmetal and empty for live Phaser text and meters. The white background exists only outside the outer silhouette of the asset. Passive instrument/readout panel, not a button. Decorative industrial corners, simple stretchable horizontal and vertical edges, deep neon cyan/magenta/amber accents, no white glow blending into the white background. HUD/UI frame requirements: flat orthographic front view, no perspective, no readable text, no icons unless this is an icon asset, no numbers, no fake text. Design as a reusable frame with a clear interior content area for live Phaser text and meters. Use decorative corners, simple stretchable horizontal and vertical edges, and a production-friendly 9-slice-compatible structure where possible. Status readout interior: dark gray or gunmetal filled interior panel, not white. The center/interior must look like part of the passive readout bay with clear space for live Phaser text and small meters. The white background should only exist outside the outer silhouette of the asset.
+
+No readable text unless explicitly requested. No logos. No watermarks. No copyrighted franchise resemblance. No fake UI text. No game screenshot. No scene background. Center the asset with clean margins. Keep the silhouette clearly separated from the white background. Avoid white glow, pale smoke, or light outer rim that blends into the white background.
+Isolated asset only.
+
+Negative prompt:
+no fake text, no unreadable letters, no logo, no watermark, no copyrighted franchise design, no Star Wars, no Star Trek, no realistic photo, no background scene, no player screenshot, no excessive clutter, no blurry edges, no low contrast, no perspective for UI frames, no asymmetrical accidental distortion, no cropped asset, no shadows that require a specific background, no white glow, no pale smoke, no light outer rim blending into white, no white UI panel interiors

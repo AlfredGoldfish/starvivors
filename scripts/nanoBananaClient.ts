@@ -1,9 +1,11 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 export type GenerateImageRequest = {
   prompt: string;
   negativePrompt: string;
   width: number;
   height: number;
-  transparentBackground: boolean;
   outputPath: string;
 };
 
@@ -18,12 +20,14 @@ type NanoBananaClientOptions = {
   endpointUrl?: string;
 };
 
+const DEFAULT_KEY_FILE = "nano_key.txt";
+
 export function createNanoBananaClientFromEnv(): NanoBananaClient {
-  const apiKey = process.env.NANO_BANANA_API_KEY || process.env.GEMINI_API_KEY;
+  const apiKey = readApiKey();
 
   if (!apiKey) {
     throw new Error(
-      "NANO_BANANA_API_KEY or GEMINI_API_KEY is required for asset generation. Set it in your shell environment; do not commit API keys.",
+      "NANO_BANANA_API_KEY, GEMINI_API_KEY, or nano_key.txt is required for asset generation. Keep API keys out of git.",
     );
   }
 
@@ -109,6 +113,39 @@ Exclusions: ${request.negativePrompt}`;
       );
     },
   };
+}
+
+function readApiKey(): string | null {
+  return (
+    extractApiKey(process.env.NANO_BANANA_API_KEY) ||
+    extractApiKey(process.env.GEMINI_API_KEY) ||
+    readApiKeyFile(process.env.NANO_BANANA_API_KEY_FILE || DEFAULT_KEY_FILE)
+  );
+}
+
+function readApiKeyFile(path: string): string | null {
+  const resolvedPath = resolve(process.cwd(), path);
+
+  if (!existsSync(resolvedPath)) {
+    return null;
+  }
+
+  return extractApiKey(readFileSync(resolvedPath, "utf8"));
+}
+
+function extractApiKey(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const explicitGoogleKey = trimmed.match(/AIza[0-9A-Za-z_-]{20,}/)?.[0];
+  if (explicitGoogleKey) {
+    return explicitGoogleKey;
+  }
+
+  return trimmed.split(/\s+/)[0] || null;
 }
 
 function closestGeminiAspectRatio(width: number, height: number): string {

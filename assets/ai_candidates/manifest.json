@@ -1,8 +1,13 @@
 {
   "purpose": "AI-generated candidate assets for Starvivors batch art exploration.",
   "productionUse": false,
-  "notes": "Generated files in this folder are not imported by gameplay or HUD systems. Manually review, clean, optimize, and move selected keepers into production asset folders later.",
-  "defaultArtDirection": "deep space + industrial punk + deep neon sci-fi, dark gunmetal panels, cyan/magenta/amber/red emergency accents, worn metal, exposed bolts, hazard striping, cockpit hardware, readable silhouettes over a moving starfield, clean game-ready shapes, strong contrast, no fake unreadable baked text",
+  "notes": "Generated files in this folder are not imported by gameplay or HUD systems. Manually remove pure white backgrounds outside this repo workflow, then review, clean, optimize, and move selected keepers into production asset folders later.",
+  "defaultArtDirection": "deep space + industrial punk + deep neon sci-fi, dark gunmetal panels, cyan/magenta/amber/red emergency accents, worn metal, exposed bolts, hazard striping, cockpit hardware, readable silhouettes over a moving starfield, clean game-ready shapes, strong contrast, no fake unreadable baked text, pure #FFFFFF white background for manual background removal",
+  "backgroundMode": "pure-white",
+  "backgroundColor": "#FFFFFF",
+  "manualBackgroundRemovalExpected": true,
+  "transparentBackgroundRequested": false,
+  "backgroundRemovalMode": "manual",
   "batchFolderPattern": "<category>/<optional_group>/<asset_type>/<yyyy-mm-dd>_<style_slug>_batch_<number>/",
   "scripts": {
     "generate": "npm run generate:assets -- --category hud --asset weapon_slot_frame --count 2",

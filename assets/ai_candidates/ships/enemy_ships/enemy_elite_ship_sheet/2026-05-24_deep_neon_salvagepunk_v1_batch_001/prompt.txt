@@ -1,0 +1,17 @@
+Create a game-ready 2D asset candidate for Starvivors, a space survivors action game.
+
+Art direction: deep space + industrial punk + salvagepunk machinery + deep neon sci-fi. Dark gunmetal and worn steel, carbon-black plating, exposed bolts, vents, mechanical seams, armored plates, subtle grime and scratches, cyan engine/neon glow, magenta plasma accent lines, amber cockpit/utility lights, and small red emergency lights where useful. Strong readable silhouettes, clean game-ready shapes, high contrast over a dark starfield after manual background removal. Not painterly noise, not generic clean sci-fi, not cartoon, not realistic photo, not franchise-inspired. All assets are generated on a pure #FFFFFF white background for manual background removal. Usable interior areas of UI/HUD frames should be filled with dark gray, gunmetal, dark glass, or appropriate in-world panel material, not white.
+
+Asset category: ships
+Asset type: enemy_elite_ship_sheet
+Use case: elite enemy family concepts
+View: strict top-down orthographic game sprite view, forward-facing orientation, no cinematic perspective, no low-angle render, no angled product render, no horizon, no camera depth shift, no dramatic perspective foreshortening
+Canvas: 1024x1024
+Background: pure #FFFFFF white background for manual background removal. No checkerboard. No transparent-background preview. No gradient. No texture. No scene. No environmental lighting on the background. No drop shadow on the background. The asset must be isolated, centered, and clearly separated from the white background.
+Style constraints: Strict top-down orthographic game sprite view. Forward-facing orientation when the asset has a front. No cinematic perspective, no low-angle render, no angled product render, no horizon, no camera depth shift, no dramatic perspective foreshortening. Keep a strong readable silhouette at small size. The asset must be isolated and centered on pure #FFFFFF white. Elite enemy family concepts. Four separated enemy variants on white background, consistent faction style.
+
+No fake text. No readable text unless explicitly requested. No random letters. No logos. No watermarks. No copyrighted franchise resemblance. No Star Wars. No Star Trek. No realistic photo. No background scene. No gameplay screenshot. No excessive clutter. No blurry edges. No cropped asset. No shadows that require a specific background. No white glow, pale smoke, or light outer rim blending into the white background. Center the asset with clean margins. Keep the silhouette clearly separated from the white background.
+Isolated asset only.
+
+Negative prompt:
+no fake text, no readable text, no random letters, no unreadable letters, no logo, no watermark, no copyrighted franchise design, no Star Wars, no Star Trek, no realistic photo, no background scene, no gameplay screenshot, no player screenshot, no excessive clutter, no blurry edges, no low contrast, no cinematic perspective, no low-angle render, no angled product render, no horizon, no camera depth shift, no dramatic perspective foreshortening, no perspective for UI frames, no transparent center for HUD/UI frames, no asymmetrical accidental distortion, no cropped asset, no shadows that require a specific background, no white glow, no pale smoke, no light outer rim blending into white, no white UI panel interiors

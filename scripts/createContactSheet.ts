@@ -13,11 +13,11 @@ export async function createContactSheetIfAvailable(options: ContactSheetOptions
     return null;
   }
 
+  const magickCommand = await resolveMagickCommand();
   const outputFileName = options.outputFileName || "contact_sheet.png";
   const outputPath = join(options.batchDirectory, outputFileName);
-  const magickAvailable = await commandExists("magick");
 
-  if (!magickAvailable) {
+  if (!magickCommand) {
     console.log("Contact sheet skipped: ImageMagick `magick` command was not found.");
     return null;
   }
@@ -28,7 +28,7 @@ export async function createContactSheetIfAvailable(options: ContactSheetOptions
     join(options.batchDirectory, file),
   ]);
 
-  await runCommand("magick", [
+  await runCommand(magickCommand, [
     "montage",
     ...labelArgs,
     "-thumbnail",
@@ -45,6 +45,22 @@ export async function createContactSheetIfAvailable(options: ContactSheetOptions
   ]);
 
   return outputPath;
+}
+
+async function resolveMagickCommand(): Promise<string | null> {
+  const candidates = [
+    process.env.MAGICK_PATH,
+    "magick",
+    "C:\\Program Files\\ImageMagick-7.1.2-Q16-HDRI\\magick.exe",
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    if (await commandExists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
 }
 
 async function commandExists(command: string): Promise<boolean> {

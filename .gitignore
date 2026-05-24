@@ -6,3 +6,4 @@ release/
 runtime-data/
 .vite-dev-server.pid
 vite-dev*.log
+nano_key.txt
