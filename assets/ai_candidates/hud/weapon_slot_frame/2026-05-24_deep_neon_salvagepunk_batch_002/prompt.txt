@@ -1,0 +1,16 @@
+Create a game-ready 2D asset candidate for Starvivors, a space survivors action game.
+
+Art direction: deep space + industrial punk + deep neon sci-fi. Dark gunmetal, worn metal, exposed bolts, subtle grime, cyan/magenta/amber neon accents, red emergency accents where appropriate. Strong silhouette, high contrast, readable over a dark moving starfield. Clean shape language, production-friendly, not overly noisy.
+
+Asset category: hud
+Asset type: weapon_slot_frame
+Use case: reusable weapon button frame
+View: flat orthographic
+Canvas: 512x256
+Background: transparent if supported.
+Style constraints: pressable mechanical switch/button frame, empty center for text, cooldown rail space, 9-slice-compatible. Design this as a 9-slice-compatible frame: decorative corners, simple stretchable horizontal and vertical edges, mostly empty center, no complex art crossing the stretch zones.
+
+No readable text unless explicitly requested. No logos. No watermark. No UI mockup screenshot unless requested. Isolated asset only.
+
+Negative prompt:
+no fake text, no unreadable letters, no logo, no watermark, no copyrighted franchise design, no Star Wars, no Star Trek, no realistic photo, no background scene, no player screenshot, no excessive clutter, no blurry edges, no low contrast, no perspective for UI frames, no asymmetrical accidental distortion, no cropped asset, no shadows that require a specific background
