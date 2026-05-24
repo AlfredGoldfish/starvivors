@@ -8,6 +8,7 @@ type DesktopFileCategory = 'reports' | 'debug-presets' | 'logs' | 'runs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.argv.includes('--dev') || process.env.STARVIVORS_DESKTOP_DEV === '1';
+const devServerUrl = getDevServerUrl();
 const categoryFolders: Record<DesktopFileCategory, string> = {
   reports: 'reports',
   'debug-presets': 'debug-presets',
@@ -62,7 +63,7 @@ async function createMainWindow(): Promise<void> {
   });
 
   if (isDev) {
-    await mainWindow.loadURL('http://127.0.0.1:5173');
+    await mainWindow.loadURL(devServerUrl);
     if (process.env.STARVIVORS_OPEN_DEVTOOLS === '1') {
       mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
@@ -87,7 +88,7 @@ async function createEnemyLabWindow(): Promise<void> {
   });
 
   if (isDev) {
-    await enemyLabWindow.loadURL('http://127.0.0.1:5173/enemy-lab.html');
+    await enemyLabWindow.loadURL(new URL('/enemy-lab.html', devServerUrl).toString());
     if (process.env.STARVIVORS_OPEN_DEVTOOLS === '1') {
       enemyLabWindow.webContents.openDevTools({ mode: 'detach' });
     }
@@ -121,6 +122,18 @@ function installMainProcessDiagnostics(): void {
   process.on('unhandledRejection', (reason) => {
     void appendMainProcessError('unhandledRejection', reason);
   });
+}
+
+function getDevServerUrl(): string {
+  const argPrefix = '--dev-server-url=';
+  const argValue = process.argv.find((arg) => arg.startsWith(argPrefix))?.slice(argPrefix.length);
+  const rawUrl = argValue || process.env.STARVIVORS_DEV_SERVER_URL || 'http://127.0.0.1:5174';
+
+  try {
+    return new URL(rawUrl).toString().replace(/\/$/, '');
+  } catch {
+    return 'http://127.0.0.1:5174';
+  }
 }
 
 async function appendMainProcessError(source: string, error: unknown): Promise<void> {
