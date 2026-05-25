@@ -6,6 +6,7 @@ import {
   clampHudButtonVariant,
   type HudButtonVariant
 } from './hudButtonVariants';
+import { drawCockpitCard } from '../ui/cockpitCard';
 
 export type WeaponHotbarSlotType = 'auto' | 'primary' | 'secondary';
 
@@ -758,17 +759,20 @@ export class GameplayHudSystem {
 
     this.missionLogBounds = new Phaser.Geom.Rectangle(x, y, width, height);
     this.missionLogGraphics?.setVisible(false);
-    this.drawCockpitPanel(this.hotbarGraphics, x, y, width, height, snapshot.isMissionDanger ? 0xff5964 : 0xffc857, true);
-    this.hotbarGraphics.lineStyle(1, 0x42f5d7, 0.32);
-    this.hotbarGraphics.lineBetween(x + 18, y + 54, x + width - 18, y + 54);
-    this.hotbarGraphics.lineBetween(x + 18, y + 168, x + width - 18, y + 168);
+    const rewardDividerY = y + 180;
+    const rewardRowY = y + 190;
+    drawCockpitCard(this.hotbarGraphics, x, y, width, height, {
+      accentColor: snapshot.isMissionDanger ? 0xff5964 : 0xffc857,
+      glow: true,
+      dividerOffsets: [54, rewardDividerY - y]
+    });
 
     const rows = [
       ['MISSION LOG', '#73f2ff', y + 14, '14px'],
       [`${snapshot.missionDisplayName}  ${snapshot.missionStatus}`, statusColor, y + 38, '12px'],
       [`OBJECTIVE\n${snapshot.missionObjectiveLabel}\n${snapshot.missionDescription}`, '#f2fbff', y + 68, '12px'],
       [`STATUS ${snapshot.contractStatusLine.replace(/^Contract /, '')}\nRANGE ${distance}\nDIFFICULTY ${snapshot.missionDifficulty}`, '#c8f7ff', y + 132, '12px'],
-      [`REWARD\n${snapshot.missionRewardPreview}`, '#fff0a0', y + 178, '12px'],
+      [`REWARD\n${snapshot.missionRewardPreview}`, '#fff0a0', rewardRowY, '12px'],
       ['CLICK MISSION / ESC TO CLOSE', '#8090a6', y + 224, '10px']
     ] as const;
 
@@ -1286,7 +1290,8 @@ export class GameplayHudSystem {
     height: number,
     accentColor: number,
     glow = false,
-    compact = false
+    compact = false,
+    showInnerTrim = true
   ): void {
     if (glow) {
       graphics.lineStyle(5, accentColor, 0.1);
@@ -1300,8 +1305,10 @@ export class GameplayHudSystem {
     graphics.fillRoundedRect(x + 4, y + 4, width - 8, height - 8, 5);
     graphics.lineStyle(2, 0x2a3444, 0.9);
     graphics.strokeRoundedRect(x, y, width, height, 7);
-    graphics.lineStyle(1, 0xc89452, 0.58);
-    graphics.strokeRoundedRect(x + 5, y + 5, width - 10, height - 10, 5);
+    if (showInnerTrim) {
+      graphics.lineStyle(1, 0xc89452, 0.58);
+      graphics.strokeRoundedRect(x + 5, y + 5, width - 10, height - 10, 5);
+    }
     if (!compact) {
       graphics.lineStyle(1, accentColor, 0.68);
       graphics.lineBetween(x + 14, y + height - 8, x + width - 14, y + height - 8);

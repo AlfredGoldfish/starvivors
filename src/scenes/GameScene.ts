@@ -260,6 +260,7 @@ import { createSecretControlOverlay, type SecretControlOverlayController, type S
 import {
   formatUpgradeOverlayWeaponSummary,
   UPGRADE_OVERLAY_CHOICE_COUNT,
+  type UpgradeOverlayMode,
   UpgradeOverlayUiController
 } from '../ui/upgradeOverlay';
 import type {
@@ -804,6 +805,7 @@ export class GameScene extends Phaser.Scene {
   private playerXp = 0;
   private nextXpThreshold = INITIAL_XP_THRESHOLD;
   private bankedUpgrades = 0;
+  private pendingRareUpgrades = 0;
   private rerollsThisRun = 0;
   private debugRerollCostBase = REROLL_BASE_COST;
   private asteroidCameraViewCount = 0;
@@ -849,6 +851,7 @@ export class GameScene extends Phaser.Scene {
   private sectorScannerRuntime: SectorScannerRuntime = createSectorScannerRuntime();
   private normalUpgradeOverlayChoices: UpgradeOverlayChoice[] | null = null;
   private specialUpgradeOverlayChoices: UpgradeDefinition[] | null = null;
+  private upgradeOverlayMode: UpgradeOverlayMode = null;
   private sectorScannerArrow?: Phaser.GameObjects.Graphics;
   private nextDebugMenuRefreshAt = 0;
   private isDebugMenuRefreshDirty = true;
@@ -914,7 +917,8 @@ export class GameScene extends Phaser.Scene {
     );
     this.upgradeOverlayUi = new UpgradeOverlayUiController<UpgradeOverlayChoice>({
       scene: this,
-      onUpgradeButtonClick: () => this.handleUpgradeButtonClick(),
+      onNormalUpgradeButtonClick: () => this.handleNormalUpgradeButtonClick(),
+      onRareUpgradeButtonClick: () => this.handleRareUpgradeButtonClick(),
       onChoiceSelected: (index, time) => this.selectUpgradeOverlayChoiceAt(index, time)
     });
     this.collisionDebugOverlay = new CollisionDebugOverlaySystem({
@@ -1651,6 +1655,8 @@ export class GameScene extends Phaser.Scene {
       runHarnessPhase15B: () => this.runTestHarnessPhase15B(),
       runHarnessPhase15_5: () => this.runTestHarnessPhase15_5(),
       runHarnessUpgradeOverlayUi: () => this.runTestHarnessUpgradeOverlayUi(),
+      runHarnessUpgradeOverlayNormalScreenshot: () => this.runTestHarnessUpgradeOverlayNormalScreenshot(),
+      runHarnessUpgradeOverlayRareScreenshot: () => this.runTestHarnessUpgradeOverlayRareScreenshot(),
       runHarnessBeamVisual: () => this.runTestHarnessBeamVisual(),
       runHarnessBeamTipScreenshot: () => this.runTestHarnessBeamTipScreenshot(),
       runHarnessResultsContinueFuel: () => this.runTestHarnessResultsContinueFuel(),
@@ -1897,7 +1903,11 @@ export class GameScene extends Phaser.Scene {
         return this.getTestHarnessState();
       },
       clickUpgradeButton: () => {
-        this.handleUpgradeButtonClick();
+        this.handleNormalUpgradeButtonClick();
+        return this.getTestHarnessState();
+      },
+      clickRareUpgradeButton: () => {
+        this.handleRareUpgradeButtonClick();
         return this.getTestHarnessState();
       },
       toggleMinimap: () => {
@@ -1994,6 +2004,8 @@ export class GameScene extends Phaser.Scene {
       upgradeChoiceCount: this.isUpgradeOverlayOpen ? this.getUpgradeOverlayChoices().length : UPGRADE_OVERLAY_CHOICE_COUNT,
       nextXpThreshold: this.nextXpThreshold,
       bankedUpgrades: this.bankedUpgrades,
+      pendingRareUpgrades: this.pendingRareUpgrades,
+      upgradeOverlayMode: this.upgradeOverlayMode,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       isResultsScreenOpen: Boolean(this.resultsScreen),
       isResultsButtonVisible: Boolean(this.resultsButtonContainer?.visible),
@@ -3674,7 +3686,43 @@ export class GameScene extends Phaser.Scene {
       firstChoice !== undefined &&
       afterClick.bankedUpgrades === opened.bankedUpgrades - 1 &&
       (firstChoice.category === 'secondary-weapon' || firstChoiceLevelAfter === firstChoiceLevelBefore + 1);
-    const pass = textPass && clickTargetPass && selectionPass;
+    this.closeUpgradeOverlay(this.time.now);
+    this.pendingRareUpgrades = 0;
+    this.spawnRewardPickup('special-upgrade', 'enemy', 0, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
+    const rarePickup = this.scrapPickups.find((scrap) => scrap.kind === 'special-upgrade');
+    if (rarePickup) {
+      this.collectScrapPickup(rarePickup);
+    }
+    const rareBanked = harness.getState();
+    const rareButtonOpened = harness.clickRareUpgradeButton();
+    const rareChoice = this.getUpgradeOverlayChoices()[0];
+    const rareChoiceObjects = this.upgradeOverlayUi.getChoiceDebugObjects(0);
+    const rareTextVisibleBefore = rareChoiceObjects?.text.visible ?? false;
+    const rareHitZoneInputEnabledBefore = Boolean(rareChoiceObjects?.hitZone.input?.enabled);
+    const rareChoiceLevelBefore =
+      rareChoice && rareChoice.category !== 'secondary-weapon' ? this.getUpgradeLevel(rareChoice) : 0;
+    if (rareChoice) {
+      this.selectUpgradeOverlayChoiceAt(0, this.time.now);
+    }
+    const afterRareClick = harness.getState();
+    const rareChoiceLevelAfter =
+      rareChoice && rareChoice.category !== 'secondary-weapon' ? this.getUpgradeLevel(rareChoice) : 0;
+    const rarePickupPass =
+      Boolean(rarePickup) &&
+      rareBanked.pendingRareUpgrades === 1 &&
+      !rareBanked.isUpgradeOverlayOpen;
+    const rareOpenPass =
+      rareButtonOpened.isUpgradeOverlayOpen &&
+      rareButtonOpened.upgradeOverlayMode === 'rare' &&
+      rareTextVisibleBefore &&
+      rareHitZoneInputEnabledBefore;
+    const rareSelectionPass =
+      rareChoice !== undefined &&
+      afterRareClick.pendingRareUpgrades === 0 &&
+      !afterRareClick.isUpgradeOverlayOpen &&
+      rareChoice.category !== 'secondary-weapon' &&
+      rareChoiceLevelAfter === rareChoiceLevelBefore + 1;
+    const pass = textPass && clickTargetPass && selectionPass && rarePickupPass && rareOpenPass && rareSelectionPass;
 
     document.body.setAttribute('data-starvivors-upgrade-overlay-ui-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -3693,11 +3741,62 @@ export class GameScene extends Phaser.Scene {
         firstChoiceLevelBefore,
         firstChoiceLevelAfter,
         afterClick,
+        rareBanked,
+        rareButtonOpened,
+        rareChoice,
+        rareTextVisibleBefore,
+        rareHitZoneInputEnabledBefore,
+        rareChoiceLevelBefore,
+        rareChoiceLevelAfter,
+        afterRareClick,
         textPass,
         clickTargetPass,
         selectionPass,
+        rarePickupPass,
+        rareOpenPass,
+        rareSelectionPass,
         pass
       })
+    );
+  }
+
+  private runTestHarnessUpgradeOverlayNormalScreenshot(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-upgrade-overlay-normal-screenshot', 'fail');
+      return;
+    }
+
+    harness.resetProgression();
+    this.startRun();
+    harness.grantXp(1000);
+    const opened = harness.openUpgradeOverlay();
+    document.body.setAttribute(
+      'data-starvivors-upgrade-overlay-normal-screenshot',
+      opened.isUpgradeOverlayOpen && opened.upgradeOverlayMode === 'normal' ? 'pass' : 'fail'
+    );
+  }
+
+  private runTestHarnessUpgradeOverlayRareScreenshot(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-upgrade-overlay-rare-screenshot', 'fail');
+      return;
+    }
+
+    harness.resetProgression();
+    this.startRun();
+    this.spawnRewardPickup('special-upgrade', 'enemy', 0, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
+    const rarePickup = this.scrapPickups.find((scrap) => scrap.kind === 'special-upgrade');
+    if (rarePickup) {
+      this.collectScrapPickup(rarePickup);
+    }
+    const opened = harness.clickRareUpgradeButton();
+    document.body.setAttribute(
+      'data-starvivors-upgrade-overlay-rare-screenshot',
+      opened.isUpgradeOverlayOpen && opened.upgradeOverlayMode === 'rare' ? 'pass' : 'fail'
     );
   }
 
@@ -4219,6 +4318,7 @@ export class GameScene extends Phaser.Scene {
     this.playerXp = progressReset.playerXp;
     this.nextXpThreshold = progressReset.nextXpThreshold;
     this.bankedUpgrades = progressReset.bankedUpgrades;
+    this.pendingRareUpgrades = progressReset.pendingRareUpgrades;
     this.rerollsThisRun = progressReset.rerollsThisRun;
     this.resultsScreen = undefined;
     this.ejectConfirmScreen = undefined;
@@ -4282,7 +4382,9 @@ export class GameScene extends Phaser.Scene {
     this.isPauseMenuOpen = overlayPauseReset.isPauseMenuOpen;
     this.upgradeOverlayOpenedAt = overlayPauseReset.upgradeOverlayOpenedAt;
     this.pauseMenuOpenedAt = overlayPauseReset.pauseMenuOpenedAt;
+    this.normalUpgradeOverlayChoices = null;
     this.specialUpgradeOverlayChoices = null;
+    this.upgradeOverlayMode = null;
     this.sectorScannerRuntime = createSectorScannerRuntime();
     this.totalUpgradePauseMs = overlayPauseReset.totalUpgradePauseMs;
     this.totalPauseMenuPauseMs = overlayPauseReset.totalPauseMenuPauseMs;
@@ -7401,9 +7503,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (scrap.kind === 'special-upgrade') {
-      this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Rare upgrade', 0xb88cff);
+      this.pendingRareUpgrades += 1;
+      this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Rare upgrade banked', 0xffc857);
       this.destroyScrapPickup(scrap);
-      this.openSpecialUpgradeOverlay(this.time.now);
+      this.updateGameplayHud(this.time.now);
+      this.updateUpgradeButton();
       return;
     }
 
@@ -8422,6 +8526,8 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.gameplayHud.closeMissionLog();
+    this.upgradeOverlayMode = 'normal';
+    this.specialUpgradeOverlayChoices = null;
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
     this.refreshUpgradeOverlayText();
@@ -8429,20 +8535,22 @@ export class GameScene extends Phaser.Scene {
     this.updateUpgradeButton();
   }
 
-  private openSpecialUpgradeOverlay(time: number): void {
-    if (this.isUpgradeOverlayOpen || this.isPlayerDead) {
+  private openRareUpgradeOverlay(time: number): void {
+    if (this.isUpgradeOverlayOpen || this.pendingRareUpgrades <= 0 || this.isPlayerDead) {
       return;
     }
 
     const choices = this.getSpecialUpgradeDropChoices();
     if (choices.length <= 0) {
-      this.bankedUpgrades += 1;
+      this.bankedUpgrades += this.pendingRareUpgrades;
+      this.pendingRareUpgrades = 0;
       this.updateGameplayHud(time);
       this.updateUpgradeButton();
       return;
     }
 
     this.gameplayHud.closeMissionLog();
+    this.upgradeOverlayMode = 'rare';
     this.specialUpgradeOverlayChoices = choices;
     this.isUpgradeOverlayOpen = true;
     this.upgradeOverlayOpenedAt = time;
@@ -8463,12 +8571,21 @@ export class GameScene extends Phaser.Scene {
     this.upgradeOverlayOpenedAt = 0;
     this.normalUpgradeOverlayChoices = null;
     this.specialUpgradeOverlayChoices = null;
+    this.upgradeOverlayMode = null;
     this.upgradeOverlayUi.hideOverlay();
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
   }
 
   private getUpgradeOverlayChoices(): UpgradeOverlayChoice[] {
+    if (this.upgradeOverlayMode === 'rare') {
+      if (!this.specialUpgradeOverlayChoices) {
+        this.specialUpgradeOverlayChoices = this.getSpecialUpgradeDropChoices();
+      }
+
+      return this.specialUpgradeOverlayChoices;
+    }
+
     if (this.specialUpgradeOverlayChoices) {
       return this.specialUpgradeOverlayChoices;
     }
@@ -8630,9 +8747,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private selectUpgrade(upgrade: UpgradeDefinition, time: number): void {
-    const isSpecialChoice = this.specialUpgradeOverlayChoices !== null;
+    const isRareChoice = this.upgradeOverlayMode === 'rare' || this.specialUpgradeOverlayChoices !== null;
 
-    if (!isSpecialChoice && this.bankedUpgrades <= 0) {
+    if (!isRareChoice && this.bankedUpgrades <= 0) {
       this.closeUpgradeOverlay(time);
       return;
     }
@@ -8648,12 +8765,14 @@ export class GameScene extends Phaser.Scene {
       this.applyPassiveUpgrade(upgrade.id);
     }
 
-    if (!isSpecialChoice) {
+    if (isRareChoice) {
+      this.pendingRareUpgrades = Math.max(0, this.pendingRareUpgrades - 1);
+    } else {
       this.bankedUpgrades -= 1;
     }
 
-    if (isSpecialChoice) {
-      this.closeUpgradeOverlay(time);
+    if (isRareChoice) {
+      this.advanceOrCloseRareUpgradeOverlay(time);
     } else {
       this.advanceOrCloseNormalUpgradeOverlay(time);
     }
@@ -8667,6 +8786,28 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.refreshUpgradeOverlayText();
+    this.updateGameplayHud(time);
+    this.updateUpgradeButton();
+  }
+
+  private advanceOrCloseRareUpgradeOverlay(time: number): void {
+    this.specialUpgradeOverlayChoices = null;
+
+    if (this.pendingRareUpgrades <= 0 || this.isPlayerDead) {
+      this.closeUpgradeOverlay(time);
+      return;
+    }
+
+    const choices = this.getSpecialUpgradeDropChoices();
+    if (choices.length <= 0) {
+      this.bankedUpgrades += this.pendingRareUpgrades;
+      this.pendingRareUpgrades = 0;
+      this.closeUpgradeOverlay(time);
+      return;
+    }
+
+    this.specialUpgradeOverlayChoices = choices;
     this.refreshUpgradeOverlayText();
     this.updateGameplayHud(time);
     this.updateUpgradeButton();
@@ -9116,7 +9257,7 @@ export class GameScene extends Phaser.Scene {
     this.updateUpgradeButton();
   }
 
-  private handleUpgradeButtonClick(): void {
+  private handleNormalUpgradeButtonClick(): void {
     if (this.bankedUpgrades <= 0 || this.isPlayerDead || this.isUpgradeOverlayOpen) {
       return;
     }
@@ -9124,9 +9265,18 @@ export class GameScene extends Phaser.Scene {
     this.openUpgradeOverlay(this.time.now);
   }
 
+  private handleRareUpgradeButtonClick(): void {
+    if (this.pendingRareUpgrades <= 0 || this.isPlayerDead || this.isUpgradeOverlayOpen) {
+      return;
+    }
+
+    this.openRareUpgradeOverlay(this.time.now);
+  }
+
   private updateUpgradeButton(): void {
     this.upgradeOverlayUi.updateButton({
       bankedUpgrades: this.bankedUpgrades,
+      pendingRareUpgrades: this.pendingRareUpgrades,
       isPlayerDead: this.isPlayerDead,
       isOverlayOpen: this.isUpgradeOverlayOpen
     });
@@ -9189,7 +9339,9 @@ export class GameScene extends Phaser.Scene {
       choices,
       isOpen: this.isUpgradeOverlayOpen,
       isSpecialChoiceSet: this.specialUpgradeOverlayChoices !== null,
+      mode: this.upgradeOverlayMode,
       bankedUpgrades: this.bankedUpgrades,
+      pendingRareUpgrades: this.pendingRareUpgrades,
       runScrapTotal: this.runScrapTotal,
       rerollCost: this.getNextRerollCost(),
       weaponSummary: formatUpgradeOverlayWeaponSummary(activeWeapon, resolvedActiveWeapon, damageMultiplier),

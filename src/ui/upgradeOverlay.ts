@@ -2,24 +2,38 @@ import Phaser from 'phaser';
 import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponRegistryEntry } from '../data/weapons';
 import type { ResolvedWeaponStats } from '../systems/weaponStats';
+import { drawCockpitCard } from './cockpitCard';
 
 export const UPGRADE_OVERLAY_CHOICE_COUNT = 3;
 
-const UPGRADE_OVERLAY_CARD_HEIGHT = 74;
-const UPGRADE_OVERLAY_CARD_GAP = 10;
+const UPGRADE_OVERLAY_CARD_WIDTH = 300;
+const UPGRADE_OVERLAY_CARD_HEIGHT = 224;
+const UPGRADE_OVERLAY_CARD_GAP = 16;
+const UPGRADE_BUTTON_WIDTH = 196;
+const UPGRADE_BUTTON_HEIGHT = 44;
+
+export type UpgradeOverlayMode = 'normal' | 'rare' | null;
+type UpgradeButtonKind = 'normal' | 'rare';
 
 interface UpgradeOverlayLayout {
   width: number;
   height: number;
   centerX: number;
-  panelWidth: number;
-  panelHeight: number;
-  panelX: number;
-  panelY: number;
-  cardX: number;
+  cardStartX: number;
+  cardY: number;
   cardWidth: number;
   cardHeight: number;
   cardGap: number;
+  headerY: number;
+  promptY: number;
+}
+
+interface UpgradeButtonObjects {
+  container: Phaser.GameObjects.Container;
+  graphics: Phaser.GameObjects.Graphics;
+  text: Phaser.GameObjects.Text;
+  kind: UpgradeButtonKind;
+  hovered: boolean;
 }
 
 export interface UpgradeOverlayDisplayChoice {
@@ -32,6 +46,7 @@ export interface UpgradeOverlayDisplayChoice {
 
 export interface UpgradeOverlayButtonState {
   bankedUpgrades: number;
+  pendingRareUpgrades: number;
   isPlayerDead: boolean;
   isOverlayOpen: boolean;
 }
@@ -40,7 +55,9 @@ export interface UpgradeOverlayRenderState<TChoice extends UpgradeOverlayDisplay
   choices: TChoice[];
   isOpen: boolean;
   isSpecialChoiceSet: boolean;
+  mode: UpgradeOverlayMode;
   bankedUpgrades: number;
+  pendingRareUpgrades: number;
   runScrapTotal: number;
   rerollCost: number;
   weaponSummary: string;
@@ -60,17 +77,18 @@ export interface UpgradeOverlayChoiceDebugObjects {
 
 export interface UpgradeOverlayUiConfig {
   scene: Phaser.Scene;
-  onUpgradeButtonClick: () => void;
+  onNormalUpgradeButtonClick: () => void;
+  onRareUpgradeButtonClick: () => void;
   onChoiceSelected: (index: number, time: number) => void;
 }
 
 export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayChoice> {
   private readonly scene: Phaser.Scene;
-  private readonly onUpgradeButtonClick: () => void;
+  private readonly onNormalUpgradeButtonClick: () => void;
+  private readonly onRareUpgradeButtonClick: () => void;
   private readonly onChoiceSelected: (index: number, time: number) => void;
-  private upgradeButtonContainer?: Phaser.GameObjects.Container;
-  private upgradeButtonGraphics?: Phaser.GameObjects.Graphics;
-  private upgradeButtonText?: Phaser.GameObjects.Text;
+  private normalUpgradeButton?: UpgradeButtonObjects;
+  private rareUpgradeButton?: UpgradeButtonObjects;
   private upgradeOverlayBlocker?: Phaser.GameObjects.Zone;
   private upgradeOverlayGraphics?: Phaser.GameObjects.Graphics;
   private upgradeOverlayText?: Phaser.GameObjects.Text;
@@ -81,54 +99,151 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
 
   constructor(config: UpgradeOverlayUiConfig) {
     this.scene = config.scene;
-    this.onUpgradeButtonClick = config.onUpgradeButtonClick;
+    this.onNormalUpgradeButtonClick = config.onNormalUpgradeButtonClick;
+    this.onRareUpgradeButtonClick = config.onRareUpgradeButtonClick;
     this.onChoiceSelected = config.onChoiceSelected;
   }
 
   createButton(): void {
-    this.upgradeButtonGraphics = this.scene.add.graphics();
-    this.upgradeButtonText = this.scene.add
-      .text(0, 0, '', {
-        fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '16px',
-        color: '#f2fbff'
-      })
-      .setOrigin(0.5);
-
-    this.upgradeButtonContainer = this.scene.add
-      .container(this.scene.scale.width / 2, this.scene.scale.height - 116, [this.upgradeButtonGraphics, this.upgradeButtonText])
-      .setScrollFactor(0)
-      .setDepth(1002)
-      .setSize(190, 42)
-      .setInteractive({ useHandCursor: true });
-
-    this.upgradeButtonContainer.on('pointerdown', () => this.onUpgradeButtonClick());
-    this.updateButton({ bankedUpgrades: 0, isPlayerDead: false, isOverlayOpen: false });
+    this.normalUpgradeButton = this.createUpgradeButtonObjects('normal');
+    this.rareUpgradeButton = this.createUpgradeButtonObjects('rare');
+    this.updateButton({ bankedUpgrades: 0, pendingRareUpgrades: 0, isPlayerDead: false, isOverlayOpen: false });
   }
 
   updateButton(state: UpgradeOverlayButtonState): void {
-    if (!this.upgradeButtonContainer || !this.upgradeButtonGraphics || !this.upgradeButtonText) {
+    const normalVisible = state.bankedUpgrades > 0 && !state.isPlayerDead && !state.isOverlayOpen;
+    const rareVisible = state.pendingRareUpgrades > 0 && !state.isPlayerDead && !state.isOverlayOpen;
+    const y = this.scene.scale.height - 182;
+    const centerX = this.scene.scale.width / 2;
+    const normalX = normalVisible && rareVisible ? centerX - 112 : centerX;
+    const rareX = normalVisible && rareVisible ? centerX + 112 : centerX;
+
+    this.updateUpgradeButtonObjects(this.normalUpgradeButton, {
+      visible: normalVisible,
+      x: normalX,
+      y,
+      label: state.bankedUpgrades > 1 ? `UPGRADE x${state.bankedUpgrades}` : 'UPGRADE',
+      accentColor: 0x52ff9a,
+      fillColor: 0x07180f
+    });
+    this.updateUpgradeButtonObjects(this.rareUpgradeButton, {
+      visible: rareVisible,
+      x: rareX,
+      y,
+      label: state.pendingRareUpgrades > 1 ? `RARE x${state.pendingRareUpgrades}` : 'RARE UPGRADE',
+      accentColor: 0xffc857,
+      fillColor: 0x1f1608
+    });
+  }
+
+  private createUpgradeButtonObjects(kind: UpgradeButtonKind): UpgradeButtonObjects {
+    const graphics = this.scene.add.graphics();
+    const text = this.scene.add
+      .text(0, 0, '', {
+        fontFamily: 'Consolas, "Courier New", monospace',
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: '#f2fbff',
+        align: 'center',
+        fixedWidth: UPGRADE_BUTTON_WIDTH - 18,
+        wordWrap: { width: UPGRADE_BUTTON_WIDTH - 22, useAdvancedWrap: true }
+      })
+      .setOrigin(0.5)
+      .setShadow(1, 1, '#02040a', 3, true, true);
+    const container = this.scene.add
+      .container(0, 0, [graphics, text])
+      .setScrollFactor(0)
+      .setDepth(1002)
+      .setSize(UPGRADE_BUTTON_WIDTH, UPGRADE_BUTTON_HEIGHT)
+      .setVisible(false);
+    const button: UpgradeButtonObjects = { container, graphics, text, kind, hovered: false };
+    container.on('pointerover', () => {
+      button.hovered = true;
+      this.drawUpgradeHudButton(button);
+    });
+    container.on('pointerout', () => {
+      button.hovered = false;
+      this.drawUpgradeHudButton(button);
+    });
+    container.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      if (kind === 'rare') {
+        this.onRareUpgradeButtonClick();
+      } else {
+        this.onNormalUpgradeButtonClick();
+      }
+    });
+
+    return button;
+  }
+
+  private updateUpgradeButtonObjects(
+    button: UpgradeButtonObjects | undefined,
+    state: { visible: boolean; x: number; y: number; label: string; accentColor: number; fillColor: number }
+  ): void {
+    if (!button) {
       return;
     }
 
-    const isVisible = state.bankedUpgrades > 0 && !state.isPlayerDead && !state.isOverlayOpen;
-    const label = state.bankedUpgrades > 1 ? `Upgrade (${state.bankedUpgrades})` : 'Upgrade';
-
-    this.upgradeButtonContainer
-      .setPosition(this.scene.scale.width / 2, this.scene.scale.height - 116)
-      .setVisible(isVisible)
+    button.container
+      .setPosition(state.x, state.y)
+      .setVisible(state.visible)
       .disableInteractive();
-
-    if (isVisible) {
-      this.upgradeButtonContainer.setInteractive({ useHandCursor: true });
+    if (state.visible) {
+      button.container.setInteractive({ useHandCursor: true });
     }
 
-    this.upgradeButtonText.setText(label);
-    this.upgradeButtonGraphics.clear();
-    this.upgradeButtonGraphics.fillStyle(0x071018, 0.94);
-    this.upgradeButtonGraphics.fillRoundedRect(-95, -21, 190, 42, 6);
-    this.upgradeButtonGraphics.lineStyle(2, 0x42f5d7, 0.88);
-    this.upgradeButtonGraphics.strokeRoundedRect(-95, -21, 190, 42, 6);
+    button.text.setText(state.label).setVisible(state.visible);
+    button.container.setData('accentColor', state.accentColor);
+    button.container.setData('fillColor', state.fillColor);
+    this.drawUpgradeHudButton(button);
+  }
+
+  private drawUpgradeHudButton(button: UpgradeButtonObjects): void {
+    const accent = (button.container.getData('accentColor') as number | undefined) ?? 0x52ff9a;
+    const fill = (button.container.getData('fillColor') as number | undefined) ?? 0x071018;
+    const graphics = button.graphics;
+    const width = UPGRADE_BUTTON_WIDTH;
+    const height = UPGRADE_BUTTON_HEIGHT;
+    const x = -width / 2;
+    const y = -height / 2;
+    const radius = 5;
+    const hovered = button.hovered && button.container.visible;
+
+    graphics.clear();
+    if (!button.container.visible) {
+      return;
+    }
+
+    if (hovered) {
+      graphics.fillStyle(accent, 0.07);
+      graphics.fillRoundedRect(x - 9, y - 8, width + 18, height + 16, radius + 8);
+    }
+    graphics.lineStyle(7, accent, hovered ? 0.16 : 0.08);
+    graphics.strokeRoundedRect(x - 2, y - 2, width + 4, height + 4, radius + 2);
+    graphics.fillStyle(0x02040a, 0.72);
+    graphics.fillRoundedRect(x + 3, y + 4, width, height, radius);
+    graphics.fillStyle(0x1b2634, hovered ? 0.98 : 0.92);
+    graphics.fillRoundedRect(x, y, width, height, radius);
+    graphics.fillStyle(0xf2fbff, hovered ? 0.16 : 0.08);
+    graphics.fillRoundedRect(x + 4, y + 4, width - 8, Math.max(8, height * 0.28), radius);
+    graphics.fillStyle(fill, 0.16);
+    graphics.fillRoundedRect(x + 6, y + 10, width - 12, height - 18, Math.max(2, radius - 2));
+    graphics.fillStyle(0xc89452, 0.48);
+    graphics.fillRect(x + 8, y + 7, width - 16, 2);
+    graphics.lineStyle(1, 0x02040a, 0.5);
+    graphics.lineBetween(x + 7, y + height - 9, x + width - 7, y + height - 9);
+    graphics.fillStyle(accent, hovered ? 0.3 : 0.2);
+    graphics.fillRect(x + 10, y + height - 15, width - 20, 3);
+    graphics.lineStyle(hovered ? 2.6 : 2.25, accent, hovered ? 0.98 : 0.68);
+    graphics.strokeRoundedRect(x, y, width, height, radius);
+    graphics.lineStyle(1, 0xf2fbff, hovered ? 0.24 : 0.13);
+    graphics.strokeRoundedRect(x + 5, y + 5, width - 10, height - 10, Math.max(1, radius - 2));
+    graphics.fillStyle(accent, hovered ? 0.9 : 0.68);
+    graphics.fillRect(x + 10, y + height - 11, width - 20, 5);
+    graphics.fillStyle(0xc89452, 0.72);
+    graphics.fillCircle(x + 9, y + 9, 1.35);
+    graphics.fillCircle(x + width - 9, y + 9, 1.35);
   }
 
   createOverlay(): void {
@@ -146,27 +261,27 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
     this.upgradeOverlayGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1200);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
-      const cardY = this.getCardY(layout, i);
+      const cardX = this.getCardX(layout, i);
       const choiceText = this.scene.add
-        .text(layout.cardX + 16, cardY + 10, '', {
+        .text(cardX + 18, layout.cardY + 18, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '13px',
+          fontSize: '12px',
           color: '#f2fbff',
-          fixedWidth: layout.cardWidth - 258,
-          wordWrap: { width: layout.cardWidth - 258 },
+          fixedWidth: layout.cardWidth - 36,
+          wordWrap: { width: layout.cardWidth - 36, useAdvancedWrap: true },
           lineSpacing: 2
         })
         .setScrollFactor(0)
         .setDepth(1209);
       const metaText = this.scene.add
-        .text(layout.cardX + layout.cardWidth - 16, cardY + 10, '', {
+        .text(cardX + 18, layout.cardY + layout.cardHeight - 58, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
           fontSize: '11px',
           color: '#a8c7ff',
-          align: 'right',
-          fixedWidth: 210
+          align: 'left',
+          fixedWidth: layout.cardWidth - 36,
+          wordWrap: { width: layout.cardWidth - 36, useAdvancedWrap: true }
         })
-        .setOrigin(1, 0)
         .setScrollFactor(0)
         .setDepth(1209);
 
@@ -174,7 +289,7 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
       this.upgradeOverlayChoiceMetaTexts.push(metaText);
 
       const hitZone = this.scene.add
-        .zone(layout.cardX, cardY, layout.cardWidth, layout.cardHeight)
+        .zone(cardX, layout.cardY, layout.cardWidth, layout.cardHeight)
         .setOrigin(0, 0)
         .setScrollFactor(0)
         .setDepth(1210)
@@ -188,27 +303,29 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
     }
 
     this.upgradeOverlayText = this.scene.add
-      .text(layout.centerX, layout.panelY + 28, '', {
+      .text(layout.centerX, layout.headerY, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '13px',
         color: '#f2fbff',
-        align: 'left',
-        fixedWidth: layout.panelWidth - 56,
+        align: 'center',
+        fixedWidth: Math.min(layout.width - 48, 940),
         lineSpacing: 4,
-        wordWrap: { width: layout.panelWidth - 56 }
+        wordWrap: { width: Math.min(layout.width - 48, 940), useAdvancedWrap: true }
       })
       .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(1201);
 
     this.upgradeOverlayPromptText = this.scene.add
-      .text(layout.cardX, layout.panelY + layout.panelHeight - 34, '', {
+      .text(layout.centerX, layout.promptY, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
         fontSize: '13px',
         color: '#f2fbff',
-        fixedWidth: layout.cardWidth,
-        wordWrap: { width: layout.cardWidth }
+        align: 'center',
+        fixedWidth: Math.min(layout.width - 48, 940),
+        wordWrap: { width: Math.min(layout.width - 48, 940), useAdvancedWrap: true }
       })
+      .setOrigin(0.5, 0)
       .setScrollFactor(0)
       .setDepth(1201);
 
@@ -241,9 +358,12 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
   }
 
   renderOverlay(state: UpgradeOverlayRenderState<TChoice>): void {
+    const canReroll = state.mode === 'normal';
     const choicePrompt =
       state.choices.length > 0
-        ? `Click a card or press 1-${state.choices.length} to choose.  R rerolls for ${state.rerollCost} scrap.  Esc closes.`
+        ? canReroll
+          ? `Click a card or press 1-${state.choices.length} to choose.  R rerolls for ${state.rerollCost} scrap.  Esc closes.`
+          : `Click a card or press 1-${state.choices.length} to choose.  Esc closes.`
         : 'Esc closes.';
 
     this.drawCards(state.choices, state.isOpen);
@@ -254,16 +374,16 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
         return;
       }
 
-      text.setText(`${index + 1}. ${choice.name}\n${choice.description}`);
+      text.setText(`${index + 1}. ${choice.name}\n\n${choice.description}`);
       if (choice.category === 'secondary-weapon') {
-        metaText.setText('RIGHT CLICK');
+        metaText.setText('SECONDARY WEAPON\nRIGHT CLICK SLOT');
         return;
       }
 
       const level = state.getChoiceLevel(choice);
       const maxLevel = choice.maxLevel ? `/${choice.maxLevel}` : '';
       const maxLabel = state.isChoiceAtMaxLevel(choice) ? '  MAX' : '';
-      metaText.setText(`${(choice.rarity ?? 'common').toUpperCase()}  ${choice.category.toUpperCase()}\nLv ${level}${maxLevel}${maxLabel}`);
+      metaText.setText(`${(choice.rarity ?? 'common').toUpperCase()}  ${choice.category.toUpperCase()}\nLEVEL ${level}${maxLevel}${maxLabel}`);
     });
 
     for (let i = state.choices.length; i < this.upgradeOverlayChoiceTexts.length; i += 1) {
@@ -272,9 +392,8 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
     }
 
     this.upgradeOverlayText?.setText(
-      `${state.isSpecialChoiceSet ? 'SPECIAL UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
-        `Banked upgrades: ${state.bankedUpgrades}\n` +
-        `Run scrap: ${state.runScrapTotal}  Reroll cost: ${state.rerollCost}\n` +
+      `${state.mode === 'rare' || state.isSpecialChoiceSet ? 'RARE UPGRADE CACHE' : 'UPGRADE SELECTION'}\n` +
+        `Banked upgrades: ${state.bankedUpgrades}  Rare pending: ${state.pendingRareUpgrades}  Run scrap: ${state.runScrapTotal}\n` +
         state.weaponSummary +
         '\n' +
         `Ship: ${state.playerHull}/${state.playerMaxHull} hull, x${state.playerAccelerationMultiplier.toFixed(2)} accel, ${(state.playerInvulnerabilityMs / 1000).toFixed(2)}s i-frames`
@@ -336,43 +455,43 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
     this.upgradeOverlayGraphics.clear();
     this.upgradeOverlayGraphics.fillStyle(0x02040a, 0.76);
     this.upgradeOverlayGraphics.fillRect(0, 0, layout.width, layout.height);
-    this.upgradeOverlayGraphics.fillStyle(0x071018, 0.95);
-    this.upgradeOverlayGraphics.fillRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
-    this.upgradeOverlayGraphics.lineStyle(2, 0x42f5d7, 0.75);
-    this.upgradeOverlayGraphics.strokeRoundedRect(layout.panelX, layout.panelY, layout.panelWidth, layout.panelHeight, 8);
 
     this.upgradeOverlayText
-      ?.setPosition(layout.centerX, layout.panelY + 28)
-      .setStyle({ fixedWidth: layout.panelWidth - 56 })
-      .setWordWrapWidth(layout.panelWidth - 56);
+      ?.setPosition(layout.centerX, layout.headerY)
+      .setStyle({ fixedWidth: Math.min(layout.width - 48, 940) })
+      .setWordWrapWidth(Math.min(layout.width - 48, 940), true);
     this.upgradeOverlayPromptText
-      ?.setPosition(layout.cardX, layout.panelY + layout.panelHeight - 34)
-      .setStyle({ fixedWidth: layout.cardWidth })
-      .setWordWrapWidth(layout.cardWidth);
+      ?.setPosition(layout.centerX, layout.promptY)
+      .setStyle({ fixedWidth: Math.min(layout.width - 48, 940) })
+      .setWordWrapWidth(Math.min(layout.width - 48, 940), true);
 
     for (let i = 0; i < UPGRADE_OVERLAY_CHOICE_COUNT; i += 1) {
       const choice = choices[i];
-      const cardY = this.getCardY(layout, i);
+      const cardX = this.getCardX(layout, i);
       const accentColor = choice && choice.category !== 'secondary-weapon' ? getUpgradeRarityColor(choice.rarity ?? 'common') : 0x42f5d7;
       const hitZone = this.upgradeOverlayChoiceHitZones[i];
       const text = this.upgradeOverlayChoiceTexts[i];
       const metaText = this.upgradeOverlayChoiceMetaTexts[i];
 
-      this.upgradeOverlayGraphics.fillStyle(0x111a24, choice ? 0.94 : 0.42);
-      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
-      this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.9 : 0.2);
-      this.upgradeOverlayGraphics.fillRoundedRect(layout.cardX, cardY, 5, layout.cardHeight, 3);
-      this.upgradeOverlayGraphics.lineStyle(1, choice ? accentColor : 0x52627f, choice ? 0.72 : 0.28);
-      this.upgradeOverlayGraphics.strokeRoundedRect(layout.cardX, cardY, layout.cardWidth, layout.cardHeight, 6);
+      drawCockpitCard(this.upgradeOverlayGraphics, cardX, layout.cardY, layout.cardWidth, layout.cardHeight, {
+        accentColor: choice ? accentColor : 0x52627f,
+        glow: Boolean(choice),
+        dividerOffsets: [38, layout.cardHeight - 68]
+      });
+      this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.82 : 0.18);
+      this.upgradeOverlayGraphics.fillRect(cardX + 18, layout.cardY + 38, layout.cardWidth - 36, 2);
+      this.upgradeOverlayGraphics.fillStyle(accentColor, choice ? 0.18 : 0.06);
+      this.upgradeOverlayGraphics.fillRoundedRect(cardX + 10, layout.cardY + 10, layout.cardWidth - 20, layout.cardHeight - 20, 4);
 
       text
-        .setPosition(layout.cardX + 16, cardY + 10)
-        .setStyle({ fixedWidth: layout.cardWidth - 258 })
-        .setWordWrapWidth(layout.cardWidth - 258);
+        .setPosition(cardX + 18, layout.cardY + 18)
+        .setStyle({ fixedWidth: layout.cardWidth - 36 })
+        .setWordWrapWidth(layout.cardWidth - 36, true);
       metaText
-        .setPosition(layout.cardX + layout.cardWidth - 16, cardY + 10)
-        .setStyle({ fixedWidth: 210 });
-      hitZone.setPosition(layout.cardX, cardY).setSize(layout.cardWidth, layout.cardHeight).setVisible(Boolean(choice));
+        .setPosition(cardX + 18, layout.cardY + layout.cardHeight - 58)
+        .setStyle({ fixedWidth: layout.cardWidth - 36 })
+        .setWordWrapWidth(layout.cardWidth - 36, true);
+      hitZone.setPosition(cardX, layout.cardY).setSize(layout.cardWidth, layout.cardHeight).setVisible(Boolean(choice));
       if (choice && isOpen) {
         hitZone.setInteractive({
           hitArea: new Phaser.Geom.Rectangle(0, 0, layout.cardWidth, layout.cardHeight),
@@ -399,29 +518,31 @@ export class UpgradeOverlayUiController<TChoice extends UpgradeOverlayDisplayCho
     const width = this.scene.scale.width;
     const height = this.scene.scale.height;
     const centerX = width / 2;
-    const panelWidth = Math.min(width - 48, 760);
-    const minCardStackHeight = 118 + UPGRADE_OVERLAY_CHOICE_COUNT * UPGRADE_OVERLAY_CARD_HEIGHT + (UPGRADE_OVERLAY_CHOICE_COUNT - 1) * UPGRADE_OVERLAY_CARD_GAP + 58;
-    const panelHeight = Math.min(height - 48, Math.max(560, minCardStackHeight));
-    const panelX = centerX - panelWidth / 2;
-    const panelY = Math.max(24, height / 2 - panelHeight / 2);
+    const availableWidth = Math.max(360, width - 96);
+    const cardWidth = Math.min(
+      UPGRADE_OVERLAY_CARD_WIDTH,
+      (availableWidth - UPGRADE_OVERLAY_CARD_GAP * (UPGRADE_OVERLAY_CHOICE_COUNT - 1)) / UPGRADE_OVERLAY_CHOICE_COUNT
+    );
+    const cardHeight = Math.min(UPGRADE_OVERLAY_CARD_HEIGHT, Math.max(196, height - 276));
+    const rowWidth = UPGRADE_OVERLAY_CHOICE_COUNT * cardWidth + (UPGRADE_OVERLAY_CHOICE_COUNT - 1) * UPGRADE_OVERLAY_CARD_GAP;
+    const cardY = Phaser.Math.Clamp(height / 2 - cardHeight / 2 + 18, 150, Math.max(150, height - cardHeight - 118));
 
     return {
       width,
       height,
       centerX,
-      panelWidth,
-      panelHeight,
-      panelX,
-      panelY,
-      cardX: panelX + 28,
-      cardWidth: panelWidth - 56,
-      cardHeight: UPGRADE_OVERLAY_CARD_HEIGHT,
-      cardGap: UPGRADE_OVERLAY_CARD_GAP
+      cardStartX: centerX - rowWidth / 2,
+      cardY,
+      cardWidth,
+      cardHeight,
+      cardGap: UPGRADE_OVERLAY_CARD_GAP,
+      headerY: Math.max(24, cardY - 88),
+      promptY: Math.min(height - 72, cardY + cardHeight + 16)
     };
   }
 
-  private getCardY(layout: UpgradeOverlayLayout, index: number): number {
-    return layout.panelY + 118 + index * (layout.cardHeight + layout.cardGap);
+  private getCardX(layout: UpgradeOverlayLayout, index: number): number {
+    return layout.cardStartX + index * (layout.cardWidth + layout.cardGap);
   }
 }
 

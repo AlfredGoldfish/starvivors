@@ -136,6 +136,8 @@ export interface StarvivorsTestHarnessState {
   upgradeChoiceCount: number;
   nextXpThreshold: number;
   bankedUpgrades: number;
+  pendingRareUpgrades: number;
+  upgradeOverlayMode: 'normal' | 'rare' | null;
   isUpgradeOverlayOpen: boolean;
   isResultsScreenOpen: boolean;
   isResultsButtonVisible: boolean;
@@ -214,6 +216,7 @@ export interface StarvivorsTestHarness {
   selectPulseUpgrade: (choiceNumber: number) => StarvivorsTestHarnessState;
   assignWeaponSlot: (slot: WeaponSlotType, weaponId: WeaponId) => StarvivorsTestHarnessState;
   clickUpgradeButton: () => StarvivorsTestHarnessState;
+  clickRareUpgradeButton: () => StarvivorsTestHarnessState;
   toggleMinimap: () => StarvivorsTestHarnessState;
 }
 

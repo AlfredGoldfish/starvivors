@@ -37,6 +37,7 @@ export interface RunProgressResetState {
   playerXp: number;
   nextXpThreshold: number;
   bankedUpgrades: number;
+  pendingRareUpgrades: number;
   rerollsThisRun: number;
 }
 
@@ -138,6 +139,7 @@ export function createRunProgressResetState(nextXpThreshold: number): RunProgres
     playerXp: 0,
     nextXpThreshold,
     bankedUpgrades: 0,
+    pendingRareUpgrades: 0,
     rerollsThisRun: 0
   };
 }

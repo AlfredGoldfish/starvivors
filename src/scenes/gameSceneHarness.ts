@@ -25,6 +25,8 @@ export interface GameSceneHarnessAdapter {
   runHarnessPhase15B: HarnessRunner;
   runHarnessPhase15_5: HarnessRunner;
   runHarnessUpgradeOverlayUi: HarnessRunner;
+  runHarnessUpgradeOverlayNormalScreenshot: HarnessRunner;
+  runHarnessUpgradeOverlayRareScreenshot: HarnessRunner;
   runHarnessBeamVisual: HarnessRunner;
   runHarnessBeamTipScreenshot: HarnessRunner;
   runHarnessResultsContinueFuel: HarnessRunner;
@@ -58,6 +60,8 @@ type HarnessId =
   | 'phase15B'
   | 'phase15_5'
   | 'upgradeOverlayUi'
+  | 'upgradeOverlayNormalScreenshot'
+  | 'upgradeOverlayRareScreenshot'
   | 'beamVisual'
   | 'beamTipScreenshot'
   | 'resultsContinueFuel'
@@ -93,6 +97,8 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
   phase15B: (adapter) => adapter.runHarnessPhase15B(),
   phase15_5: (adapter) => adapter.runHarnessPhase15_5(),
   upgradeOverlayUi: (adapter) => adapter.runHarnessUpgradeOverlayUi(),
+  upgradeOverlayNormalScreenshot: (adapter) => adapter.runHarnessUpgradeOverlayNormalScreenshot(),
+  upgradeOverlayRareScreenshot: (adapter) => adapter.runHarnessUpgradeOverlayRareScreenshot(),
   beamVisual: (adapter) => adapter.runHarnessBeamVisual(),
   beamTipScreenshot: (adapter) => adapter.runHarnessBeamTipScreenshot(),
   resultsContinueFuel: (adapter) => adapter.runHarnessResultsContinueFuel(),
