@@ -15,6 +15,7 @@ Phase 17 makes the 2.0 run structure readable during combat and at run end.
 - Phase 17F turns the minimap into a persistent radar progression. New saves start at Radar Level 0 with the map offline; upgrades unlock scope, signals, resources, and threat/anomaly layers while the Sector Scanner remains a separate timed scan system.
 - Phase 17G refines the cockpit pass with a full-width XP/run rail, moves mission detail into a dashboard mission button plus right-side questlog popup, and adds stronger neon/glow affordances without returning to debug-style text blocks.
 - Phase 17H adds screenshot-ready dashboard button/layout variants for review, removes the decorative top-rail status circle, and exposes live variant switching in the `Z` debug menu under Visuals.
+- Phase 17I freezes variant 10 as the normal player HUD default. Non-default HUD variants are now developer-only via `?devHudVariants=1&hudButtonVariant=1..10` or the `Z > Visuals` debug controls.
 
 ## Subphases
 
@@ -25,7 +26,7 @@ Phase 17 makes the 2.0 run structure readable during combat and at run end.
 - **17E Cockpit HUD:** compact cockpit modules and hotkey-only diagnostics. Started with hidden default diagnostics, top-center XP/timer rail, top-right mission strip, lower cockpit dashboard modules, and warning chips.
 - **17F Radar Progression:** persistent radar levels and gated minimap layers. Started with Radar Level 0-4 storage, shop purchase flow, radar HUD status, minimap capabilities, and layer gating for mission, signals, resources, threats/events/anomalies, and scanner target reveal.
 - **17G HUD Refinement:** full-width XP/run rail, dashboard mission button, side mission log popup, clustered dashboard controls, clearer button affordances, and restrained neon pulse/glow polish.
-- **17H Dashboard Button Variants:** ten research-backed button treatments are available through `?hudButtonVariant=1..10` and the `Z > Visuals > HUD Dashboard Variants` debug controls. Variant 10 is the default hybrid candidate.
+- **17H Dashboard Button Variants:** ten research-backed button treatments are available through the `Z > Visuals > HUD Dashboard Variants` debug controls. Variant 10 is the frozen player default; URL variant overrides require `?devHudVariants=1&hudButtonVariant=1..10`.
 
 ## Phase 17H Variant Research Notes
 

@@ -81,7 +81,7 @@ export const HUD_BUTTON_VARIANTS: HudButtonVariantDefinition[] = [
   }
 ];
 
-export const DEFAULT_HUD_BUTTON_VARIANT: HudButtonVariant = 4;
+export const DEFAULT_HUD_BUTTON_VARIANT: HudButtonVariant = 10;
 
 export function isHudButtonVariant(value: number): value is HudButtonVariant {
   return Number.isInteger(value) && value >= 1 && value <= 10;

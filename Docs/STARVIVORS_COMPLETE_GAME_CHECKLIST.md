@@ -55,7 +55,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 - [~] Combat HUD/dashboard has a final default variant.
   - Done when: one default HUD variant is frozen, readable at target resolutions, and non-default research variants are hidden or developer-only.
-  - Next: choose default, screenshot at 1280x720, 1920x1080, and narrow/mobile ratios.
+  - Evidence: 2026-05-27 pass froze HUD variant 10 as the player default and moved URL variant overrides behind `?devHudVariants=1`.
+  - Next: screenshot at 1280x720, 1920x1080, and narrow/mobile ratios.
 - [~] Main command and pre-run hub feel like one product.
   - Done when: command, hangar, shop, settings, and debrief share navigation, selected-tab treatment, disabled states, and back behavior.
   - Next: normalize the pre-run navigation component and focus states.
@@ -200,6 +201,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 ## Recommended Polish Order
 
+Current focus: Pass A.
+
 1. [~] Pass A: freeze HUD/menu/run clarity.
 2. [~] Pass B: add screenshot smoke coverage for key screens.
 3. [ ] Pass C: finish or hide placeholder promises.
@@ -214,3 +217,4 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - 2026-05-27: Created this checklist from the complete-game scope review and wired it into Codex session instructions.
 - 2026-05-27: Added start-of-session checklist reminder protocol with an explicit opt-out/respect-current-task rule.
 - 2026-05-27: Added start-of-session checkpoint commit prompt and scoped-commit rule.
+- 2026-05-27: Continued Pass A by freezing HUD variant 10 as the player default and tightening mission/eject/result wording; screenshot verification remains next.

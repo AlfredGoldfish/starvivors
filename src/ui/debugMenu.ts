@@ -1903,7 +1903,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
           `Variant ${values.hudButtonVariant}: ${values.hudButtonVariantTitle}\n` +
             `Target: ${values.hudButtonVariantDesignTarget}\n` +
             `Research: ${values.hudButtonVariantResearchBasis}\n` +
-            `Query: ?hudButtonVariant=${values.hudButtonVariant}`
+            `Dev query: ?devHudVariants=1&hudButtonVariant=${values.hudButtonVariant}`
         );
         setValue(
           'health-bars',

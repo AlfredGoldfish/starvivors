@@ -691,8 +691,10 @@ export class GameplayHudSystem {
     });
     this.ejectText
       .setFixedSize(Math.max(58, rect.width - 12), 0)
-      .setFontSize('12px')
+      .setFontSize('11px')
+      .setLineSpacing(1)
       .setPosition(rect.x, rect.y)
+      .setText(this.getEjectButtonLabel(this.latestSnapshot))
       .setVisible(true);
     this.resizeZone(this.ejectZone, rect);
   }
@@ -703,11 +705,12 @@ export class GameplayHudSystem {
     }
 
     const rect = this.getDashboardButtonRects().mission;
+    const missionComplete = this.isMissionCompleteStatus(snapshot.missionStatus);
     const accent = snapshot.isMissionDanger
       ? 0xff5964
       : snapshot.missionStatus === 'FAILED'
         ? 0xff5964
-      : snapshot.missionStatus === 'DONE' || snapshot.missionStatus === 'COMPLETE'
+      : missionComplete
         ? 0x52ff9a
         : 0xffc857;
     this.drawDashboardButton(rect, {
@@ -716,16 +719,17 @@ export class GameplayHudSystem {
       active: this.isMissionLogOpen,
       hovered: this.isMissionButtonHovered,
       danger: snapshot.isMissionDanger,
-      progress: snapshot.missionStatus === 'DONE' || snapshot.missionStatus === 'COMPLETE' ? 1 : 0.58,
+      progress: missionComplete ? 1 : 0.58,
       kind: 'mission'
     });
 
     this.missionButtonText
       .setFixedSize(Math.max(58, rect.width - 14), 0)
       .setWordWrapWidth(Math.max(56, rect.width - 18), true)
-      .setFontSize('12px')
+      .setFontSize('11px')
+      .setLineSpacing(1)
       .setPosition(rect.x, rect.y)
-      .setText('MISSION')
+      .setText(this.getMissionButtonLabel(snapshot))
       .setVisible(true);
     this.resizeZone(this.missionButtonZone, rect);
   }
@@ -751,9 +755,11 @@ export class GameplayHudSystem {
     const innerX = x + 18;
     const contentWidth = width - 36;
     const distance = this.formatMissionDistance(snapshot);
+    const statusLabel = this.formatMissionStatusLabel(snapshot);
+    const statusLine = this.formatContractStatusForLog(snapshot);
     const statusColor = snapshot.isMissionDanger || snapshot.missionStatus === 'FAILED'
       ? '#ff8b94'
-      : snapshot.missionStatus === 'DONE'
+      : this.isMissionCompleteStatus(snapshot.missionStatus)
         ? '#9dffc2'
         : '#fff0a0';
 
@@ -769,9 +775,9 @@ export class GameplayHudSystem {
 
     const rows = [
       ['MISSION LOG', '#73f2ff', y + 14, '14px'],
-      [`${snapshot.missionDisplayName}  ${snapshot.missionStatus}`, statusColor, y + 38, '12px'],
+      [`${snapshot.missionDisplayName}\n${statusLabel}`, statusColor, y + 36, '12px'],
       [`OBJECTIVE\n${snapshot.missionObjectiveLabel}\n${snapshot.missionDescription}`, '#f2fbff', y + 68, '12px'],
-      [`STATUS ${snapshot.contractStatusLine.replace(/^Contract /, '')}\nRANGE ${distance}\nDIFFICULTY ${snapshot.missionDifficulty}`, '#c8f7ff', y + 132, '12px'],
+      [`RUN STATE\n${statusLine}\nRANGE ${distance} / RISK ${snapshot.missionDifficulty}`, '#c8f7ff', y + 132, '12px'],
       [`REWARD\n${snapshot.missionRewardPreview}`, '#fff0a0', rewardRowY, '12px'],
       ['CLICK MISSION / ESC TO CLOSE', '#8090a6', y + 224, '10px']
     ] as const;
@@ -919,6 +925,68 @@ export class GameplayHudSystem {
     this.drawHotbar();
   }
 
+  private isMissionCompleteStatus(status: string): boolean {
+    return status === 'DONE' || status === 'COMPLETE';
+  }
+
+  private getEjectButtonLabel(snapshot?: GameplayHudSnapshot): string {
+    return (snapshot?.runScrapTotal ?? 0) > 0 ? 'EJECT\nBANK' : 'EJECT\nEND';
+  }
+
+  private getMissionButtonLabel(snapshot: GameplayHudSnapshot): string {
+    if (snapshot.missionObjectiveRadius <= 0) {
+      return 'FREE\nRANGE';
+    }
+
+    if (snapshot.missionStatus === 'FAILED') {
+      return 'FAILED\nLOG';
+    }
+
+    if (this.isMissionCompleteStatus(snapshot.missionStatus)) {
+      return 'DONE\nLOG';
+    }
+
+    if (snapshot.isMissionDanger) {
+      return 'DANGER\nLOG';
+    }
+
+    return `MISSION\n${this.formatMissionDistance(snapshot)}`;
+  }
+
+  private formatMissionStatusLabel(snapshot: GameplayHudSnapshot): string {
+    if (snapshot.missionObjectiveRadius <= 0) {
+      return 'FREE RANGE';
+    }
+
+    if (snapshot.missionStatus === 'FAILED') {
+      return 'OBJECTIVE FAILED';
+    }
+
+    if (this.isMissionCompleteStatus(snapshot.missionStatus)) {
+      return 'OBJECTIVE COMPLETE';
+    }
+
+    if (snapshot.isMissionDanger) {
+      return 'OBJECTIVE DANGER';
+    }
+
+    if (snapshot.missionStatus === 'ACTIVE') {
+      return 'OBJECTIVE ACTIVE';
+    }
+
+    return 'OBJECTIVE READY';
+  }
+
+  private formatContractStatusForLog(snapshot: GameplayHudSnapshot): string {
+    const statusLine = snapshot.contractStatusLine.replace(/^Contract\s+/, '').trim();
+
+    if (statusLine.length > 0 && statusLine !== 'None') {
+      return statusLine;
+    }
+
+    return snapshot.missionObjectiveRadius <= 0 ? 'Free Range open - eject when ready' : 'No contract launched';
+  }
+
   private formatMissionDistance(snapshot: GameplayHudSnapshot): string {
     if (snapshot.missionObjectiveRadius <= 0) {
       return 'OPEN SECTOR';
@@ -933,7 +1001,12 @@ export class GameplayHudSystem {
       return DEFAULT_HUD_BUTTON_VARIANT;
     }
 
-    const requested = Number(new URLSearchParams(window.location.search).get('hudButtonVariant'));
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('devHudVariants') !== '1' && query.get('debugHudVariants') !== '1') {
+      return DEFAULT_HUD_BUTTON_VARIANT;
+    }
+
+    const requested = Number(query.get('hudButtonVariant'));
     return clampHudButtonVariant(requested);
   }
 
