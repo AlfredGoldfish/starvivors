@@ -119,8 +119,12 @@ export function addScreenButton(config: ScreenButtonConfig): void {
   buttonBackground.fillRoundedRect(config.x - config.width / 2, config.y, config.width, config.height, 6);
   buttonBackground.lineStyle(2, stroke, isEnabled ? 0.88 : 0.6);
   buttonBackground.strokeRoundedRect(config.x - config.width / 2, config.y, config.width, config.height, 6);
-  buttonBackground.fillStyle(trim, isEnabled ? 0.68 : 0.28);
-  buttonBackground.fillRect(config.x - config.width / 2 + 8, config.y + config.height - 4, config.width - 16, 2);
+  buttonBackground.fillStyle(stroke, isEnabled ? 0.12 : 0.05);
+  buttonBackground.fillRoundedRect(config.x - config.width / 2 + 5, config.y + 5, config.width - 10, Math.max(8, config.height * 0.28), 4);
+  buttonBackground.fillStyle(trim, isEnabled ? 0.24 : 0.1);
+  buttonBackground.fillRect(config.x - config.width / 2 + 8, config.y + 6, config.width - 16, 2);
+  buttonBackground.fillStyle(UI_COLORS.magenta, isEnabled ? 0.1 : 0.04);
+  buttonBackground.fillRect(config.x + config.width / 2 - 11, config.y + 9, 3, config.height - 18);
 
   const buttonText = config.scene.add
     .text(config.x, config.y + config.height / 2, config.label, {

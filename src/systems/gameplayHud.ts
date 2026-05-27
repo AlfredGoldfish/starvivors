@@ -655,8 +655,10 @@ export class GameplayHudSystem {
       const bayHeight = Math.max(first.height, last.height) + 20;
       graphics.fillStyle(0x02040a, this.buttonVariant === 9 ? 0.7 : 0.55);
       graphics.fillRoundedRect(bayX, bayY, bayWidth, bayHeight, this.buttonVariant === 2 ? 3 : 8);
-      graphics.lineStyle(1, this.buttonVariant === 8 ? 0xffc857 : 0x42f5d7, 0.32);
-      graphics.strokeRoundedRect(bayX, bayY, bayWidth, bayHeight, this.buttonVariant === 2 ? 3 : 8);
+      if (this.buttonVariant !== 10) {
+        graphics.lineStyle(1, this.buttonVariant === 8 ? 0xffc857 : 0x42f5d7, 0.32);
+        graphics.strokeRoundedRect(bayX, bayY, bayWidth, bayHeight, this.buttonVariant === 2 ? 3 : 8);
+      }
       graphics.lineStyle(1, 0xff4fd8, 0.18);
       graphics.lineBetween(bayX + 12, bayY + 7, bayX + bayWidth - 12, bayY + 7);
     }
@@ -1125,14 +1127,16 @@ export class GameplayHudSystem {
     graphics.lineStyle(1, 0xf2fbff, highlighted ? 0.24 : 0.13);
     graphics.strokeRoundedRect(x + 5, y + 5, rect.width - 10, rect.height - 10, Math.max(1, radius - 2));
 
-    const progress = Phaser.Math.Clamp(chrome.progress ?? 1, 0, 1);
-    const meterHeight = this.buttonVariant === 9 ? 6 : raisedSwitchChrome ? 5 : 4;
-    const meterInset = this.buttonVariant === 2 ? 0 : 10;
-    const meterY = y + rect.height - meterHeight - (this.buttonVariant === 2 ? 0 : 6);
-    graphics.fillStyle(0x02040a, 0.72);
-    graphics.fillRect(x + meterInset, meterY, rect.width - meterInset * 2, meterHeight);
-    graphics.fillStyle(accent, chrome.disabled ? 0.36 : highlighted ? 0.9 : 0.68);
-    graphics.fillRect(x + meterInset, meterY, (rect.width - meterInset * 2) * progress, meterHeight);
+    if (chrome.kind === 'weapon') {
+      const progress = Phaser.Math.Clamp(chrome.progress ?? 1, 0, 1);
+      const meterHeight = this.buttonVariant === 9 ? 6 : raisedSwitchChrome ? 5 : 4;
+      const meterInset = this.buttonVariant === 2 ? 0 : 10;
+      const meterY = y + rect.height - meterHeight - (this.buttonVariant === 2 ? 0 : 6);
+      graphics.fillStyle(0x02040a, 0.72);
+      graphics.fillRect(x + meterInset, meterY, rect.width - meterInset * 2, meterHeight);
+      graphics.fillStyle(accent, chrome.disabled ? 0.36 : highlighted ? 0.9 : 0.68);
+      graphics.fillRect(x + meterInset, meterY, (rect.width - meterInset * 2) * progress, meterHeight);
+    }
 
     if (this.buttonVariant === 1 || this.buttonVariant === 10) {
       graphics.fillStyle(0xc89452, 0.78);
@@ -1238,8 +1242,10 @@ export class GameplayHudSystem {
         graphics.fillRect(x + 8, y + 6, rect.width - 16, 5);
         graphics.fillStyle(0xff4fd8, chrome.kind === 'eject' ? 0.08 : 0.16);
         graphics.fillRect(x + rect.width - 7, y + 9, 3, rect.height - 18);
-        graphics.lineStyle(1, 0xc89452, 0.38);
-        graphics.lineBetween(x + 10, y + rect.height - 12, x + rect.width - 10, y + rect.height - 12);
+        if (chrome.kind === 'weapon') {
+          graphics.lineStyle(1, 0xc89452, 0.38);
+          graphics.lineBetween(x + 10, y + rect.height - 12, x + rect.width - 10, y + rect.height - 12);
+        }
         break;
       default:
         break;
