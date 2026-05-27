@@ -4,6 +4,12 @@ This repository is the STARVIVORS project.
 
 For Starvivors 2.0 conversion work, use `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md` as the current roadmap and operating guide. It is the source of truth for the open-sector direction, fuel-limited runs, living enemy squads, mission mode, SVG/vector asset pipeline, and phase-by-phase build process.
 
+At the start of every Starvivors session, briefly remind the user that `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` exists and offer one suggested checklist item to work on next. If the user says "not right now", "skip the list", "later", or asks for a different Starvivors task, respect that decision and proceed with the chosen task without repeatedly steering back to the checklist.
+
+At the start of every Starvivors session, also check whether there are existing uncommitted changes and ask whether the user wants a checkpoint commit before new work starts. If the user declines, continue without pushing the commit question repeatedly. When the user asks for checkpoint safety, commit only the intended files and leave unrelated dirty worktree changes alone.
+
+For complete-game scope and polish tracking, read `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` at the start of any session that touches gameplay, UI, content, assets, audio, progression, release, or polish. If the current task maps to that checklist, mention the active checklist item/status in working updates and the final response, and update the checklist before ending the session when status, evidence, acceptance notes, or next steps changed.
+
 Older MVP documents remain useful reference for visual identity, HUD layout, game feel, audio direction, content boundaries, and architecture patterns. When those documents conflict with the 2.0 GDD, follow the 2.0 GDD for product direction and follow the current source tree for implemented behavior. The completed refactor tracker is archived at `Docs/Old_Documents/REFACTOR_PLAN.md`.
 
 Treat the 2.0 phase order as the default path. Split phases into stable subphases when needed, but do not skip ahead into later gameplay systems unless the prompt explicitly changes scope or the current phase requires a small compatibility bridge.
@@ -64,6 +70,7 @@ Recommended future stack:
 
 ## Documentation Files
 
+- `STARVIVORS_COMPLETE_GAME_CHECKLIST.md`: complete-game and polish checklist with session update rules
 - `STARVIVORS_MVP_CONTENT_LOCK.md`: what is in and out of MVP
 - `STARVIVORS_MVP_VISUAL_IDENTITY.md`: visual style, readability, and art limits
 - `STARVIVORS_MVP_HUD_UI_LAYOUT.md`: screens, HUD, and interface rules

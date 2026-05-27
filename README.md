@@ -64,13 +64,22 @@ Preview the production browser build:
 npm.cmd run preview
 ```
 
+Generate a bundle visualization report at `artifacts/bundle/stats.html`:
+
+```powershell
+npm.cmd run analyze:bundle
+```
+
 ## Project Structure
 
 ```text
 assets/              Runtime art, saved black-hole field tuning, and pickup/ship/debris assets
+artifacts/           Archived smoke screenshots, logs, and zip snapshots
 Docs/                Current GDD, phase notes, and project guidance
+  performance/       Captured profiler and lag reports
+  plans/             Deferred extraction and cleanup notes
+  references/        External prototypes and design references
 electron/            Electron main/preload process source
-Enemy_Prototype/     Standalone enemy and mechanic preview HTML files
 src/                 Main game source
   config/            Phaser game configuration
   core/              Arena and viewport helpers
@@ -88,6 +97,8 @@ The game currently includes a playable main prototype and a separate Enemy Lab s
 
 `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md` is the current product roadmap and operating guide. Older MVP documents remain useful reference, but the 2.0 GDD and the current source tree take precedence when they conflict.
 
+`Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` tracks complete-game scope and polish status. Sessions that touch gameplay, UI, content, assets, audio, progression, release, or polish should read it at the start and update it when checklist status or evidence changes.
+
 ## Development Rules
 
 Keep changes small, buildable, and easy to verify.
@@ -103,6 +114,7 @@ Keep changes small, buildable, and easy to verify.
 ## Documentation
 
 - `Docs/README_FOR_CODEX.md`: working instructions for Codex sessions
+- `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md`: complete-game and polish checklist
 - `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md`: current 2.0 roadmap
 - `Docs/STARVIVORS_MVP_VISUAL_IDENTITY.md`: visual style reference
 - `Docs/STARVIVORS_MVP_HUD_UI_LAYOUT.md`: HUD and screen reference
