@@ -102,6 +102,7 @@ interface DashboardButtonChrome {
   fillColor?: number;
   active?: boolean;
   hovered?: boolean;
+  pressed?: boolean;
   danger?: boolean;
   disabled?: boolean;
   progress?: number;
@@ -109,6 +110,8 @@ interface DashboardButtonChrome {
   segmentIndex?: number;
   segmentCount?: number;
 }
+
+type DashboardButtonPressTarget = WeaponHotbarSlotType | 'mission' | 'eject';
 
 export class GameplayHudSystem {
   private readonly scene: Phaser.Scene;
@@ -141,6 +144,7 @@ export class GameplayHudSystem {
   private isMissionLogOpen = false;
   private missionLogBounds?: Phaser.Geom.Rectangle;
   private isEjectHovered = false;
+  private pressedDashboardButton: DashboardButtonPressTarget | null = null;
 
   constructor(scene: Phaser.Scene, callbacks: GameplayHudCallbacks, options: GameplayHudOptions = {}) {
     this.scene = scene;
@@ -162,6 +166,7 @@ export class GameplayHudSystem {
       typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('testHarness') === 'hudMissionLog';
     this.missionLogBounds = undefined;
     this.isEjectHovered = false;
+    this.pressedDashboardButton = null;
 
     this.hudGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1000);
     this.hudText = this.scene.add
@@ -267,14 +272,31 @@ export class GameplayHudSystem {
       zone.on('pointerover', () => {
         this.hoveredSlot = slot;
         this.updateTooltip();
+        this.drawHotbar();
       });
       zone.on('pointerout', () => {
-        this.hoveredSlot = null;
+        if (this.hoveredSlot === slot) {
+          this.hoveredSlot = null;
+        }
+        this.clearPressedDashboardButton(slot);
         this.updateTooltip();
+        this.drawHotbar();
       });
       zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         pointer.event?.stopPropagation();
+        if (this.isWeaponSlotPressable(slot)) {
+          this.pressedDashboardButton = slot;
+        }
         this.openPickerSlot = this.openPickerSlot === slot ? null : slot;
+        this.drawHotbar();
+      });
+      zone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
+        pointer.event?.stopPropagation();
+        this.clearPressedDashboardButton(slot);
+        this.drawHotbar();
+      });
+      zone.on('pointerupoutside', () => {
+        this.clearPressedDashboardButton(slot);
         this.drawHotbar();
       });
 
@@ -309,12 +331,22 @@ export class GameplayHudSystem {
     });
     this.missionButtonZone.on('pointerout', () => {
       this.isMissionButtonHovered = false;
+      this.clearPressedDashboardButton('mission');
       this.drawHotbar();
     });
-    this.missionButtonZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
+    this.missionButtonZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      this.pressedDashboardButton = 'mission';
+      this.drawHotbar();
+    });
     this.missionButtonZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       pointer.event?.stopPropagation();
+      this.pressedDashboardButton = null;
       this.toggleMissionLog();
+    });
+    this.missionButtonZone.on('pointerupoutside', () => {
+      this.clearPressedDashboardButton('mission');
+      this.drawHotbar();
     });
 
     this.ejectText = this.scene.add
@@ -341,12 +373,23 @@ export class GameplayHudSystem {
     });
     this.ejectZone.on('pointerout', () => {
       this.isEjectHovered = false;
+      this.clearPressedDashboardButton('eject');
       this.drawHotbar();
     });
-    this.ejectZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
+    this.ejectZone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      this.pressedDashboardButton = 'eject';
+      this.drawHotbar();
+    });
     this.ejectZone.on('pointerup', (pointer: Phaser.Input.Pointer) => {
       pointer.event?.stopPropagation();
+      this.pressedDashboardButton = null;
+      this.drawHotbar();
       this.callbacks.requestEject();
+    });
+    this.ejectZone.on('pointerupoutside', () => {
+      this.clearPressedDashboardButton('eject');
+      this.drawHotbar();
     });
 
     this.missionLogGraphics = this.scene.add.graphics().setScrollFactor(0).setDepth(1008).setVisible(false);
@@ -601,13 +644,16 @@ export class GameplayHudSystem {
       const isHovered = this.hoveredSlot === slotSnapshot.slot;
       const fillColor = slotSnapshot.weaponId ? 0x071018 : 0x111a24;
       const strokeColor = slotSnapshot.slot === 'auto' ? 0x42f5d7 : slotSnapshot.slot === 'primary' ? 0xffc857 : 0xa8c7ff;
+      const isEnabled = Boolean(slotSnapshot.weaponId);
+      const pressOffset = this.getDashboardButtonPressOffset(slotSnapshot.slot, isEnabled);
 
       this.drawDashboardButton(rect, {
         accentColor: strokeColor,
         fillColor,
         active: isOpen,
         hovered: isHovered,
-        disabled: !slotSnapshot.weaponId,
+        pressed: this.isDashboardButtonPressed(slotSnapshot.slot, isEnabled),
+        disabled: !isEnabled,
         progress: slotSnapshot.cooldownProgress,
         kind: 'weapon',
         segmentIndex: slotSnapshot.slot === 'primary' ? 0 : slotSnapshot.slot === 'auto' ? 1 : 2,
@@ -620,7 +666,7 @@ export class GameplayHudSystem {
         .setWordWrapWidth(Math.max(70, rect.width - 18), true)
         .setFontSize(textConfig.fontSize)
         .setColor(textConfig.color)
-        .setPosition(rect.x, rect.y + textConfig.yOffset)
+        .setPosition(rect.x + pressOffset, rect.y + textConfig.yOffset + pressOffset)
         .setText(textConfig.text);
       this.resizeZone(zone, rect);
     }
@@ -683,19 +729,20 @@ export class GameplayHudSystem {
 
     const rect = this.getDashboardButtonRects().eject;
     const ejectWarning = (this.latestSnapshot?.hullProgress ?? 1) < 0.35;
+    const pressOffset = this.getDashboardButtonPressOffset('eject');
     this.drawDashboardButton(rect, {
       accentColor: 0xff5964,
       fillColor: ejectWarning ? 0x241018 : 0x111a24,
       hovered: this.isEjectHovered,
+      pressed: this.isDashboardButtonPressed('eject'),
       danger: ejectWarning,
-      progress: 1,
       kind: 'eject'
     });
     this.ejectText
       .setFixedSize(Math.max(58, rect.width - 12), 0)
       .setFontSize('11px')
       .setLineSpacing(1)
-      .setPosition(rect.x, rect.y)
+      .setPosition(rect.x + pressOffset, rect.y + pressOffset)
       .setText(this.getEjectButtonLabel(this.latestSnapshot))
       .setVisible(true);
     this.resizeZone(this.ejectZone, rect);
@@ -715,13 +762,14 @@ export class GameplayHudSystem {
       : missionComplete
         ? 0x52ff9a
         : 0xffc857;
+    const pressOffset = this.getDashboardButtonPressOffset('mission');
     this.drawDashboardButton(rect, {
       accentColor: accent,
       fillColor: this.buttonVariant === 8 ? 0x1f1608 : 0x071018,
       active: this.isMissionLogOpen,
       hovered: this.isMissionButtonHovered,
+      pressed: this.isDashboardButtonPressed('mission'),
       danger: snapshot.isMissionDanger,
-      progress: missionComplete ? 1 : 0.58,
       kind: 'mission'
     });
 
@@ -730,7 +778,7 @@ export class GameplayHudSystem {
       .setWordWrapWidth(Math.max(56, rect.width - 18), true)
       .setFontSize('11px')
       .setLineSpacing(1)
-      .setPosition(rect.x, rect.y)
+      .setPosition(rect.x + pressOffset, rect.y + pressOffset)
       .setText(this.getMissionButtonLabel(snapshot))
       .setVisible(true);
     this.resizeZone(this.missionButtonZone, rect);
@@ -849,7 +897,9 @@ export class GameplayHudSystem {
       zone.on('pointerdown', (pointer: Phaser.Input.Pointer) => {
         pointer.event?.stopPropagation();
         this.callbacks.assignWeaponSlot(slot.slot, choice.weaponId);
+        this.clearPressedDashboardButton();
         this.openPickerSlot = null;
+        this.drawHotbar();
       });
       this.pickerTexts.push(text);
       this.pickerZones.push(zone);
@@ -893,6 +943,7 @@ export class GameplayHudSystem {
     }
 
     this.isMissionLogOpen = false;
+    this.clearPressedDashboardButton('mission');
     this.drawHotbar();
     return true;
   }
@@ -900,6 +951,7 @@ export class GameplayHudSystem {
   openMissionLog(): void {
     this.isMissionLogOpen = true;
     this.openPickerSlot = null;
+    this.clearPressedDashboardButton();
     this.drawHotbar();
   }
 
@@ -921,9 +973,31 @@ export class GameplayHudSystem {
     return Boolean(this.missionLogBounds && Phaser.Geom.Rectangle.Contains(this.missionLogBounds, pointer.x, pointer.y));
   }
 
+  private isWeaponSlotPressable(slot: WeaponHotbarSlotType): boolean {
+    const slotSnapshot = this.latestSnapshot?.weaponSlots.find((candidate) => candidate.slot === slot);
+    return Boolean(slotSnapshot?.weaponId);
+  }
+
+  private isDashboardButtonPressed(target: DashboardButtonPressTarget, enabled = true): boolean {
+    return enabled && this.pressedDashboardButton === target;
+  }
+
+  private getDashboardButtonPressOffset(target: DashboardButtonPressTarget, enabled = true): number {
+    return this.isDashboardButtonPressed(target, enabled) ? 2 : 0;
+  }
+
+  private clearPressedDashboardButton(target?: DashboardButtonPressTarget): void {
+    if (target && this.pressedDashboardButton !== target) {
+      return;
+    }
+
+    this.pressedDashboardButton = null;
+  }
+
   private toggleMissionLog(): void {
     this.isMissionLogOpen = !this.isMissionLogOpen;
     this.openPickerSlot = null;
+    this.clearPressedDashboardButton();
     this.drawHotbar();
   }
 
@@ -1078,72 +1152,71 @@ export class GameplayHudSystem {
     }
 
     const graphics = this.hotbarGraphics;
-    const x = rect.x - rect.width / 2;
-    const y = rect.y - rect.height / 2;
     const accent = chrome.accentColor;
     const active = Boolean(chrome.active);
     const hovered = Boolean(chrome.hovered && !chrome.disabled);
+    const pressed = Boolean(chrome.pressed && !chrome.disabled);
+    const pressOffset = pressed ? 2 : 0;
+    const drawRect = pressed ? { ...rect, x: rect.x + pressOffset, y: rect.y + pressOffset } : rect;
+    const x = drawRect.x - drawRect.width / 2;
+    const y = drawRect.y - drawRect.height / 2;
     const highlighted = active || hovered;
     const dangerPulse = chrome.danger ? this.getSlowPulse(0.18) : 0;
     const hoverPulse = hovered ? 0.08 : 0;
-    const alpha = chrome.disabled ? 0.58 : hovered ? 0.98 : 0.92;
-    const fill = chrome.fillColor ?? 0x071018;
+    const alpha = chrome.disabled ? 0.58 : pressed ? 0.9 : hovered ? 0.98 : 0.92;
+    const baseFill = chrome.fillColor ?? 0x071018;
+    const fill = pressed ? this.mixColor(baseFill, 0x02040a, 0.28) : baseFill;
     const radius = this.getButtonCornerRadius(chrome.kind);
     const raisedSwitchChrome = this.usesRaisedSwitchChrome();
     const strokeWidth = active || chrome.danger ? 3 : raisedSwitchChrome ? 2.25 : this.buttonVariant === 1 ? 2.5 : 2;
-    const softGlowAlpha = (hovered ? 0.07 : 0) + (active ? 0.06 : 0) + (chrome.danger ? 0.06 + dangerPulse * 0.35 : 0);
+    const highlightScale = pressed ? 0.55 : 1;
+    const softGlowAlpha =
+      ((hovered ? 0.07 : 0) + (active ? 0.06 : 0) + (chrome.danger ? 0.06 + dangerPulse * 0.35 : 0)) * highlightScale;
     const usesOuterStroke = this.buttonVariant !== 1 && (raisedSwitchChrome || this.buttonVariant === 10 || active || chrome.danger);
 
     if (softGlowAlpha > 0) {
       graphics.fillStyle(accent, softGlowAlpha);
-      graphics.fillRoundedRect(x - 5, y - 5, rect.width + 10, rect.height + 10, radius + 5);
+      graphics.fillRoundedRect(x - 5, y - 5, drawRect.width + 10, drawRect.height + 10, radius + 5);
       graphics.fillStyle(accent, Math.max(0.03, softGlowAlpha * 0.55));
-      graphics.fillRoundedRect(x - 9, y - 8, rect.width + 18, rect.height + 16, radius + 8);
+      graphics.fillRoundedRect(x - 9, y - 8, drawRect.width + 18, drawRect.height + 16, radius + 8);
     }
 
     if (usesOuterStroke) {
       graphics.lineStyle(7, accent, active || chrome.danger ? 0.12 + dangerPulse : 0.07);
-      graphics.strokeRoundedRect(x - 2, y - 2, rect.width + 4, rect.height + 4, radius + 2);
+      graphics.strokeRoundedRect(x - 2, y - 2, drawRect.width + 4, drawRect.height + 4, radius + 2);
     }
 
     if (raisedSwitchChrome) {
       graphics.fillStyle(0x02040a, 0.72);
-      graphics.fillRoundedRect(x + 3, y + 4, rect.width, rect.height, radius);
+      graphics.fillRoundedRect(x + 3, y + 4, drawRect.width, drawRect.height, radius);
       graphics.fillStyle(chrome.danger ? 0x2a1117 : 0x1b2634, alpha);
-      graphics.fillRoundedRect(x, y, rect.width, rect.height, radius);
-      graphics.fillStyle(0xf2fbff, highlighted ? 0.16 : 0.08);
-      graphics.fillRoundedRect(x + 4, y + 4, rect.width - 8, Math.max(8, rect.height * 0.28), radius);
-      graphics.fillStyle(fill, chrome.danger ? 0.22 : 0.16);
-      graphics.fillRoundedRect(x + 6, y + 10, rect.width - 12, rect.height - 18, Math.max(2, radius - 2));
+      graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
+      graphics.fillStyle(0xf2fbff, pressed ? (highlighted ? 0.08 : 0.05) : highlighted ? 0.16 : 0.08);
+      graphics.fillRoundedRect(x + 4, y + 4, drawRect.width - 8, Math.max(8, drawRect.height * 0.28), radius);
+      graphics.fillStyle(fill, chrome.danger ? (pressed ? 0.3 : 0.22) : pressed ? 0.24 : 0.16);
+      graphics.fillRoundedRect(x + 6, y + 10, drawRect.width - 12, drawRect.height - 18, Math.max(2, radius - 2));
     } else {
       graphics.fillStyle(fill, alpha);
-      graphics.fillRoundedRect(x, y, rect.width, rect.height, radius);
+      graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
     }
 
-    this.drawButtonVariantDetails(rect, chrome);
+    this.drawButtonVariantDetails(drawRect, chrome);
 
-    graphics.lineStyle(strokeWidth, accent, highlighted || chrome.danger ? 0.92 + hoverPulse + dangerPulse : 0.68);
-    graphics.strokeRoundedRect(x, y, rect.width, rect.height, radius);
-    graphics.lineStyle(1, 0xf2fbff, highlighted ? 0.24 : 0.13);
-    graphics.strokeRoundedRect(x + 5, y + 5, rect.width - 10, rect.height - 10, Math.max(1, radius - 2));
+    const strokeAlpha = (highlighted || chrome.danger ? 0.92 + hoverPulse + dangerPulse : 0.68) * highlightScale;
+    graphics.lineStyle(strokeWidth, accent, Math.max(chrome.danger ? 0.66 : 0.5, strokeAlpha));
+    graphics.strokeRoundedRect(x, y, drawRect.width, drawRect.height, radius);
+    graphics.lineStyle(1, 0xf2fbff, pressed ? 0.08 : highlighted ? 0.24 : 0.13);
+    graphics.strokeRoundedRect(x + 5, y + 5, drawRect.width - 10, drawRect.height - 10, Math.max(1, radius - 2));
 
     if (chrome.kind === 'weapon') {
       const progress = Phaser.Math.Clamp(chrome.progress ?? 1, 0, 1);
       const meterHeight = this.buttonVariant === 9 ? 6 : raisedSwitchChrome ? 5 : 4;
       const meterInset = this.buttonVariant === 2 ? 0 : 10;
-      const meterY = y + rect.height - meterHeight - (this.buttonVariant === 2 ? 0 : 6);
+      const meterY = y + drawRect.height - meterHeight - (this.buttonVariant === 2 ? 0 : 6);
       graphics.fillStyle(0x02040a, 0.72);
-      graphics.fillRect(x + meterInset, meterY, rect.width - meterInset * 2, meterHeight);
-      graphics.fillStyle(accent, chrome.disabled ? 0.36 : highlighted ? 0.9 : 0.68);
-      graphics.fillRect(x + meterInset, meterY, (rect.width - meterInset * 2) * progress, meterHeight);
-    }
-
-    if (this.buttonVariant === 1 || this.buttonVariant === 10) {
-      graphics.fillStyle(0xc89452, 0.78);
-      graphics.fillCircle(x + 7, y + 7, 1.5);
-      graphics.fillCircle(x + rect.width - 7, y + 7, 1.5);
-      graphics.fillCircle(x + 7, y + rect.height - 7, 1.5);
-      graphics.fillCircle(x + rect.width - 7, y + rect.height - 7, 1.5);
+      graphics.fillRect(x + meterInset, meterY, drawRect.width - meterInset * 2, meterHeight);
+      graphics.fillStyle(accent, chrome.disabled ? 0.36 : pressed ? 0.5 : highlighted ? 0.9 : 0.68);
+      graphics.fillRect(x + meterInset, meterY, (drawRect.width - meterInset * 2) * progress, meterHeight);
     }
   }
 
@@ -1158,15 +1231,6 @@ export class GameplayHudSystem {
     const accent = chrome.accentColor;
 
     if (this.usesRaisedSwitchChrome()) {
-      graphics.fillStyle(0xc89452, chrome.disabled ? 0.22 : 0.48);
-      graphics.fillRect(x + 8, y + 7, rect.width - 16, 2);
-      graphics.lineStyle(1, 0x02040a, 0.5);
-      graphics.lineBetween(x + 7, y + rect.height - 9, x + rect.width - 7, y + rect.height - 9);
-      graphics.fillStyle(accent, chrome.disabled ? 0.18 : chrome.hovered || chrome.active ? 0.3 : 0.2);
-      graphics.fillRect(x + 10, y + rect.height - 15, rect.width - 20, 3);
-      graphics.fillStyle(0xf2fbff, chrome.hovered || chrome.active ? 0.18 : 0.09);
-      graphics.fillCircle(x + 9, y + 9, 1.35);
-      graphics.fillCircle(x + rect.width - 9, y + 9, 1.35);
       return;
     }
 
@@ -1240,16 +1304,25 @@ export class GameplayHudSystem {
       case 10:
         graphics.fillStyle(accent, 0.16);
         graphics.fillRect(x + 8, y + 6, rect.width - 16, 5);
-        graphics.fillStyle(0xff4fd8, chrome.kind === 'eject' ? 0.08 : 0.16);
-        graphics.fillRect(x + rect.width - 7, y + 9, 3, rect.height - 18);
-        if (chrome.kind === 'weapon') {
-          graphics.lineStyle(1, 0xc89452, 0.38);
-          graphics.lineBetween(x + 10, y + rect.height - 12, x + rect.width - 10, y + rect.height - 12);
-        }
         break;
       default:
         break;
     }
+  }
+
+  private mixColor(from: number, to: number, amount: number): number {
+    const t = Phaser.Math.Clamp(amount, 0, 1);
+    const fromR = (from >> 16) & 0xff;
+    const fromG = (from >> 8) & 0xff;
+    const fromB = from & 0xff;
+    const toR = (to >> 16) & 0xff;
+    const toG = (to >> 8) & 0xff;
+    const toB = to & 0xff;
+    const r = Math.round(fromR + (toR - fromR) * t);
+    const g = Math.round(fromG + (toG - fromG) * t);
+    const b = Math.round(fromB + (toB - fromB) * t);
+
+    return (r << 16) | (g << 8) | b;
   }
 
   private getButtonCornerRadius(kind: DashboardButtonChrome['kind']): number {

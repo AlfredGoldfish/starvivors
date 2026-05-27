@@ -17,6 +17,21 @@ export const UI_COLORS = {
   disabled: 0x151922
 } as const;
 
+function mixUiColor(from: number, to: number, amount: number): number {
+  const t = Phaser.Math.Clamp(amount, 0, 1);
+  const fromR = (from >> 16) & 0xff;
+  const fromG = (from >> 8) & 0xff;
+  const fromB = from & 0xff;
+  const toR = (to >> 16) & 0xff;
+  const toG = (to >> 8) & 0xff;
+  const toB = to & 0xff;
+  const r = Math.round(fromR + (toR - fromR) * t);
+  const g = Math.round(fromG + (toG - fromG) * t);
+  const b = Math.round(fromB + (toB - fromB) * t);
+
+  return (r << 16) | (g << 8) | b;
+}
+
 export interface ScreenHandle {
   container: Phaser.GameObjects.Container;
   actionZones: Phaser.GameObjects.Zone[];
@@ -113,18 +128,23 @@ export function addScreenButton(config: ScreenButtonConfig): void {
   const buttonBackground = config.scene.add.graphics();
   const fill = isEnabled ? UI_COLORS.plate : UI_COLORS.disabled;
   const stroke = isEnabled ? UI_COLORS.cyan : UI_COLORS.steel;
-  const trim = isEnabled ? UI_COLORS.brass : UI_COLORS.steel;
+  let isPressed = false;
 
-  buttonBackground.fillStyle(fill, 0.98);
-  buttonBackground.fillRoundedRect(config.x - config.width / 2, config.y, config.width, config.height, 6);
-  buttonBackground.lineStyle(2, stroke, isEnabled ? 0.88 : 0.6);
-  buttonBackground.strokeRoundedRect(config.x - config.width / 2, config.y, config.width, config.height, 6);
-  buttonBackground.fillStyle(stroke, isEnabled ? 0.12 : 0.05);
-  buttonBackground.fillRoundedRect(config.x - config.width / 2 + 5, config.y + 5, config.width - 10, Math.max(8, config.height * 0.28), 4);
-  buttonBackground.fillStyle(trim, isEnabled ? 0.24 : 0.1);
-  buttonBackground.fillRect(config.x - config.width / 2 + 8, config.y + 6, config.width - 16, 2);
-  buttonBackground.fillStyle(UI_COLORS.magenta, isEnabled ? 0.1 : 0.04);
-  buttonBackground.fillRect(config.x + config.width / 2 - 11, config.y + 9, 3, config.height - 18);
+  const drawButtonBackground = (offset: number): void => {
+    const pressedFill = isEnabled && isPressed ? mixUiColor(fill, UI_COLORS.void, 0.26) : fill;
+    const highlightAlpha = isEnabled ? (isPressed ? 0.06 : 0.12) : 0.05;
+    const strokeAlpha = isEnabled ? (isPressed ? 0.68 : 0.88) : 0.6;
+    const x = config.x - config.width / 2 + offset;
+    const y = config.y + offset;
+
+    buttonBackground.clear();
+    buttonBackground.fillStyle(pressedFill, isEnabled && isPressed ? 0.94 : 0.98);
+    buttonBackground.fillRoundedRect(x, y, config.width, config.height, 6);
+    buttonBackground.lineStyle(2, stroke, strokeAlpha);
+    buttonBackground.strokeRoundedRect(x, y, config.width, config.height, 6);
+    buttonBackground.fillStyle(stroke, highlightAlpha);
+    buttonBackground.fillRoundedRect(x + 5, y + 5, config.width - 10, Math.max(8, config.height * 0.28), 4);
+  };
 
   const buttonText = config.scene.add
     .text(config.x, config.y + config.height / 2, config.label, {
@@ -136,19 +156,45 @@ export function addScreenButton(config: ScreenButtonConfig): void {
     })
     .setOrigin(0.5);
 
+  const redrawButton = (): void => {
+    const offset = isEnabled && isPressed ? 2 : 0;
+    drawButtonBackground(offset);
+    buttonText.setPosition(config.x + offset, config.y + config.height / 2 + offset);
+  };
+  const setPressed = (pressed: boolean): void => {
+    const nextPressed = Boolean(pressed && isEnabled && config.isActionActive());
+    if (isPressed === nextPressed) {
+      return;
+    }
+
+    isPressed = nextPressed;
+    redrawButton();
+  };
+
+  redrawButton();
+
   const zone = config.scene.add
     .zone(config.screenCenterX + config.x - config.width / 2, config.screenCenterY + config.y, config.width, config.height)
     .setOrigin(0, 0)
     .setScrollFactor(0)
     .setDepth(1301)
-    .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
+    .on('pointerdown', (pointer: Phaser.Input.Pointer) => {
+      pointer.event?.stopPropagation();
+      setPressed(true);
+    })
     .on('pointerup', (pointer: Phaser.Input.Pointer) => {
       pointer.event?.stopPropagation();
-      if (isEnabled && config.isActionActive()) {
+      const shouldRun = isPressed && isEnabled && config.isActionActive();
+      setPressed(false);
+      if (shouldRun) {
         config.callback();
       }
     })
-    .on('pointerout', () => config.resetCursor());
+    .on('pointerout', () => {
+      setPressed(false);
+      config.resetCursor();
+    })
+    .on('pointerupoutside', () => setPressed(false));
 
   if (isEnabled) {
     zone.setInteractive({ useHandCursor: true });
