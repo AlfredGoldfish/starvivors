@@ -4,11 +4,31 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 type DesktopFileCategory = 'reports' | 'debug-presets' | 'logs' | 'runs';
+type WindowLaunchMode = 'both' | 'main' | 'enemy-lab';
+interface SaveTextFileInput {
+  category: DesktopFileCategory;
+  filename: string;
+  contents: string;
+}
+
+interface ReadTextFileInput {
+  category: DesktopFileCategory;
+  filename?: string;
+}
+
+interface OpenDataFolderInput {
+  category?: DesktopFileCategory;
+  relativePath?: string;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.argv.includes('--dev') || process.env.STARVIVORS_DESKTOP_DEV === '1';
 const devServerUrl = getDevServerUrl();
+const windowLaunchMode = getWindowLaunchMode();
+const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_FILENAME_LENGTH = 160;
+const MAX_RELATIVE_PATH_LENGTH = 260;
 const categoryFolders: Record<DesktopFileCategory, string> = {
   reports: 'reports',
   'debug-presets': 'debug-presets',
@@ -44,7 +64,7 @@ function createDesktopWindow(input: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false,
+      sandbox: true,
       backgroundThrottling: false
     }
   });
@@ -99,8 +119,13 @@ async function createEnemyLabWindow(): Promise<void> {
 }
 
 async function createWindows(): Promise<void> {
-  await createMainWindow();
-  await createEnemyLabWindow();
+  if (windowLaunchMode === 'main' || windowLaunchMode === 'both') {
+    await createMainWindow();
+  }
+
+  if (windowLaunchMode === 'enemy-lab' || windowLaunchMode === 'both') {
+    await createEnemyLabWindow();
+  }
 }
 
 app.whenReady().then(async () => {
@@ -134,6 +159,17 @@ function getDevServerUrl(): string {
   } catch {
     return 'http://127.0.0.1:5174';
   }
+}
+
+function getWindowLaunchMode(): WindowLaunchMode {
+  const argPrefix = '--window=';
+  const argValue = process.argv.find((arg) => arg.startsWith(argPrefix))?.slice(argPrefix.length);
+
+  if (argValue === 'main' || argValue === 'enemy-lab' || argValue === 'both') {
+    return argValue;
+  }
+
+  return 'both';
 }
 
 async function appendMainProcessError(source: string, error: unknown): Promise<void> {
@@ -180,37 +216,37 @@ app.on('window-all-closed', () => {
 });
 
 function registerFileIpc(): void {
-  ipcMain.handle('starvivors:saveTextFile', async (_event, input: {
-    category: DesktopFileCategory;
-    filename: string;
-    contents: string;
-  }) => {
+  ipcMain.handle('starvivors:saveTextFile', async (_event, input: unknown) => {
     try {
-      const folder = await ensureCategoryFolder(input.category);
-      const filePath = path.join(folder, sanitizeRelativePath(input.filename));
+      const request = parseSaveTextFileInput(input);
+      const folder = await ensureCategoryFolder(request.category);
+      const relativePath = sanitizeRelativePath(request.filename);
+      if (!relativePath) {
+        throw new Error('A filename is required.');
+      }
+      const filePath = resolveInside(folder, relativePath);
 
       await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, input.contents, 'utf8');
+      await fs.writeFile(filePath, request.contents, 'utf8');
       return { ok: true, path: filePath };
     } catch (error) {
       return { ok: false, error: getErrorMessage(error) };
     }
   });
 
-  ipcMain.handle('starvivors:readTextFile', async (_event, input: {
-    category: DesktopFileCategory;
-    filename?: string;
-  }) => {
+  ipcMain.handle('starvivors:readTextFile', async (_event, input: unknown) => {
     try {
-      const folder = await ensureCategoryFolder(input.category);
-      const filePath = input.filename
-        ? path.join(folder, sanitizeFilename(input.filename))
+      const request = parseReadTextFileInput(input);
+      const folder = await ensureCategoryFolder(request.category);
+      const filePath = request.filename
+        ? resolveInside(folder, sanitizeFilename(request.filename))
         : await pickMarkdownFile(folder);
 
       if (!filePath) {
         return { ok: false, error: 'No file selected.' };
       }
 
+      await assertReadableTextFileSize(filePath);
       const contents = await fs.readFile(filePath, 'utf8');
       return { ok: true, contents, path: filePath };
     } catch (error) {
@@ -218,13 +254,11 @@ function registerFileIpc(): void {
     }
   });
 
-  ipcMain.handle('starvivors:openDataFolder', async (_event, input?: {
-    category?: DesktopFileCategory;
-    relativePath?: string;
-  }) => {
+  ipcMain.handle('starvivors:openDataFolder', async (_event, input?: unknown) => {
     try {
-      const baseFolder = input?.category ? await ensureCategoryFolder(input.category) : await ensureDataRoot();
-      const folder = input?.relativePath ? path.join(baseFolder, sanitizeRelativePath(input.relativePath)) : baseFolder;
+      const request = parseOpenDataFolderInput(input);
+      const baseFolder = request.category ? await ensureCategoryFolder(request.category) : await ensureDataRoot();
+      const folder = request.relativePath ? resolveInside(baseFolder, sanitizeRelativePath(request.relativePath)) : baseFolder;
       await fs.mkdir(folder, { recursive: true });
       const result = await shell.openPath(folder);
 
@@ -266,6 +300,98 @@ async function ensureCategoryFolder(category: DesktopFileCategory): Promise<stri
   const folder = path.join(await ensureDataRoot(), folderName);
   await fs.mkdir(folder, { recursive: true });
   return folder;
+}
+
+function parseSaveTextFileInput(input: unknown): SaveTextFileInput {
+  const record = requireRecord(input);
+  const category = requireCategory(record.category);
+  const filename = requireLimitedString(record.filename, 'filename', MAX_RELATIVE_PATH_LENGTH);
+  const contents = requireLimitedString(record.contents, 'contents', MAX_TEXT_FILE_BYTES, true, true);
+
+  return { category, filename, contents };
+}
+
+function parseReadTextFileInput(input: unknown): ReadTextFileInput {
+  const record = requireRecord(input);
+  const category = requireCategory(record.category);
+  const filename = optionalLimitedString(record.filename, 'filename', MAX_FILENAME_LENGTH);
+
+  return filename ? { category, filename } : { category };
+}
+
+function parseOpenDataFolderInput(input: unknown): OpenDataFolderInput {
+  if (input === undefined) {
+    return {};
+  }
+
+  const record = requireRecord(input);
+  const category = record.category === undefined ? undefined : requireCategory(record.category);
+  const relativePath = optionalLimitedString(record.relativePath, 'relativePath', MAX_RELATIVE_PATH_LENGTH);
+
+  return {
+    ...(category ? { category } : {}),
+    ...(relativePath ? { relativePath } : {})
+  };
+}
+
+function requireRecord(input: unknown): Record<string, unknown> {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) {
+    throw new Error('Invalid IPC payload.');
+  }
+
+  return input as Record<string, unknown>;
+}
+
+function requireCategory(value: unknown): DesktopFileCategory {
+  if (typeof value !== 'string' || !(value in categoryFolders)) {
+    throw new Error('Unsupported desktop file category.');
+  }
+
+  return value as DesktopFileCategory;
+}
+
+function requireLimitedString(
+  value: unknown,
+  label: string,
+  maxLengthOrBytes: number,
+  measureBytes = false,
+  allowEmpty = false
+): string {
+  if (typeof value !== 'string') {
+    throw new Error(`Invalid ${label}.`);
+  }
+
+  const size = measureBytes ? Buffer.byteLength(value, 'utf8') : value.length;
+  if ((!allowEmpty && size <= 0) || size > maxLengthOrBytes) {
+    throw new Error(`${label} exceeds the allowed size.`);
+  }
+
+  return value;
+}
+
+function optionalLimitedString(value: unknown, label: string, maxLength: number): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  return requireLimitedString(value, label, maxLength);
+}
+
+async function assertReadableTextFileSize(filePath: string): Promise<void> {
+  const stats = await fs.stat(filePath);
+  if (stats.size > MAX_TEXT_FILE_BYTES) {
+    throw new Error('Text file exceeds the allowed size.');
+  }
+}
+
+function resolveInside(baseFolder: string, relativePath: string): string {
+  const base = path.resolve(baseFolder);
+  const resolved = path.resolve(base, relativePath);
+  if (resolved !== base && !resolved.startsWith(`${base}${path.sep}`)) {
+    throw new Error('Resolved path escaped the desktop data folder.');
+  }
+
+  return resolved;
 }
 
 async function ensureDataRoot(): Promise<string> {
