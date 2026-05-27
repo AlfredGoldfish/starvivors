@@ -4490,6 +4490,10 @@ export class GameScene extends Phaser.Scene {
 
   private getConfiguredHudButtonVariant(): HudButtonVariant {
     const query = new URLSearchParams(window.location.search);
+    if (query.get('devHudVariants') !== '1' && query.get('debugHudVariants') !== '1') {
+      return DEFAULT_HUD_BUTTON_VARIANT;
+    }
+
     return clampHudButtonVariant(Number(query.get('hudButtonVariant')));
   }
 
@@ -7919,26 +7923,35 @@ export class GameScene extends Phaser.Scene {
 
   private getContractStatusLine(): string {
     if (!this.missionRuntime) {
-      return 'Contract None';
+      const selectedMission = this.getSelectedMissionDefinition();
+      return selectedMission.objectiveType === 'free-range'
+        ? 'Free Range open - eject when ready'
+        : `Contract ${selectedMission.shortName} not launched`;
     }
 
     const name = this.missionRuntime.definition.shortName;
 
     switch (this.missionRuntime.status) {
       case 'completed':
-        return `Contract ${name} COMPLETE`;
+        return `Contract ${name} complete - keep exploring or eject`;
       case 'failed':
-        return `Contract ${name} INCOMPLETE`;
+        return this.missionRuntime.failureReason === 'run-ended'
+          ? `Contract ${name} ended incomplete`
+          : `Contract ${name} failed`;
       case 'active': {
+        if (this.missionRuntime.objective.radius <= 0) {
+          return 'Free Range open - eject when ready';
+        }
+
         const distance = Math.max(0, Math.round(this.getMissionObjectiveDistance() - this.missionRuntime.objective.radius));
-        return `Contract ${name} ACTIVE ${distance}m`;
+        return `Contract ${name} active - ${distance}m to objective`;
       }
     }
   }
 
   private getMissionResultStatus(): string {
     if (!this.missionRuntime) {
-      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'none selected' : 'not started';
+      return this.getSelectedMissionDefinition().objectiveType === 'free-range' ? 'free range' : 'not started';
     }
 
     if (this.missionRuntime.status === 'completed') {
@@ -7950,7 +7963,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.missionRuntime.failureReason === 'run-ended') {
-      return 'incomplete';
+      return 'ended incomplete';
     }
 
     return this.missionRuntime.status;
@@ -8035,6 +8048,13 @@ export class GameScene extends Phaser.Scene {
       .on('pointerdown', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation())
       .on('pointerup', (pointer: Phaser.Input.Pointer) => pointer.event?.stopPropagation());
     const panel = this.add.graphics();
+    const missionLine = !this.missionRuntime || this.missionRuntime.objective.radius <= 0
+      ? 'Free Range: bank cargo and return to Command.'
+      : this.missionRuntime.status === 'completed'
+        ? 'Contract complete: reward stays recorded.'
+        : this.missionRuntime.status === 'active'
+          ? 'Active contract: eject marks it incomplete.'
+          : 'Contract failed: cargo still banks.';
 
     panel.fillStyle(0x050812, 0.96);
     panel.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 8);
@@ -8053,9 +8073,9 @@ export class GameScene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0);
     const body = this.add
-      .text(0, panelY + 76, 'End the run and convert carried scrap to credits?', {
+      .text(0, panelY + 76, `End this run and bank current cargo?\nCargo scrap: ${this.runScrapTotal}\n${missionLine}`, {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '15px',
+        fontSize: '14px',
         color: '#d8e8ff',
         align: 'center',
         wordWrap: { width: panelWidth - 64 }
@@ -8075,7 +8095,7 @@ export class GameScene extends Phaser.Scene {
       y: panelY + 144,
       width: 150,
       height: 40,
-      label: 'Confirm',
+      label: 'Eject',
       callback: () => this.confirmEject(),
       isActionActive: () => Boolean(this.ejectConfirmScreen) && this.gameFlowState === 'running',
       resetCursor: () => this.resetUiCursor()
@@ -8090,7 +8110,7 @@ export class GameScene extends Phaser.Scene {
       y: panelY + 144,
       width: 150,
       height: 40,
-      label: 'Cancel',
+      label: 'Stay',
       callback: () => this.closeEjectConfirmation(),
       isActionActive: () => Boolean(this.ejectConfirmScreen) && this.gameFlowState === 'running',
       resetCursor: () => this.resetUiCursor()
