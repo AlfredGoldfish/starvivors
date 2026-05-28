@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { wrapCoordinate, type ArenaSize } from '../core/arena';
 import type { DamageVariance } from '../data/damageVariance';
 import type { BlackHoleCapturedProjectileState } from './blackHole';
+import type { EnemyStatusEffect } from './playerStatusEffects';
 
 export type ProjectileOwner = 'player' | 'enemy' | 'world';
 
@@ -10,12 +11,16 @@ export interface ProjectileSplashPayload {
   damageMultiplier: number;
 }
 
-export type ProjectileStatusKind = 'ionize' | 'plasma-wake' | 'critical';
+export type ProjectileStatusKind = 'ionize' | 'plasma-wake' | 'critical' | EnemyStatusEffect['kind'];
 
 export interface ProjectileStatusPayload {
   kind: ProjectileStatusKind;
   durationMs: number;
   damageMultiplier?: number;
+  intensity?: number;
+  damagePerSecond?: number;
+  tickMs?: number;
+  accelerationDrag?: number;
 }
 
 export interface RuntimeProjectile extends BlackHoleCapturedProjectileState {

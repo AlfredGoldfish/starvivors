@@ -1,17 +1,11 @@
 import Phaser from 'phaser';
-import asteroidVariant1Url from '../../assets/asteroids/astroid_1.png';
-import asteroidVariant2Url from '../../assets/asteroids/astroid_2.png';
-import asteroidVariant3Url from '../../assets/asteroids/astroid_3.png';
-import asteroidVariant4Url from '../../assets/asteroids/astroid_4.png';
 import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
 import scrapTier1CyanShardUrl from '../../assets/scraps_debri/scrap_tier_1_cyan_shard.png';
 import scrapTier2GreenClusterUrl from '../../assets/scraps_debri/scrap_tier_2_green_cluster.png';
 import scrapTier3GoldClusterUrl from '../../assets/scraps_debri/scrap_tier_3_gold_cluster.png';
 import scrapTier4RedClusterUrl from '../../assets/scraps_debri/scrap_tier_4_red_cluster.png';
 import upgradeCratePickupUrl from '../../assets/upgrade_create.png';
-import bulwarkShipUrl from '../../assets/ships/bulwark.png';
 import rammingShieldUrl from '../../assets/ships/ramming shield.png';
-import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import {
   createArenaSize,
   DEFAULT_SECTOR_SCALE,
@@ -244,10 +238,32 @@ import {
 } from '../data/enemyLabDefinitions';
 import { createEnemyLabVisualTextures, getEnemyLabTextureKey } from '../systems/enemyVisuals';
 import {
+  createAsteroidSizeProfile,
+  createMonochromeAsteroidTexture,
+  createMonochromeAsteroidTextures,
+  getAsteroidFamilyForSpawn,
+  getMonochromeAsteroidTextureKey,
+  resolveAsteroidObjectSizeProfile
+} from '../systems/asteroidVisuals';
+import {
+  createPlayerShipMonochromeTextures,
+  getPlayerShipMonochromeTextureKey,
+  resolveShipObjectSizeProfile
+} from '../systems/playerShipVisuals';
+import {
   updateEnemyLabAi as updateLiveEnemyAiSystem,
   type EnemyLabProjectileRequest,
   type EnemyLabScrapTarget
 } from '../systems/enemyLabAi';
+import {
+  applyPlayerStatusEffects,
+  createPlayerStatusEffectRuntime,
+  getActivePlayerStatusKinds,
+  resolvePlayerStatusMovementModifiers,
+  updatePlayerStatusEffects,
+  type EnemyStatusEffect,
+  type PlayerStatusEffectRuntime
+} from '../systems/playerStatusEffects';
 import {
   clearEnemyLabEnemies as clearLiveEnemiesSystem,
   destroyEnemyLabEnemy as destroyLiveEnemySystem,
@@ -585,8 +601,6 @@ import {
   PLAYER_HIT_RADIUS,
   PLAYER_MAX_HULL,
   PLAYER_PROJECTILE_HIT_RADIUS,
-  PLAYER_SHIP_DISPLAY_SIZE,
-  PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
   RAMMING_SHIELD_COLLIDER_DEPTH,
   RAMMING_SHIELD_TEXTURE_CROP,
@@ -632,16 +646,8 @@ import {
 type LiveGameEnemy = EnemyLabInstance;
 type AnyGameEnemy = BasicEnemy | ShooterEnemy | TankEnemy | LiveGameEnemy;
 
-const ASTEROID_TEXTURES = [
-  { key: 'asteroid-variant-1', url: asteroidVariant1Url },
-  { key: 'asteroid-variant-2', url: asteroidVariant2Url },
-  { key: 'asteroid-variant-3', url: asteroidVariant3Url },
-  { key: 'asteroid-variant-4', url: asteroidVariant4Url }
-] as const;
-
 const REROLL_BASE_COST = 5;
 const REROLL_DEBUG_BASE_COST = 10;
-const PLAYER_SHIP_VISUAL_SCALE = 0.5;
 const DEATH_SHARD_MAX_ACTIVE = 180;
 const ASTEROID_DEATH_SHARD_BURST_LIMIT = 24;
 const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
@@ -772,6 +778,8 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private playerStatusRuntime: PlayerStatusEffectRuntime = createPlayerStatusEffectRuntime();
+  private playerStatusOverlay?: Phaser.GameObjects.Graphics;
   private cameraLead = new Phaser.Math.Vector2(0, 0);
   private fuel = RUN_FUEL_MAX;
   private debugFuelDrainEnabled = true;
@@ -938,10 +946,6 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload(): void {
-    for (const asteroidTexture of ASTEROID_TEXTURES) {
-      this.load.image(asteroidTexture.key, asteroidTexture.url);
-    }
-
     this.load.image(ENEMY_WRECKAGE_DEBRIS_TEXTURE_KEY, enemyWreckageDebrisUrl);
     this.load.image(SCRAP_PICKUP_TEXTURE_KEY, scrapTier1CyanShardUrl);
     this.load.image(SCRAP_PICKUP_TIER_1_TEXTURE_KEY, scrapTier1CyanShardUrl);
@@ -949,8 +953,6 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SCRAP_PICKUP_TIER_3_TEXTURE_KEY, scrapTier3GoldClusterUrl);
     this.load.image(SCRAP_PICKUP_TIER_4_TEXTURE_KEY, scrapTier4RedClusterUrl);
     this.load.image(UPGRADE_CRATE_PICKUP_TEXTURE_KEY, upgradeCratePickupUrl);
-    this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
-    this.load.image('player-ship-bulwark', bulwarkShipUrl);
     this.load.image(RAMMING_SHIELD_TEXTURE_KEY, rammingShieldUrl);
   }
 
@@ -1064,6 +1066,7 @@ export class GameScene extends Phaser.Scene {
     if (this.debugState.debugGamePaused) {
       this.profileStep('black-hole', () => this.updateBlackHole(time, deltaSeconds, false));
     } else {
+      this.profileStep('player-status', () => this.updatePlayerStatuses(time));
       this.profileStep('player-movement', () => this.updatePlayerMovement(time, this.isPlayerDead ? 0 : deltaSeconds));
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
       this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
@@ -1093,6 +1096,7 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('player-projectiles', () => this.updatePlayerProjectiles(time, deltaSeconds));
       this.profileStep('enemy-projectiles', () => this.updateEnemyProjectiles(time, deltaSeconds));
       this.profileStep('player-damage-visuals', () => this.updatePlayerDamageVisuals(time));
+      this.profileStep('player-status-vfx', () => this.updatePlayerStatusOverlay(time));
     }
 
     this.profileStep('combat-feedback', () => this.combatFeedback.update(delta, this.getCombatFeedbackSnapshot()));
@@ -6212,6 +6216,8 @@ export class GameScene extends Phaser.Scene {
   private createBackgroundTextures(): void {
     this.starfield.createTextures();
     createForgeRegistryTextures(this);
+    createPlayerShipMonochromeTextures(this, shipRegistry);
+    createMonochromeAsteroidTextures(this);
   }
 
   private createStarfield(): void {
@@ -6220,9 +6226,13 @@ export class GameScene extends Phaser.Scene {
 
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
     const shipDefinition = this.getSelectedShipDefinition();
+    const size = resolveShipObjectSizeProfile(shipDefinition);
+    this.playerStatusRuntime = createPlayerStatusEffectRuntime();
+    this.playerStatusOverlay?.destroy();
+    this.playerStatusOverlay = undefined;
     const sprite = this.add.image(0, 0, this.getShipTextureKey(shipDefinition));
     sprite.setOrigin(0.5, 0.5);
-    sprite.setDisplaySize(shipDefinition.displaySize * PLAYER_SHIP_VISUAL_SCALE, shipDefinition.displaySize * PLAYER_SHIP_VISUAL_SCALE);
+    sprite.setDisplaySize(size.visualDiameterPx, size.visualDiameterPx);
     sprite.setRotation(shipDefinition.visualRotation);
     this.playerSprite = sprite;
 
@@ -6238,7 +6248,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getShipTextureKey(ship: ShipRegistryEntry): string {
-    return resolveForgeTextureKey(this, ship.visualAssetId, ship.textureKey);
+    const textureKey = getPlayerShipMonochromeTextureKey(ship);
+    if (!this.textures.exists(textureKey)) {
+      createPlayerShipMonochromeTextures(this, [ship]);
+    }
+
+    return textureKey;
   }
 
   private createWorldEvents(center: Phaser.Math.Vector2): void {
@@ -7883,12 +7898,23 @@ export class GameScene extends Phaser.Scene {
 
     if (style === 'player') {
       const ship = this.getSelectedShipDefinition();
-      this.emitDeathShards(this.getShipTextureKey(ship), x, y, ship.displaySize, this.player.rotation + ship.visualRotation, inheritedVelocity, style);
+      this.emitDeathShards(
+        this.getShipTextureKey(ship),
+        x,
+        y,
+        resolveShipObjectSizeProfile(ship).visualDiameterPx,
+        this.player.rotation + ship.visualRotation,
+        inheritedVelocity,
+        style
+      );
       return;
     }
 
     if (style === 'asteroid' || style === 'blackHoleAsteroid') {
-      this.emitDeathShards('asteroid-variant-1', x, y, ASTEROID_TIER_CONFIG[3].displaySize, this.player.rotation, inheritedVelocity, style);
+      const tier: AsteroidTier = 3;
+      const textureKey = getMonochromeAsteroidTextureKey(tier, 0);
+      createMonochromeAsteroidTexture(this, tier, 0);
+      this.emitDeathShards(textureKey, x, y, resolveAsteroidObjectSizeProfile(tier).visualDiameterPx, this.player.rotation, inheritedVelocity, style);
       return;
     }
 
@@ -7942,10 +7968,13 @@ export class GameScene extends Phaser.Scene {
   private destroyLiveEnemyWithRewards(enemy: LiveGameEnemy, index: number, inheritedVelocity = this.getLiveEnemyTotalVelocity(enemy)): void {
     const x = enemy.body.x;
     const y = enemy.body.y;
+    const carriedScrapBonus = enemy.carriedScrap > 0
+      ? enemy.carriedScrap + (enemy.definition.behavior.id === 'scrapThief' ? Number(enemy.definition.behavior.params?.bonusScrap ?? 0) : 0)
+      : 0;
 
     this.emitLiveEnemyDeathShards(enemy, inheritedVelocity);
     this.trySpawnEnemyRewardPickup(
-      enemy.definition.rewards?.scrap ?? this.getLiveEnemyFallbackScrapValue(enemy),
+      (enemy.definition.rewards?.scrap ?? this.getLiveEnemyFallbackScrapValue(enemy)) + carriedScrapBonus,
       x,
       y,
       inheritedVelocity,
@@ -8610,15 +8639,19 @@ export class GameScene extends Phaser.Scene {
     velocity = this.createAsteroidVelocity(tier)
   ): BasicAsteroid {
     const tierConfig = ASTEROID_TIER_CONFIG[tier];
-    const texture = ASTEROID_TEXTURES[Phaser.Math.Between(0, ASTEROID_TEXTURES.length - 1)];
-    const body = this.createBasicAsteroid(x, y, texture.key, tierConfig.displaySize);
-    const wrapMirrorBody = this.createBasicAsteroid(x, y, texture.key, tierConfig.displaySize);
+    const family = getAsteroidFamilyForSpawn(tier, x, y);
+    const textureKey = getMonochromeAsteroidTextureKey(tier, family);
+    const size = resolveAsteroidObjectSizeProfile(tier, `asteroid-tier-${tier}-family-${family}`);
+    createMonochromeAsteroidTexture(this, tier, family);
+    const body = this.createBasicAsteroid(x, y, textureKey, size.visualDiameterPx);
+    const wrapMirrorBody = this.createBasicAsteroid(x, y, textureKey, size.visualDiameterPx);
     wrapMirrorBody.setVisible(false);
 
     return {
       body,
       wrapMirrorBody,
-      variant: texture.key,
+      sizeProfile: createAsteroidSizeProfile(tier, `asteroid-tier-${tier}-family-${family}`),
+      variant: textureKey,
       tier,
       hp: tierConfig.hp,
       breakupProfile: createAsteroidBreakupProfileSystem(tier),
@@ -8626,7 +8659,7 @@ export class GameScene extends Phaser.Scene {
       rotationSpeed:
         Phaser.Math.FloatBetween(ASTEROID_MIN_ROTATION_SPEED, ASTEROID_MAX_ROTATION_SPEED) *
         (Phaser.Math.Between(0, 1) === 0 ? -1 : 1),
-      hitRadius: tierConfig.hitRadius,
+      hitRadius: size.collisionRadiusPx,
       offscreenSince: null,
       collisionInvulnerableUntil: 0,
       nextBlackHoleDamageAt: 0
@@ -8686,6 +8719,7 @@ export class GameScene extends Phaser.Scene {
       isWorldRelative: this.gameSettings.movementMode === 'worldRelative'
     });
     const flightStats = this.getPlayerFlightStats();
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, time);
 
     applyPlayerFlightAcceleration({
       player: this.player,
@@ -8693,7 +8727,7 @@ export class GameScene extends Phaser.Scene {
       controls,
       stats: flightStats,
       deltaSeconds,
-      accelerationScale: this.debugState.playerInertiaScale * this.getFuelThrustMultiplier()
+      accelerationScale: this.debugState.playerInertiaScale * this.getFuelThrustMultiplier() * statusModifiers.accelerationScale
     });
 
     this.updateThrusterEffects(
@@ -10062,13 +10096,14 @@ export class GameScene extends Phaser.Scene {
 
   private getPlayerFlightStats(): PlayerFlightStats {
     const selectedShip = this.getSelectedShipDefinition();
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, this.time.now);
 
     return {
       thrust: this.getPlayerThrustAcceleration(),
       brake: this.getPlayerReverseThrustAcceleration(),
       strafe: this.getPlayerStrafeThrustAcceleration(),
-      moveSpeed: this.getPlayerMaxSpeed(),
-      velocityLimit: this.getPlayerVelocityLimit(),
+      moveSpeed: this.getPlayerMaxSpeed() * statusModifiers.velocityLimitScale,
+      velocityLimit: this.getPlayerVelocityLimit() * statusModifiers.velocityLimitScale,
       lowFrictionDamping: selectedShip.movement.lowFrictionDamping,
       overspeedDamping: this.getPlayerOverspeedDamping()
     };
@@ -10547,6 +10582,18 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updatePlayerFacing(): void {
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, this.time.now);
+    if (statusModifiers.turnScale < 0.98) {
+      const pointer = this.input.activePointer;
+      const pointerWorld = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const direction = this.getWrappedDirection(this.player.x, this.player.y, pointerWorld.x, pointerWorld.y);
+      if (direction.lengthSq() > 0) {
+        const targetRotation = Math.atan2(direction.x, -direction.y);
+        this.player.rotation = Phaser.Math.Angle.RotateTo(this.player.rotation, targetRotation, 0.09 * statusModifiers.turnScale);
+      }
+      return;
+    }
+
     updatePlayerFacingFromPointer({
       scene: this,
       player: this.player,
@@ -10880,6 +10927,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolvePlayerEnemyContact(contact: PlayerEnemyContact, time: number): void {
+    if ('stateData' in contact.enemy && contact.enemy.stateData.contactSuppressed === true) {
+      return;
+    }
+
     const impactDamage = this.getPlayerEnemyImpactDamage(contact);
     this.applyPlayerEnemyKnockback(contact, time);
     if (contact.hitRammingShield) {
@@ -10894,6 +10945,135 @@ export class GameScene extends Phaser.Scene {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
       this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'enemy' });
+      this.applyLiveEnemyContactStatus(contact.enemy, time);
+    }
+  }
+
+  private applyLiveEnemyContactStatus(enemy: PlayerEnemyContact['enemy'], time: number): void {
+    if (!('definition' in enemy)) {
+      return;
+    }
+
+    const statusKind = enemy.definition.behavior.params?.contactStatusKind;
+    if (statusKind !== 'frost' && statusKind !== 'electric') {
+      return;
+    }
+
+    const durationMs = Number(enemy.definition.behavior.params?.contactStatusDurationMs ?? (statusKind === 'frost' ? 1800 : 2800));
+    const intensity = Number(enemy.definition.behavior.params?.contactStatusIntensity ?? 1);
+    this.applyEnemyProjectileStatuses([{ kind: statusKind, durationMs, intensity }], time);
+  }
+
+  private applyEnemyProjectileStatuses(statuses: EnemyProjectile['statuses'], time: number): void {
+    const playerStatuses = statuses
+      ?.filter((status): status is EnemyStatusEffect => status.kind === 'frost' || status.kind === 'electric')
+      .map((status) => ({
+        kind: status.kind,
+        durationMs: status.durationMs,
+        intensity: status.intensity,
+        damagePerSecond: status.damagePerSecond,
+        tickMs: status.tickMs,
+        accelerationDrag: status.accelerationDrag
+      }));
+
+    if (!playerStatuses || playerStatuses.length === 0) {
+      return;
+    }
+
+    applyPlayerStatusEffects(this.playerStatusRuntime, playerStatuses, time);
+    this.emitLiveEnemyBurst(this.player.x, this.player.y, playerStatuses.some((status) => status.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 8);
+  }
+
+  private updatePlayerStatuses(time: number): void {
+    if (this.isPlayerDead) {
+      return;
+    }
+
+    updatePlayerStatusEffects({
+      runtime: this.playerStatusRuntime,
+      time,
+      applyDamage: (damage) => this.applyPlayerStatusDamage(damage, time)
+    });
+  }
+
+  private applyPlayerStatusDamage(damage: number, time: number): void {
+    if (damage <= 0 || this.debugState.playerInvulnerable) {
+      return;
+    }
+
+    if (this.blockDamageWithRammingShield(damage, time, this.player.x, this.player.y)) {
+      return;
+    }
+
+    this.damagePlayer(damage, time, this.player.x, this.player.y, { source: 'enemy' });
+  }
+
+  private updatePlayerStatusOverlay(time: number): void {
+    if (!this.player?.scene) {
+      return;
+    }
+
+    const activeStatuses = getActivePlayerStatusKinds(this.playerStatusRuntime, time);
+    if (activeStatuses.length === 0) {
+      this.playerStatusOverlay?.clear();
+      return;
+    }
+
+    const overlay = this.playerStatusOverlay ?? this.add.graphics();
+    if (!this.playerStatusOverlay) {
+      this.playerStatusOverlay = overlay;
+      this.player.add(overlay);
+    }
+
+    overlay.clear();
+    if (activeStatuses.includes('frost')) {
+      this.drawFrostStatusOverlay(overlay, time);
+    }
+
+    if (activeStatuses.includes('electric')) {
+      this.drawElectricStatusOverlay(overlay, time);
+    }
+  }
+
+  private drawFrostStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
+    const alpha = 0.52 + Math.sin(time * 0.014) * 0.14;
+    graphics.lineStyle(1.5, 0x8eeaff, alpha);
+    graphics.fillStyle(0x40c4ff, 0.08);
+    const shards: Array<Array<[number, number]>> = [
+      [[-8, -28], [0, -47], [8, -28]],
+      [[-34, -8], [-52, -2], [-34, 8]],
+      [[34, -8], [52, -2], [34, 8]],
+      [[-10, 28], [0, 44], [10, 28]]
+    ];
+
+    for (const shard of shards) {
+      graphics.beginPath();
+      graphics.moveTo(shard[0][0], shard[0][1]);
+      graphics.lineTo(shard[1][0], shard[1][1]);
+      graphics.lineTo(shard[2][0], shard[2][1]);
+      graphics.closePath();
+      graphics.fillPath();
+      graphics.strokePath();
+    }
+  }
+
+  private drawElectricStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
+    graphics.lineStyle(1.3, 0xb3f7ff, 0.78);
+    const phase = time * 0.018;
+    for (let index = 0; index < 4; index += 1) {
+      const angle = phase + index * Math.PI * 0.5;
+      const radius = 39 + Math.sin(phase + index) * 5;
+      const x1 = Math.cos(angle) * radius;
+      const y1 = Math.sin(angle) * radius;
+      const x2 = Math.cos(angle + 0.34) * (radius + 8);
+      const y2 = Math.sin(angle + 0.34) * (radius + 8);
+      const midX = (x1 + x2) * 0.5 + Math.cos(angle + 1.7) * 8;
+      const midY = (y1 + y2) * 0.5 + Math.sin(angle + 1.7) * 8;
+      graphics.beginPath();
+      graphics.moveTo(x1, y1);
+      graphics.lineTo(midX, midY);
+      graphics.lineTo(x2, y2);
+      graphics.strokePath();
     }
   }
 
@@ -11910,7 +12090,7 @@ export class GameScene extends Phaser.Scene {
       this.getShipTextureKey(ship),
       this.player.x,
       this.player.y,
-      ship.displaySize,
+      resolveShipObjectSizeProfile(ship).visualDiameterPx,
       this.player.rotation + ship.visualRotation,
       this.playerVelocity,
       'player'
@@ -11934,6 +12114,8 @@ export class GameScene extends Phaser.Scene {
     this.playSfxCue('player-death', { bypassCooldown: true });
     this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
+    this.playerStatusRuntime = createPlayerStatusEffectRuntime();
+    this.playerStatusOverlay?.clear();
     this.clearRammingShieldDashBurst();
     this.player.setVisible(false);
     this.playerSprite.setTint(0xff5964);
@@ -12478,6 +12660,7 @@ export class GameScene extends Phaser.Scene {
       fireEnemyProjectile: (request) => this.fireLiveEnemyProjectile(request),
       explodeAt: (x, y, radius, damage, sourceId) => this.explodeLiveEnemyAt(x, y, radius, damage, sourceId),
       spawnChild: (definitionId, x, y) => this.spawnLiveEnemy(definitionId, x, y, time),
+      stealScrap: (target, enemy) => this.stealLiveEnemyScrap(target, enemy),
       emitLabBurst: (x, y, color, count) => this.emitLiveEnemyBurst(x, y, color, count)
     });
 
@@ -12494,12 +12677,30 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getLiveEnemyScrapTargets(): EnemyLabScrapTarget[] {
-    return this.scrapPickups.map((pickup) => ({
-      id: pickup.kind,
+    return this.scrapPickups.map((pickup, index) => ({
+      id: `scrap-${index}`,
       x: pickup.body.x,
       y: pickup.body.y,
-      collected: false
+      collected: false,
+      value: pickup.kind === 'scrap' ? pickup.value : 0
     }));
+  }
+
+  private stealLiveEnemyScrap(target: EnemyLabScrapTarget, _enemy: LiveGameEnemy): number {
+    const index = Number(target.id.replace('scrap-', ''));
+    const pickup = Number.isInteger(index) ? this.scrapPickups[index] : undefined;
+    if (!pickup || pickup.kind !== 'scrap') {
+      return 0;
+    }
+
+    const value = Math.max(1, pickup.value);
+    this.emitScrapPickupFeedback(pickup.body.x, pickup.body.y, value);
+    this.destroyScrapPickup(pickup);
+    const pickupIndex = this.scrapPickups.indexOf(pickup);
+    if (pickupIndex >= 0) {
+      this.scrapPickups.splice(pickupIndex, 1);
+    }
+    return value;
   }
 
   private fireLiveEnemyProjectile(request: EnemyLabProjectileRequest): void {
@@ -12525,7 +12726,8 @@ export class GameScene extends Phaser.Scene {
       pierceRemaining: 0,
       knockback: 0,
       expiresAt: this.time.now + (request.range / Math.max(1, request.speed)) * 1000,
-      distanceRemaining: request.range
+      distanceRemaining: request.range,
+      statuses: request.statuses
     });
     this.playSfxCue('enemy-fire');
   }
@@ -12714,6 +12916,7 @@ export class GameScene extends Phaser.Scene {
     if (time >= this.playerInvulnerableUntil) {
       this.emitShipBulletImpactExplosion(projectile.body.x, projectile.body.y);
       this.damagePlayer(projectileDamage, time, projectile.body.x, projectile.body.y, { source: 'enemy' });
+      this.applyEnemyProjectileStatuses(projectile.statuses, time);
     }
 
     return true;
@@ -13526,7 +13729,7 @@ export class GameScene extends Phaser.Scene {
 
   private getBeamEmitterOffset(): number {
     const ship = this.getSelectedShipDefinition();
-    return Math.min(44, ship.displaySize * 0.28);
+    return Math.min(44, resolveShipObjectSizeProfile(ship).visualDiameterPx * 0.28);
   }
 
   private emitBeamIgnitionBurst(beam: ResolvedBeamWeaponStats): void {
@@ -14016,8 +14219,8 @@ export class GameScene extends Phaser.Scene {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     x = effectPosition.x;
     y = effectPosition.y;
-    const tierConfig = ASTEROID_TIER_CONFIG[tier];
-    const ring = this.add.circle(x, y, tierConfig.hitRadius * 0.62, 0x9fd8ff, 0);
+    const size = resolveAsteroidObjectSizeProfile(tier);
+    const ring = this.add.circle(x, y, size.collisionRadiusPx * 0.62, 0x9fd8ff, 0);
     const particleCount = this.getNonCriticalParticleCount(Phaser.Math.Clamp(tier * 5, 6, 25));
 
     ring.setStrokeStyle(2, 0x73f2ff, this.getFlashAlpha(0.56));
@@ -14035,7 +14238,7 @@ export class GameScene extends Phaser.Scene {
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = (Math.PI * 2 * i) / particleCount + Phaser.Math.FloatBetween(-0.18, 0.18);
-      const distance = Phaser.Math.FloatBetween(tierConfig.hitRadius * 0.35, tierConfig.hitRadius * 1.18);
+      const distance = Phaser.Math.FloatBetween(size.collisionRadiusPx * 0.35, size.collisionRadiusPx * 1.18);
       const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(1.8, 4.2), 0x8fb6c8, 0.72);
 
       particle.setDepth(6);
@@ -14062,13 +14265,13 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const tierConfig = ASTEROID_TIER_CONFIG[asteroid.tier];
+    const size = resolveAsteroidObjectSizeProfile(asteroid.tier);
     const position = this.getNearestWrappedRenderPosition(asteroid.body.x, asteroid.body.y);
     const driftSeconds = ASTEROID_BREAKUP_GHOST_MS / 1000;
     const ghost = this.add.image(position.x, position.y, asteroid.variant);
 
     ghost.setOrigin(0.5, 0.5);
-    ghost.setDisplaySize(tierConfig.displaySize, tierConfig.displaySize);
+    ghost.setDisplaySize(size.visualDiameterPx, size.visualDiameterPx);
     ghost.setRotation(asteroid.body.rotation);
     ghost.setTint(0x9aa1a8);
     ghost.setAlpha(0.42);
@@ -14115,7 +14318,7 @@ export class GameScene extends Phaser.Scene {
       asteroid.variant,
       asteroid.body.x,
       asteroid.body.y,
-      ASTEROID_TIER_CONFIG[asteroid.tier].displaySize,
+      resolveAsteroidObjectSizeProfile(asteroid.tier).visualDiameterPx,
       asteroid.body.rotation,
       asteroid.velocity,
       style

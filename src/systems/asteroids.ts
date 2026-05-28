@@ -20,6 +20,7 @@ import type {
   AsteroidTier,
   BasicAsteroid
 } from '../scenes/gameTypes';
+import { ASTEROID_COLLISION_RADIUS_RATIO } from '../data/objectSizeProfile';
 import {
   applyCollisionImpulse,
   getRelativeVelocity
@@ -231,7 +232,8 @@ export function spawnAsteroidFragments(input: SpawnAsteroidFragmentsInput): void
     const fragmentConfig = ASTEROID_TIER_CONFIG[fragmentTier];
     const motion = getAsteroidFragmentMotion(input.breakupProfile.motionMode, motionPlan, i, input.fragmentTiers.length);
     const offsetDistance =
-      Phaser.Math.FloatBetween(8, fragmentConfig.displaySize * motion.offsetScale) * input.breakupProfile.spreadMultiplier;
+      Phaser.Math.FloatBetween(8, getAsteroidVisualDiameter(fragmentConfig.hitRadius) * motion.offsetScale) *
+      input.breakupProfile.spreadMultiplier;
     const burstSpeed =
       Phaser.Math.FloatBetween(ASTEROID_FRAGMENT_BURST_MIN_SPEED, ASTEROID_FRAGMENT_BURST_MAX_SPEED) *
       motion.speedScale *
@@ -274,6 +276,10 @@ function createTierRecipeAsteroidFragments(parentTier: AsteroidTier, fragmentTie
   const fragmentCount = tierDrop <= 2 ? 5 : 7;
 
   return Array.from({ length: fragmentCount }, () => lowerTier);
+}
+
+function getAsteroidVisualDiameter(collisionRadiusPx: number): number {
+  return (collisionRadiusPx * 2) / ASTEROID_COLLISION_RADIUS_RATIO;
 }
 
 function pickAsteroidBreakupRecipe(

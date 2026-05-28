@@ -1,18 +1,21 @@
 import Phaser from 'phaser';
-import playerShipUrl from '../../assets/ships/spaceship_1.png';
 import { createArenaSize, getArenaCenter, wrapCoordinate, type ArenaSize } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { DEFAULT_SHIP_ID, getShipDefinition } from '../data/ships';
 import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
 import { VELOCITY_LIMITER_BASE_SPEED } from '../data/permanentUpgrades';
-import { ENEMY_LAB_DEFINITIONS, type EnemyLabDefinition } from '../data/enemyLabDefinitions';
 import {
+  DEFAULT_ENEMY_VISUAL_SCALE,
+  ENEMY_LAB_DEFINITIONS,
+  resolveEnemyVisualScale,
+  type EnemyLabDefinition
+} from '../data/enemyLabDefinitions';
+import {
+  ASTEROID_TIERS,
   CAMERA_LEAD_LERP,
   CAMERA_LEAD_MAX_DISTANCE,
   CAMERA_LEAD_MIN_SPEED,
   FORWARD_THRUSTER_INTERVAL_MS,
-  PLAYER_SHIP_DISPLAY_SIZE,
-  PLAYER_SHIP_TEXTURE_KEY,
   PLAYER_SHIP_VISUAL_ROTATION,
   SECONDARY_THRUSTER_INTERVAL_MS,
   THRUSTER_FADE_MS
@@ -28,12 +31,48 @@ import {
   wrapPlayerFlightPosition,
   type PlayerFlightStats
 } from '../systems/playerFlight';
-import { createEnemyLabVisualTextures } from '../systems/enemyVisuals';
+import { createEnemyLabVisualContainer, createEnemyLabVisualTextures } from '../systems/enemyVisuals';
+import {
+  emitEffectLineSweep,
+  emitEffectMuzzleFlash,
+  emitEffectOutlineFlash,
+  emitEffectRingPulse,
+  emitEffectShardBurst,
+  emitEffectSparkBurst,
+  emitEffectSupportAura,
+  emitEffectTrailTick,
+  emitEffectWarningBeam,
+  emitEffectWarningRadius,
+  resolveEnemyLabEffectColor,
+  type EnemyLabReadabilityMode
+} from '../systems/enemyLabEffects';
+import { normalizeEnemyEffectEntry } from '../systems/enemyVectorRecipes';
+import {
+  createPlayerShipMonochromeTextures,
+  getPlayerShipMonochromeTextureKey,
+  resolveShipObjectSizeProfile
+} from '../systems/playerShipVisuals';
+import {
+  ASTEROID_VISUAL_FAMILIES,
+  createMonochromeAsteroidTexture,
+  getMonochromeAsteroidTextureKey,
+  resolveAsteroidObjectSizeProfile
+} from '../systems/asteroidVisuals';
 import {
   getWrappedDirection,
   updateEnemyLabAi,
-  type EnemyLabProjectileRequest
+  type EnemyLabProjectileRequest,
+  type EnemyLabScrapTarget
 } from '../systems/enemyLabAi';
+import {
+  applyPlayerStatusEffects,
+  createPlayerStatusEffectRuntime,
+  getActivePlayerStatusKinds,
+  resolvePlayerStatusMovementModifiers,
+  updatePlayerStatusEffects,
+  type EnemyStatusEffect,
+  type PlayerStatusEffectRuntime
+} from '../systems/playerStatusEffects';
 import {
   clearEnemyLabEnemies,
   destroyEnemyLabEnemy,
@@ -110,6 +149,12 @@ interface EnemyLabProjectile {
   damage: number;
   radius: number;
   rangeRemaining: number;
+  statuses?: EnemyStatusEffect[];
+}
+
+interface EnemyLabScrapProp extends EnemyLabScrapTarget {
+  body: Phaser.GameObjects.Arc;
+  value: number;
 }
 
 interface EnemyLabDiagnosticsContext {
@@ -239,7 +284,22 @@ const FORGE_PALETTE_KEYS: Array<keyof ForgePalette> = [
 const FORGE_COLOR_OPTIONS: Array<keyof ForgePalette> = [...FORGE_PALETTE_KEYS];
 const FORGE_ASSET_KIND_OPTIONS: ForgeAssetKind[] = ['enemy', 'ship', 'weapon', 'projectile', 'beam', 'effect', 'pickup', 'ui-icon', 'radar-icon', 'telegraph'];
 const FORGE_AI_TASK_OPTIONS: ForgeAiTaskType[] = ['generate', 'batch', 'revise', 'repair', 'promotion-prep'];
+const PROTOTYPE_ENEMY_SAMPLE_IDS = [
+  'ambusher-mine',
+  'berserker',
+  'orbiter',
+  'patrol-guard',
+  'frost-gunner',
+  'electric-leech',
+  'combat-summoner',
+  'scrap-thief',
+  'impact-bomber',
+  'spawner-nest'
+];
 type ForgePreviewMode = 'combat' | 'projectile-motion' | 'weapon-icon' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
+type EnemyLabMode = 'shape' | 'effects' | 'behavior' | 'squad' | 'stress';
+type EnemyLabPreviewState = 'idle' | 'pursue' | 'telegraph' | 'attack' | 'hit' | 'death';
+type EnemyLabClutterTest = 'single' | 'squad' | 'swarm' | 'bullets' | 'asteroids' | 'asteroidGallery' | 'debris' | 'stress';
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -247,12 +307,20 @@ export class EnemyLabScene extends Phaser.Scene {
   private player!: Phaser.GameObjects.Container;
   private playerSprite!: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private playerStatusRuntime: PlayerStatusEffectRuntime = createPlayerStatusEffectRuntime();
+  private playerStatusOverlay?: Phaser.GameObjects.Graphics;
   private cameraLead = new Phaser.Math.Vector2(0, 0);
   private keys!: Record<string, Phaser.Input.Keyboard.Key>;
   private enemies: EnemyLabInstance[] = [];
   private projectiles: EnemyLabProjectile[] = [];
+  private previewBodies: Phaser.GameObjects.Container[] = [];
+  private testProps: Phaser.GameObjects.GameObject[] = [];
+  private labScrapProps: EnemyLabScrapProp[] = [];
   private overlay?: EnemyLabOverlayRefs;
   private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
+  private labMode: EnemyLabMode = 'effects';
+  private readabilityMode: EnemyLabReadabilityMode = 'normal';
+  private reducedEffects = false;
   private selectedEnemyIndex = 0;
   private selectedVariantId = '';
   private selectedForgeAssetId = '';
@@ -309,9 +377,7 @@ export class EnemyLabScene extends Phaser.Scene {
     super('EnemyLabScene');
   }
 
-  preload(): void {
-    this.load.image(PLAYER_SHIP_TEXTURE_KEY, playerShipUrl);
-  }
+  preload(): void {}
 
   create(): void {
     const viewport = getViewportSize(this);
@@ -324,6 +390,7 @@ export class EnemyLabScene extends Phaser.Scene {
     });
     this.starfield.createTextures();
     this.starfield.create();
+    createPlayerShipMonochromeTextures(this, [LAB_PLAYER_SHIP]);
     createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
 
     this.player = this.createPlayerShip(center.x, center.y);
@@ -341,6 +408,7 @@ export class EnemyLabScene extends Phaser.Scene {
     ];
     this.createInput();
     this.createOverlay();
+    this.runEnemyLabSmokeHarnessIfRequested();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
 
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
@@ -349,6 +417,8 @@ export class EnemyLabScene extends Phaser.Scene {
         delayedSpawn.remove(false);
       }
       this.delayedSquadSpawns = [];
+      this.clearPreviewBodies();
+      this.clearTestProps();
       this.clearEnemyCollisionDebug();
       this.overlay?.root.remove();
       this.overlay = undefined;
@@ -368,6 +438,7 @@ export class EnemyLabScene extends Phaser.Scene {
         return;
       }
 
+      this.measureDiagnosticsPhase(diagnostics, 'player-status', () => this.updatePlayerStatuses(time));
       this.measureDiagnosticsPhase(diagnostics, 'player-movement', () => this.updatePlayerMovement(time, deltaSeconds));
       this.measureDiagnosticsPhase(diagnostics, 'player-wrap', () => this.wrapPlayer());
       this.measureDiagnosticsPhase(diagnostics, 'camera-lead', () => this.updateCameraLead());
@@ -379,7 +450,7 @@ export class EnemyLabScene extends Phaser.Scene {
           scene: this,
           arena: this.arena,
           enemies: this.enemies,
-          scrapPickups: [],
+          scrapPickups: this.labScrapProps,
           playerX: this.player.x,
           playerY: this.player.y,
           playerVelocity: this.playerVelocity,
@@ -396,12 +467,15 @@ export class EnemyLabScene extends Phaser.Scene {
           fireEnemyProjectile: (request) => this.fireEnemyProjectile(request),
           explodeAt: (x, y, radius, damage, sourceId) => this.explodeAt(x, y, radius, damage, sourceId),
           spawnChild: (definitionId, x, y) => this.spawnEnemy(definitionId, x, y),
+          stealScrap: (target) => this.stealLabScrap(target),
           emitLabBurst: (x, y, color, count) => this.emitLabBurst(x, y, color, count)
         })
       );
 
       this.measureDiagnosticsPhase(diagnostics, 'enemy-contacts', () => this.updateEnemyContacts(time));
       this.measureDiagnosticsPhase(diagnostics, 'enemy-cleanup', () => this.removeDeadEnemies());
+      this.measureDiagnosticsPhase(diagnostics, 'enemy-effects', () => this.updateEnemyMovementEffects(time));
+      this.measureDiagnosticsPhase(diagnostics, 'status-vfx', () => this.updatePlayerStatusOverlay(time));
       this.measureDiagnosticsPhase(diagnostics, 'collision-debug', () => this.updateEnemyCollisionDebug());
       this.measureDiagnosticsPhase(diagnostics, 'starfield', () => this.updateBackgroundTiles(time));
     } finally {
@@ -445,10 +519,60 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
+  private runEnemyLabSmokeHarnessIfRequested(): void {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const harness = new URLSearchParams(window.location.search).get('testHarness');
+    if (harness !== 'enemyLabMonochrome' && harness !== 'enemyLabVector' && harness !== 'enemyLabPrototype' && harness !== 'smoke') {
+      return;
+    }
+
+    this.labMode = harness === 'enemyLabPrototype' ? 'behavior' : 'effects';
+    this.spawnClutterTest('asteroidGallery');
+    this.spawnProjectileClutter(8);
+    if (harness === 'enemyLabPrototype') {
+      this.spawnPrototypeHarnessSamples();
+      this.spawnLabScrapProps(8);
+    } else {
+      this.previewEnemyState('idle');
+      this.previewEnemyState('telegraph');
+    }
+    this.syncOverlayFromState();
+    if (harness === 'enemyLabPrototype') {
+      this.setOverlayCollapsed(true);
+    }
+    const scaleX = this.overlay?.scaleX.value ?? '';
+    const scaleY = this.overlay?.scaleY.value ?? '';
+    const scalePass = scaleX === String(DEFAULT_ENEMY_VISUAL_SCALE) && scaleY === String(DEFAULT_ENEMY_VISUAL_SCALE);
+    document.body.setAttribute('data-starvivors-enemy-lab-harness-details', JSON.stringify({
+      scaleX,
+      scaleY,
+      sampleIds: harness === 'enemyLabPrototype' ? PROTOTYPE_ENEMY_SAMPLE_IDS : undefined,
+      asteroidFamilies: harness === 'enemyLabPrototype' ? ASTEROID_VISUAL_FAMILIES.length : undefined
+    }));
+    document.body.setAttribute('data-starvivors-enemy-lab-harness', scalePass ? 'monochrome-ready' : 'fail');
+  }
+
+  private spawnPrototypeHarnessSamples(): void {
+    const center = this.getPreviewPosition();
+    const radius = 320;
+    PROTOTYPE_ENEMY_SAMPLE_IDS.forEach((definitionId, index) => {
+      const angle = (Math.PI * 2 * index) / PROTOTYPE_ENEMY_SAMPLE_IDS.length;
+      this.spawnEnemy(
+        definitionId,
+        wrapCoordinate(center.x + Math.cos(angle) * radius, this.arena.width),
+        wrapCoordinate(center.y + Math.sin(angle) * radius, this.arena.height)
+      );
+    });
+  }
+
   private createPlayerShip(x: number, y: number): Phaser.GameObjects.Container {
-    const sprite = this.add.image(0, 0, PLAYER_SHIP_TEXTURE_KEY);
+    const size = resolveShipObjectSizeProfile(LAB_PLAYER_SHIP);
+    const sprite = this.add.image(0, 0, getPlayerShipMonochromeTextureKey(LAB_PLAYER_SHIP));
     sprite.setOrigin(0.5, 0.5);
-    sprite.setDisplaySize(LAB_PLAYER_SHIP.displaySize ?? PLAYER_SHIP_DISPLAY_SIZE, LAB_PLAYER_SHIP.displaySize ?? PLAYER_SHIP_DISPLAY_SIZE);
+    sprite.setDisplaySize(size.visualDiameterPx, size.visualDiameterPx);
     sprite.setRotation(LAB_PLAYER_SHIP.visualRotation ?? PLAYER_SHIP_VISUAL_ROTATION);
     this.playerSprite = sprite;
 
@@ -467,13 +591,15 @@ export class EnemyLabScene extends Phaser.Scene {
       thrustReverse: this.keys.down.isDown || this.keys.downAlt.isDown
     });
     const flightStats = this.getPlayerFlightStats();
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, time);
 
     applyPlayerFlightAcceleration({
       player: this.player,
       velocity: this.playerVelocity,
       controls,
       stats: flightStats,
-      deltaSeconds
+      deltaSeconds,
+      accelerationScale: statusModifiers.accelerationScale
     });
 
     this.updateThrusterEffects(time, controls.thrustForward, controls.thrustReverse, controls.strafeLeft, controls.strafeRight);
@@ -515,12 +641,13 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private getPlayerFlightStats(): PlayerFlightStats {
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, this.time.now);
     return {
       thrust: this.getPlayerThrustAcceleration(),
       brake: this.getPlayerReverseThrustAcceleration(),
       strafe: this.getPlayerStrafeThrustAcceleration(),
-      moveSpeed: this.getPlayerMaxSpeed(),
-      velocityLimit: this.getPlayerVelocityLimit(),
+      moveSpeed: this.getPlayerMaxSpeed() * statusModifiers.velocityLimitScale,
+      velocityLimit: this.getPlayerVelocityLimit() * statusModifiers.velocityLimitScale,
       lowFrictionDamping: LAB_PLAYER_SHIP.movement.lowFrictionDamping,
       overspeedDamping: this.getPlayerOverspeedDamping()
     };
@@ -528,6 +655,18 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private updatePlayerFacing(): void {
     if (this.isPointerOverControlPanel) {
+      return;
+    }
+
+    const statusModifiers = resolvePlayerStatusMovementModifiers(this.playerStatusRuntime, this.time.now);
+    if (statusModifiers.turnScale < 0.98) {
+      const pointer = this.input.activePointer;
+      const pointerWorld = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+      const direction = this.getWrappedDirection(this.player.x, this.player.y, pointerWorld.x, pointerWorld.y);
+      if (direction.lengthSq() > 0) {
+        const targetRotation = Math.atan2(direction.x, -direction.y);
+        this.player.rotation = Phaser.Math.Angle.RotateTo(this.player.rotation, targetRotation, 0.09 * statusModifiers.turnScale);
+      }
       return;
     }
 
@@ -559,6 +698,16 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private fireEnemyProjectile(request: EnemyLabProjectileRequest): void {
+    const color = resolveEnemyLabEffectColor(request.color, this.readabilityMode);
+    emitEffectMuzzleFlash(this, request.x, request.y, request.direction, {
+      kind: 'muzzle-flash',
+      color,
+      radius: request.radius * 2.2,
+      durationMs: 130,
+      intensity: 0.75,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
     this.createProjectile({
       owner: 'enemy',
       x: request.x,
@@ -568,7 +717,8 @@ export class EnemyLabScene extends Phaser.Scene {
       damage: request.damage,
       range: request.range,
       radius: request.radius,
-      color: request.color
+      color,
+      statuses: request.statuses
     });
   }
 
@@ -582,6 +732,7 @@ export class EnemyLabScene extends Phaser.Scene {
     range: number;
     radius: number;
     color: number;
+    statuses?: EnemyStatusEffect[];
   }): void {
     const rotation = Math.atan2(input.direction.x, -input.direction.y);
     const body = this.createProjectileBody(input.x, input.y, input.radius, input.color, rotation, input.owner);
@@ -595,7 +746,8 @@ export class EnemyLabScene extends Phaser.Scene {
       velocity: input.direction.clone().normalize().scale(input.speed),
       damage: input.damage,
       radius: input.radius,
-      rangeRemaining: input.range
+      rangeRemaining: input.range,
+      statuses: input.statuses
     });
   }
 
@@ -673,7 +825,7 @@ export class EnemyLabScene extends Phaser.Scene {
       const damage = projectile.damage * Math.max(0.1, 1 - enemy.damageReduction);
       enemy.hp -= damage;
       this.flashEnemy(enemy);
-      this.emitLabBurst(projectile.body.x, projectile.body.y, enemy.definition.visual.accentColor, 4);
+      this.emitEnemyRecipeEffect(enemy.definition, 'hit', projectile.body.x, projectile.body.y, projectile.velocity.clone().normalize());
       return true;
     }
 
@@ -687,6 +839,10 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     this.damagePlayer(projectile.damage);
+    applyPlayerStatusEffects(this.playerStatusRuntime, projectile.statuses, this.time.now);
+    if (projectile.statuses?.length) {
+      this.emitLabBurst(this.player.x, this.player.y, projectile.statuses.some((status) => status.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 8);
+    }
     return true;
   }
 
@@ -710,7 +866,7 @@ export class EnemyLabScene extends Phaser.Scene {
     projectile.owner = 'enemy';
     projectile.velocity.scale(-1);
     projectile.damage *= 0.7;
-    this.emitLabBurst(projectile.body.x, projectile.body.y, enemy.definition.visual.accentColor, 8);
+    this.emitEnemyRecipeEffect(enemy.definition, 'status', projectile.body.x, projectile.body.y, projectile.velocity.clone().normalize());
     return true;
   }
 
@@ -727,13 +883,102 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     for (const enemy of this.enemies) {
+      if (enemy.stateData.contactSuppressed === true) {
+        continue;
+      }
+
       const offset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
       if (offset.length() <= enemy.definition.stats.radius + PLAYER_LAB_HIT_RADIUS) {
         this.damagePlayer(enemy.definition.stats.contactDamage * 0.03);
+        this.applyEnemyContactStatus(enemy);
         if (time % 180 < 16) {
           this.emitLabBurst(this.player.x, this.player.y, enemy.definition.visual.accentColor, 3);
         }
       }
+    }
+  }
+
+  private applyEnemyContactStatus(enemy: EnemyLabInstance): void {
+    const statusKind = enemy.definition.behavior.params?.contactStatusKind;
+    if (statusKind !== 'frost' && statusKind !== 'electric') {
+      return;
+    }
+
+    const durationMs = Number(enemy.definition.behavior.params?.contactStatusDurationMs ?? (statusKind === 'frost' ? 1800 : 2800));
+    const intensity = Number(enemy.definition.behavior.params?.contactStatusIntensity ?? 1);
+    applyPlayerStatusEffects(this.playerStatusRuntime, [{ kind: statusKind, durationMs, intensity }], this.time.now);
+  }
+
+  private updatePlayerStatuses(time: number): void {
+    updatePlayerStatusEffects({
+      runtime: this.playerStatusRuntime,
+      time,
+      applyDamage: (damage) => this.damagePlayer(damage)
+    });
+  }
+
+  private updatePlayerStatusOverlay(time: number): void {
+    const activeStatuses = getActivePlayerStatusKinds(this.playerStatusRuntime, time);
+    if (activeStatuses.length === 0) {
+      this.playerStatusOverlay?.clear();
+      return;
+    }
+
+    const overlay = this.playerStatusOverlay ?? this.add.graphics();
+    if (!this.playerStatusOverlay) {
+      this.playerStatusOverlay = overlay;
+      this.player.add(overlay);
+    }
+
+    overlay.clear();
+    if (activeStatuses.includes('frost')) {
+      this.drawFrostStatusOverlay(overlay, time);
+    }
+
+    if (activeStatuses.includes('electric')) {
+      this.drawElectricStatusOverlay(overlay, time);
+    }
+  }
+
+  private drawFrostStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
+    const alpha = 0.52 + Math.sin(time * 0.014) * 0.14;
+    graphics.lineStyle(1.5, 0x8eeaff, alpha);
+    graphics.fillStyle(0x40c4ff, 0.08);
+    const shards: Array<Array<[number, number]>> = [
+      [[-8, -28], [0, -47], [8, -28]],
+      [[-34, -8], [-52, -2], [-34, 8]],
+      [[34, -8], [52, -2], [34, 8]],
+      [[-10, 28], [0, 44], [10, 28]]
+    ];
+
+    for (const shard of shards) {
+      graphics.beginPath();
+      graphics.moveTo(shard[0][0], shard[0][1]);
+      graphics.lineTo(shard[1][0], shard[1][1]);
+      graphics.lineTo(shard[2][0], shard[2][1]);
+      graphics.closePath();
+      graphics.fillPath();
+      graphics.strokePath();
+    }
+  }
+
+  private drawElectricStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
+    graphics.lineStyle(1.3, 0xb3f7ff, 0.78);
+    const phase = time * 0.018;
+    for (let index = 0; index < 4; index += 1) {
+      const angle = phase + index * Math.PI * 0.5;
+      const radius = 39 + Math.sin(phase + index) * 5;
+      const x1 = Math.cos(angle) * radius;
+      const y1 = Math.sin(angle) * radius;
+      const x2 = Math.cos(angle + 0.34) * (radius + 8);
+      const y2 = Math.sin(angle + 0.34) * (radius + 8);
+      const midX = (x1 + x2) * 0.5 + Math.cos(angle + 1.7) * 8;
+      const midY = (y1 + y2) * 0.5 + Math.sin(angle + 1.7) * 8;
+      graphics.beginPath();
+      graphics.moveTo(x1, y1);
+      graphics.lineTo(midX, midY);
+      graphics.lineTo(x2, y2);
+      graphics.strokePath();
     }
   }
 
@@ -749,6 +994,8 @@ export class EnemyLabScene extends Phaser.Scene {
       this.playerHull = PLAYER_LAB_HULL;
       this.player.setPosition(getArenaCenter(this.arena).x, getArenaCenter(this.arena).y);
       this.playerVelocity.set(0, 0);
+      this.playerStatusRuntime = createPlayerStatusEffectRuntime();
+      this.playerStatusOverlay?.clear();
     }
   }
 
@@ -784,7 +1031,11 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private handleEnemyDeath(enemy: EnemyLabInstance): void {
-    this.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.glowColor, 14);
+    this.emitEnemyRecipeEffect(enemy.definition, 'death', enemy.body.x, enemy.body.y);
+    if (enemy.carriedScrap > 0) {
+      const bonus = enemy.definition.behavior.id === 'scrapThief' ? Number(enemy.definition.behavior.params?.bonusScrap ?? 0) : 0;
+      this.dropLabScrap(enemy.body.x, enemy.body.y, Math.min(10, enemy.carriedScrap + bonus));
+    }
 
     if (enemy.definition.behavior.id === 'splitterChase') {
       const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
@@ -804,27 +1055,56 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const variant = variantId ? this.presetState.variants.find((candidate) => candidate.id === variantId) : undefined;
     const effectiveDefinition = applyVariantToDefinition(baseDefinition, variant);
-    this.enemies.push(
-      spawnEnemyLabEnemy({
-        scene: this,
-        arena: this.arena,
-        definitionId,
-        definitionOverride: effectiveDefinition,
-        variantId: variant?.id,
-        x,
-        y,
-        time: this.time.now,
-        hpMultiplier: this.enemyHpMultiplier,
-        showDebugLabel: this.showDebugLabels
-      })
-    );
+    const enemy = spawnEnemyLabEnemy({
+      scene: this,
+      arena: this.arena,
+      definitionId,
+      definitionOverride: effectiveDefinition,
+      variantId: variant?.id,
+      x,
+      y,
+      time: this.time.now,
+      hpMultiplier: this.enemyHpMultiplier,
+      showDebugLabel: this.showDebugLabels
+    });
+    this.enemies.push(enemy);
+    this.emitEnemyRecipeEffect(enemy.definition, 'spawn', enemy.body.x, enemy.body.y);
   }
 
   private spawnSelectedEnemy(): void {
     const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    if (definition.behavior.id === 'scrapThief' && this.labScrapProps.length === 0) {
+      this.spawnLabScrapProps(8);
+    }
+
     for (let i = 0; i < this.spawnCount; i += 1) {
       const position = this.getSpawnPositionAroundPlayer(420 + i * 16);
       this.spawnEnemy(definition.id, position.x, position.y, this.getSelectedVariant()?.id);
+    }
+  }
+
+  private dropLabScrap(x: number, y: number, value: number): void {
+    const pieces = Math.max(1, Math.min(8, Math.ceil(value / 2)));
+    for (let index = 0; index < pieces; index += 1) {
+      const angle = (Math.PI * 2 * index) / pieces;
+      const distance = 26 + index * 3;
+      const body = this.add.circle(
+        wrapCoordinate(x + Math.cos(angle) * distance, this.arena.width),
+        wrapCoordinate(y + Math.sin(angle) * distance, this.arena.height),
+        7,
+        0x000000,
+        1
+      );
+      body.setStrokeStyle(1.4, 0xffffff, 0.9);
+      body.setDepth(4);
+      this.labScrapProps.push({
+        id: `lab-drop-${this.time.now}-${index}`,
+        x: body.x,
+        y: body.y,
+        value: Math.max(1, Math.ceil(value / pieces)),
+        collected: false,
+        body
+      });
     }
   }
 
@@ -870,6 +1150,8 @@ export class EnemyLabScene extends Phaser.Scene {
       projectile.wrapMirrorBody.destroy(true);
     }
     this.projectiles = [];
+    this.clearPreviewBodies();
+    this.clearTestProps();
   }
 
   private getSpawnPositionAroundPlayer(distance: number): Phaser.Math.Vector2 {
@@ -983,16 +1265,29 @@ export class EnemyLabScene extends Phaser.Scene {
 
   private createOverlay(): void {
     const root = document.createElement('div');
-    root.className = 'enemy-lab-overlay';
+    root.className = `enemy-lab-overlay is-mode-${this.labMode}`;
     root.innerHTML = `
       <div class="enemy-lab-header">
-        <div class="enemy-lab-title">Asset Forge / Enemy Lab</div>
+        <div class="enemy-lab-title">Monochrome Combat Lab</div>
         <button data-action="toggleOverlay">Hide UI</button>
       </div>
       <section class="enemy-lab-panel">
-        <div class="enemy-lab-panel-title">Neon-Forward Salvagepunk</div>
+        <div class="enemy-lab-panel-title">Lab Mode</div>
+        <div class="enemy-lab-mode-row">
+          <button data-lab-mode="shape">Shape</button>
+          <button data-lab-mode="effects">Effects</button>
+          <button data-lab-mode="behavior">Behavior</button>
+          <button data-lab-mode="squad">Squad</button>
+          <button data-lab-mode="stress">Stress</button>
+        </div>
         <div class="enemy-lab-style-guide">
-          Neon first, salvage machinery second. Use crisp luminous cores, trim, rails, rings, arcs, glyphs, and trails over dark gunmetal, oxidized brass, copper, rivets, pipes, vents, and bolted plates. Palette target: 45% dark metal, 15% warm industrial metal, 30% neon energy, 10% warning/highlight.
+          Black field, white enclosed silhouettes, shape-matched fills, and restrained internal marks. Active enemy, ship, and asteroid art uses the shared 320px source scale.
+        </div>
+      </section>
+      <details class="enemy-lab-panel enemy-lab-advanced-panel">
+        <summary>Advanced Forge / Import</summary>
+        <div class="enemy-lab-style-guide">
+          Legacy Forge workflows remain available for export, import, AI briefs, and promotion bundles, but monochrome-outline recipes are the active readability direction.
         </div>
         <div class="enemy-lab-row">
           <button data-action="exportForgeSvg">Export SVG</button>
@@ -1018,8 +1313,9 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportForgeRepairPrompt">Export Repair Prompt</button>
         </div>
         <div class="enemy-lab-import-report" data-field="forgeImportReport">No AI validation report yet.</div>
-      </section>
-      <section class="enemy-lab-panel">
+      </details>
+      <details class="enemy-lab-panel enemy-lab-advanced-panel">
+        <summary>Advanced Forge Editor</summary>
         <div class="enemy-lab-panel-title">Forge Editor</div>
         <label>Forge Asset <select data-field="forgeAsset"></select></label>
         <label>Status <select data-field="forgeAssetStatus"></select></label>
@@ -1075,9 +1371,9 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="forgeDuplicateLayer">Duplicate</button>
           <button data-action="forgeDeleteLayer" class="enemy-lab-danger-button">Delete Layer</button>
         </div>
-      </section>
-      <section class="enemy-lab-panel">
-        <div class="enemy-lab-panel-title">Test Enemy</div>
+      </details>
+      <section class="enemy-lab-panel" data-lab-panel="shape effects behavior stress">
+        <div class="enemy-lab-panel-title">Enemy Shape</div>
         <label>Enemy <select data-field="enemy"></select></label>
         <label>Variant <select data-field="variant"></select></label>
         <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="9999" step="1" value="1"></label>
@@ -1095,8 +1391,26 @@ export class EnemyLabScene extends Phaser.Scene {
           <button class="enemy-lab-danger-button" data-action="deleteVariant">Delete Variant</button>
         </div>
       </section>
-      <section class="enemy-lab-panel">
-        <div class="enemy-lab-panel-title">Variant Editor</div>
+      <section class="enemy-lab-panel" data-lab-panel="effects stress">
+        <div class="enemy-lab-panel-title">Special Effects</div>
+        <div class="enemy-lab-row enemy-lab-preview-row">
+          <button data-preview-state="idle">Idle</button>
+          <button data-preview-state="pursue">Pursue</button>
+          <button data-preview-state="telegraph">Telegraph</button>
+          <button data-preview-state="attack">Attack</button>
+          <button data-preview-state="hit">Hit</button>
+          <button data-preview-state="death">Death</button>
+        </div>
+        <div class="enemy-lab-subtitle">Readability</div>
+        <div class="enemy-lab-row">
+          <button data-readability-mode="normal">Normal</button>
+          <button data-readability-mode="color-safe">Color-Safe</button>
+          <button data-readability-mode="high-contrast">High Contrast</button>
+          <button data-action="reducedEffects">Reduced FX</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel" data-lab-panel="behavior">
+        <div class="enemy-lab-panel-title">Behavior / Variant Editor</div>
         <label>Name <input data-field="variantName" type="text" maxlength="48"></label>
         <label>Status <select data-field="variantStatus"></select></label>
         <div class="enemy-lab-row">
@@ -1110,7 +1424,7 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-grid">
           <label>Visual <input data-field="visualScale" type="number" min="0.25" max="9999" step="0.05"></label>
           <label>Width <input data-field="scaleX" type="number" min="0.25" max="9999" step="0.05"></label>
-          <label>Length <input data-field="scaleY" type="number" min="0.25" max="9999" step="0.05"></label>
+          <label>Height <input data-field="scaleY" type="number" min="0.25" max="9999" step="0.05"></label>
           <label>Rotate <input data-field="rotationOffset" type="number" min="-9999" max="9999" step="5"></label>
           <label>Glow <input data-field="glowScale" type="number" min="0" max="9999" step="0.05"></label>
           <label>Hit R <input data-field="statRadius" type="number" min="4" max="9999" step="1"></label>
@@ -1131,7 +1445,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportPromotion">Promotion</button>
         </div>
       </section>
-      <section class="enemy-lab-panel">
+      <section class="enemy-lab-panel" data-lab-panel="squad stress">
         <div class="enemy-lab-panel-title">Squad Builder</div>
         <label>Built-in <select data-field="squad"></select></label>
         <label>Custom <select data-field="customSquad"></select></label>
@@ -1158,8 +1472,8 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
         <div class="enemy-lab-squad-entries" data-field="squadEntries"></div>
       </section>
-      <section class="enemy-lab-panel">
-        <div class="enemy-lab-panel-title">Lab Settings</div>
+      <section class="enemy-lab-panel" data-lab-panel="effects behavior squad stress">
+        <div class="enemy-lab-panel-title">Test Conditions</div>
         <label>Lab speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
         <label>Lab HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
         <label>Fire rate <input data-field="fireRate" type="range" min="0.25" max="3" step="0.05" value="1"></label>
@@ -1168,6 +1482,18 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="deconflict">Deconflict</button>
           <button data-action="collisionDebug">Hit Circles</button>
           <button data-action="exportDiagnostics">Export Diagnostics</button>
+        </div>
+        <div class="enemy-lab-subtitle">Clutter Test</div>
+        <div class="enemy-lab-row">
+          <button data-clutter-test="single">Single</button>
+          <button data-clutter-test="squad">Squad</button>
+          <button data-clutter-test="swarm">Swarm 50</button>
+          <button data-clutter-test="bullets">Bullets</button>
+          <button data-clutter-test="asteroids">Asteroids</button>
+          <button data-clutter-test="asteroidGallery">Asteroid Gallery</button>
+          <button data-clutter-test="debris">Debris</button>
+          <button data-clutter-test="stress">Full Stress</button>
+          <button data-action="clearProps">Clear Props</button>
         </div>
       </section>
       <div class="enemy-lab-help">1-0 select first 10, [/] cycle, Space spawn, Shift+Space squad, C clear, F squad, I AI, L labels, T telegraphs, P pause, U hide UI. Hold mouse to fire.</div>
@@ -1488,6 +1814,32 @@ export class EnemyLabScene extends Phaser.Scene {
 
     root.addEventListener('click', (event) => {
       const target = event.target as HTMLElement;
+      const labMode = target.dataset.labMode as EnemyLabMode | undefined;
+      if (labMode) {
+        this.setLabMode(labMode);
+        return;
+      }
+
+      const previewState = target.dataset.previewState as EnemyLabPreviewState | undefined;
+      if (previewState) {
+        this.previewEnemyState(previewState);
+        this.syncOverlayFromState();
+        return;
+      }
+
+      const readabilityMode = target.dataset.readabilityMode as EnemyLabReadabilityMode | undefined;
+      if (readabilityMode) {
+        this.setReadabilityMode(readabilityMode);
+        return;
+      }
+
+      const clutterTest = target.dataset.clutterTest as EnemyLabClutterTest | undefined;
+      if (clutterTest) {
+        this.spawnClutterTest(clutterTest);
+        this.syncOverlayFromState();
+        return;
+      }
+
       const tag = target.dataset.tag;
       if (tag) {
         this.toggleSelectedVariantTag(tag);
@@ -1572,6 +1924,11 @@ export class EnemyLabScene extends Phaser.Scene {
         if (!this.enemyCollisionDebugEnabled) {
           this.clearEnemyCollisionDebug();
         }
+      }
+      if (action === 'reducedEffects') this.reducedEffects = !this.reducedEffects;
+      if (action === 'clearProps') {
+        this.clearPreviewBodies();
+        this.clearTestProps();
       }
       if (action === 'exportDiagnostics') this.exportDiagnosticsReport();
       if (action === 'pause') this.isSimulationPaused = !this.isSimulationPaused;
@@ -1922,6 +2279,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
     const variant = this.getSelectedVariant();
+    const defaultVisualScale = resolveEnemyVisualScale(definition.visual);
     const hasVariant = Boolean(variant);
     this.overlay.variantSelect.value = this.selectedVariantId;
     this.overlay.variantName.value = variant?.displayName ?? `${definition.displayName} Variant`;
@@ -1931,8 +2289,8 @@ export class EnemyLabScene extends Phaser.Scene {
     this.overlay.variantNotes.value = variant?.notes ?? '';
     this.overlay.variantNotes.disabled = false;
     this.overlay.visualScale.value = String(variant?.visualOverrides.visualScale ?? 1);
-    this.overlay.scaleX.value = String(variant?.visualOverrides.scaleX ?? 1);
-    this.overlay.scaleY.value = String(variant?.visualOverrides.scaleY ?? 1);
+    this.overlay.scaleX.value = String(variant?.visualOverrides.scaleX ?? defaultVisualScale.scaleX);
+    this.overlay.scaleY.value = String(variant?.visualOverrides.scaleY ?? defaultVisualScale.scaleY);
     this.overlay.rotationOffset.value = String(variant?.visualOverrides.rotationOffsetDegrees ?? 0);
     this.overlay.glowScale.value = String(variant?.visualOverrides.glowScale ?? 1);
     this.overlay.statHp.value = String(variant?.statOverrides.hp ?? definition.stats.hp);
@@ -1986,13 +2344,15 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const defaultVisualScale = resolveEnemyVisualScale(definition.visual);
     variant.displayName = this.overlay.variantName.value.trim() || variant.displayName;
     variant.status = this.overlay.variantStatus.value as EnemyLabAssetStatus;
     variant.notes = this.overlay.variantNotes.value;
     variant.visualOverrides = {
       visualScale: this.readNumberInput(this.overlay.visualScale, 1, clampNumbers),
-      scaleX: this.readNumberInput(this.overlay.scaleX, 1, clampNumbers),
-      scaleY: this.readNumberInput(this.overlay.scaleY, 1, clampNumbers),
+      scaleX: this.readNumberInput(this.overlay.scaleX, defaultVisualScale.scaleX, clampNumbers),
+      scaleY: this.readNumberInput(this.overlay.scaleY, defaultVisualScale.scaleY, clampNumbers),
       rotationOffsetDegrees: this.readNumberInput(this.overlay.rotationOffset, 0, clampNumbers),
       glowScale: this.readNumberInput(this.overlay.glowScale, 1, clampNumbers)
     };
@@ -2794,7 +3154,43 @@ export class EnemyLabScene extends Phaser.Scene {
     this.setActionState('telegraphs', this.showTelegraphs, 'Telegraphs On', 'Telegraphs Off');
     this.setActionState('deconflict', this.enemyDeconflictionEnabled, 'Deconflict On', 'Deconflict Off');
     this.setActionState('collisionDebug', this.enemyCollisionDebugEnabled, 'Hit Circles On', 'Hit Circles Off');
+    this.setActionState('reducedEffects', this.reducedEffects, 'Reduced FX On', 'Reduced FX Off');
     this.setActionState('pause', this.isSimulationPaused, 'Paused', 'Pause');
+
+    if (!this.overlay) {
+      return;
+    }
+
+    for (const button of this.overlay.root.querySelectorAll<HTMLButtonElement>('[data-lab-mode]')) {
+      button.classList.toggle('is-active', button.dataset.labMode === this.labMode);
+    }
+
+    for (const button of this.overlay.root.querySelectorAll<HTMLButtonElement>('[data-readability-mode]')) {
+      button.classList.toggle('is-active', button.dataset.readabilityMode === this.readabilityMode);
+    }
+  }
+
+  private setLabMode(mode: EnemyLabMode): void {
+    if (!['shape', 'effects', 'behavior', 'squad', 'stress'].includes(mode)) {
+      return;
+    }
+
+    this.labMode = mode;
+    if (this.overlay) {
+      this.overlay.root.classList.remove('is-mode-shape', 'is-mode-effects', 'is-mode-behavior', 'is-mode-squad', 'is-mode-stress');
+      this.overlay.root.classList.add(`is-mode-${mode}`);
+    }
+    this.syncOverlayFromState();
+  }
+
+  private setReadabilityMode(mode: EnemyLabReadabilityMode): void {
+    if (!['normal', 'color-safe', 'high-contrast'].includes(mode)) {
+      return;
+    }
+
+    this.readabilityMode = mode;
+    this.clearTestProps();
+    this.syncOverlayFromState();
   }
 
   private setOverlayCollapsed(collapsed: boolean): void {
@@ -3272,7 +3668,8 @@ export class EnemyLabScene extends Phaser.Scene {
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
       `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL} | ` +
-      `forge ${this.presetState.forgeAssets.length} | style ${FORGE_STYLE_GUIDE_VERSION}` +
+      `mode ${this.labMode} | readability ${this.readabilityMode}${this.reducedEffects ? ' reduced-fx' : ''} | ` +
+      `visual ${selected.visualStyle ?? 'forge-texture'} | forge ${this.presetState.forgeAssets.length} | style ${FORGE_STYLE_GUIDE_VERSION}` +
       `${this.lastDiagnosticsExportPath ? ` | report ${this.lastDiagnosticsExportPath}` : ''}`;
     if (statusText !== this.lastOverlayStatusText) {
       this.overlay.status.textContent = statusText;
@@ -3346,45 +3743,429 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private emitLabBurst(x: number, y: number, color: number, count = 8): void {
-    for (let i = 0; i < count; i += 1) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(18, 58);
-      const particle = this.add.circle(x, y, Phaser.Math.FloatBetween(2, 5), color, 0.74);
-      particle.setDepth(12);
-      particle.setBlendMode(Phaser.BlendModes.ADD);
+    emitEffectSparkBurst(this, x, y, {
+      kind: 'spark-burst',
+      color,
+      radius: Math.max(28, count * 5),
+      durationMs: 260,
+      intensity: Phaser.Math.Clamp(count / 8, 0.35, 1.4),
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+  }
+
+  private emitExplosion(x: number, y: number, radius: number, color: number): void {
+    emitEffectWarningRadius(this, x, y, {
+      kind: 'warning-radius',
+      color,
+      radius,
+      durationMs: 260,
+      intensity: 1,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+    emitEffectShardBurst(this, x, y, {
+      kind: 'shard-burst',
+      color,
+      radius: radius * 0.72,
+      durationMs: 360,
+      intensity: 1,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+  }
+
+  private flashEnemy(enemy: EnemyLabInstance): void {
+    emitEffectOutlineFlash(this, enemy.body, {
+      kind: 'outline-flash',
+      color: enemy.definition.effectRecipe?.hit.color ?? 0xffffff,
+      durationMs: enemy.definition.effectRecipe?.hit.durationMs ?? 70,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+  }
+
+  private updateEnemyMovementEffects(time: number): void {
+    if (this.reducedEffects && this.enemies.length > 24) {
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (!enemy.definition.effectRecipe || enemy.velocity.lengthSq() < 1200) {
+        continue;
+      }
+
+      const nextTrailAt = typeof enemy.stateData.nextTrailAt === 'number' ? enemy.stateData.nextTrailAt : 0;
+      if (time < nextTrailAt) {
+        continue;
+      }
+
+      const direction = enemy.velocity.clone().normalize();
+      this.emitEnemyRecipeEffect(enemy.definition, 'move', enemy.body.x, enemy.body.y, direction);
+      enemy.stateData.nextTrailAt = time + (this.reducedEffects ? 260 : 135);
+    }
+  }
+
+  private emitEnemyRecipeEffect(
+    definition: EnemyLabDefinition,
+    slot: keyof NonNullable<EnemyLabDefinition['effectRecipe']>,
+    x: number,
+    y: number,
+    direction = new Phaser.Math.Vector2(0, -1)
+  ): void {
+    const recipe = definition.effectRecipe?.[slot];
+    if (!recipe) {
+      if (slot === 'hit') {
+        emitEffectSparkBurst(this, x, y, {
+          kind: 'spark-burst',
+          color: definition.visual.accentColor,
+          radius: 34,
+          durationMs: 220,
+          intensity: 0.65,
+          reducedEffects: this.reducedEffects,
+          readabilityMode: this.readabilityMode
+        });
+      }
+      return;
+    }
+
+    const effect = normalizeEnemyEffectEntry(recipe, this.reducedEffects);
+    const options = {
+      ...effect,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    };
+
+    switch (effect.kind) {
+      case 'blink-ring':
+      case 'bracket-pulse':
+        emitEffectRingPulse(this, x, y, options);
+        break;
+      case 'line-sweep':
+        emitEffectLineSweep(this, x, y, direction, options);
+        break;
+      case 'warning-line':
+      case 'projectile-trail':
+        emitEffectWarningBeam(this, x, y, direction, options);
+        break;
+      case 'warning-radius':
+        emitEffectWarningRadius(this, x, y, options);
+        break;
+      case 'support-aura':
+        emitEffectSupportAura(this, x, y, options);
+        break;
+      case 'spark-trail':
+        emitEffectTrailTick(this, x, y, direction, options);
+        break;
+      case 'muzzle-flash':
+        emitEffectMuzzleFlash(this, x, y, direction, options);
+        break;
+      case 'outline-flash':
+        emitEffectSparkBurst(this, x, y, options);
+        break;
+      case 'spark-burst':
+        emitEffectSparkBurst(this, x, y, options);
+        break;
+      case 'shard-burst':
+        emitEffectShardBurst(this, x, y, options);
+        break;
+    }
+  }
+
+  private previewEnemyState(state: EnemyLabPreviewState): void {
+    const definition = this.getSelectedEffectiveDefinition();
+    const position = this.getPreviewPosition();
+    const body = createEnemyLabVisualContainer(this, position.x, position.y, definition);
+    const toPlayer = this.getWrappedDirection(position.x, position.y, this.player.x, this.player.y);
+    const direction = toPlayer.lengthSq() > 0 ? toPlayer.normalize() : new Phaser.Math.Vector2(0, -1);
+    body.setRotation(Math.atan2(direction.x, -direction.y));
+    body.setDepth(16);
+    this.previewBodies.push(body);
+
+    if (state === 'idle') {
+      this.emitEnemyRecipeEffect(definition, 'spawn', body.x, body.y, direction);
+    } else if (state === 'pursue') {
+      this.emitEnemyRecipeEffect(definition, 'move', body.x, body.y, direction);
       this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * distance,
-        y: y + Math.sin(angle) * distance,
-        alpha: 0,
-        scale: 0.12,
-        duration: Phaser.Math.Between(180, 330),
-        ease: 'Quad.easeOut',
-        onComplete: () => particle.destroy()
+        targets: body,
+        x: body.x + direction.x * 92,
+        y: body.y + direction.y * 92,
+        duration: this.reducedEffects ? 420 : 680,
+        ease: 'Sine.easeInOut'
+      });
+    } else if (state === 'telegraph') {
+      this.emitEnemyRecipeEffect(definition, 'telegraph', body.x, body.y, direction);
+    } else if (state === 'attack') {
+      const muzzleX = body.x + direction.x * (definition.stats.radius + 14);
+      const muzzleY = body.y + direction.y * (definition.stats.radius + 14);
+      this.emitEnemyRecipeEffect(definition, 'fire', muzzleX, muzzleY, direction);
+      this.previewProjectileTrace(muzzleX, muzzleY, direction, definition.effectRecipe?.fire.color ?? definition.visual.accentColor);
+    } else if (state === 'hit') {
+      this.flashEnemy({ body, definition } as EnemyLabInstance);
+      this.emitEnemyRecipeEffect(definition, 'hit', body.x, body.y, direction);
+    } else if (state === 'death') {
+      this.emitEnemyRecipeEffect(definition, 'death', body.x, body.y, direction);
+      this.time.delayedCall(90, () => {
+        this.destroyPreviewBody(body);
+      });
+      return;
+    }
+
+    this.time.delayedCall(this.reducedEffects ? 820 : 1350, () => {
+      this.destroyPreviewBody(body);
+    });
+  }
+
+  private previewProjectileTrace(x: number, y: number, direction: Phaser.Math.Vector2, color: number): void {
+    const readableColor = resolveEnemyLabEffectColor(color, this.readabilityMode);
+    const normalized = direction.lengthSq() > 0 ? direction.clone().normalize() : new Phaser.Math.Vector2(0, -1);
+    const dot = this.add.circle(x, y, 4, readableColor, 0.18);
+    dot.setStrokeStyle(1.2, readableColor, 0.86);
+    dot.setDepth(13);
+    dot.setBlendMode(Phaser.BlendModes.ADD);
+    this.testProps.push(dot);
+
+    this.tweens.add({
+      targets: dot,
+      x: x + normalized.x * (this.reducedEffects ? 120 : 210),
+      y: y + normalized.y * (this.reducedEffects ? 120 : 210),
+      alpha: 0,
+      duration: this.reducedEffects ? 260 : 420,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        dot.destroy();
+        this.testProps = this.testProps.filter((candidate) => candidate !== dot);
+      }
+    });
+  }
+
+  private getPreviewPosition(): Phaser.Math.Vector2 {
+    const camera = this.cameras.main;
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(camera.scrollX + camera.width * 0.66, this.arena.width),
+      wrapCoordinate(camera.scrollY + camera.height * 0.46, this.arena.height)
+    );
+  }
+
+  private destroyPreviewBody(body: Phaser.GameObjects.Container): void {
+    body.destroy(true);
+    this.previewBodies = this.previewBodies.filter((candidate) => candidate !== body);
+  }
+
+  private clearPreviewBodies(): void {
+    for (const body of this.previewBodies) {
+      body.destroy(true);
+    }
+    this.previewBodies = [];
+  }
+
+  private spawnClutterTest(test: EnemyLabClutterTest): void {
+    if (test === 'single') {
+      this.clearEnemies();
+      this.spawnSelectedEnemy();
+      return;
+    }
+
+    if (test === 'squad') {
+      this.clearEnemies();
+      this.spawnSelectedSquad();
+      return;
+    }
+
+    if (test === 'swarm') {
+      this.clearEnemies();
+      this.spawnEnemySwarm(50);
+      return;
+    }
+
+    if (test === 'bullets') {
+      this.spawnProjectileClutter(28);
+      return;
+    }
+
+    if (test === 'asteroids') {
+      this.spawnAsteroidProps(14);
+      return;
+    }
+
+    if (test === 'asteroidGallery') {
+      this.spawnAsteroidGallery();
+      return;
+    }
+
+    if (test === 'debris') {
+      this.spawnDebrisProps(24);
+      return;
+    }
+
+    this.clearEnemies();
+    this.spawnEnemySwarm(50);
+    this.spawnProjectileClutter(32);
+    this.spawnAsteroidProps(16);
+    this.spawnDebrisProps(28);
+  }
+
+  private spawnEnemySwarm(count: number): void {
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    for (let index = 0; index < count; index += 1) {
+      const distance = Phaser.Math.FloatBetween(360, 980);
+      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+      this.spawnEnemy(
+        definition.id,
+        wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width),
+        wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height),
+        this.getSelectedVariant()?.id
+      );
+    }
+  }
+
+  private spawnProjectileClutter(count: number): void {
+    const center = this.getPreviewPosition();
+    for (let index = 0; index < count; index += 1) {
+      const angle = (Math.PI * 2 * index) / count + Phaser.Math.FloatBetween(-0.18, 0.18);
+      const startDistance = Phaser.Math.FloatBetween(220, 520);
+      const x = wrapCoordinate(center.x + Math.cos(angle) * startDistance, this.arena.width);
+      const y = wrapCoordinate(center.y + Math.sin(angle) * startDistance, this.arena.height);
+      const direction = this.getWrappedDirection(x, y, center.x, center.y).normalize();
+      this.createProjectile({
+        owner: 'enemy',
+        x,
+        y,
+        direction,
+        speed: Phaser.Math.FloatBetween(260, 560),
+        damage: 0,
+        range: 900,
+        radius: 5,
+        color: 0xffffff
       });
     }
   }
 
-  private emitExplosion(x: number, y: number, radius: number, color: number): void {
-    const ring = this.add.circle(x, y, radius * 0.2, color, 0.12);
-    ring.setStrokeStyle(3, color, 0.8);
-    ring.setDepth(12);
-    ring.setBlendMode(Phaser.BlendModes.ADD);
-    this.tweens.add({
-      targets: ring,
-      radius,
-      alpha: 0,
-      duration: 260,
-      ease: 'Quad.easeOut',
-      onComplete: () => ring.destroy()
-    });
-    this.emitLabBurst(x, y, color, 18);
+  private spawnLabScrapProps(count: number): void {
+    for (const scrap of this.labScrapProps) {
+      scrap.body.destroy();
+    }
+    this.labScrapProps = [];
+
+    for (let index = 0; index < count; index += 1) {
+      const position = this.getPropPosition(index, count, 180, 520);
+      const body = this.add.circle(position.x, position.y, 7, 0x000000, 1);
+      body.setStrokeStyle(1.4, 0xffffff, 0.88);
+      body.setDepth(4);
+      this.labScrapProps.push({
+        id: `lab-scrap-${index}`,
+        x: position.x,
+        y: position.y,
+        value: index % 3 === 0 ? 3 : 1,
+        collected: false,
+        body
+      });
+    }
   }
 
-  private flashEnemy(enemy: EnemyLabInstance): void {
-    const image = enemy.body.getData('visualImage') as Phaser.GameObjects.Image | undefined;
-    image?.setTint(0xffffff);
-    this.time.delayedCall(70, () => image?.clearTint());
+  private stealLabScrap(target: EnemyLabScrapTarget): number {
+    const scrap = this.labScrapProps.find((candidate) => candidate.id === target.id && !candidate.collected);
+    if (!scrap) {
+      return 0;
+    }
+
+    scrap.collected = true;
+    scrap.body.destroy();
+    this.labScrapProps = this.labScrapProps.filter((candidate) => candidate !== scrap);
+    return scrap.value;
+  }
+
+  private spawnAsteroidProps(count: number): void {
+    this.clearTestProps();
+    for (let index = 0; index < count; index += 1) {
+      const position = this.getPropPosition(index, count, 260, 880);
+      const tier = ASTEROID_TIERS[index % ASTEROID_TIERS.length];
+      const family = ASTEROID_VISUAL_FAMILIES[index % ASTEROID_VISUAL_FAMILIES.length];
+      this.testProps.push(this.createAsteroidProp(position.x, position.y, tier, family, false));
+    }
+  }
+
+  private spawnAsteroidGallery(): void {
+    this.clearTestProps();
+    const center = this.getPreviewPosition();
+    const columns = 4;
+    const spacingX = 360;
+    const spacingY = 350;
+    const samples = ASTEROID_VISUAL_FAMILIES.slice(0, 12);
+
+    for (let index = 0; index < samples.length; index += 1) {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const tier = ASTEROID_TIERS[(index * 3) % ASTEROID_TIERS.length];
+      const x = wrapCoordinate(center.x + (column - (columns - 1) / 2) * spacingX, this.arena.width);
+      const y = wrapCoordinate(center.y + (row - 1) * spacingY, this.arena.height);
+      this.testProps.push(this.createAsteroidProp(x, y, tier, samples[index], true));
+    }
+  }
+
+  private spawnDebrisProps(count: number): void {
+    for (let index = 0; index < count; index += 1) {
+      const position = this.getPropPosition(index, count, 190, 760);
+      this.testProps.push(this.createOutlineDebris(position.x, position.y, Phaser.Math.FloatBetween(14, 42)));
+    }
+  }
+
+  private getPropPosition(index: number, total: number, minDistance: number, maxDistance: number): Phaser.Math.Vector2 {
+    const angle = (Math.PI * 2 * index) / Math.max(1, total) + Phaser.Math.FloatBetween(-0.24, 0.24);
+    const distance = Phaser.Math.FloatBetween(minDistance, maxDistance);
+    return new Phaser.Math.Vector2(
+      wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width),
+      wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height)
+    );
+  }
+
+  private createAsteroidProp(
+    x: number,
+    y: number,
+    tier: (typeof ASTEROID_TIERS)[number],
+    family: number,
+    sourceScale: boolean
+  ): Phaser.GameObjects.Image {
+    const textureKey = getMonochromeAsteroidTextureKey(tier, family);
+    const size = resolveAsteroidObjectSizeProfile(tier, `enemy-lab-asteroid-tier-${tier}-family-${family}`);
+    createMonochromeAsteroidTexture(this, tier, family);
+    const image = this.add.image(x, y, textureKey);
+    const displaySize = sourceScale ? size.sourceDiameterPx : size.visualDiameterPx;
+    image.setOrigin(0.5, 0.5);
+    image.setDisplaySize(displaySize, displaySize);
+    image.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+    image.setDepth(3);
+    return image;
+  }
+
+  private createOutlineDebris(x: number, y: number, radius: number): Phaser.GameObjects.Graphics {
+    const color = 0xffffff;
+    const graphics = this.add.graphics({ x, y });
+    graphics.lineStyle(1.2, color, 0.8);
+    graphics.fillStyle(0x000000, 1);
+    graphics.beginPath();
+    graphics.moveTo(-radius * 0.5, -radius * 0.2);
+    graphics.lineTo(radius * 0.45, -radius * 0.38);
+    graphics.lineTo(radius * 0.16, radius * 0.42);
+    graphics.lineTo(-radius * 0.54, radius * 0.28);
+    graphics.closePath();
+    graphics.fillPath();
+    graphics.strokePath();
+    graphics.lineBetween(-radius * 0.18, -radius * 0.18, radius * 0.24, radius * 0.2);
+    graphics.setRotation(Phaser.Math.FloatBetween(0, Math.PI * 2));
+    graphics.setDepth(3);
+    return graphics;
+  }
+
+  private clearTestProps(): void {
+    for (const prop of this.testProps) {
+      prop.destroy();
+    }
+    this.testProps = [];
+    for (const scrap of this.labScrapProps) {
+      scrap.body.destroy();
+    }
+    this.labScrapProps = [];
   }
 
   private wrapPlayer(): void {

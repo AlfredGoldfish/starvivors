@@ -1,4 +1,9 @@
-import type { EnemyLabDefinition, EnemyLabSquadDefinition } from '../data/enemyLabDefinitions';
+import {
+  resolveEnemyVisualScale,
+  type EnemyLabDefinition,
+  type EnemyLabSquadDefinition
+} from '../data/enemyLabDefinitions';
+import { createObjectSizeProfileFromCollisionRadius, resolveObjectSizeProfile } from '../data/objectSizeProfile';
 import {
   FORGE_STYLE_GUIDE_VERSION,
   createForgeAiBrief,
@@ -163,6 +168,8 @@ export function saveEnemyLabStorageState(state: EnemyLabStorageState): void {
 }
 
 export function createVariantFromDefinition(definition: EnemyLabDefinition): EnemyLabVariantPreset {
+  const { scaleX, scaleY } = resolveEnemyVisualScale(definition.visual);
+
   return {
     type: 'starvivors-enemy-lab-variant',
     version: 1,
@@ -175,8 +182,8 @@ export function createVariantFromDefinition(definition: EnemyLabDefinition): Ene
     savedAt: new Date().toISOString(),
     visualOverrides: {
       visualScale: 1,
-      scaleX: 1,
-      scaleY: 1,
+      scaleX,
+      scaleY,
       rotationOffsetDegrees: 0,
       glowScale: 1
     },
@@ -207,18 +214,34 @@ export function applyVariantToDefinition(
     return definition;
   }
 
+  const defaultVisualScale = resolveEnemyVisualScale(definition.visual);
   const visualScale = sanitizePositiveNumber(variant.visualOverrides.visualScale, 1);
-  const scaleX = sanitizePositiveNumber(variant.visualOverrides.scaleX, 1);
-  const scaleY = sanitizePositiveNumber(variant.visualOverrides.scaleY, 1);
+  const scaleX = sanitizePositiveNumber(variant.visualOverrides.scaleX, defaultVisualScale.scaleX);
+  const scaleY = sanitizePositiveNumber(variant.visualOverrides.scaleY, defaultVisualScale.scaleY);
   const glowScale = sanitizePositiveNumber(variant.visualOverrides.glowScale, 1);
   const rotationOffsetDegrees = sanitizeNumber(variant.visualOverrides.rotationOffsetDegrees, 0);
+  const requestedRadius = sanitizePositiveNumber(variant.statOverrides.radius, definition.stats.radius);
+  const radius =
+    Math.abs(requestedRadius - definition.stats.radius) <= 0.001
+      ? definition.stats.radius * visualScale
+      : requestedRadius;
+  const sizeProfile = definition.sizeProfile
+    ? createObjectSizeProfileFromCollisionRadius({
+        kind: 'enemy',
+        id: definition.sizeProfile.id,
+        collisionRadiusPx: radius,
+        strokeWidthPx: definition.sizeProfile.strokeWidthPx
+      })
+    : undefined;
+  const visualDiameter = sizeProfile ? resolveObjectSizeProfile(sizeProfile).visualDiameterPx : Math.max(12, definition.visual.size * visualScale);
 
   return {
     ...definition,
     displayName: variant.displayName.trim() || definition.displayName,
+    sizeProfile,
     visual: {
       ...definition.visual,
-      size: Math.max(12, definition.visual.size * visualScale),
+      size: visualDiameter,
       scaleX,
       scaleY,
       glowScale,
@@ -229,7 +252,7 @@ export function applyVariantToDefinition(
       hp: sanitizePositiveNumber(variant.statOverrides.hp, definition.stats.hp),
       speed: sanitizePositiveNumber(variant.statOverrides.speed, definition.stats.speed),
       contactDamage: sanitizePositiveNumber(variant.statOverrides.contactDamage, definition.stats.contactDamage),
-      radius: sanitizePositiveNumber(variant.statOverrides.radius, definition.stats.radius)
+      radius
     },
     behavior: {
       ...definition.behavior,

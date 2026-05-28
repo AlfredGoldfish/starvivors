@@ -68,6 +68,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: normalize the pre-run navigation component and focus states.
 - [~] Ship select and hangar communicate ship identity.
   - Done when: each active ship has unique art, clear stats, starting loadout, one visible passive/mechanic, and no misleading "coming soon" promise.
+  - Evidence: 2026-05-28 monochrome object pass moved Interceptor, Bulwark, and Engineer to closed black-fill/white-outline ship silhouettes backed by shared 320px source-size profiles.
   - Next: finish or hide ship mastery copy and replace fallback ship art.
 - [~] Shop and permanent upgrades communicate value.
   - Done when: each row shows current effect, next effect, cost, owned/maxed state, active level, and why it matters.
@@ -99,6 +100,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: add heat meter and audio ramp.
 - [~] Enemy telegraphs are readable.
   - Done when: sniper, charger, exploder, shield/support, carrier, and high-damage projectiles each have clear visual and audio warnings.
+  - Evidence: 2026-05-28 Enemy Lab pass added vector-outline effect recipes, state preview buttons for idle/pursue/telegraph/attack/hit/death, readability modes, reduced-effects previews, and clutter/stress tests.
+  - Evidence: 2026-05-28 prototype completion pass added lab-first ambusher, berserker, orbiter, patrol, frost/electric status shooters, combat summoner, scrap thief, instant bomber, and stationary spawner mechanics while keeping live encounter tables unchanged.
   - Next: prioritize Needle Sniper, Wedge Striker, Reactor Drone, Shield Frigate, and Carrier Foundry.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
@@ -156,10 +159,14 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: keep manual promotion until quality standards are stable.
 - [~] Player ship assets are cohesive.
   - Done when: Interceptor, Bulwark, and Engineer share a final visual language and no active ship uses a misleading fallback.
-  - Next: promote Bulwark and Engineer Forge/cached sprites.
+  - Evidence: 2026-05-28 monochrome object pass replaced active ship PNG/Forge rendering with generated `monochrome-outline` silhouettes for gameplay and hangar previews, while leaving legacy asset references available.
+  - Next: verify ship silhouettes at gameplay scale with shield/beam/firing feedback and remove or relabel tint-only skin expectations.
 - [~] Enemy assets are cohesive.
-  - Done when: all 15 live enemy roles have promoted Forge/cached art or an intentional fallback label.
-  - Next: prioritize charger, sniper, exploder, support, and carrier roles.
+  - Done when: all 15 live enemy roles have active final-direction art or an intentional fallback label.
+  - Evidence: 2026-05-28 Enemy Lab pass migrated Scout, Diamond Gunner, Hex Tank, Wedge Striker, Needle Sniper, and Reactor Drone to `visualStyle: vector-outline` recipes while leaving Forge texture support as fallback.
+  - Evidence: 2026-05-28 monochrome object pass converted all 15 live Enemy Lab roles to active `visualStyle: monochrome-outline` recipes with black fills, white outlines, and shared 320px source-size profiles; legacy Forge/vector data remains available as reference.
+  - Evidence: 2026-05-28 prototype completion pass expanded monochrome Enemy Lab coverage to all local prototype concepts from `Docs/references/Enemy_Prototype/Preview Files` and added validation for every active definition.
+  - Next: pair the monochrome silhouettes with final telegraph/audio cues for sniper, charger, exploder, support, and carrier roles.
 - [~] Pickup/resource assets are cohesive.
   - Done when: scrap tiers, upgrade crates, future fuel cells, and future rare parts are distinct at gameplay scale.
   - Next: finish scrap tier polish and separate debris from collectible scrap.
@@ -167,8 +174,10 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Done when: mission, radar, resource, stat, weapon, upgrade, and telegraph icons use one locked style in HUD/shop/results.
   - Next: review AI candidates and promote a selected icon set.
 - [~] Asteroid/debris/black-hole art matches final direction.
-  - Done when: world hazards read clearly and do not feel visually detached from the Forge/vector style.
-  - Next: add tier marks/cracks and final black-hole treatment.
+  - Done when: world hazards read clearly and do not feel visually detached from the final object style.
+  - Evidence: 2026-05-28 monochrome object pass replaced active asteroid PNG selection with deterministic procedural black-fill/white-outline chunks, seeded by tier/family and sized through shared 320px source profiles.
+  - Evidence: 2026-05-28 prototype completion pass expanded deterministic asteroid families from 4 to 12 and replaced Enemy Lab asteroid clutter with the shared asteroid visual generator plus a source-scale gallery.
+  - Next: validate asteroid readability in dense live runs, then apply the same final-direction treatment to debris and black-hole warnings.
 
 ## G. Audio, Accessibility, And Settings
 
@@ -197,10 +206,15 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 - [~] Build/test baseline exists.
   - Done when: `npm.cmd run build` passes and focused tests/harnesses cover changed systems.
+  - Evidence: 2026-05-28 monochrome object pass added shared size-profile and monochrome recipe unit coverage; full Vitest suite and `npm.cmd run build` passed.
+  - Evidence: 2026-05-28 prototype completion pass added player status, enemy roster/behavior, and asteroid visual family unit coverage; full Vitest suite and `npm.cmd run build` passed.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
   - Evidence: 2026-05-28 pass added a `pauseSettings` visual module harness path and captured desktop/narrow settings screenshots for pre-run and pause settings.
+  - Evidence: 2026-05-28 Enemy Lab vector harness loads `/enemy-lab.html?testHarness=enemyLabVector`, marks `data-starvivors-enemy-lab-harness="vector-ready"`, and captures `artifacts/visual-smoke/enemy-lab-vector-harness-1280x720.png`.
+  - Evidence: 2026-05-28 monochrome object pass added `/enemy-lab.html?testHarness=enemyLabMonochrome`, verified `data-starvivors-enemy-lab-harness="monochrome-ready"`, verified live `?testHarness=smoke` pass, and captured `artifacts/visual-smoke/enemy-lab-monochrome-1280x720.png`.
+  - Evidence: 2026-05-28 prototype completion pass added `/enemy-lab.html?testHarness=enemyLabPrototype`, captured `artifacts/visual-smoke/enemy-lab-prototype-gallery-1280x720.png`, and reverified live smoke with `artifacts/visual-smoke/live-smoke-after-prototype-enemies-1280x720.png`.
   - Next: add screenshot smoke set for command, hangar, shop, upgrade overlay, HUD, minimap/radar levels, results, and Enemy Lab Forge.
 - [~] Performance profiling exists.
   - Done when: repeatable stress scenarios exist for asteroid burst, swarm, mothership, rare event, high-upgrade Pulse, beam, and black hole.
@@ -240,3 +254,6 @@ Current focus: Pass A.
 - 2026-05-27: Completed the combat HUD/dashboard checklist item by adding a compact narrow-width dashboard and refreshing 1280x720, 1920x1080, and 500x844 HUD screenshots; build and `testHarness=weaponHotbar` passed.
 - 2026-05-28: Completed the basic settings pass with a shared settings editor, persisted graphics/sound/gameplay/accessibility fields, keybind conflict blocking, primary auto-fire assist, rendering/accessibility hooks, full Vitest pass, build pass, and four settings smoke screenshots.
 - 2026-05-28: Softened rapid player shooting SFX and added a hub launch confirmation popup; full Vitest, build, startup-navigation smoke, and launch-confirm screenshot smoke passed.
+- 2026-05-28: Reworked Enemy Lab into a Vector Combat Lab first pass with six vector-outline enemy recipes, reusable effect previews, lab modes, clutter/readability tests, outline asteroid/debris props, unit coverage, build/test pass, and vector harness screenshot smoke.
+- 2026-05-28: Replaced active enemy, player ship, and asteroid visuals with a monochrome Asteroids-style source-scale system using shared 320px object size profiles; full Vitest, build, Enemy Lab monochrome smoke, live smoke, and `enemy-lab-monochrome-1280x720.png` passed.
+- 2026-05-28: Completed the lab-first enemy prototype roster with portable AI/status/scrap hooks, expanded shared asteroid visuals to 12 deterministic families, added the Enemy Lab prototype harness/gallery screenshot, and reverified full Vitest, build, Enemy Lab smoke, and live smoke.

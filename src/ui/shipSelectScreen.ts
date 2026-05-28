@@ -9,9 +9,13 @@ import {
   type ShipId,
   type ShipRegistryEntry
 } from '../data/ships';
-import { resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import { type WeaponLoadoutState, type WeaponMkLevels } from '../systems/progressionStorage';
+import {
+  createPlayerShipMonochromeTextures,
+  getPlayerShipMonochromeTextureKey,
+  resolveShipObjectSizeProfile
+} from '../systems/playerShipVisuals';
 import { addPreRunNav, drawPreRunPanelWindow, getPreRunModuleLayout, type PreRunNavConfig } from './preRunHubScreen';
 import { drawCockpitCard } from './cockpitCard';
 import { addScreenButton, UI_COLORS, UI_FONT, type ScreenHandle } from './screenUi';
@@ -163,15 +167,11 @@ function renderShipRoster(
     graphics.fillStyle(selected ? UI_COLORS.brass : borderColor, selected || previewed ? 0.66 : 0.22);
     graphics.fillRect(rowX + 10, rowY + rowHeight - 5, rowWidth - 20, 2);
 
-    const skin = getSelectedSkin(config, ship);
     const preview = config.scene.add
       .image(rowX + 32, rowY + rowHeight / 2, getShipPreviewTextureKey(config.scene, ship))
       .setDisplaySize(48, 48)
       .setRotation(ship.visualRotation)
       .setAlpha(unlocked ? 1 : 0.5);
-    if (skin?.tint !== undefined) {
-      preview.setTint(skin.tint);
-    }
 
     const text = config.scene.add
       .text(rowX + 66, rowY + 11, `${ship.displayName}\n${ship.display.fantasy ?? ship.display.roleTitle}\n${status}`, {
@@ -214,19 +214,18 @@ function renderHullPanel(
   height: number
 ): void {
   const unlocked = config.unlockedShipIds.has(ship.id);
-  const skin = getSelectedSkin(config, ship);
   const compact = height < 390;
   const imageY = y + (compact ? 74 : 102);
   const contentX = x + 20;
   const contentWidth = width - 40;
   const image = config.scene.add
     .image(x + width / 2, imageY, getShipPreviewTextureKey(config.scene, ship))
-    .setDisplaySize(ship.displaySize * (compact ? 0.68 : 0.92), ship.displaySize * (compact ? 0.68 : 0.92))
+    .setDisplaySize(
+      resolveShipObjectSizeProfile(ship).visualDiameterPx * (compact ? 0.68 : 0.92),
+      resolveShipObjectSizeProfile(ship).visualDiameterPx * (compact ? 0.68 : 0.92)
+    )
     .setRotation(ship.visualRotation)
     .setAlpha(unlocked ? 1 : 0.5);
-  if (skin?.tint !== undefined) {
-    image.setTint(skin.tint);
-  }
   container.add(image);
 
   const skinY = y + (compact ? 128 : 178);
@@ -291,7 +290,12 @@ function renderHullPanel(
 }
 
 function getShipPreviewTextureKey(scene: Phaser.Scene, ship: ShipRegistryEntry): string {
-  return resolveForgeTextureKey(scene, ship.visualAssetId, ship.textureKey);
+  const textureKey = getPlayerShipMonochromeTextureKey(ship);
+  if (!scene.textures.exists(textureKey)) {
+    createPlayerShipMonochromeTextures(scene, [ship]);
+  }
+
+  return textureKey;
 }
 
 function renderShipStatBars(

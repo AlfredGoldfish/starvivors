@@ -1307,6 +1307,10 @@ function createHullLayer(visual: EnemyVisualDefinition, radius: number): ForgeVe
       return { ...base, type: 'polygon', points: [[0, -radius], [radius * 0.82, -radius * 0.12], [radius * 0.54, radius * 0.82], [0, radius * 0.56], [-radius * 0.54, radius * 0.82], [-radius * 0.82, -radius * 0.12]], fill: true };
     case 'phase':
       return { ...base, type: 'polygon', points: [[0, -radius], [radius * 0.68, -radius * 0.18], [radius * 0.36, radius * 0.82], [0, radius * 0.48], [-radius * 0.36, radius * 0.82], [-radius * 0.68, -radius * 0.18]], fill: true };
+    case 'trap':
+      return { ...base, type: 'polygon', points: createRegularPolygon(10, radius * 0.86, -Math.PI / 2), fill: true };
+    case 'orbiter':
+      return { ...base, type: 'polygon', points: createRegularPolygon(8, radius * 0.82, Math.PI / 8), fill: true };
   }
 }
 

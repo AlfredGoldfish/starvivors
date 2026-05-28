@@ -95,11 +95,38 @@ canvas {
 .enemy-lab-style-guide {
   margin: 6px 0 8px;
   padding: 8px;
-  border-left: 2px solid rgba(255, 47, 214, 0.72);
-  background: linear-gradient(90deg, rgba(255, 47, 214, 0.12), rgba(66, 245, 215, 0.06));
+  border-left: 2px solid rgba(255, 89, 100, 0.72);
+  background: linear-gradient(90deg, rgba(255, 89, 100, 0.11), rgba(242, 251, 255, 0.04));
   color: rgba(242, 251, 255, 0.78);
   font-size: 11px;
   line-height: 1.45;
+}
+
+.enemy-lab-mode-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.enemy-lab-advanced-panel summary {
+  cursor: pointer;
+  color: rgba(242, 251, 255, 0.78);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.enemy-lab-overlay [data-lab-panel] {
+  display: none;
+}
+
+.enemy-lab-overlay.is-mode-shape [data-lab-panel~='shape'],
+.enemy-lab-overlay.is-mode-effects [data-lab-panel~='effects'],
+.enemy-lab-overlay.is-mode-behavior [data-lab-panel~='behavior'],
+.enemy-lab-overlay.is-mode-squad [data-lab-panel~='squad'],
+.enemy-lab-overlay.is-mode-stress [data-lab-panel~='stress'] {
+  display: block;
 }
 
 .enemy-lab-grid,

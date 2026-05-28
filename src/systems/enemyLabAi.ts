@@ -5,6 +5,7 @@ import type { EnemyLabInstance } from './enemyLabSpawner';
 import { destroyTelegraphs, updateEnemyLabDebugLabel } from './enemyLabSpawner';
 import { dampVelocityChannel, moveBodyWithVelocityChannels } from './physics';
 import { ENEMY_CONTACT_RECOIL_SPEED } from '../scenes/gameConstants';
+import type { EnemyStatusEffect } from './playerStatusEffects';
 
 export interface EnemyLabProjectileRequest {
   x: number;
@@ -15,6 +16,7 @@ export interface EnemyLabProjectileRequest {
   range: number;
   radius: number;
   color: number;
+  statuses?: EnemyStatusEffect[];
 }
 
 export interface EnemyLabScrapTarget {
@@ -22,6 +24,7 @@ export interface EnemyLabScrapTarget {
   x: number;
   y: number;
   collected: boolean;
+  value?: number;
 }
 
 export interface UpdateEnemyLabAiInput {
@@ -49,6 +52,7 @@ export interface UpdateEnemyLabAiInput {
   fireEnemyProjectile: (request: EnemyLabProjectileRequest) => void;
   explodeAt: (x: number, y: number, radius: number, damage: number, sourceId: string) => void;
   spawnChild: (definitionId: string, x: number, y: number) => void;
+  stealScrap?: (target: EnemyLabScrapTarget, enemy: EnemyLabInstance) => number;
   emitLabBurst: (x: number, y: number, color: number, count?: number) => void;
 }
 
@@ -58,6 +62,31 @@ const DECONFLICTION_BUFFER_PX = 14;
 const DECONFLICTION_MAX_NUDGE_SPEED = 95;
 const DECONFLICTION_POSITION_CORRECTION = 0.45;
 const MIN_DECONFLICTION_DISTANCE = 0.001;
+
+export const HANDLED_ENEMY_LAB_BEHAVIOR_IDS = [
+  'directChase',
+  'ambushReveal',
+  'berserkChase',
+  'orbiterCage',
+  'patrolAlert',
+  'statusShooter',
+  'summonerShooter',
+  'scrapThief',
+  'chargeDash',
+  'rangeOrbitShooter',
+  'heavyChase',
+  'proximityDetonate',
+  'splitterChase',
+  'sniper',
+  'carrierSpawner',
+  'shieldSupport',
+  'repairSupport',
+  'commandBuff',
+  'scrapScavenger',
+  'flanker',
+  'reflectorPulse',
+  'phaseTeleport'
+] as const satisfies readonly EnemyLabDefinition['behavior']['id'][];
 
 export function updateEnemyLabAi(input: UpdateEnemyLabAiInput): void {
   resetTemporaryBuffs(input.enemies, input.time);
@@ -79,7 +108,30 @@ export function updateEnemyLabAi(input: UpdateEnemyLabAiInput): void {
       continue;
     }
 
+    enemy.stateData.contactSuppressed = false;
+
     switch (enemy.definition.behavior.id) {
+      case 'ambushReveal':
+        updateAmbushReveal(input, enemy);
+        break;
+      case 'berserkChase':
+        updateBerserkChase(input, enemy);
+        break;
+      case 'orbiterCage':
+        updateOrbiterCage(input, enemy);
+        break;
+      case 'patrolAlert':
+        updatePatrolAlert(input, enemy);
+        break;
+      case 'statusShooter':
+        updateStatusShooter(input, enemy);
+        break;
+      case 'summonerShooter':
+        updateSummonerShooter(input, enemy);
+        break;
+      case 'scrapThief':
+        updateScrapThief(input, enemy);
+        break;
       case 'chargeDash':
         updateChargeDash(input, enemy);
         break;
@@ -279,6 +331,14 @@ function getDeconflictionShare(self: EnemyLabInstance, other: EnemyLabInstance):
 }
 
 function getEnemyDeconflictionMultiplier(enemy: EnemyLabInstance): number {
+  if (enemy.definition.behavior.id === 'ambushReveal' && enemy.state === 'hidden') {
+    return 0.25;
+  }
+
+  if (enemy.definition.behavior.id === 'orbiterCage') {
+    return 1.18;
+  }
+
   if (enemy.definition.behavior.id === 'chargeDash' && enemy.state === 'charging') {
     return 0;
   }
@@ -342,6 +402,278 @@ function applySupportFields(input: UpdateEnemyLabAiInput): void {
       updateAura(input, source, auraRadius, 0xffd166, 0.15);
     }
   }
+}
+
+function updateAmbushReveal(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const revealRange = getParam(enemy.definition, 'revealRange', 220);
+  const revealMs = getParam(enemy.definition, 'revealMs', 420);
+  const strikeMs = getParam(enemy.definition, 'strikeMs', 360);
+  const strikeSpeed = getParam(enemy.definition, 'strikeSpeed', 460) * input.enemySpeedMultiplier * enemy.speedMultiplier;
+  const chaseScale = getParam(enemy.definition, 'chaseSpeedScale', 1.18);
+  const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  const elapsed = input.time - enemy.stateStartedAt;
+
+  if (enemy.state === 'idle') {
+    enemy.state = 'hidden';
+    enemy.stateStartedAt = input.time;
+    enemy.body.setAlpha(0.18);
+    enemy.wrapMirrorBody.setAlpha(0.18);
+  }
+
+  if (enemy.state === 'hidden') {
+    enemy.stateData.contactSuppressed = true;
+    enemy.velocity.scale(Math.pow(0.8, input.deltaSeconds * 60));
+    enemy.body.setAlpha(0.12 + Math.sin(input.time * 0.004 + enemy.id.length) * 0.04);
+    enemy.wrapMirrorBody.setAlpha(enemy.body.alpha);
+    if (offset.length() <= revealRange) {
+      enemy.state = 'ambush-windup';
+      enemy.stateStartedAt = input.time;
+      enemy.target = new Phaser.Math.Vector2(input.playerX, input.playerY);
+      input.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.accentColor, 9);
+    }
+    return;
+  }
+
+  enemy.body.setAlpha(1);
+  enemy.wrapMirrorBody.setAlpha(1);
+
+  if (enemy.state === 'ambush-windup') {
+    enemy.stateData.contactSuppressed = true;
+    enemy.velocity.scale(Math.pow(0.82, input.deltaSeconds * 60));
+    enemy.target = new Phaser.Math.Vector2(input.playerX, input.playerY);
+    updateChargeTelegraph(input, enemy, Math.min(1, elapsed / revealMs));
+    if (elapsed >= revealMs) {
+      const direction = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, enemy.target.x, enemy.target.y).normalize();
+      enemy.velocity.copy(direction.scale(strikeSpeed));
+      enemy.state = 'ambush-strike';
+      enemy.stateStartedAt = input.time;
+      destroyTelegraphs(enemy);
+    }
+    return;
+  }
+
+  if (enemy.state === 'ambush-strike') {
+    if (enemy.velocity.lengthSq() > 0) {
+      enemy.body.rotation = Math.atan2(enemy.velocity.x, -enemy.velocity.y);
+    }
+    if (elapsed >= strikeMs) {
+      enemy.state = 'chase';
+      enemy.stateStartedAt = input.time;
+    }
+    return;
+  }
+
+  updateChase(input, enemy, chaseScale);
+}
+
+function updateBerserkChase(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const hpRatio = enemy.maxHp > 0 ? enemy.hp / enemy.maxHp : 1;
+  const firstThreshold = getParam(enemy.definition, 'firstThreshold', 0.5);
+  const secondThreshold = getParam(enemy.definition, 'secondThreshold', 0.25);
+  const calmScale = getParam(enemy.definition, 'calmSpeedScale', 0.94);
+  const firstScale = getParam(enemy.definition, 'firstSpeedScale', 1.34);
+  const secondScale = getParam(enemy.definition, 'secondSpeedScale', 1.76);
+  const visualScale = hpRatio <= secondThreshold ? 1.18 : hpRatio <= firstThreshold ? 1.09 : 1;
+  const speedScale = hpRatio <= secondThreshold ? secondScale : hpRatio <= firstThreshold ? firstScale : calmScale;
+
+  enemy.damageMultiplier = Math.max(enemy.damageMultiplier, hpRatio <= secondThreshold ? 1.28 : hpRatio <= firstThreshold ? 1.12 : 1);
+  enemy.body.setScale(visualScale);
+  enemy.wrapMirrorBody.setScale(visualScale);
+  enemy.state = hpRatio <= secondThreshold ? 'berserk-2' : hpRatio <= firstThreshold ? 'berserk-1' : 'stalk';
+  const direction = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  steerToward(input, enemy, direction, getEnemySpeed(input, enemy) * speedScale);
+  if (hpRatio <= firstThreshold && input.time % 300 < 16) {
+    input.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.accentColor, hpRatio <= secondThreshold ? 3 : 2);
+  }
+}
+
+function updateOrbiterCage(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const startRadius = getParam(enemy.definition, 'startRadius', 340);
+  const minRadius = getParam(enemy.definition, 'minRadius', 190);
+  const tightenMs = getParam(enemy.definition, 'tightenMs', 7000);
+  const orbitSpeed = getParam(enemy.definition, 'orbitSpeed', 0.9);
+  const radialResponse = getParam(enemy.definition, 'radialResponse', 1.55);
+  const elapsed = Math.max(0, input.time - enemy.stateStartedAt);
+  const progress = Phaser.Math.Clamp(elapsed / Math.max(1, tightenMs), 0, 1);
+  const desiredRadius = Phaser.Math.Linear(startRadius, minRadius, progress);
+  const offsetFromPlayer = getWrappedDirection(input.arena, input.playerX, input.playerY, enemy.body.x, enemy.body.y);
+  const distance = Math.max(1, offsetFromPlayer.length());
+  const outward = offsetFromPlayer.clone().scale(1 / distance);
+  const sideSign = getEnemyStateNumber(enemy, 'orbitSide') || (enemy.id.length % 2 === 0 ? 1 : -1);
+  const tangent = new Phaser.Math.Vector2(-outward.y, outward.x).scale(sideSign);
+  const radialError = distance - desiredRadius;
+  const targetVelocity = tangent
+    .scale(getEnemySpeed(input, enemy) * orbitSpeed)
+    .add(outward.scale(-radialError * radialResponse));
+
+  enemy.stateData.orbitSide = sideSign;
+  enemy.state = progress >= 1 ? 'cage-tight' : 'cage';
+  enemy.body.rotation = Math.atan2(-outward.x, outward.y);
+  steerVelocity(input, enemy, targetVelocity.limit(getEnemySpeed(input, enemy) * 1.45));
+  updateAura(input, enemy, desiredRadius, enemy.definition.visual.accentColor, 0.08);
+}
+
+function updatePatrolAlert(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const detectRange = getParam(enemy.definition, 'detectRange', 360);
+  const loseRange = getParam(enemy.definition, 'loseRange', 620);
+  const patrolRadius = getParam(enemy.definition, 'patrolRadius', 260);
+  const waypointTolerance = getParam(enemy.definition, 'waypointTolerance', 34);
+  const playerOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+
+  if (!Number.isFinite(getEnemyStateNumber(enemy, 'homeX')) || getEnemyStateNumber(enemy, 'homeX') === 0 && getEnemyStateNumber(enemy, 'homeY') === 0) {
+    enemy.stateData.homeX = enemy.body.x;
+    enemy.stateData.homeY = enemy.body.y;
+    enemy.stateData.patrolIndex = enemy.id.length % 4;
+  }
+
+  if (enemy.state !== 'alert' && playerOffset.length() <= detectRange) {
+    enemy.state = 'alert';
+    enemy.stateStartedAt = input.time;
+    input.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.accentColor, 6);
+  }
+
+  if (enemy.state === 'alert') {
+    if (playerOffset.length() > loseRange) {
+      enemy.state = 'return';
+      enemy.stateStartedAt = input.time;
+    } else {
+      updateChase(input, enemy, 1.16);
+      return;
+    }
+  }
+
+  const homeX = getEnemyStateNumber(enemy, 'homeX') || enemy.body.x;
+  const homeY = getEnemyStateNumber(enemy, 'homeY') || enemy.body.y;
+  const patrolIndex = Math.max(0, Math.trunc(getEnemyStateNumber(enemy, 'patrolIndex'))) % 4;
+  const waypoints = [
+    new Phaser.Math.Vector2(wrapCoordinate(homeX - patrolRadius, input.arena.width), homeY),
+    new Phaser.Math.Vector2(homeX, wrapCoordinate(homeY - patrolRadius * 0.62, input.arena.height)),
+    new Phaser.Math.Vector2(wrapCoordinate(homeX + patrolRadius, input.arena.width), homeY),
+    new Phaser.Math.Vector2(homeX, wrapCoordinate(homeY + patrolRadius * 0.62, input.arena.height))
+  ];
+  const waypoint = waypoints[patrolIndex];
+  const toWaypoint = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, waypoint.x, waypoint.y);
+  enemy.state = enemy.state === 'return' ? 'return' : 'patrol';
+  steerToward(input, enemy, toWaypoint, getEnemySpeed(input, enemy) * 0.74);
+  if (toWaypoint.length() <= waypointTolerance) {
+    enemy.stateData.patrolIndex = (patrolIndex + 1) % waypoints.length;
+    enemy.state = 'patrol';
+  }
+  updatePatrolPath(input, enemy, waypoints);
+}
+
+function updateStatusShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  const distance = offset.length();
+  const preferredRange = getParam(enemy.definition, 'preferredRange', 540);
+  const retreatRange = getParam(enemy.definition, 'retreatRange', 280);
+  const orbitSpeed = getParam(enemy.definition, 'orbitSpeed', 0.42);
+  const target = new Phaser.Math.Vector2(0, 0);
+
+  enemy.state = getParamString(enemy.definition, 'statusKind', 'frost') === 'electric' ? 'arc-range' : 'frost-range';
+  if (distance <= 0) {
+    return;
+  }
+
+  const direction = offset.clone().scale(1 / distance);
+  const lateral = new Phaser.Math.Vector2(-direction.y, direction.x).scale(enemy.id.length % 2 === 0 ? 1 : -1);
+  if (distance > preferredRange) {
+    target.add(direction.scale(getEnemySpeed(input, enemy) * 0.88));
+  } else if (distance < retreatRange) {
+    target.add(direction.scale(-getEnemySpeed(input, enemy) * 0.95));
+  }
+  target.add(lateral.scale(getEnemySpeed(input, enemy) * orbitSpeed));
+  enemy.body.rotation = Math.atan2(offset.x, -offset.y);
+  steerVelocity(input, enemy, target);
+  maybeFireAtPlayer(input, enemy, offset.clone().normalize(), createProjectileStatuses(enemy));
+}
+
+function updateSummonerShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  const distance = offset.length();
+  const summonEveryMs = getParam(enemy.definition, 'summonEveryMs', 5200);
+  const channelMs = getParam(enemy.definition, 'channelMs', 900);
+  const summonCount = Math.max(1, Math.trunc(getParam(enemy.definition, 'summonCount', 3)));
+  const summonId = getParamString(enemy.definition, 'summonId', 'scout');
+  const preferredRange = getParam(enemy.definition, 'preferredRange', 620);
+  const retreatRange = getParam(enemy.definition, 'retreatRange', 340);
+  const elapsed = input.time - enemy.stateStartedAt;
+
+  if (enemy.state !== 'channel' && input.time >= getEnemyStateNumber(enemy, 'nextSummonAt')) {
+    enemy.state = 'channel';
+    enemy.stateStartedAt = input.time;
+    enemy.stateData.summonsReleased = 0;
+    enemy.velocity.scale(0.35);
+  }
+
+  if (enemy.state === 'channel') {
+    enemy.velocity.scale(Math.pow(0.9, input.deltaSeconds * 60));
+    updateAura(input, enemy, enemy.definition.visual.size * 1.15, enemy.definition.visual.accentColor, 0.36);
+    if (elapsed >= channelMs) {
+      for (let index = 0; index < summonCount; index += 1) {
+        const angle = (Math.PI * 2 * index) / summonCount + input.time * 0.0003;
+        const spawnDistance = enemy.definition.visual.size * 0.72;
+        input.spawnChild(summonId, enemy.body.x + Math.cos(angle) * spawnDistance, enemy.body.y + Math.sin(angle) * spawnDistance);
+      }
+      input.emitLabBurst(enemy.body.x, enemy.body.y, enemy.definition.visual.accentColor, 12);
+      enemy.stateData.nextSummonAt = input.time + summonEveryMs;
+      enemy.state = 'range';
+      enemy.stateStartedAt = input.time;
+      destroyTelegraphs(enemy);
+    }
+    return;
+  }
+
+  if (distance > 0) {
+    const direction = offset.clone().scale(1 / distance);
+    const desired = new Phaser.Math.Vector2(0, 0);
+    if (distance > preferredRange) {
+      desired.add(direction.clone().scale(getEnemySpeed(input, enemy) * 0.72));
+    } else if (distance < retreatRange) {
+      desired.add(direction.clone().scale(-getEnemySpeed(input, enemy)));
+    }
+    desired.add(new Phaser.Math.Vector2(-direction.y, direction.x).scale(getEnemySpeed(input, enemy) * 0.34));
+    enemy.body.rotation = Math.atan2(direction.x, -direction.y);
+    enemy.state = 'range';
+    steerVelocity(input, enemy, desired);
+    maybeFireAtPlayer(input, enemy, direction);
+  }
+}
+
+function updateScrapThief(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const fleeDistance = getParam(enemy.definition, 'fleeDistance', 460);
+  const pickupRange = getParam(enemy.definition, 'pickupRange', 48);
+  const playerOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  const nearestScrap = findNearestAvailableScrap(input, enemy);
+
+  if (enemy.carriedScrap > 0) {
+    enemy.state = 'escape';
+    steerToward(input, enemy, playerOffset, -getEnemySpeed(input, enemy) * 1.12);
+    return;
+  }
+
+  if (nearestScrap) {
+    const scrapOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, nearestScrap.x, nearestScrap.y);
+    enemy.state = 'steal';
+    steerToward(input, enemy, scrapOffset, getEnemySpeed(input, enemy));
+    if (scrapOffset.length() <= pickupRange) {
+      const stolenValue = input.stealScrap?.(nearestScrap, enemy) ?? Math.max(1, nearestScrap.value ?? 1);
+      nearestScrap.collected = true;
+      enemy.carriedScrap += stolenValue;
+      input.emitLabBurst(nearestScrap.x, nearestScrap.y, enemy.definition.visual.accentColor, 10);
+    }
+    return;
+  }
+
+  if (playerOffset.length() < fleeDistance) {
+    enemy.state = 'bait';
+    steerToward(input, enemy, playerOffset, -getEnemySpeed(input, enemy) * 0.78);
+    return;
+  }
+
+  enemy.state = 'prowl';
+  const lateral = playerOffset.lengthSq() > 0 ? new Phaser.Math.Vector2(-playerOffset.y, playerOffset.x).normalize() : new Phaser.Math.Vector2(1, 0);
+  steerVelocity(input, enemy, lateral.scale(getEnemySpeed(input, enemy) * 0.45));
 }
 
 function updateChase(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance, speedScale: number): void {
@@ -440,6 +772,12 @@ function updateProximityDetonate(input: UpdateEnemyLabAiInput, enemy: EnemyLabIn
   }
 
   if (enemy.state === 'detonating') {
+    if (countdownMs <= 0) {
+      input.explodeAt(enemy.body.x, enemy.body.y, blastRadius, blastDamage, enemy.id);
+      enemy.hp = 0;
+      return;
+    }
+
     const progress = Math.min(1, (input.time - enemy.stateStartedAt) / countdownMs);
     enemy.velocity.scale(Math.pow(0.9, input.deltaSeconds * 60));
     updateBlastTelegraph(input, enemy, blastRadius, progress);
@@ -569,8 +907,9 @@ function updateScrapScavenger(input: UpdateEnemyLabAiInput, enemy: EnemyLabInsta
     const scrapOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, nearestScrap.x, nearestScrap.y);
     steerToward(input, enemy, scrapOffset, getEnemySpeed(input, enemy));
     if (scrapOffset.length() <= pickupRange) {
+      const stolenValue = input.stealScrap?.(nearestScrap, enemy) ?? Math.max(1, nearestScrap.value ?? 1);
       nearestScrap.collected = true;
-      enemy.carriedScrap += 1;
+      enemy.carriedScrap += stolenValue;
       input.emitLabBurst(nearestScrap.x, nearestScrap.y, enemy.definition.visual.accentColor, 8);
     }
   } else {
@@ -660,12 +999,17 @@ function updatePhaseTeleport(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstan
   updateChase(input, enemy, 0.8);
 }
 
-function maybeFireAtPlayer(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance, direction: Phaser.Math.Vector2): void {
+function maybeFireAtPlayer(
+  input: UpdateEnemyLabAiInput,
+  enemy: EnemyLabInstance,
+  direction: Phaser.Math.Vector2,
+  statuses?: EnemyStatusEffect[]
+): void {
   if (!enemy.definition.weapon || input.time < enemy.nextFireAt) {
     return;
   }
 
-  fireEnemyShot(input, enemy, direction, enemy.definition.visual.accentColor, PROJECTILE_RADIUS);
+  fireEnemyShot(input, enemy, direction, enemy.definition.visual.accentColor, PROJECTILE_RADIUS, statuses);
   enemy.nextFireAt = input.time + enemy.definition.weapon.cooldownMs * input.enemyFireRateMultiplier * enemy.fireRateMultiplier;
 }
 
@@ -674,7 +1018,8 @@ function fireEnemyShot(
   enemy: EnemyLabInstance,
   direction: Phaser.Math.Vector2,
   color: number,
-  radius: number
+  radius: number,
+  statuses?: EnemyStatusEffect[]
 ): void {
   const weapon = enemy.definition.weapon;
   if (!weapon || direction.lengthSq() <= 0) {
@@ -691,7 +1036,8 @@ function fireEnemyShot(
     damage: weapon.damage * enemy.damageMultiplier,
     range: weapon.range ?? 1000,
     radius,
-    color
+    color,
+    statuses
   });
 }
 
@@ -741,6 +1087,41 @@ function getParam(definition: EnemyLabDefinition, key: string, fallback: number)
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
 }
 
+function getParamString(definition: EnemyLabDefinition, key: string, fallback: string): string {
+  const raw = definition.behavior.params?.[key];
+  return typeof raw === 'string' && raw.length > 0 ? raw : fallback;
+}
+
+function createProjectileStatuses(enemy: EnemyLabInstance): EnemyStatusEffect[] | undefined {
+  const statusKind = getParamString(enemy.definition, 'statusKind', '');
+  if (statusKind !== 'frost' && statusKind !== 'electric') {
+    return undefined;
+  }
+
+  const status: EnemyStatusEffect = {
+    kind: statusKind,
+    durationMs: getParam(enemy.definition, 'statusDurationMs', statusKind === 'frost' ? 2100 : 3000),
+    intensity: getParam(enemy.definition, 'statusIntensity', 1)
+  };
+
+  if (statusKind === 'electric') {
+    status.damagePerSecond = getParam(enemy.definition, 'statusDamagePerSecond', 5);
+    status.tickMs = getParam(enemy.definition, 'statusTickMs', 500);
+    status.accelerationDrag = getParam(enemy.definition, 'statusAccelerationDrag', 0.18);
+  }
+
+  return [status];
+}
+
+function findNearestAvailableScrap(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): EnemyLabScrapTarget | undefined {
+  return input.scrapPickups
+    .filter((scrap) => !scrap.collected)
+    .sort((a, b) =>
+      getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, a.x, a.y).lengthSq() -
+      getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, b.x, b.y).lengthSq()
+    )[0];
+}
+
 function findNearestAlly(
   input: UpdateEnemyLabAiInput,
   enemy: EnemyLabInstance,
@@ -755,6 +1136,24 @@ function findNearestAlly(
       getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, a.body.x, a.body.y).lengthSq() -
       getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, b.body.x, b.body.y).lengthSq()
   )[0];
+}
+
+function updatePatrolPath(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance, waypoints: Phaser.Math.Vector2[]): void {
+  if (!input.telegraphsEnabled) {
+    enemy.telegraphs.patrolPath?.destroy();
+    enemy.telegraphs.patrolPath = undefined;
+    return;
+  }
+
+  const line = enemy.telegraphs.patrolPath ?? input.scene.add.graphics().setDepth(4);
+  enemy.telegraphs.patrolPath = line;
+  line.clear();
+  line.lineStyle(1, enemy.definition.visual.accentColor, 0.22);
+  for (let index = 0; index < waypoints.length; index += 1) {
+    const from = waypoints[index];
+    const to = waypoints[(index + 1) % waypoints.length];
+    line.lineBetween(from.x, from.y, to.x, to.y);
+  }
 }
 
 function updateEnemyVisualPulse(enemy: EnemyLabInstance, time: number): void {

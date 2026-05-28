@@ -8,6 +8,7 @@ import {
   type EnemyLabSquadDefinition
 } from '../data/enemyLabDefinitions';
 import { createEnemyLabVisualContainer } from './enemyVisuals';
+import { resolveEnemyDefinitionSize } from './enemyVectorRecipes';
 
 export interface EnemyLabTelegraphs {
   chargeLine?: Phaser.GameObjects.Line;
@@ -15,6 +16,7 @@ export interface EnemyLabTelegraphs {
   beamLine?: Phaser.GameObjects.Line;
   auraCircle?: Phaser.GameObjects.Arc;
   shieldArc?: Phaser.GameObjects.Arc;
+  patrolPath?: Phaser.GameObjects.Graphics;
 }
 
 export interface EnemyLabInstance {
@@ -92,7 +94,7 @@ export function spawnEnemyLabEnemy(input: SpawnEnemyLabEnemyInput): EnemyLabInst
     blackHoleVelocity: new Phaser.Math.Vector2(0, 0),
     hp,
     maxHp: hp,
-    hitRadius: definition.stats.radius,
+    hitRadius: resolveEnemyDefinitionSize(definition).collisionRadiusPx,
     state: 'idle',
     stateStartedAt: input.time,
     nextFireAt: input.time + Phaser.Math.Between(250, definition.weapon?.cooldownMs ?? 1100),
@@ -175,6 +177,7 @@ export function destroyTelegraphs(enemy: EnemyLabInstance): void {
   enemy.telegraphs.beamLine?.destroy();
   enemy.telegraphs.auraCircle?.destroy();
   enemy.telegraphs.shieldArc?.destroy();
+  enemy.telegraphs.patrolPath?.destroy();
   enemy.telegraphs = {};
 }
 
@@ -198,13 +201,13 @@ export function updateEnemyLabDebugLabel(enemy: EnemyLabInstance): void {
     return;
   }
 
-  enemy.debugLabel.setPosition(enemy.body.x, enemy.body.y - enemy.definition.visual.size * 0.62);
+  enemy.debugLabel.setPosition(enemy.body.x, enemy.body.y - resolveEnemyDefinitionSize(enemy.definition).visualDiameterPx * 0.62);
   enemy.debugLabel.setText(`${enemy.definition.displayName}\n${Math.ceil(enemy.hp)}/${Math.ceil(enemy.maxHp)} ${enemy.state}`);
 }
 
 function createEnemyLabel(scene: Phaser.Scene, enemy: EnemyLabInstance): Phaser.GameObjects.Text {
   return scene.add
-    .text(enemy.body.x, enemy.body.y - enemy.definition.visual.size * 0.62, '', {
+    .text(enemy.body.x, enemy.body.y - resolveEnemyDefinitionSize(enemy.definition).visualDiameterPx * 0.62, '', {
       fontFamily: 'monospace',
       fontSize: '11px',
       color: '#f2fbff',

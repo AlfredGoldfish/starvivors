@@ -6,6 +6,7 @@ import type { ShipId } from '../data/ships';
 import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
 import type { EnemyStatProfile } from '../data/enemies';
+import type { ObjectSizeProfile } from '../data/objectSizeProfile';
 import type { EnemyLabInstance } from '../systems/enemyLabSpawner';
 import type { RuntimeProjectile, ProjectileSplashPayload, ProjectileStatusPayload } from '../systems/projectiles';
 import type { ResolvedProjectileEffectStats } from '../systems/weaponStats';
@@ -334,6 +335,7 @@ export interface TankEnemy {
 export interface BasicAsteroid {
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
+  sizeProfile: ObjectSizeProfile;
   variant: string;
   tier: AsteroidTier;
   hp: number;

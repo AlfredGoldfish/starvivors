@@ -1,5 +1,6 @@
 import type { ContentRegistryEntry } from './contentStatus';
 import { interceptorMovement } from './balance';
+import { createObjectSizeProfileFromCollisionRadius, type ObjectSizeProfile } from './objectSizeProfile';
 import { DEFAULT_PLAYER_BASE_STATS, type PlayerBaseStats } from './stats';
 import { pulseCannon, rammingShield, salvageBeam, type RammingShieldStats, type WeaponId } from './weapons';
 
@@ -81,6 +82,7 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
   handlingRating: string;
   unlockCostCredits?: number;
   visualAssetId?: string;
+  sizeProfile?: ObjectSizeProfile;
   textureKey: string;
   displaySize: number;
   visualRotation: number;
@@ -99,6 +101,15 @@ export interface ShipRegistryEntry extends ContentRegistryEntry {
 export type ShipId = 'interceptor' | 'bulwark' | 'engineer';
 
 export const DEFAULT_SHIP_ID: ShipId = 'interceptor';
+
+function createShipSizeProfile(id: ShipId, collisionRadiusPx: number, strokeWidthPx: number): ObjectSizeProfile {
+  return createObjectSizeProfileFromCollisionRadius({
+    kind: 'player-ship',
+    id,
+    collisionRadiusPx,
+    strokeWidthPx
+  });
+}
 
 export const shipRegistry: ShipRegistryEntry[] = [
   {
@@ -161,6 +172,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     speedRating: 'Fast',
     handlingRating: 'Responsive',
     visualAssetId: 'forge.ship.interceptor-01',
+    sizeProfile: createShipSizeProfile('interceptor', 32, 3.2),
     textureKey: 'player-ship-spaceship-1',
     displaySize: 118,
     visualRotation: Math.PI,
@@ -234,6 +246,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     speedRating: 'Moderate',
     handlingRating: 'Heavy',
     unlockCostCredits: 100,
+    sizeProfile: createShipSizeProfile('bulwark', 35, 3.8),
     textureKey: 'player-ship-bulwark',
     displaySize: 128,
     visualRotation: Math.PI,
@@ -310,6 +323,7 @@ export const shipRegistry: ShipRegistryEntry[] = [
     speedRating: 'Moderate',
     handlingRating: 'Balanced',
     unlockCostCredits: 250,
+    sizeProfile: createShipSizeProfile('engineer', 33, 3.4),
     textureKey: 'player-ship-spaceship-1',
     displaySize: 120,
     visualRotation: Math.PI,
