@@ -82,6 +82,8 @@ export interface GameplayHudCallbacks {
 
 export interface GameplayHudOptions {
   hudButtonVariant?: HudButtonVariant;
+  textScale?: number;
+  highContrast?: boolean;
 }
 
 interface HudControlRect {
@@ -117,6 +119,8 @@ export class GameplayHudSystem {
   private readonly scene: Phaser.Scene;
   private readonly callbacks: GameplayHudCallbacks;
   private buttonVariant: HudButtonVariant;
+  private textScale: number;
+  private highContrast: boolean;
   private hudGraphics?: Phaser.GameObjects.Graphics;
   private hudText?: Phaser.GameObjects.Text;
   private xpTimerText?: Phaser.GameObjects.Text;
@@ -150,6 +154,30 @@ export class GameplayHudSystem {
     this.scene = scene;
     this.callbacks = callbacks;
     this.buttonVariant = options.hudButtonVariant ?? this.getHudButtonVariantFromQuery();
+    this.textScale = options.textScale ?? 1;
+    this.highContrast = options.highContrast ?? false;
+  }
+
+  setTextScale(textScale: number): void {
+    this.textScale = Phaser.Math.Clamp(textScale, 0.9, 1.25);
+    this.applyTextScaleToExistingText();
+  }
+
+  setHighContrast(highContrast: boolean): void {
+    this.highContrast = highContrast;
+  }
+
+  private applyTextScaleToExistingText(): void {
+    if (this.hudText?.scene) this.hudText.setFontSize(this.fontSize(18));
+    if (this.xpTimerText?.scene) this.xpTimerText.setFontSize(this.fontSize(18));
+    if (this.upgradeChipText?.scene) this.upgradeChipText.setFontSize(this.fontSize(14));
+    if (this.warningText?.scene) this.warningText.setFontSize(this.fontSize(12));
+    this.dashboardTexts.forEach((text) => text.scene && text.setFontSize(this.fontSize(12)));
+    Object.values(this.hotbarTexts).forEach((text) => text?.scene && text.setFontSize(this.fontSize(12)));
+    if (this.missionButtonText?.scene) this.missionButtonText.setFontSize(this.fontSize(12));
+    if (this.ejectText?.scene) this.ejectText.setFontSize(this.fontSize(13));
+    if (this.tooltipText?.scene) this.tooltipText.setFontSize(this.fontSize(12));
+    this.missionLogTexts.forEach((text, index) => text.scene && text.setFontSize(this.fontSize(index === 0 ? 14 : 12)));
   }
 
   create(): void {
@@ -172,7 +200,7 @@ export class GameplayHudSystem {
     this.hudText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
+        fontSize: this.fontSize(18),
         fontStyle: 'bold',
         color: '#f2fbff',
         fixedWidth: 360,
@@ -185,7 +213,7 @@ export class GameplayHudSystem {
     this.xpTimerText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '18px',
+        fontSize: this.fontSize(18),
         fontStyle: 'bold',
         color: '#f2fbff',
         align: 'center',
@@ -198,7 +226,7 @@ export class GameplayHudSystem {
     this.upgradeChipText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '14px',
+        fontSize: this.fontSize(14),
         fontStyle: 'bold',
         color: '#02040a',
         align: 'center',
@@ -212,7 +240,7 @@ export class GameplayHudSystem {
     this.warningText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
+        fontSize: this.fontSize(12),
         color: '#02040a',
         align: 'center',
         fixedWidth: 620
@@ -224,7 +252,7 @@ export class GameplayHudSystem {
       const text = this.scene.add
         .text(0, 0, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '12px',
+          fontSize: this.fontSize(12),
           fontStyle: 'bold',
           color: '#f2fbff',
           align: 'center',
@@ -244,7 +272,7 @@ export class GameplayHudSystem {
     this.tooltipText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
+        fontSize: this.fontSize(12),
         color: '#f2fbff',
         lineSpacing: 3,
         wordWrap: { width: 300 }
@@ -257,7 +285,7 @@ export class GameplayHudSystem {
       const text = this.scene.add
         .text(0, 0, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '12px',
+          fontSize: this.fontSize(12),
           color: '#f2fbff',
           align: 'center',
           fixedWidth: 132,
@@ -307,7 +335,7 @@ export class GameplayHudSystem {
     this.missionButtonText = this.scene.add
       .text(0, 0, '', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '12px',
+        fontSize: this.fontSize(12),
         fontStyle: 'bold',
         color: '#f2fbff',
         align: 'center',
@@ -352,7 +380,7 @@ export class GameplayHudSystem {
     this.ejectText = this.scene.add
       .text(0, 0, 'EJECT', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '13px',
+        fontSize: this.fontSize(13),
         color: '#ffb3b8',
         align: 'center',
         fixedWidth: 90
@@ -397,7 +425,7 @@ export class GameplayHudSystem {
       const text = this.scene.add
         .text(0, 0, '', {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: i === 0 ? '14px' : '12px',
+          fontSize: this.fontSize(i === 0 ? 14 : 12),
           fontStyle: i === 0 ? 'bold' : '',
           color: '#f2fbff',
           lineSpacing: 3,
@@ -418,15 +446,16 @@ export class GameplayHudSystem {
 
     this.latestSnapshot = snapshot;
     const topLayout = this.getTopHudLayout();
+    const statusY = topLayout.y + topLayout.height + 4;
 
     this.hudText
-      .setPosition(topLayout.x + 22, topLayout.y + 12)
+      .setPosition(topLayout.x + 22, statusY)
       .setText(`XP ${snapshot.playerXp}/${snapshot.nextXpThreshold}`);
     this.xpTimerText
-      .setPosition(topLayout.x + topLayout.width / 2, topLayout.y + 12)
+      .setPosition(topLayout.x + topLayout.width / 2, statusY)
       .setText(`RUN ${this.formatSurvivalTime(snapshot.timeSeconds)}`);
     this.upgradeChipText
-      .setPosition(topLayout.x + topLayout.width - 114, topLayout.y + 11)
+      .setPosition(topLayout.x + topLayout.width - 114, statusY)
       .setText(snapshot.isUpgradeReady ? `UPGRADE x${snapshot.bankedUpgrades}` : '')
       .setVisible(snapshot.isUpgradeReady);
     this.updateDashboardTexts(snapshot);
@@ -442,25 +471,25 @@ export class GameplayHudSystem {
     }
 
     const topLayout = this.getTopHudLayout();
-    const xpBarY = topLayout.y + 42;
+    const xpBarY = topLayout.y + 10;
 
     this.hudGraphics.clear();
-    this.drawCockpitPanel(this.hudGraphics, topLayout.x, topLayout.y, topLayout.width, topLayout.height, 0x42f5d7, true);
     this.drawSegmentedBar(
       topLayout.x + 18,
       xpBarY,
       topLayout.width - 36,
-      22,
+      20,
       Phaser.Math.Clamp(snapshot.xpProgress, 0, 1),
       0x42f5d7
     );
     if (snapshot.isUpgradeReady) {
       const chipX = topLayout.x + topLayout.width - 210;
+      const chipY = topLayout.y + topLayout.height + 1;
       const pulse = this.getSlowPulse(0.18);
       this.hudGraphics.fillStyle(0xffc857, 0.78 + pulse);
-      this.hudGraphics.fillRoundedRect(chipX, topLayout.y + 9, 190, 24, 6);
+      this.hudGraphics.fillRoundedRect(chipX, chipY, 190, 24, 6);
       this.hudGraphics.lineStyle(2, 0xfff0a0, 0.72 + pulse);
-      this.hudGraphics.strokeRoundedRect(chipX, topLayout.y + 9, 190, 24, 6);
+      this.hudGraphics.strokeRoundedRect(chipX, chipY, 190, 24, 6);
     }
     this.drawWarningChips(snapshot);
   }
@@ -487,12 +516,14 @@ export class GameplayHudSystem {
       }
 
       if (index === 2) {
+        const compactScrapWidth = Math.max(108, Math.min(132, layout.width - 228));
+        const scrapWidth = this.isCompactDashboard() ? compactScrapWidth : 150;
         text
           .setOrigin(0.5, 0.5)
           .setAlign('center')
-          .setFixedSize(150, 0)
-          .setWordWrapWidth(150, false)
-          .setFontSize('12px')
+          .setFixedSize(scrapWidth, 0)
+          .setWordWrapWidth(scrapWidth, false)
+          .setFontSize(this.fontSize(this.isCompactDashboard() ? 11 : 12))
           .setVisible(true)
           .setDepth(1010)
           .setPosition(scrapTicker.x, scrapTicker.y)
@@ -506,7 +537,7 @@ export class GameplayHudSystem {
         .setAlign('center')
         .setFixedSize(Math.max(132, layout.infoBayWidth - 14), 0)
         .setWordWrapWidth(Math.max(126, layout.infoBayWidth - 20), false)
-        .setFontSize('12px')
+        .setFontSize(this.fontSize(12))
         .setVisible(true)
         .setDepth(1010)
         .setPosition(positions[index].x, positions[index].y)
@@ -522,7 +553,7 @@ export class GameplayHudSystem {
 
     const warnings = this.getWarningLabels(snapshot);
     this.warningText
-      .setPosition(this.scene.scale.width / 2, this.getTopHudLayout().y + this.getTopHudLayout().height + 10)
+      .setPosition(this.scene.scale.width / 2, this.getTopHudLayout().y + this.getTopHudLayout().height + 30)
       .setText(warnings.join('   '))
       .setVisible(warnings.length > 0);
   }
@@ -540,10 +571,10 @@ export class GameplayHudSystem {
     const totalWidth = Math.min(680, 108 + warnings.join('').length * 8);
     const x = this.scene.scale.width / 2 - totalWidth / 2;
     const topLayout = this.getTopHudLayout();
-    const y = topLayout.y + topLayout.height + 6;
+    const y = topLayout.y + topLayout.height + 28;
     const isDanger = snapshot.isFuelEmergency || snapshot.isHullCritical || snapshot.isMissionDanger;
     const pulse = this.getSlowPulse(0.1);
-    this.hudGraphics.fillStyle(isDanger ? 0xff5964 : 0xffc857, isDanger ? 0.82 + pulse : 0.88);
+    this.hudGraphics.fillStyle(isDanger ? this.warningColor() : this.cautionColor(), isDanger ? 0.88 + pulse : 0.92);
     this.hudGraphics.fillRoundedRect(x, y, totalWidth, 24, 6);
     this.hudGraphics.lineStyle(1, 0xf2fbff, 0.42);
     this.hudGraphics.strokeRoundedRect(x, y, totalWidth, 24, 6);
@@ -572,7 +603,7 @@ export class GameplayHudSystem {
       layout.infoBayWidth,
       layout.infoBayHeight,
       Phaser.Math.Clamp(snapshot.hullProgress, 0, 1),
-      snapshot.isHullCritical ? 0xff5964 : 0x52ff9a,
+      snapshot.isHullCritical ? this.warningColor() : this.successColor(),
       snapshot.isHullCritical
     );
     this.drawInfoBayMeter(
@@ -581,7 +612,7 @@ export class GameplayHudSystem {
       layout.infoBayWidth,
       layout.infoBayHeight,
       Phaser.Math.Clamp(snapshot.fuelProgress, 0, 1),
-      snapshot.isFuelEmergency ? 0xff5964 : 0xffc857,
+      snapshot.isFuelEmergency ? this.warningColor() : this.cautionColor(),
       snapshot.isFuelEmergency
     );
     if (snapshot.hasRammingShield) {
@@ -601,23 +632,17 @@ export class GameplayHudSystem {
       return;
     }
 
-    this.hudGraphics.fillStyle(0x02040a, 0.76);
-    this.hudGraphics.fillRoundedRect(x - 3, y - 3, width + 6, height + 6, 5);
-    this.hudGraphics.lineStyle(2, 0xc89452, 0.78);
-    this.hudGraphics.strokeRoundedRect(x - 3, y - 3, width + 6, height + 6, 5);
+    const clampedProgress = Phaser.Math.Clamp(progress, 0, 1);
+    this.hudGraphics.fillStyle(0x02040a, 0.7);
+    this.hudGraphics.fillRoundedRect(x, y, width, height, 5);
     this.hudGraphics.fillStyle(0x111a24, 0.92);
-    this.hudGraphics.fillRect(x, y, width, height);
-    this.hudGraphics.fillStyle(color, 0.06);
-    this.hudGraphics.fillRect(x, y, width, height);
+    this.hudGraphics.fillRoundedRect(x + 1, y + 1, width - 2, height - 2, 4);
+    this.hudGraphics.lineStyle(1, color, 0.62);
+    this.hudGraphics.strokeRoundedRect(x, y, width, height, 5);
     this.hudGraphics.fillStyle(color, 0.88);
-    this.hudGraphics.fillRect(x, y, width * progress, height);
+    this.hudGraphics.fillRoundedRect(x + 2, y + 2, Math.max(0, (width - 4) * clampedProgress), height - 4, 3);
     this.hudGraphics.fillStyle(0xf2fbff, 0.18);
-    this.hudGraphics.fillRect(x, y, width * progress, Math.max(3, height * 0.22));
-    this.hudGraphics.lineStyle(1, 0x02040a, 0.44);
-    for (let index = 1; index < 12; index += 1) {
-      const tickX = x + (width * index) / 12;
-      this.hudGraphics.lineBetween(tickX, y, tickX, y + height);
-    }
+    this.hudGraphics.fillRoundedRect(x + 2, y + 2, Math.max(0, (width - 4) * clampedProgress), Math.max(3, height * 0.24), 3);
   }
 
   private drawHotbar(): void {
@@ -690,9 +715,11 @@ export class GameplayHudSystem {
     const buttonRects = this.getDashboardButtonRects();
 
     this.drawCockpitPanel(graphics, layout.x, layout.y, layout.width, layout.height, 0x42f5d7, true, true);
-    this.drawCockpitPanel(graphics, utilityLayout.x, utilityLayout.y, utilityLayout.width, utilityLayout.height, 0xffc857, true, true);
+    if (!this.isCompactDashboard()) {
+      this.drawCockpitPanel(graphics, utilityLayout.x, utilityLayout.y, utilityLayout.width, utilityLayout.height, 0xffc857, true, true);
+    }
 
-    if ([2, 6, 9, 10].includes(this.buttonVariant)) {
+    if ([2, 6, 9].includes(this.buttonVariant)) {
       const first = buttonRects.weapons.primary;
       const last = buttonRects.weapons.secondary;
       const bayX = first.x - first.width / 2 - 10;
@@ -719,7 +746,8 @@ export class GameplayHudSystem {
 
     const scrapTicker = this.getScrapTickerPosition();
     graphics.lineStyle(1, 0xff4fd8, 0.44);
-    graphics.lineBetween(scrapTicker.x - 52, scrapTicker.y + 12, scrapTicker.x + 52, scrapTicker.y + 12);
+    const scrapLineHalfWidth = this.isCompactDashboard() ? 40 : 52;
+    graphics.lineBetween(scrapTicker.x - scrapLineHalfWidth, scrapTicker.y + 12, scrapTicker.x + scrapLineHalfWidth, scrapTicker.y + 12);
   }
 
   private drawEjectButton(): void {
@@ -731,7 +759,7 @@ export class GameplayHudSystem {
     const ejectWarning = (this.latestSnapshot?.hullProgress ?? 1) < 0.35;
     const pressOffset = this.getDashboardButtonPressOffset('eject');
     this.drawDashboardButton(rect, {
-      accentColor: 0xff5964,
+      accentColor: this.warningColor(),
       fillColor: ejectWarning ? 0x241018 : 0x111a24,
       hovered: this.isEjectHovered,
       pressed: this.isDashboardButtonPressed('eject'),
@@ -740,7 +768,7 @@ export class GameplayHudSystem {
     });
     this.ejectText
       .setFixedSize(Math.max(58, rect.width - 12), 0)
-      .setFontSize('11px')
+      .setFontSize(this.fontSize(11))
       .setLineSpacing(1)
       .setPosition(rect.x + pressOffset, rect.y + pressOffset)
       .setText(this.getEjectButtonLabel(this.latestSnapshot))
@@ -756,12 +784,12 @@ export class GameplayHudSystem {
     const rect = this.getDashboardButtonRects().mission;
     const missionComplete = this.isMissionCompleteStatus(snapshot.missionStatus);
     const accent = snapshot.isMissionDanger
-      ? 0xff5964
+      ? this.warningColor()
       : snapshot.missionStatus === 'FAILED'
-        ? 0xff5964
+        ? this.warningColor()
       : missionComplete
-        ? 0x52ff9a
-        : 0xffc857;
+        ? this.successColor()
+        : this.cautionColor();
     const pressOffset = this.getDashboardButtonPressOffset('mission');
     this.drawDashboardButton(rect, {
       accentColor: accent,
@@ -776,7 +804,7 @@ export class GameplayHudSystem {
     this.missionButtonText
       .setFixedSize(Math.max(58, rect.width - 14), 0)
       .setWordWrapWidth(Math.max(56, rect.width - 18), true)
-      .setFontSize('11px')
+      .setFontSize(this.fontSize(11))
       .setLineSpacing(1)
       .setPosition(rect.x + pressOffset, rect.y + pressOffset)
       .setText(this.getMissionButtonLabel(snapshot))
@@ -818,7 +846,7 @@ export class GameplayHudSystem {
     const rewardDividerY = y + 180;
     const rewardRowY = y + 190;
     drawCockpitCard(this.hotbarGraphics, x, y, width, height, {
-      accentColor: snapshot.isMissionDanger ? 0xff5964 : 0xffc857,
+      accentColor: snapshot.isMissionDanger ? this.warningColor() : this.cautionColor(),
       glow: true,
       dividerOffsets: [54, rewardDividerY - y]
     });
@@ -837,7 +865,7 @@ export class GameplayHudSystem {
       text
         .setPosition(innerX, rowY)
         .setColor(color)
-        .setFontSize(fontSize)
+        .setFontSize(this.scaleFontSizeString(fontSize))
         .setWordWrapWidth(contentWidth, true)
         .setText(label)
         .setVisible(true);
@@ -884,7 +912,7 @@ export class GameplayHudSystem {
       const text = this.scene.add
         .text(x, y, choice.name, {
           fontFamily: 'Consolas, "Courier New", monospace',
-          fontSize: '10px',
+          fontSize: this.fontSize(10),
           color: '#f2fbff',
           align: 'center',
           fixedWidth: 76,
@@ -1098,6 +1126,33 @@ export class GameplayHudSystem {
   private getDashboardButtonRects(): DashboardButtonRects {
     const layout = this.getDashboardLayout();
     const utilityLayout = this.getUtilityDashboardLayout();
+
+    if (this.isCompactDashboard()) {
+      const weaponGap = 8;
+      const weaponsLeft = layout.x + 24;
+      const weaponsRight = layout.x + layout.width - 24;
+      const weaponWidth = Phaser.Math.Clamp((weaponsRight - weaponsLeft - weaponGap * 2) / 3, 76, 118);
+      const weaponHeight = 42;
+      const weaponCenter = (weaponsLeft + weaponsRight) / 2;
+      const weaponStep = weaponWidth + weaponGap;
+      const utilityWidth = 66;
+      const utilityHeight = 38;
+      const utilityGap = 8;
+      const utilityRight = layout.x + layout.width - 24;
+      const ejectX = utilityRight - utilityWidth / 2;
+      const missionX = ejectX - utilityWidth - utilityGap;
+
+      return {
+        weapons: {
+          primary: { x: weaponCenter - weaponStep, y: layout.y + 96, width: weaponWidth, height: weaponHeight },
+          auto: { x: weaponCenter, y: layout.y + 96, width: weaponWidth, height: weaponHeight },
+          secondary: { x: weaponCenter + weaponStep, y: layout.y + 96, width: weaponWidth, height: weaponHeight }
+        },
+        mission: { x: missionX, y: layout.y + layout.height - 34, width: utilityWidth, height: utilityHeight },
+        eject: { x: ejectX, y: layout.y + layout.height - 34, width: utilityWidth, height: utilityHeight }
+      };
+    }
+
     const rowY = layout.y + layout.height - 35;
     const utilityWidth = this.scene.scale.width < 900 ? 68 : 78;
     const utilityHeight = 42;
@@ -1135,7 +1190,7 @@ export class GameplayHudSystem {
 
     return {
       text,
-      fontSize: text.length > 15 ? '11px' : '12px',
+      fontSize: this.fontSize(text.length > 15 ? 11 : 12),
       yOffset: 0,
       color: slot.weaponId ? '#f2fbff' : '#c8d3e5'
     };
@@ -1187,14 +1242,21 @@ export class GameplayHudSystem {
     }
 
     if (raisedSwitchChrome) {
-      graphics.fillStyle(0x02040a, 0.72);
-      graphics.fillRoundedRect(x + 3, y + 4, drawRect.width, drawRect.height, radius);
-      graphics.fillStyle(chrome.danger ? 0x2a1117 : 0x1b2634, alpha);
-      graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
-      graphics.fillStyle(0xf2fbff, pressed ? (highlighted ? 0.08 : 0.05) : highlighted ? 0.16 : 0.08);
-      graphics.fillRoundedRect(x + 4, y + 4, drawRect.width - 8, Math.max(8, drawRect.height * 0.28), radius);
-      graphics.fillStyle(fill, chrome.danger ? (pressed ? 0.3 : 0.22) : pressed ? 0.24 : 0.16);
-      graphics.fillRoundedRect(x + 6, y + 10, drawRect.width - 12, drawRect.height - 18, Math.max(2, radius - 2));
+      if (chrome.kind === 'weapon') {
+        graphics.fillStyle(fill, alpha);
+        graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
+        graphics.fillStyle(0xf2fbff, pressed ? (highlighted ? 0.08 : 0.05) : highlighted ? 0.14 : 0.07);
+        graphics.fillRoundedRect(x + 4, y + 4, drawRect.width - 8, Math.max(8, drawRect.height * 0.28), radius);
+      } else {
+        graphics.fillStyle(0x02040a, 0.72);
+        graphics.fillRoundedRect(x + 3, y + 4, drawRect.width, drawRect.height, radius);
+        graphics.fillStyle(chrome.danger ? 0x2a1117 : 0x1b2634, alpha);
+        graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
+        graphics.fillStyle(0xf2fbff, pressed ? (highlighted ? 0.08 : 0.05) : highlighted ? 0.16 : 0.08);
+        graphics.fillRoundedRect(x + 4, y + 4, drawRect.width - 8, Math.max(8, drawRect.height * 0.28), radius);
+        graphics.fillStyle(fill, chrome.danger ? (pressed ? 0.3 : 0.22) : pressed ? 0.24 : 0.16);
+        graphics.fillRoundedRect(x + 6, y + 10, drawRect.width - 12, drawRect.height - 18, Math.max(2, radius - 2));
+      }
     } else {
       graphics.fillStyle(fill, alpha);
       graphics.fillRoundedRect(x, y, drawRect.width, drawRect.height, radius);
@@ -1325,6 +1387,27 @@ export class GameplayHudSystem {
     return (r << 16) | (g << 8) | b;
   }
 
+  private fontSize(basePx: number): string {
+    return `${Math.round(basePx * this.textScale)}px`;
+  }
+
+  private scaleFontSizeString(fontSize: string): string {
+    const parsed = Number.parseFloat(fontSize);
+    return Number.isFinite(parsed) ? this.fontSize(parsed) : fontSize;
+  }
+
+  private warningColor(): number {
+    return this.highContrast ? 0xff3045 : 0xff5964;
+  }
+
+  private cautionColor(): number {
+    return this.highContrast ? 0xffdf4d : 0xffc857;
+  }
+
+  private successColor(): number {
+    return this.highContrast ? 0x00ff9d : 0x52ff9a;
+  }
+
   private getButtonCornerRadius(kind: DashboardButtonChrome['kind']): number {
     if (this.usesRaisedSwitchChrome()) {
       return 5;
@@ -1377,6 +1460,15 @@ export class GameplayHudSystem {
   }
 
   private getScrapTickerPosition(): { x: number; y: number } {
+    if (this.isCompactDashboard()) {
+      const layout = this.getDashboardLayout();
+
+      return {
+        x: layout.x + Math.min(94, layout.width * 0.28),
+        y: layout.y + layout.height - 34
+      };
+    }
+
     const layout = this.getUtilityDashboardLayout();
 
     return {
@@ -1392,8 +1484,8 @@ export class GameplayHudSystem {
     height: number;
   } {
     const x = HUD_MARGIN + 8;
-    const height = 78;
-    const width = Math.max(420, this.scene.scale.width - x * 2);
+    const height = 42;
+    const width = Math.max(260, this.scene.scale.width - x * 2);
 
     return {
       x,
@@ -1412,6 +1504,18 @@ export class GameplayHudSystem {
     infoBayHeight: number;
     infoBayGap: number;
   } {
+    if (this.isCompactDashboard()) {
+      const width = Math.max(300, this.scene.scale.width - 24);
+      const height = 174;
+      const x = this.scene.scale.width / 2 - width / 2;
+      const y = this.scene.scale.height - height - 12;
+      const infoBayGap = 10;
+      const infoBayWidth = Math.max(118, Math.min(166, (width - 42 - infoBayGap) / 2));
+      const infoBayHeight = 40;
+
+      return { x, y, width, height, infoBayWidth, infoBayHeight, infoBayGap };
+    }
+
     const width = Math.min(this.scene.scale.width < 900 ? 520 : 660, Math.max(430, this.scene.scale.width - 28));
     const height = 126;
     const x = this.scene.scale.width / 2 - width / 2;
@@ -1425,6 +1529,15 @@ export class GameplayHudSystem {
 
   private getUtilityDashboardLayout(): { x: number; y: number; width: number; height: number } {
     const mainLayout = this.getDashboardLayout();
+    if (this.isCompactDashboard()) {
+      return {
+        x: mainLayout.x + 24,
+        y: mainLayout.y + mainLayout.height - 58,
+        width: mainLayout.width - 48,
+        height: 46
+      };
+    }
+
     const width = this.scene.scale.width < 900 ? 176 : 196;
     const height = 118;
     const preferredX = mainLayout.x + mainLayout.width + 16;
@@ -1432,6 +1545,10 @@ export class GameplayHudSystem {
     const y = mainLayout.y + mainLayout.height - height;
 
     return { x, y, width, height };
+  }
+
+  private isCompactDashboard(): boolean {
+    return this.scene.scale.width < 720;
   }
 
   private drawCockpitPanel(

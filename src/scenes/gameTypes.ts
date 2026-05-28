@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { PermanentUpgradeId } from '../data/permanentUpgrades';
 import type { MissionDefinitionId } from '../data/missions';
+import type { RunBoostId, RunPrepUpgradeId, ShipShopUpgradeId, ShopSectionId, WeaponShopUpgradeId } from '../data/shopUpgrades';
 import type { ShipId } from '../data/ships';
 import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
@@ -46,8 +47,9 @@ export type AsteroidBreakupMotionMode = 'crumble' | 'shear' | 'split' | 'burst';
 export type EnemySpawnType = 'chaser' | 'shooter' | 'tank';
 export type ScrapSourceType = 'enemy' | 'debris' | 'asteroid';
 export type PlayerPickupKind = 'scrap' | 'banked-upgrade' | 'special-upgrade';
-export type GameFlowState = 'splash' | 'command' | 'running' | 'results' | 'shop' | 'shipSelect' | 'settings';
+export type GameFlowState = 'command' | 'running' | 'results' | 'shop' | 'shipSelect' | 'settings';
 export type ShopBackTarget = 'mainMenu' | 'results';
+export type ResultsPanelTab = 'start' | 'debrief' | 'command' | 'hangar' | 'shop' | 'settings';
 export type DamageFeedbackSource = 'player' | 'enemy' | 'asteroid' | 'debris' | 'blackHole' | 'shield' | 'environment';
 
 export interface SecondaryWeaponChoice {
@@ -87,8 +89,12 @@ export interface StarvivorsTestHarnessState {
   rammingShieldDashMaxCharges: number;
   hull: number;
   maxHull: number;
+  playerX: number;
+  playerY: number;
   isPlayerDead: boolean;
   runEndReason: string;
+  isDebriefAvailable: boolean;
+  deathSequenceRemainingMs: number;
   canContinueRun: boolean;
   isEjectConfirmOpen: boolean;
   sectorScale: number;
@@ -140,7 +146,16 @@ export interface StarvivorsTestHarnessState {
   upgradeOverlayMode: 'normal' | 'rare' | null;
   isUpgradeOverlayOpen: boolean;
   isResultsScreenOpen: boolean;
+  resultsPanelTab: ResultsPanelTab;
+  foregroundPanelCount: number;
   isResultsButtonVisible: boolean;
+  damageDoneTotal: number;
+  damageTakenTotal: number;
+  healingReceivedTotal: number;
+  shieldDamageBlocked: number;
+  finalDamageSource: string;
+  finalDamageAmount: number;
+  autoOpenDebriefOnDeath: boolean;
   autoWeaponId: WeaponId | null;
   primaryWeaponId: WeaponId | null;
   secondaryWeaponId: WeaponId | null;
@@ -156,6 +171,12 @@ export interface StarvivorsTestHarnessState {
   damageControlLevel: number;
   velocityLimiterLevel: number;
   velocityLimiterActiveLevel: number;
+  shopFlowState: string;
+  shopSelectedSection: ShopSectionId;
+  shipUpgradeLevels: Partial<Record<ShipId, Partial<Record<ShipShopUpgradeId, number>>>>;
+  weaponUpgradeLevels: Partial<Record<WeaponId, Partial<Record<WeaponShopUpgradeId, number>>>>;
+  runPrepUpgradeLevels: Partial<Record<RunPrepUpgradeId, number>>;
+  pendingRunBoosts: Partial<Record<RunBoostId, number>>;
   playerVelocityLimit: number;
   playerSpeed: number;
   weaponDamageMultiplier: number;
@@ -194,6 +215,9 @@ export interface StarvivorsTestHarness {
   destroyFirstWorldEvent: () => StarvivorsTestHarnessState;
   collectAllScrap: () => StarvivorsTestHarnessState;
   killPlayer: () => StarvivorsTestHarnessState;
+  finishDeathSequence: () => StarvivorsTestHarnessState;
+  openDebrief: () => StarvivorsTestHarnessState;
+  setAutoOpenDebrief: (enabled: boolean) => StarvivorsTestHarnessState;
   requestEject: () => StarvivorsTestHarnessState;
   cancelEject: () => StarvivorsTestHarnessState;
   confirmEject: () => StarvivorsTestHarnessState;
@@ -206,6 +230,14 @@ export interface StarvivorsTestHarness {
   unlockRewardHook: (hook: string) => StarvivorsTestHarnessState;
   purchaseRadarUpgrade: () => StarvivorsTestHarnessState;
   purchaseSectorScanner: () => StarvivorsTestHarnessState;
+  openShop: () => StarvivorsTestHarnessState;
+  openShopFromDebrief: () => StarvivorsTestHarnessState;
+  openResultsPanel: (tab: ResultsPanelTab) => StarvivorsTestHarnessState;
+  selectShopSection: (section: ShopSectionId) => StarvivorsTestHarnessState;
+  purchaseShipUpgrade: (shipId: ShipId, upgradeId: ShipShopUpgradeId) => StarvivorsTestHarnessState;
+  purchaseWeaponUpgrade: (weaponId: WeaponId, upgradeId: WeaponShopUpgradeId) => StarvivorsTestHarnessState;
+  purchaseRunPrepUpgrade: (upgradeId: RunPrepUpgradeId) => StarvivorsTestHarnessState;
+  purchaseRunBoost: (boostId: RunBoostId) => StarvivorsTestHarnessState;
   fastForwardScanner: () => StarvivorsTestHarnessState;
   addRunScrap: (amount: number) => StarvivorsTestHarnessState;
   rerollUpgrades: () => StarvivorsTestHarnessState;

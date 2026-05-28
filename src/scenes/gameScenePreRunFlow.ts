@@ -73,7 +73,7 @@ export function getPlayDisabledReason(input: RunConfigurationInput): string {
     return 'NO LEFT WEAPON';
   }
 
-  return 'PLAY';
+  return 'LAUNCH';
 }
 
 export function canUnlockShip(input: ShipUnlockInput): boolean {

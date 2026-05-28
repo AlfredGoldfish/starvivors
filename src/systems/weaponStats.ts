@@ -1,6 +1,13 @@
 import type { ShipRegistryEntry } from '../data/ships';
 import type { DamageVariance } from '../data/damageVariance';
 import type { PlayerStats } from '../data/stats';
+import {
+  PULSE_ACCELERATED_COILS_COOLDOWN_MULTIPLIER,
+  RAMMING_REINFORCED_PROJECTOR_HP_BONUS,
+  SALVAGE_HEAT_SINK_COOLING_MULTIPLIER,
+  WEAPON_MK_EFFECT_MULTIPLIER,
+  type WeaponShopUpgradeLevels
+} from '../data/shopUpgrades';
 import { UPGRADE_CHOICES, type PulseProjectileEffectModifier, type PulseProjectilePatternModifier } from '../data/upgrades';
 import type { BeamWeaponStats, RammingShieldStats, WeaponRegistryEntry, WeaponSlotType } from '../data/weapons';
 import type { PlayerWeaponDebugTuning, PlayerWeaponUpgradeState } from './playerWeapons';
@@ -77,6 +84,7 @@ export interface ResolveWeaponStatsInput {
   ship: ShipRegistryEntry;
   playerStats: PlayerStats;
   upgrades: PlayerWeaponUpgradeState;
+  shopUpgradeLevels?: WeaponShopUpgradeLevels;
   debugTuning: PlayerWeaponDebugTuning;
 }
 
@@ -98,7 +106,7 @@ export function resolveProjectileStats(input: ResolveWeaponStatsInput): Resolved
     return undefined;
   }
 
-  const baseCooldownMs = getProjectileBaseCooldownMs(weapon, input.upgrades);
+  const baseCooldownMs = getProjectileBaseCooldownMs(weapon, input.upgrades, input.shopUpgradeLevels);
   const projectileSpeed = getProjectileSpeed(weapon, input.upgrades, input.playerStats);
   const areaMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'projectileAreaMultiplier');
   const projectileCountBonus = getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'projectileCount');
@@ -107,7 +115,12 @@ export function resolveProjectileStats(input: ResolveWeaponStatsInput): Resolved
   const flatDamage = getWeaponFlatDamageBonus(input.upgrades, weapon);
 
   return {
-    damage: ((weapon.damage ?? 0) + flatDamage) * getWeaponDamageMultiplier(input.upgrades, weapon) * input.playerStats.damage * input.debugTuning.damageMultiplier,
+    damage:
+      ((weapon.damage ?? 0) + flatDamage) *
+      getWeaponDamageMultiplier(input.upgrades, weapon) *
+      getWeaponMkMultiplier(input.shopUpgradeLevels, weapon.id) *
+      input.playerStats.damage *
+      input.debugTuning.damageMultiplier,
     damageVariance: weapon.damageVariance,
     cooldownMs: baseCooldownMs / (input.playerStats.attackSpeed * input.debugTuning.fireRateMultiplier),
     baseCooldownMs,
@@ -147,6 +160,11 @@ export function resolveRammingShieldStats(input: ResolveWeaponStatsInput): Rammi
   const dashChargeBonus = getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashChargeBonus');
   const knockbackMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'ramKnockbackMultiplier');
   const dashDistanceMultiplier = Math.max(0.25, 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, input.weapon, 'dashDistanceMultiplier'));
+  const weaponMkMultiplier = getWeaponMkMultiplier(input.shopUpgradeLevels, input.weapon.id);
+  const reinforcedProjectorBonus =
+    input.weapon.id === 'ramming-shield'
+      ? getWeaponShopLevel(input.shopUpgradeLevels, input.weapon.id, 'reinforced-projector') * RAMMING_REINFORCED_PROJECTOR_HP_BONUS
+      : 0;
   const behaviorFlags = UPGRADE_CHOICES.flatMap((upgrade) => {
     const level = input.upgrades[upgrade.id] ?? 0;
     if (level <= 0 || !upgrade.behaviorFlags || !isUpgradeRelevantForWeapons(upgrade, [input.weapon])) {
@@ -158,15 +176,15 @@ export function resolveRammingShieldStats(input: ResolveWeaponStatsInput): Rammi
 
   return {
     ...stats,
-    shieldMaxHp: stats.shieldMaxHp * shieldMaxHpMultiplier,
+    shieldMaxHp: stats.shieldMaxHp * shieldMaxHpMultiplier + reinforcedProjectorBonus,
     shieldRegenDelaySeconds: stats.shieldRegenDelaySeconds * shieldRegenDelayMultiplier,
     shieldRegenRatePerSecond: stats.shieldRegenRatePerSecond * shieldRegenRateMultiplier,
     dashMaxCharges: stats.dashMaxCharges + Math.floor(dashChargeBonus),
     dashChargeRechargeSeconds: stats.dashChargeRechargeSeconds * dashRechargeMultiplier,
     range: stats.range * impactRadiusMultiplier,
     width: stats.width * impactRadiusMultiplier,
-    guardDamage: (stats.guardDamage + ramDamageFlat) * ramDamageMultiplier,
-    bashDamage: (stats.bashDamage + ramDamageFlat) * ramDamageMultiplier,
+    guardDamage: (stats.guardDamage + ramDamageFlat) * ramDamageMultiplier * weaponMkMultiplier,
+    bashDamage: (stats.bashDamage + ramDamageFlat) * ramDamageMultiplier * weaponMkMultiplier,
     knockback: stats.knockback * knockbackMultiplier,
     dashDistance: stats.dashDistance * dashDistanceMultiplier,
     behaviorFlags: [...new Set([...stats.behaviorFlags, ...behaviorFlags])]
@@ -186,18 +204,23 @@ export function resolveBeamStats(input: ResolveWeaponStatsInput): ResolvedBeamWe
   const coolingMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamCoolingMultiplier');
   const overheatCoolingMultiplier = 1 + getAdditiveWeaponUpgradeModifier(input.upgrades, weapon, 'beamOverheatCoolingMultiplier');
   const heatGainMultiplier = getMultiplicativeWeaponUpgradeModifier(input.upgrades, weapon, 'beamHeatGainMultiplier');
+  const weaponMkMultiplier = getWeaponMkMultiplier(input.shopUpgradeLevels, weapon.id);
+  const heatSinkCoolingMultiplier =
+    weapon.id === 'salvage-beam'
+      ? 1 + getWeaponShopLevel(input.shopUpgradeLevels, weapon.id, 'heat-sink-lattice') * SALVAGE_HEAT_SINK_COOLING_MULTIPLIER
+      : 1;
   const tickRatePerSecond = Math.max(0.1, beam.tickRatePerSecond * input.playerStats.attackSpeed * input.debugTuning.fireRateMultiplier);
 
   return {
     ...beam,
-    tickDamage: beam.tickDamage * damageMultiplier * input.playerStats.damage * input.debugTuning.damageMultiplier,
+    tickDamage: beam.tickDamage * damageMultiplier * weaponMkMultiplier * input.playerStats.damage * input.debugTuning.damageMultiplier,
     tickRatePerSecond,
     tickIntervalMs: 1000 / tickRatePerSecond,
     range: beam.range * rangeMultiplier,
     width: beam.width * input.playerStats.area * widthMultiplier,
     heatGainPerSecond: beam.heatGainPerSecond * heatGainMultiplier,
-    coolingPerSecond: beam.coolingPerSecond * coolingMultiplier,
-    overheatCoolingPerSecond: beam.overheatCoolingPerSecond * overheatCoolingMultiplier,
+    coolingPerSecond: beam.coolingPerSecond * coolingMultiplier * heatSinkCoolingMultiplier,
+    overheatCoolingPerSecond: beam.overheatCoolingPerSecond * overheatCoolingMultiplier * heatSinkCoolingMultiplier,
     damageVariance: weapon.damageVariance
   };
 }
@@ -210,8 +233,32 @@ export function getWeaponFlatDamageBonus(upgrades: PlayerWeaponUpgradeState, wea
   return getAdditiveWeaponUpgradeModifier(upgrades, weapon, 'projectileDamageFlat');
 }
 
-function getProjectileBaseCooldownMs(weapon: WeaponRegistryEntry, upgrades: PlayerWeaponUpgradeState): number {
-  return (weapon.cooldownSeconds ?? 0) * 1000 * getMultiplicativeWeaponUpgradeModifier(upgrades, weapon, 'projectileCooldownMultiplier');
+function getProjectileBaseCooldownMs(
+  weapon: WeaponRegistryEntry,
+  upgrades: PlayerWeaponUpgradeState,
+  shopUpgradeLevels?: WeaponShopUpgradeLevels
+): number {
+  const acceleratedCoilsMultiplier =
+    weapon.id === 'pulse-cannon'
+      ? Math.max(
+          0.2,
+          1 - getWeaponShopLevel(shopUpgradeLevels, weapon.id, 'accelerated-coils') * PULSE_ACCELERATED_COILS_COOLDOWN_MULTIPLIER
+        )
+      : 1;
+  return (
+    (weapon.cooldownSeconds ?? 0) *
+    1000 *
+    getMultiplicativeWeaponUpgradeModifier(upgrades, weapon, 'projectileCooldownMultiplier') *
+    acceleratedCoilsMultiplier
+  );
+}
+
+function getWeaponMkMultiplier(shopUpgradeLevels: WeaponShopUpgradeLevels | undefined, weaponId: string): number {
+  return 1 + getWeaponShopLevel(shopUpgradeLevels, weaponId, 'weapon-mk') * WEAPON_MK_EFFECT_MULTIPLIER;
+}
+
+function getWeaponShopLevel(shopUpgradeLevels: WeaponShopUpgradeLevels | undefined, weaponId: string, upgradeId: string): number {
+  return shopUpgradeLevels?.[weaponId as keyof WeaponShopUpgradeLevels]?.[upgradeId as keyof NonNullable<WeaponShopUpgradeLevels[keyof WeaponShopUpgradeLevels]>] ?? 0;
 }
 
 function getProjectileSpeed(weapon: WeaponRegistryEntry, upgrades: PlayerWeaponUpgradeState, playerStats: PlayerStats): number {

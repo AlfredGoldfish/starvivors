@@ -1,6 +1,14 @@
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
 import type { BeamWeaponStats, RammingShieldStats, WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import type { DebugMenuValues } from './debugTypes';
+import type {
+  DebugCollisionShapeScaleKey,
+  DebugCollisionShapeScales,
+  DebugImpactSourceType,
+  DebugPhysicsTuningKey,
+  DebugShipStatKey,
+  DebugWeaponStatKey
+} from './debugSharedTypes';
 import { formatDisplayUnits, formatIntegerDisplayUnits } from '../statUnits';
 import {
   DEATH_SHARD_STYLES,
@@ -60,56 +68,6 @@ const DEBUG_ASTEROID_FRAGMENT_CAP_MIN = 0;
 const DEBUG_ASTEROID_FRAGMENT_CAP_MAX = 1000;
 const DEBUG_ASTEROID_SPAWN_COUNT_MIN = 1;
 const DEBUG_ASTEROID_SPAWN_COUNT_MAX = 1000;
-
-export type DebugImpactSourceType = 'player' | 'enemy' | 'asteroid' | 'debris';
-export type DebugCollisionShapeScaleKey = 'global' | 'player' | 'enemy' | 'asteroid' | 'debris';
-export type DebugCollisionShapeScales = Record<DebugCollisionShapeScaleKey, number>;
-export type DebugPhysicsTuningKey =
-  | 'globalMaxSpeed'
-  | 'globalImpactDamageCap'
-  | 'playerImpactDamageCap'
-  | 'enemyImpactDamageCap'
-  | 'asteroidImpactDamageCap'
-  | 'debrisImpactDamageCap'
-  | 'playerImpactDamageScale'
-  | 'enemyImpactDamageScale'
-  | 'asteroidImpactDamageScale'
-  | 'debrisImpactDamageScale'
-  | 'playerThrustScale'
-  | 'playerBrakeScale'
-  | 'playerStrafeScale'
-  | 'playerInertiaScale'
-  | 'enemySpeedScale'
-  | 'enemyResponseScale'
-  | 'asteroidCollisionDamageScale'
-  | 'asteroidCollisionImpulseScale';
-
-export type DebugShipStatKey = 'maxHull' | 'moveSpeed' | 'thrust' | 'brake' | 'strafe' | 'hitRadius';
-export type DebugWeaponStatKey =
-  | 'damage'
-  | 'cooldownSeconds'
-  | 'projectileSpeed'
-  | 'projectileLifetimeSeconds'
-  | 'projectileRange'
-  | 'shieldMaxHp'
-  | 'shieldRegenDelaySeconds'
-  | 'shieldRegenRatePerSecond'
-  | 'dashMaxCharges'
-  | 'dashChargeRechargeSeconds'
-  | 'dashDistance'
-  | 'dashDurationSeconds'
-  | 'range'
-  | 'width'
-  | 'guardDamage'
-  | 'bashDamage'
-  | 'knockback'
-  | 'contactCooldownMs'
-  | 'tickDamage'
-  | 'tickRatePerSecond'
-  | 'heatMax'
-  | 'heatGainPerSecond'
-  | 'coolingPerSecond'
-  | 'overheatCoolingPerSecond';
 
 export type DebugShipOverrides = Partial<Record<DebugShipStatKey, number>>;
 export type DebugWeaponOverrides = Partial<Record<DebugWeaponStatKey, number>>;

@@ -1,15 +1,14 @@
 import Phaser from 'phaser';
 import { missionRegistry, type MissionDefinition, type MissionDefinitionId } from '../data/missions';
-import { formatKeyCode, RUN_CONTROL_ACTIONS, RUN_CONTROL_LABELS, type GameSettings } from '../systems/gameSettings';
 import {
   addScreenButton,
-  drawCockpitBackdrop,
-  drawCockpitDivider,
   UI_COLORS,
+  UI_FONT,
   type ScreenHandle
 } from './screenUi';
+import { drawCockpitCard } from './cockpitCard';
 
-export type PreRunHubTab = 'command' | 'hangar' | 'shop' | 'settings';
+export type PreRunHubTab = 'start' | 'command' | 'hangar' | 'shop' | 'settings' | 'debrief';
 
 export interface PreRunNavConfig {
   scene: Phaser.Scene;
@@ -27,13 +26,6 @@ export interface PreRunNavConfig {
   onShowSettings: () => void;
 }
 
-export interface SplashScreenConfig {
-  scene: Phaser.Scene;
-  isActionActive: () => boolean;
-  resetCursor: () => void;
-  onContinue: () => void;
-}
-
 export interface CommandScreenConfig {
   scene: Phaser.Scene;
   totalCredits: number;
@@ -46,131 +38,174 @@ export interface CommandScreenConfig {
   onSelectMission: (missionId: MissionDefinitionId) => void;
 }
 
-export interface SettingsHubScreenConfig {
-  scene: Phaser.Scene;
-  settings: GameSettings;
-  nav: Omit<PreRunNavConfig, 'scene' | 'container' | 'actionZones' | 'activeTab'>;
-  isActionActive: () => boolean;
-  resetCursor: () => void;
-  onToggleMovementMode: () => void;
-  onResetControls: () => void;
-  onResetAll: () => void;
+const FONT = UI_FONT;
+export const PRE_RUN_HEADER_HEIGHT = 72;
+export const PRE_RUN_MODULE_TARGET_WIDTH = 1040;
+export const PRE_RUN_MODULE_TARGET_HEIGHT = 600;
+
+export interface PreRunModuleLayout {
+  width: number;
+  height: number;
+  screenCenterX: number;
+  screenCenterY: number;
+  moduleCenterX: number;
+  moduleCenterY: number;
 }
 
-const FONT = 'Consolas, "Courier New", monospace';
+export function getPreRunModuleLayout(scene: Phaser.Scene): PreRunModuleLayout {
+  const margin = scene.scale.width < 720 || scene.scale.height < 560 ? 16 : 24;
+  const width = Math.min(PRE_RUN_MODULE_TARGET_WIDTH, Math.max(240, scene.scale.width - margin * 2));
+  const height = Math.min(PRE_RUN_MODULE_TARGET_HEIGHT, Math.max(260, scene.scale.height - margin * 2));
 
-export function createSplashScreen(config: SplashScreenConfig): ScreenHandle {
-  const width = config.scene.scale.width;
-  const height = config.scene.scale.height;
+  return {
+    width,
+    height,
+    screenCenterX: scene.scale.width / 2,
+    screenCenterY: scene.scale.height / 2,
+    moduleCenterX: width / 2,
+    moduleCenterY: height / 2
+  };
+}
+
+export function drawPreRunCockpitFrame(graphics: Phaser.GameObjects.Graphics, width: number, height: number): void {
+  drawPreRunPanelWindow(graphics, width, height);
+}
+
+export function drawPreRunPanelWindow(graphics: Phaser.GameObjects.Graphics, width: number, height: number): void {
   const centerX = width / 2;
   const centerY = height / 2;
-  const actionZones: Phaser.GameObjects.Zone[] = [];
-  const background = config.scene.add.graphics();
+  const x = -centerX;
+  const y = -centerY;
 
-  background.fillStyle(0x02040a, 1);
-  background.fillRect(-centerX, -centerY, width, height);
-  background.lineStyle(2, 0x42f5d7, 0.18);
-  for (let radius = 54; radius <= 210; radius += 38) {
-    background.strokeCircle(0, -18, radius);
-  }
-  background.lineStyle(5, 0x42f5d7, 0.45);
-  background.strokeCircle(0, -18, 82);
-  background.fillStyle(0x000000, 0.96);
-  background.fillCircle(0, -18, 58);
+  graphics.fillStyle(UI_COLORS.void, 1);
+  graphics.fillRoundedRect(x, y, width, height, 6);
+  graphics.fillStyle(UI_COLORS.panel, 1);
+  graphics.fillRoundedRect(x + 6, y + 6, width - 12, height - 12, 4);
 
-  const title = config.scene.add
-    .text(0, -8, 'STARVIVORS', {
-      fontFamily: FONT,
-      fontSize: '48px',
-      color: '#f2fbff',
-      align: 'center'
-    })
-    .setOrigin(0.5);
-  const prompt = config.scene.add
-    .text(0, 72, 'CLICK OR PRESS ANY KEY', {
-      fontFamily: FONT,
-      fontSize: '15px',
-      color: '#c8f7ff',
-      align: 'center'
-    })
-    .setOrigin(0.5);
+  graphics.lineStyle(2, UI_COLORS.cyan, 0.72);
+  graphics.strokeRect(x + 3, y + 3, width - 6, height - 6);
+  graphics.lineStyle(1, UI_COLORS.brass, 0.28);
+  graphics.strokeRect(x + 10, y + 10, width - 20, height - 20);
+  graphics.lineStyle(1, UI_COLORS.steel, 0.32);
+  graphics.strokeRect(x + 16, y + 16, width - 32, height - 32);
 
-  const container = config.scene.add.container(centerX, centerY, [background, title, prompt]).setScrollFactor(0).setDepth(1300);
-  const zone = config.scene.add
-    .zone(0, 0, width, height)
-    .setOrigin(0, 0)
-    .setScrollFactor(0)
-    .setDepth(1301)
-    .setInteractive({ useHandCursor: true })
-    .on('pointerup', () => {
-      if (config.isActionActive()) {
-        config.onContinue();
-      }
-    })
-    .on('pointerout', () => config.resetCursor());
-  actionZones.push(zone);
-
-  const keyHandler = () => {
-    if (config.isActionActive()) {
-      config.onContinue();
-    }
-  };
-  config.scene.input.keyboard?.once('keydown', keyHandler);
-
-  return { container, actionZones };
+  const bracket = 28;
+  graphics.lineStyle(2, UI_COLORS.cyan, 0.55);
+  graphics.lineBetween(x + 16, y + 16, x + 16 + bracket, y + 16);
+  graphics.lineBetween(x + 16, y + 16, x + 16, y + 16 + bracket);
+  graphics.lineBetween(x + width - 16 - bracket, y + 16, x + width - 16, y + 16);
+  graphics.lineBetween(x + width - 16, y + 16, x + width - 16, y + 16 + bracket);
+  graphics.lineBetween(x + 16, y + height - 16 - bracket, x + 16, y + height - 16);
+  graphics.lineBetween(x + 16, y + height - 16, x + 16 + bracket, y + height - 16);
+  graphics.lineBetween(x + width - 16 - bracket, y + height - 16, x + width - 16, y + height - 16);
+  graphics.lineBetween(x + width - 16, y + height - 16 - bracket, x + width - 16, y + height - 16);
 }
 
 export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
-  const width = config.scene.scale.width;
-  const height = config.scene.scale.height;
-  const centerX = width / 2;
-  const centerY = height / 2;
+  const { width, height, screenCenterX, screenCenterY, moduleCenterX, moduleCenterY } = getPreRunModuleLayout(config.scene);
   const actionZones: Phaser.GameObjects.Zone[] = [];
   const background = createHubBackground(config.scene, width, height);
   const header = createHeaderText(config.scene, width, height, 'COMMAND', `Credits ${config.totalCredits}   Ship ${config.selectedShipName}`);
-  const container = config.scene.add.container(centerX, centerY, [background, ...header]).setScrollFactor(0).setDepth(1300);
-  const panelX = -width / 2 + 40;
-  const panelY = -height / 2 + 84;
-  const panelWidth = width - 80;
-  const rowHeight = 78;
-  const gap = 10;
+  const container = config.scene.add.container(screenCenterX, screenCenterY, [background, ...header]).setScrollFactor(0).setDepth(1300);
+  const panelX = -moduleCenterX + 34;
+  const panelY = -moduleCenterY + 88;
+  const panelWidth = width - 68;
+  const panelBottom = moduleCenterY - 98;
+  const panelHeight = Math.max(260, panelBottom - panelY);
+  const gap = 12;
+  const summaryWidth = Math.max(286, Math.min(430, panelWidth * 0.38));
+  const listX = panelX + summaryWidth + gap;
+  const listWidth = panelX + panelWidth - listX;
 
-  const selectedModeLabel = config.selectedMission.objectiveType === 'free-range' ? 'RUN MODE' : 'ACTIVE CONTRACT';
+  drawCockpitCard(background, panelX, panelY, summaryWidth, panelHeight, {
+    accentColor: UI_COLORS.brass,
+    glow: true,
+    dividerOffsets: [86, panelHeight - 74]
+  });
+  drawCockpitCard(background, listX, panelY, listWidth, panelHeight, {
+    accentColor: UI_COLORS.cyan,
+    glow: true,
+    dividerOffsets: [42]
+  });
+
+  const selectedIsFreeRange = config.selectedMission.objectiveType === 'free-range';
+  const selectedModeLabel = selectedIsFreeRange ? 'FREE RANGE' : 'CONTRACT READY';
+  const selectedMeta = selectedIsFreeRange
+    ? `Open sector\nEject from HUD to bank cargo\n${config.selectedMission.rewardPreview}`
+    : `${config.selectedMission.difficulty} risk\nObjective: ${config.selectedMission.objectiveLabel}\n${config.selectedMission.rewardPreview}`;
+  const summaryTitle = config.scene.add
+    .text(panelX + 22, panelY + 18, selectedModeLabel, {
+      fontFamily: FONT,
+      fontSize: '13px',
+      color: '#73f2ff',
+      fixedWidth: summaryWidth - 44
+    })
+    .setOrigin(0, 0);
   const current = config.scene.add
-    .text(panelX, panelY, `ACTIVE CONTRACT\n${config.selectedMission.displayName}\n${config.selectedMission.description}`, {
+    .text(panelX + 22, panelY + 46, `${config.selectedMission.displayName}\n${config.selectedMission.description}`, {
       fontFamily: FONT,
       fontSize: '18px',
       color: '#f2fbff',
-      fixedWidth: Math.min(420, panelWidth),
+      fixedWidth: summaryWidth - 44,
       lineSpacing: 6,
-      wordWrap: { width: Math.min(420, panelWidth), useAdvancedWrap: true }
+      wordWrap: { width: summaryWidth - 44, useAdvancedWrap: true }
     })
     .setOrigin(0, 0);
-  current.setText(`${selectedModeLabel}\n${config.selectedMission.displayName}\n${config.selectedMission.description}`);
-  container.add(current);
+  const summaryMeta = config.scene.add
+    .text(
+      panelX + 22,
+      panelY + panelHeight - 64,
+      selectedMeta,
+      {
+        fontFamily: FONT,
+        fontSize: '12px',
+        color: '#c8f7ff',
+        fixedWidth: summaryWidth - 44,
+        lineSpacing: 4,
+        wordWrap: { width: summaryWidth - 44, useAdvancedWrap: true }
+      }
+    )
+    .setOrigin(0, 0);
+  container.add([summaryTitle, current, summaryMeta]);
 
-  const listX = panelX + Math.min(460, panelWidth * 0.42);
-  const listWidth = panelX + panelWidth - listX;
+  container.add(
+    config.scene.add
+      .text(listX + 18, panelY + 16, 'RUN OPTIONS', {
+        fontFamily: FONT,
+        fontSize: '15px',
+        color: '#f2fbff'
+      })
+      .setOrigin(0, 0)
+  );
+
+  const rowGap = 8;
+  const rowTop = panelY + 56;
+  const rowHeight = Math.max(42, Math.min(78, Math.floor((panelHeight - 70 - rowGap * (missionRegistry.length - 1)) / missionRegistry.length)));
   for (let index = 0; index < missionRegistry.length; index += 1) {
     const mission = missionRegistry[index];
-    const y = panelY + index * (rowHeight + gap);
+    const y = rowTop + index * (rowHeight + rowGap);
     const selected = mission.id === config.selectedMissionId;
-    background.fillStyle(selected ? 0x102633 : 0x111a24, 0.94);
+    const compactRow = rowHeight < 62;
+    background.fillStyle(selected ? UI_COLORS.plateHot : UI_COLORS.plate, 0.94);
     background.fillRoundedRect(listX, y, listWidth, rowHeight, 6);
-    background.lineStyle(1, selected ? 0x42f5d7 : 0x52627f, selected ? 0.9 : 0.72);
+    background.lineStyle(1.5, selected ? UI_COLORS.cyan : UI_COLORS.steel, selected ? 0.94 : 0.66);
     background.strokeRoundedRect(listX, y, listWidth, rowHeight, 6);
+    background.fillStyle(selected ? UI_COLORS.brass : UI_COLORS.steel, selected ? 0.68 : 0.24);
+    background.fillRect(listX + 12, y + rowHeight - 5, listWidth - 24, 2);
 
     const text = config.scene.add
       .text(
         listX + 16,
-        y + 11,
-        `${mission.displayName}   ${mission.objectiveType === 'free-range' ? 'Open sector' : `${mission.difficulty} risk`}\n${mission.rewardPreview}\n${mission.description}`,
+        y + (compactRow ? 7 : 9),
+        compactRow
+          ? `${mission.displayName}   ${mission.objectiveType === 'free-range' ? 'Open sector' : `${mission.difficulty} risk`}\n${mission.rewardPreview}`
+          : `${mission.displayName}   ${mission.objectiveType === 'free-range' ? 'Bank on eject' : `${mission.difficulty} risk`}\n${mission.objectiveLabel} - ${mission.rewardPreview}\n${mission.description}`,
         {
           fontFamily: FONT,
-          fontSize: '13px',
+          fontSize: rowHeight >= 70 ? '13px' : rowHeight >= 52 ? '12px' : '11px',
           color: selected ? '#f2fbff' : '#c8f7ff',
           fixedWidth: listWidth - 32,
-          lineSpacing: 2,
+          lineSpacing: compactRow ? 1 : rowHeight >= 70 ? 2 : 1,
           wordWrap: { width: listWidth - 32, useAdvancedWrap: true }
         }
       )
@@ -178,7 +213,7 @@ export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
     container.add(text);
 
     const zone = config.scene.add
-      .zone(centerX + listX, centerY + y, listWidth, rowHeight)
+      .zone(screenCenterX + listX, screenCenterY + y, listWidth, rowHeight)
       .setOrigin(0, 0)
       .setScrollFactor(0)
       .setDepth(1301)
@@ -197,99 +232,9 @@ export function createCommandScreen(config: CommandScreenConfig): ScreenHandle {
   return { container, actionZones };
 }
 
-export function createSettingsHubScreen(config: SettingsHubScreenConfig): ScreenHandle {
-  const width = config.scene.scale.width;
-  const height = config.scene.scale.height;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const actionZones: Phaser.GameObjects.Zone[] = [];
-  const background = createHubBackground(config.scene, width, height);
-  const header = createHeaderText(config.scene, width, height, 'SETTINGS', 'Run controls and preferences');
-  const container = config.scene.add.container(centerX, centerY, [background, ...header]).setScrollFactor(0).setDepth(1300);
-  const panelX = -width / 2 + 48;
-  const panelY = -height / 2 + 94;
-
-  const movement = config.scene.add
-    .text(panelX, panelY, `Movement Mode\n${config.settings.movementMode === 'shipRelative' ? 'Ship-relative' : 'World-relative'}`, {
-      fontFamily: FONT,
-      fontSize: '18px',
-      color: '#f2fbff',
-      lineSpacing: 8
-    })
-    .setOrigin(0, 0);
-  container.add(movement);
-
-  addScreenButton({
-    scene: config.scene,
-    container,
-    actionZones,
-    screenCenterX: centerX,
-    screenCenterY: centerY,
-    x: panelX + 110,
-    y: panelY + 78,
-    width: 220,
-    height: 36,
-    label: 'Toggle Movement',
-    callback: config.onToggleMovementMode,
-    isActionActive: config.isActionActive,
-    resetCursor: config.resetCursor
-  });
-  addScreenButton({
-    scene: config.scene,
-    container,
-    actionZones,
-    screenCenterX: centerX,
-    screenCenterY: centerY,
-    x: panelX + 110,
-    y: panelY + 124,
-    width: 220,
-    height: 36,
-    label: 'Reset Controls',
-    callback: config.onResetControls,
-    isActionActive: config.isActionActive,
-    resetCursor: config.resetCursor
-  });
-  addScreenButton({
-    scene: config.scene,
-    container,
-    actionZones,
-    screenCenterX: centerX,
-    screenCenterY: centerY,
-    x: panelX + 110,
-    y: panelY + 170,
-    width: 220,
-    height: 36,
-    label: 'Reset All',
-    callback: config.onResetAll,
-    isActionActive: config.isActionActive,
-    resetCursor: config.resetCursor
-  });
-
-  const controls = RUN_CONTROL_ACTIONS.map((action) => {
-    const binding = config.settings.keyBindings[action];
-    return `${RUN_CONTROL_LABELS[action]}: ${formatKeyCode(binding.primary)}${binding.secondary ? ` / ${formatKeyCode(binding.secondary)}` : ''}`;
-  }).join('\n');
-  const text = config.scene.add
-    .text(panelX + 360, panelY, controls, {
-      fontFamily: FONT,
-      fontSize: '14px',
-      color: '#c8f7ff',
-      fixedWidth: width - 460,
-      lineSpacing: 6
-    })
-    .setOrigin(0, 0);
-  container.add(text);
-
-  addPreRunNav({ ...config.nav, scene: config.scene, container, actionZones, activeTab: 'settings' });
-  return { container, actionZones };
-}
-
 export function addPreRunNav(config: PreRunNavConfig): void {
-  const width = config.scene.scale.width;
-  const height = config.scene.scale.height;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const y = height / 2 - 52;
+  const { screenCenterX, screenCenterY, moduleCenterY } = getPreRunModuleLayout(config.scene);
+  const y = moduleCenterY - 52;
   const buttonWidth = 126;
   const gap = 10;
   const labels: Array<[string, PreRunHubTab, () => void]> = [
@@ -305,13 +250,13 @@ export function addPreRunNav(config: PreRunNavConfig): void {
     scene: config.scene,
     container: config.container,
     actionZones: config.actionZones,
-    screenCenterX: centerX,
-    screenCenterY: centerY,
+    screenCenterX,
+    screenCenterY,
     x,
     y,
     width: 172,
     height: 38,
-    label: config.canPlay ? 'PLAY' : config.playDisabledReason,
+    label: config.canPlay ? 'LAUNCH' : config.playDisabledReason,
     callback: config.onPlay,
     isEnabled: config.canPlay,
     isActionActive: config.isActionActive,
@@ -324,8 +269,8 @@ export function addPreRunNav(config: PreRunNavConfig): void {
       scene: config.scene,
       container: config.container,
       actionZones: config.actionZones,
-      screenCenterX: centerX,
-      screenCenterY: centerY,
+      screenCenterX,
+      screenCenterY,
       x,
       y,
       width: buttonWidth,
@@ -340,15 +285,8 @@ export function addPreRunNav(config: PreRunNavConfig): void {
 }
 
 function createHubBackground(scene: Phaser.Scene, width: number, height: number): Phaser.GameObjects.Graphics {
-  const centerX = width / 2;
-  const centerY = height / 2;
   const background = scene.add.graphics();
-  drawCockpitBackdrop(background, width, height, 1);
-  background.lineStyle(3, UI_COLORS.cyan, 0.86);
-  background.strokeRect(-centerX + 3, -centerY + 3, width - 6, height - 6);
-  background.lineStyle(1, UI_COLORS.brass, 0.34);
-  background.strokeRect(-centerX + 10, -centerY + 10, width - 20, height - 20);
-  drawCockpitDivider(background, -centerX + 34, -centerY + 72, centerX - 34, UI_COLORS.steel, 0.5);
+  drawPreRunPanelWindow(background, width, height);
   return background;
 }
 
@@ -357,16 +295,15 @@ function createHeaderText(scene: Phaser.Scene, width: number, height: number, ti
   const centerY = height / 2;
   return [
     scene.add
-      .text(0, -centerY + 24, title, {
+      .text(-centerX + 42, -centerY + 24, title, {
         fontFamily: FONT,
         fontSize: '24px',
         color: '#f2fbff',
-        align: 'center',
-        fixedWidth: width
+        align: 'left'
       })
-      .setOrigin(0.5, 0),
+      .setOrigin(0, 0),
     scene.add
-      .text(centerX - 42, -centerY + 30, subtitle, {
+      .text(centerX - 42, -centerY + 24, subtitle, {
         fontFamily: FONT,
         fontSize: '14px',
         color: '#c8f7ff',

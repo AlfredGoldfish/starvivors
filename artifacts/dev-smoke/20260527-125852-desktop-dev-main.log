@@ -1,0 +1,6 @@
+[2026-05-27T12:58:52.7718359-06:00] Requested Starvivors desktop dev launch for window mode: main
+[2026-05-27T12:58:52.8205572-06:00] Reusing existing Vite dev server at http://127.0.0.1:5174
+[2026-05-27T12:58:52.8465441-06:00] Running npm script: electron:build
+[2026-05-27T12:58:54.8892471-06:00] Launching Electron window mode: main
+[2026-05-27T12:58:54.9249820-06:00] Electron PID: 27380
+[2026-05-27T12:58:54.9289949-06:00] Launch complete.

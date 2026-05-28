@@ -10,6 +10,8 @@ At the start of every Starvivors session, also check whether there are existing 
 
 For complete-game scope and polish tracking, read `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` at the start of any session that touches gameplay, UI, content, assets, audio, progression, release, or polish. If the current task maps to that checklist, mention the active checklist item/status in working updates and the final response, and update the checklist before ending the session when status, evidence, acceptance notes, or next steps changed.
 
+For verification, keep test and smoke work proportional to the change. Do not run repeated builds, smoke harnesses, or screenshot passes for every small visual tweak by default. Run tests, builds, or smoke screenshots when the recent change directly affects the verified area, changes TypeScript/API behavior, risks regressions, or the user explicitly asks for verification.
+
 Older MVP documents remain useful reference for visual identity, HUD layout, game feel, audio direction, content boundaries, and architecture patterns. When those documents conflict with the 2.0 GDD, follow the 2.0 GDD for product direction and follow the current source tree for implemented behavior. The completed refactor tracker is archived at `Docs/Old_Documents/REFACTOR_PLAN.md`.
 
 Treat the 2.0 phase order as the default path. Split phases into stable subphases when needed, but do not skip ahead into later gameplay systems unless the prompt explicitly changes scope or the current phase requires a small compatibility bridge.

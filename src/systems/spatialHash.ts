@@ -51,7 +51,19 @@ export function querySpatialHash<T>(
   radius: number
 ): T[] {
   if (radius >= Math.max(grid.arena.width, grid.arena.height)) {
-    return [...new Set(Array.from(grid.cells.values()).flat().map((item) => item.target))];
+    const results: T[] = [];
+    const seen = new Set<T>();
+    for (const cell of grid.cells.values()) {
+      for (const item of cell) {
+        if (seen.has(item.target)) {
+          continue;
+        }
+
+        seen.add(item.target);
+        results.push(item.target);
+      }
+    }
+    return results;
   }
 
   const results: T[] = [];

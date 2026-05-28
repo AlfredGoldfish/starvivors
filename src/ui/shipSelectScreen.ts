@@ -12,8 +12,9 @@ import {
 import { resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import { type WeaponLoadoutState, type WeaponMkLevels } from '../systems/progressionStorage';
-import { addPreRunNav, type PreRunNavConfig } from './preRunHubScreen';
-import { addScreenButton, drawCockpitBackdrop, UI_COLORS, type ScreenHandle } from './screenUi';
+import { addPreRunNav, drawPreRunPanelWindow, getPreRunModuleLayout, type PreRunNavConfig } from './preRunHubScreen';
+import { drawCockpitCard } from './cockpitCard';
+import { addScreenButton, UI_COLORS, UI_FONT, type ScreenHandle } from './screenUi';
 
 export interface ShipSelectScreenConfig {
   scene: Phaser.Scene;
@@ -40,7 +41,7 @@ export interface ShipSelectScreenConfig {
   onInventoryScroll: (delta: number) => void;
 }
 
-const FONT = 'Consolas, "Courier New", monospace';
+const FONT = UI_FONT;
 const SLOT_TYPES: WeaponSlotType[] = ['primary', 'secondary', 'auto'];
 const SLOT_LABELS: Record<WeaponSlotType, string> = {
   primary: 'LEFT CLICK',
@@ -53,23 +54,20 @@ const ACTIVE_ARMORY_DRAG_SCENES = new WeakSet<Phaser.Scene>();
 const LAST_WEAPON_CLICK_AT = new WeakMap<Phaser.Scene, { weaponId: WeaponId; at: number }>();
 
 export function createShipSelectScreen(config: ShipSelectScreenConfig): ScreenHandle {
-  const width = config.scene.scale.width;
-  const height = config.scene.scale.height;
-  const centerX = width / 2;
-  const centerY = height / 2;
-  const frameMargin = 3;
-  const panelX = -width / 2 + frameMargin;
-  const panelY = -height / 2 + frameMargin;
-  const panelWidth = width - frameMargin * 2;
-  const panelHeight = height - frameMargin * 2;
-  const contentTop = panelY + 82;
-  const contentBottom = panelY + panelHeight - 136;
-  const contentHeight = contentBottom - contentTop;
+  const { width, height, screenCenterX, screenCenterY, moduleCenterX, moduleCenterY } = getPreRunModuleLayout(config.scene);
+  const panelX = -moduleCenterX + 34;
+  const panelY = -moduleCenterY + 88;
+  const panelWidth = width - 68;
+  const readinessHeight = 36;
+  const readinessY = moduleCenterY - 100;
+  const contentTop = panelY;
+  const contentBottom = readinessY - 12;
+  const contentHeight = Math.max(260, contentBottom - contentTop);
   const gap = 12;
   const listWidth = Math.max(210, Math.min(250, panelWidth * 0.19));
   const outfittingWidth = Math.max(370, Math.min(440, panelWidth * 0.34));
-  const hullWidth = panelWidth - 48 - listWidth - outfittingWidth - gap * 2;
-  const listX = panelX + 24;
+  const hullWidth = panelWidth - listWidth - outfittingWidth - gap * 2;
+  const listX = panelX;
   const hullX = listX + listWidth + gap;
   const outfittingX = hullX + hullWidth + gap;
   const selectedShip = getShipDefinition(config.hangarPreviewShipId);
@@ -77,25 +75,18 @@ export function createShipSelectScreen(config: ShipSelectScreenConfig): ScreenHa
   const slotTargets: Array<{ slot: WeaponSlotType; index: number; bounds: Phaser.Geom.Rectangle }> = [];
 
   const background = config.scene.add.graphics();
-  drawCockpitBackdrop(background, width, height, 1);
-  background.lineStyle(4, UI_COLORS.cyan, 0.9);
-  background.strokeRect(panelX, panelY, panelWidth, panelHeight);
-  background.lineStyle(1, UI_COLORS.brass, 0.32);
-  background.strokeRect(panelX + 8, panelY + 8, panelWidth - 16, panelHeight - 16);
-  background.lineStyle(1, UI_COLORS.steel, 0.52);
-  background.lineBetween(panelX + 34, panelY + 72, panelX + panelWidth - 34, panelY + 72);
+  drawPreRunPanelWindow(background, width, height);
 
   const title = config.scene.add
-    .text(0, panelY + 24, 'HANGAR', {
+    .text(-moduleCenterX + 42, -moduleCenterY + 24, 'HANGAR', {
       fontFamily: FONT,
       fontSize: '24px',
       color: '#f2fbff',
-      align: 'center',
-      fixedWidth: panelWidth
+      align: 'left'
     })
-    .setOrigin(0.5, 0);
+    .setOrigin(0, 0);
   const credits = config.scene.add
-    .text(panelX + panelWidth - 38, panelY + 30, `Credits ${config.totalCredits}`, {
+    .text(moduleCenterX - 42, -moduleCenterY + 24, `Credits ${config.totalCredits}`, {
       fontFamily: FONT,
       fontSize: '14px',
       color: '#c8f7ff',
@@ -103,16 +94,16 @@ export function createShipSelectScreen(config: ShipSelectScreenConfig): ScreenHa
     })
     .setOrigin(1, 0);
 
-  const container = config.scene.add.container(centerX, centerY, [background, title, credits]).setScrollFactor(0).setDepth(1300);
+  const container = config.scene.add.container(screenCenterX, screenCenterY, [background, title, credits]).setScrollFactor(0).setDepth(1300);
 
-  drawPanel(config.scene, container, background, listX, contentTop, listWidth, contentHeight, 'SHIP ROSTER');
-  drawPanel(config.scene, container, background, hullX, contentTop, hullWidth, contentHeight, 'SHIP BAY');
-  drawPanel(config.scene, container, background, outfittingX, contentTop, outfittingWidth, contentHeight, 'OUTFITTING');
+  drawPanel(config.scene, container, background, listX, contentTop, listWidth, contentHeight, 'SHIP ROSTER', UI_COLORS.brass);
+  drawPanel(config.scene, container, background, hullX, contentTop, hullWidth, contentHeight, 'SHIP BAY', UI_COLORS.cyan);
+  drawPanel(config.scene, container, background, outfittingX, contentTop, outfittingWidth, contentHeight, 'OUTFITTING', UI_COLORS.plasma);
 
   renderShipRoster(config, container, background, actionZones, listX, contentTop, listWidth);
   renderHullPanel(config, container, background, actionZones, selectedShip, hullX, contentTop, hullWidth, contentHeight);
   renderOutfittingPanel(config, container, background, actionZones, slotTargets, outfittingX, contentTop, outfittingWidth, contentHeight);
-  renderReadinessStrip(config, container, background, selectedShip, panelX + 24, panelY + panelHeight - 126, panelWidth - 48, 36);
+  renderReadinessStrip(config, container, background, selectedShip, panelX, readinessY, panelWidth, readinessHeight);
 
   addPreRunNav({ ...config.nav, scene: config.scene, container, actionZones, activeTab: 'hangar' });
   return { container, actionZones };
@@ -126,19 +117,13 @@ function drawPanel(
   y: number,
   width: number,
   height: number,
-  title: string
+  title: string,
+  accentColor: number
 ): void {
-  graphics.fillStyle(0x0a121d, 0.94);
-  graphics.fillRoundedRect(x, y, width, height, 6);
-  graphics.lineStyle(1, 0x52627f, 0.78);
-  graphics.strokeRoundedRect(x, y, width, height, 6);
-  graphics.fillStyle(0x102633, 0.75);
-  graphics.fillRect(x + 1, y + 1, width - 2, 34);
-  graphics.lineStyle(1, 0x42f5d7, 0.34);
-  graphics.lineBetween(x + 12, y + 35, x + width - 12, y + 35);
+  drawCockpitCard(graphics, x, y, width, height, { accentColor, glow: true, dividerOffsets: [38] });
   container.add(
     scene.add
-      .text(x + 14, y + 10, title, {
+      .text(x + 18, y + 14, title, {
         fontFamily: FONT,
         fontSize: '13px',
         color: '#73f2ff'
@@ -157,10 +142,10 @@ function renderShipRoster(
   width: number
 ): void {
   const rowHeight = 82;
-  const rowGap = 10;
-  const rowX = x + 12;
-  const rowWidth = width - 24;
-  const rowTop = y + 50;
+  const rowGap = 8;
+  const rowX = x + 14;
+  const rowWidth = width - 28;
+  const rowTop = y + 54;
 
   for (let index = 0; index < shipRegistry.length; index += 1) {
     const ship = shipRegistry[index];
@@ -168,13 +153,15 @@ function renderShipRoster(
     const unlocked = config.unlockedShipIds.has(ship.id);
     const previewed = ship.id === config.hangarPreviewShipId;
     const selected = ship.id === config.selectedShipId;
-    const borderColor = unlocked ? (previewed ? 0x42f5d7 : 0x52627f) : previewed ? 0xff8f95 : 0xff5964;
+    const borderColor = unlocked ? (previewed ? UI_COLORS.cyan : UI_COLORS.steel) : previewed ? 0xff8f95 : UI_COLORS.warning;
     const status = unlocked ? (selected ? 'EQUIPPED' : 'READY') : getShipLockedLabel(ship).toUpperCase();
 
-    graphics.fillStyle(previewed ? (unlocked ? 0x102633 : 0x241018) : 0x111a24, 0.9);
+    graphics.fillStyle(previewed ? (unlocked ? UI_COLORS.plateHot : 0x241018) : UI_COLORS.plate, unlocked ? 0.94 : 0.7);
     graphics.fillRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
-    graphics.lineStyle(1, borderColor, previewed ? 0.95 : 0.64);
+    graphics.lineStyle(1.5, borderColor, previewed ? 0.95 : 0.64);
     graphics.strokeRoundedRect(rowX, rowY, rowWidth, rowHeight, 5);
+    graphics.fillStyle(selected ? UI_COLORS.brass : borderColor, selected || previewed ? 0.66 : 0.22);
+    graphics.fillRect(rowX + 10, rowY + rowHeight - 5, rowWidth - 20, 2);
 
     const skin = getSelectedSkin(config, ship);
     const preview = config.scene.add
@@ -228,12 +215,13 @@ function renderHullPanel(
 ): void {
   const unlocked = config.unlockedShipIds.has(ship.id);
   const skin = getSelectedSkin(config, ship);
-  const imageY = y + 102;
+  const compact = height < 390;
+  const imageY = y + (compact ? 74 : 102);
   const contentX = x + 20;
   const contentWidth = width - 40;
   const image = config.scene.add
     .image(x + width / 2, imageY, getShipPreviewTextureKey(config.scene, ship))
-    .setDisplaySize(ship.displaySize * 0.92, ship.displaySize * 0.92)
+    .setDisplaySize(ship.displaySize * (compact ? 0.68 : 0.92), ship.displaySize * (compact ? 0.68 : 0.92))
     .setRotation(ship.visualRotation)
     .setAlpha(unlocked ? 1 : 0.5);
   if (skin?.tint !== undefined) {
@@ -241,32 +229,39 @@ function renderHullPanel(
   }
   container.add(image);
 
-  const skinY = y + 178;
+  const skinY = y + (compact ? 128 : 178);
   renderSkinWheel(config, container, graphics, actionZones, ship, contentX, skinY, contentWidth);
 
-  const descriptionY = skinY + 46;
-  const copy = [
-    ship.display.fantasy ?? ship.display.roleTitle,
-    ship.display.passiveTitle ? `Passive: ${ship.display.passiveTitle}` : null,
-    ship.display.passiveDescription ?? ship.display.shortDescription,
-    `Strong: ${(ship.display.strengths ?? ['Flexible']).slice(0, 2).join(', ')}`,
-    `Weak: ${(ship.display.weaknesses ?? ['None listed']).slice(0, 2).join(', ')}`
-  ]
+  const descriptionY = skinY + (compact ? 38 : 46);
+  const copyLines = compact
+    ? [
+        ship.display.fantasy ?? ship.display.roleTitle,
+        ship.display.passiveTitle ? `Passive: ${ship.display.passiveTitle}` : null,
+        ship.display.shortDescription
+      ]
+    : [
+        ship.display.fantasy ?? ship.display.roleTitle,
+        ship.display.passiveTitle ? `Passive: ${ship.display.passiveTitle}` : null,
+        ship.display.passiveDescription ?? ship.display.shortDescription,
+        `Strong: ${(ship.display.strengths ?? ['Flexible']).slice(0, 2).join(', ')}`,
+        `Weak: ${(ship.display.weaknesses ?? ['None listed']).slice(0, 2).join(', ')}`
+      ];
+  const copy = copyLines
     .filter((line): line is string => Boolean(line))
     .join('\n');
   container.add(
     config.scene.add
       .text(contentX, descriptionY, copy, {
         fontFamily: FONT,
-        fontSize: '12px',
+        fontSize: compact ? '11px' : '12px',
         color: '#f2fbff',
         fixedWidth: contentWidth,
-        lineSpacing: 3,
+        lineSpacing: compact ? 2 : 3,
         wordWrap: { width: contentWidth, useAdvancedWrap: true }
       })
       .setOrigin(0, 0)
   );
-  renderShipStatBars(config, container, graphics, ship, contentX, descriptionY + 112, contentWidth);
+  renderShipStatBars(config, container, graphics, ship, contentX, compact ? y + height - 92 : descriptionY + 112, contentWidth);
 
   const buttonLabel = !ship.selectable
     ? 'Unavailable'
@@ -284,7 +279,7 @@ function renderHullPanel(
     screenCenterX: config.scene.scale.width / 2,
     screenCenterY: config.scene.scale.height / 2,
     x: x + width / 2,
-    y: y + height - 44,
+    y: y + height - (compact ? 40 : 44),
     width: Math.min(220, width - 42),
     height: 36,
     label: buttonLabel,
@@ -317,6 +312,36 @@ function renderShipStatBars(
     { label: 'Tractor Field', value: displayStats.tractorField ?? 0, cap: SHIP_STAT_CAP },
     { label: 'Fuel', value: displayStats.fuel ?? 0, cap: SHIP_STAT_CAP }
   ];
+
+  if (width < 300) {
+    const shortLabels: Record<string, string> = {
+      'Hull HP': 'Hull',
+      Velocity: 'Vel',
+      Acceleration: 'Accel',
+      Control: 'Ctrl',
+      'Tractor Field': 'Tract',
+      Fuel: 'Fuel'
+    };
+    const columnGap = 12;
+    const columnWidth = Math.floor((width - columnGap) / 2);
+    for (let index = 0; index < stats.length; index += 1) {
+      const stat = stats[index];
+      const column = index % 2;
+      const row = Math.floor(index / 2);
+      container.add(
+        config.scene.add
+          .text(x + column * (columnWidth + columnGap), y + row * 17, `${shortLabels[stat.label] ?? stat.label}: ${Math.round(stat.value)}`, {
+            fontFamily: FONT,
+            fontSize: '10px',
+            color: '#c9d6e4',
+            fixedWidth: columnWidth
+          })
+          .setOrigin(0, 0)
+      );
+    }
+    return;
+  }
+
   const columnGap = 16;
   const rowGap = 19;
   const columnWidth = Math.floor((width - columnGap) / 2);
@@ -441,10 +466,10 @@ function renderReadinessStrip(
   const suggestions = getMissionSuggestedTraits(config.selectedMission.difficulty);
   const text = `${ship.displayName}  |  ${config.selectedMission.displayName} (${config.selectedMission.difficulty})  |  Suggested: ${suggestions}  |  Loadout: ${status}`;
 
-  graphics.fillStyle(0x071018, 0.96);
-  graphics.fillRoundedRect(x, y, width, height, 6);
-  graphics.lineStyle(1, status === 'READY' ? 0x42f5d7 : 0xff5964, 0.76);
-  graphics.strokeRoundedRect(x, y, width, height, 6);
+  drawCockpitCard(graphics, x, y, width, height, {
+    accentColor: status === 'READY' ? UI_COLORS.cyan : UI_COLORS.warning,
+    glow: status === 'READY'
+  });
   container.add(
     config.scene.add
       .text(x + 14, y + height / 2, text, {
@@ -494,6 +519,7 @@ function renderOutfittingPanel(
   const contentX = x + 18;
   const contentWidth = width - 36;
   const selectedWeapon = getSelectedInventoryWeapon(config);
+  const compact = height < 390;
 
   container.add(
     config.scene.add
@@ -523,7 +549,7 @@ function renderOutfittingPanel(
     });
   }
 
-  const reserveY = activeY + 76;
+  const reserveY = activeY + (compact ? 72 : 76);
   container.add(
     config.scene.add
       .text(contentX, reserveY - 18, 'RESERVE RACK', {
@@ -558,7 +584,7 @@ function renderOutfittingPanel(
     });
   }
 
-  const autoReserveY = reserveY + 42;
+  const autoReserveY = reserveY + (compact ? 38 : 42);
   for (let index = 1; index <= 2; index += 1) {
     renderWeaponSlot(config, container, graphics, actionZones, slotTargets, {
       slot: 'auto',
@@ -573,9 +599,24 @@ function renderOutfittingPanel(
     });
   }
 
-  const detailY = autoReserveY + 48;
-  renderSelectedWeaponDetails(config, container, graphics, selectedWeapon, contentX, detailY, contentWidth);
-  renderCompactArmory(config, container, graphics, actionZones, slotTargets, contentX, detailY + 96, contentWidth, y + height - 52);
+  const detailY = autoReserveY + (compact ? 34 : 48);
+  const detailHeight = compact ? 54 : 82;
+  renderSelectedWeaponDetails(config, container, graphics, selectedWeapon, contentX, detailY, contentWidth, detailHeight, compact);
+  const armoryY = detailY + detailHeight + (compact ? 8 : 14);
+  const armoryBottomY = y + height - (compact ? 14 : 52);
+  if (!compact || armoryBottomY - armoryY >= 42) {
+    renderCompactArmory(
+      config,
+      container,
+      graphics,
+      actionZones,
+      slotTargets,
+      contentX,
+      armoryY,
+      contentWidth,
+      armoryBottomY
+    );
+  }
 }
 
 function renderWeaponSlot(
@@ -702,12 +743,14 @@ function renderSelectedWeaponDetails(
   weapon: WeaponRegistryEntry | null,
   x: number,
   y: number,
-  width: number
+  width: number,
+  height = 82,
+  compact = false
 ): void {
   graphics.fillStyle(0x111a24, 0.94);
-  graphics.fillRoundedRect(x, y, width, 82, 5);
+  graphics.fillRoundedRect(x, y, width, height, 5);
   graphics.lineStyle(1, 0x52627f, 0.64);
-  graphics.strokeRoundedRect(x, y, width, 82, 5);
+  graphics.strokeRoundedRect(x, y, width, height, 5);
 
   const copy = weapon
     ? `${weapon.displayName}   ${formatWeaponMk(config.weaponMkLevels[weapon.id] ?? 1)}\n${getWeaponUseLabel(weapon)}\n${getWeaponStartingStats(weapon)}`
@@ -716,10 +759,10 @@ function renderSelectedWeaponDetails(
     config.scene.add
       .text(x + 12, y + 10, copy, {
         fontFamily: FONT,
-        fontSize: '12px',
+        fontSize: compact ? '11px' : '12px',
         color: '#f2fbff',
         fixedWidth: width - 24,
-        lineSpacing: 4,
+        lineSpacing: compact ? 2 : 4,
         wordWrap: { width: width - 24, useAdvancedWrap: true }
       })
       .setOrigin(0, 0)
@@ -747,7 +790,7 @@ function renderCompactArmory(
       .setOrigin(0, 0)
   );
 
-  const rowHeight = 32;
+  const rowHeight = Math.max(22, Math.min(32, bottomY - (y + 22)));
   const rowGap = 6;
   const listTop = y + 22;
   const maxRows = Math.max(1, Math.floor((bottomY - listTop) / (rowHeight + rowGap)));
@@ -773,7 +816,7 @@ function renderCompactArmory(
           armoryLabel,
           {
           fontFamily: FONT,
-          fontSize: '11px',
+          fontSize: rowHeight < 28 ? '10px' : '11px',
           color: '#f2fbff',
           fixedWidth: width - 20
           }

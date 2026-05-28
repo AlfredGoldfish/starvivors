@@ -19,6 +19,13 @@ import {
   type ProjectileStatusPayload
 } from './projectiles';
 
+export interface ProjectileColorOverrides {
+  glowColor?: number;
+  bodyColor?: number;
+  bodyStrokeColor?: number;
+  trailColor?: number;
+}
+
 export interface FireProjectileWeaponInput {
   scene: Phaser.Scene;
   resolved: ResolvedWeaponStats;
@@ -31,6 +38,7 @@ export interface FireProjectileWeaponInput {
   areaMultiplier?: number;
   isOverloaded?: boolean;
   isEmergencyEmpowered?: boolean;
+  projectileColors?: ProjectileColorOverrides;
 }
 
 export interface FireProjectileWeaponResult {
@@ -54,6 +62,7 @@ export interface UpdatePlayerProjectilesInput {
   ) => void;
   steerProjectile?: (projectile: PlayerProjectile, deltaSeconds: number) => void;
   tryHitTarget: (projectile: PlayerProjectile) => boolean;
+  vfxDensity?: number;
 }
 
 export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProjectileWeaponResult {
@@ -79,14 +88,23 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
 
   for (const projectileRotation of projectileRotations) {
     const projectileDirection = input.getForwardDirection(projectileRotation);
-    const body = createPlayerProjectileBody(input.scene, spawnX, spawnY, projectileRotation, input.resolved, projectileAreaScale);
+    const body = createPlayerProjectileBody(
+      input.scene,
+      spawnX,
+      spawnY,
+      projectileRotation,
+      input.resolved,
+      projectileAreaScale,
+      input.projectileColors
+    );
     const wrapMirrorBody = createPlayerProjectileBody(
       input.scene,
       spawnX,
       spawnY,
       projectileRotation,
       input.resolved,
-      projectileAreaScale
+      projectileAreaScale,
+      input.projectileColors
     );
     wrapMirrorBody.setVisible(false);
 
@@ -106,7 +124,7 @@ export function fireProjectileWeapon(input: FireProjectileWeaponInput): FireProj
       expiresAt: input.time + projectileConfig.projectileLifetimeMs,
       distanceRemaining: projectileConfig.projectileRange,
       nextTrailAt: input.time,
-      trailColor: weapon.projectileVisual.trailColor,
+      trailColor: input.projectileColors?.trailColor ?? weapon.projectileVisual.trailColor,
       effects: projectileConfig.effects,
       splash:
         projectileConfig.effects.explosionRadius > 0 && projectileConfig.effects.explosionDamageMultiplier > 0
@@ -140,7 +158,8 @@ export function updatePlayerProjectiles(input: UpdatePlayerProjectilesInput): Pl
     tryHitTarget: input.tryHitTarget,
     shouldDestroyAfterHit: shouldDestroyProjectileAfterHit,
     afterProjectileUpdate: (projectile) => {
-      if (input.time >= projectile.nextTrailAt) {
+      const vfxDensity = input.vfxDensity ?? 1;
+      if (input.time >= projectile.nextTrailAt && (vfxDensity >= 1 || Math.random() <= vfxDensity)) {
         emitPlayerProjectileTrail(input.scene, projectile);
         projectile.nextTrailAt = input.time + PLAYER_PROJECTILE_TRAIL_INTERVAL_MS;
       }
@@ -260,7 +279,8 @@ function createPlayerProjectileBody(
   y: number,
   rotation: number,
   resolved: ResolvedWeaponStats,
-  areaScale = 1
+  areaScale = 1,
+  colorOverrides: ProjectileColorOverrides = {}
 ): Phaser.GameObjects.Container {
   const weapon = resolved.weapon;
   const visual = weapon.projectileVisual;
@@ -280,6 +300,9 @@ function createPlayerProjectileBody(
       readForgeDisplayHint(forgeAsset.gameplayHints?.displayHeight, visual.height * 1.55) * areaScale
     );
     image.setBlendMode(Phaser.BlendModes.ADD);
+    if (colorOverrides.bodyColor) {
+      image.setTint(colorOverrides.bodyColor);
+    }
 
     const projectile = scene.add.container(x, y, [image]);
     projectile.setSize(image.displayWidth, image.displayHeight);
@@ -289,9 +312,23 @@ function createPlayerProjectileBody(
     return projectile;
   }
 
-  const glow = scene.add.ellipse(0, 0, visual.width * areaScale, visual.height * areaScale, visual.glowColor, visual.glowAlpha);
-  const body = scene.add.ellipse(0, 0, visual.width * 0.44 * areaScale, visual.height * 0.63 * areaScale, visual.bodyColor, 1);
-  body.setStrokeStyle(1, visual.bodyStrokeColor, 0.95);
+  const glow = scene.add.ellipse(
+    0,
+    0,
+    visual.width * areaScale,
+    visual.height * areaScale,
+    colorOverrides.glowColor ?? visual.glowColor,
+    visual.glowAlpha
+  );
+  const body = scene.add.ellipse(
+    0,
+    0,
+    visual.width * 0.44 * areaScale,
+    visual.height * 0.63 * areaScale,
+    colorOverrides.bodyColor ?? visual.bodyColor,
+    1
+  );
+  body.setStrokeStyle(1, colorOverrides.bodyStrokeColor ?? visual.bodyStrokeColor, 0.95);
 
   const projectile = scene.add.container(x, y, [glow, body]);
 

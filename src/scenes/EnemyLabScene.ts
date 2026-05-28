@@ -3026,26 +3026,73 @@ export class EnemyLabScene extends Phaser.Scene {
     const mode = this.forgePreviewMode;
     const scale = mode === 'minimap' ? 0.32 : mode === 'projectile-motion' ? 0.54 : mode === 'weapon-icon' ? 0.68 : mode === 'combat' ? 0.92 : 0.76;
     const svg = renderForgeAssetToSvg(asset, { includeMetadata: false });
-    const radius = Number(asset.gameplayHints?.hitRadius ?? asset.boundsRadius);
-    const radiusMarkup = mode === 'hit-radius'
-      ? `<svg class="enemy-lab-forge-radius" viewBox="${-asset.canvasSize / 2} ${-asset.canvasSize / 2} ${asset.canvasSize} ${asset.canvasSize}"><circle cx="0" cy="0" r="${radius}" /></svg>`
-      : '';
-    const motionMarkup = mode === 'projectile-motion'
-      ? [
-          '<div class="enemy-lab-forge-motion-lane">',
-          `<div class="enemy-lab-forge-motion-ghost is-far">${svg}</div>`,
-          `<div class="enemy-lab-forge-motion-ghost is-mid">${svg}</div>`,
-          `<div class="enemy-lab-forge-motion-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`,
-          '</div>'
-        ].join('')
-      : `<div class="enemy-lab-forge-preview-asset" style="transform: scale(${scale});">${svg}${radiusMarkup}</div>`;
+    const rawRadius = Number(asset.gameplayHints?.hitRadius ?? asset.boundsRadius);
+    const radius = Number.isFinite(rawRadius) ? rawRadius : asset.boundsRadius;
+    const stage = document.createElement('div');
+    stage.className = 'enemy-lab-forge-preview-stage';
+
+    if (mode === 'projectile-motion') {
+      const lane = document.createElement('div');
+      lane.className = 'enemy-lab-forge-motion-lane';
+      lane.append(
+        this.createForgePreviewSvgContainer(svg, 'enemy-lab-forge-motion-ghost is-far'),
+        this.createForgePreviewSvgContainer(svg, 'enemy-lab-forge-motion-ghost is-mid'),
+        this.createForgePreviewSvgContainer(svg, 'enemy-lab-forge-motion-asset', scale)
+      );
+      stage.append(lane);
+    } else {
+      stage.append(
+        this.createForgePreviewSvgContainer(
+          svg,
+          'enemy-lab-forge-preview-asset',
+          scale,
+          mode === 'hit-radius' ? this.createForgeRadiusOverlay(asset.canvasSize, radius) : null
+        )
+      );
+    }
+
+    const caption = document.createElement('div');
+    caption.className = 'enemy-lab-forge-preview-caption';
+    caption.textContent = `${asset.displayName} | ${asset.layers.length} layers | ${asset.status} | ${createForgeVisualAssetId(asset)}`;
+
     this.overlay.forgePreview.className = `enemy-lab-forge-preview is-${mode}`;
-    this.overlay.forgePreview.innerHTML = [
-      '<div class="enemy-lab-forge-preview-stage">',
-      motionMarkup,
-      '</div>',
-      `<div class="enemy-lab-forge-preview-caption">${asset.displayName} | ${asset.layers.length} layers | ${asset.status} | ${createForgeVisualAssetId(asset)}</div>`
-    ].join('');
+    this.overlay.forgePreview.replaceChildren(stage, caption);
+  }
+
+  private createForgePreviewSvgContainer(svg: string, className: string, scale?: number, overlay?: SVGElement | null): HTMLDivElement {
+    const container = document.createElement('div');
+    container.className = className;
+    if (scale !== undefined) {
+      container.style.transform = `scale(${scale})`;
+    }
+    container.append(this.parseForgePreviewSvg(svg));
+    if (overlay) {
+      container.append(overlay);
+    }
+    return container;
+  }
+
+  private parseForgePreviewSvg(svg: string): SVGElement {
+    const parsed = new DOMParser().parseFromString(svg, 'image/svg+xml');
+    const root = parsed.documentElement;
+    if (root.nodeName.toLowerCase() !== 'svg' || parsed.querySelector('parsererror')) {
+      return document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    }
+
+    return document.importNode(root, true) as unknown as SVGElement;
+  }
+
+  private createForgeRadiusOverlay(canvasSize: number, radius: number): SVGElement {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('enemy-lab-forge-radius');
+    svg.setAttribute('viewBox', `${-canvasSize / 2} ${-canvasSize / 2} ${canvasSize} ${canvasSize}`);
+
+    const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+    circle.setAttribute('cx', '0');
+    circle.setAttribute('cy', '0');
+    circle.setAttribute('r', String(radius));
+    svg.append(circle);
+    return svg;
   }
 
   private createForgeAssetMarkdown(asset: ForgeAsset): string {

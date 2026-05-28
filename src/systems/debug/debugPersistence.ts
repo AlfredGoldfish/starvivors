@@ -1,7 +1,8 @@
 import type { ShipId, ShipRegistryEntry } from '../../data/ships';
 import type { WeaponId, WeaponRegistryEntry } from '../../data/weapons';
 import { formatDisplayUnits, formatIntegerDisplayUnits, isRawScaledStatKey, toDisplayUnits, toRawUnits } from '../statUnits';
-import type { DebugShipOverrides, DebugShipStatKey, DebugWeaponOverrides, DebugWeaponStatKey } from './debugState';
+import type { DebugShipOverrides, DebugWeaponOverrides } from './debugState';
+import type { DebugShipStatKey, DebugWeaponStatKey } from './debugSharedTypes';
 import type { SavedDebugShipLoadout, SavedDebugWeaponLoadout } from '../../scenes/gameTypes';
 import type { DebugState } from './debugState';
 import { getDesktopBridge, type DesktopFileCategory } from '../desktopBridge';

@@ -30,6 +30,7 @@ export interface GameSceneHarnessAdapter {
   runHarnessBeamVisual: HarnessRunner;
   runHarnessBeamTipScreenshot: HarnessRunner;
   runHarnessResultsContinueFuel: HarnessRunner;
+  runHarnessDebriefFlow: HarnessRunner;
   runHarnessAsteroidStaleDestroy: HarnessRunner;
   runHarnessEnemyContactBalance: HarnessRunner;
   runHarnessWorldImpactCleanup: HarnessRunner;
@@ -38,6 +39,9 @@ export interface GameSceneHarnessAdapter {
   runHarnessDirectCombatNumbers: HarnessRunner;
   runHarnessHudMissionLog: HarnessRunner;
   runHarnessDebugMenuHangar: HarnessRunner;
+  runHarnessShopTerminal: HarnessRunner;
+  runHarnessStartupNavigation: HarnessRunner;
+  runHarnessVisualModule: (moduleId: string | null) => void;
 }
 
 type HarnessId =
@@ -65,6 +69,7 @@ type HarnessId =
   | 'beamVisual'
   | 'beamTipScreenshot'
   | 'resultsContinueFuel'
+  | 'debriefFlow'
   | 'asteroidStaleDestroy'
   | 'enemyContactBalance'
   | 'worldImpactCleanup'
@@ -72,7 +77,10 @@ type HarnessId =
   | 'enemyScaling'
   | 'directCombatNumbers'
   | 'hudMissionLog'
-  | 'debugMenuHangar';
+  | 'debugMenuHangar'
+  | 'shopTerminal'
+  | 'startupNavigation'
+  | 'visualModule';
 
 const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => void> = {
   smoke: (adapter) => {
@@ -102,6 +110,7 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
   beamVisual: (adapter) => adapter.runHarnessBeamVisual(),
   beamTipScreenshot: (adapter) => adapter.runHarnessBeamTipScreenshot(),
   resultsContinueFuel: (adapter) => adapter.runHarnessResultsContinueFuel(),
+  debriefFlow: (adapter) => adapter.runHarnessDebriefFlow(),
   asteroidStaleDestroy: (adapter) => adapter.runHarnessAsteroidStaleDestroy(),
   enemyContactBalance: (adapter) => adapter.runHarnessEnemyContactBalance(),
   worldImpactCleanup: (adapter) => adapter.runHarnessWorldImpactCleanup(),
@@ -118,7 +127,13 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
     adapter.startRun();
     adapter.runHarnessHudMissionLog();
   },
-  debugMenuHangar: (adapter) => adapter.runHarnessDebugMenuHangar()
+  debugMenuHangar: (adapter) => adapter.runHarnessDebugMenuHangar(),
+  shopTerminal: (adapter) => adapter.runHarnessShopTerminal(),
+  startupNavigation: (adapter) => adapter.runHarnessStartupNavigation(),
+  visualModule: (adapter) => {
+    const query = new URLSearchParams(window.location.search);
+    adapter.runHarnessVisualModule(query.get('module'));
+  }
 };
 
 export function installGameSceneHarness(adapter: GameSceneHarnessAdapter): void {

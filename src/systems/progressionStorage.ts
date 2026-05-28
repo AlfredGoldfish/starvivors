@@ -1,16 +1,29 @@
 import { INITIAL_PERMANENT_UPGRADE_LEVELS, type PermanentUpgradeId } from '../data/permanentUpgrades';
-import { DEFAULT_SHIP_ID, type ShipId } from '../data/ships';
+import { DEFAULT_SHIP_ID, isShipId, shipRegistry, type ShipId } from '../data/ships';
+import {
+  RUN_BOOST_IDS,
+  RUN_PREP_UPGRADE_IDS,
+  SHIP_SHOP_UPGRADE_IDS,
+  WEAPON_SHOP_UPGRADE_IDS,
+  type PendingRunBoosts,
+  type RunPrepUpgradeLevels,
+  type ShipShopUpgradeLevels,
+  type WeaponShopUpgradeLevels
+} from '../data/shopUpgrades';
 import { getWeaponDefinition, isWeaponId, type WeaponId, type WeaponSlotType } from '../data/weapons';
 
-export type RewardHookId =
-  | 'mission.survey-signal'
-  | 'mission.salvage-cache'
-  | 'mission.enemy-probe'
-  | 'mission.mothership-contract'
-  | 'mission.rift-cache-contract'
-  | 'world-event.mothership-prototype'
-  | 'sector-scanner.black-hole-cache'
-  | 'sector-scanner.hunter-swarm';
+export const REWARD_HOOK_IDS = [
+  'mission.survey-signal',
+  'mission.salvage-cache',
+  'mission.enemy-probe',
+  'mission.mothership-contract',
+  'mission.rift-cache-contract',
+  'world-event.mothership-prototype',
+  'sector-scanner.black-hole-cache',
+  'sector-scanner.hunter-swarm'
+] as const;
+
+export type RewardHookId = (typeof REWARD_HOOK_IDS)[number];
 
 export type SectorScannerLevel = 0 | 1 | 2 | 3;
 export type RadarLevel = 0 | 1 | 2 | 3 | 4;
@@ -34,6 +47,10 @@ export interface ProgressionState {
   unlockedWeaponIds: WeaponId[];
   weaponLoadout: WeaponLoadoutState;
   weaponMkLevels: WeaponMkLevels;
+  shipUpgradeLevels: ShipShopUpgradeLevels;
+  weaponUpgradeLevels: WeaponShopUpgradeLevels;
+  runPrepUpgradeLevels: RunPrepUpgradeLevels;
+  pendingRunBoosts: PendingRunBoosts;
   secretControlUnlocked: boolean;
 }
 
@@ -71,6 +88,10 @@ export function createDefaultProgressionState(): ProgressionState {
       'ramming-shield': 1,
       'salvage-beam': 1
     },
+    shipUpgradeLevels: createDefaultShipUpgradeLevels(),
+    weaponUpgradeLevels: createDefaultWeaponUpgradeLevels(),
+    runPrepUpgradeLevels: createDefaultRunPrepUpgradeLevels(),
+    pendingRunBoosts: createDefaultPendingRunBoosts(),
     secretControlUnlocked: false
   };
 }
@@ -114,26 +135,37 @@ export function resetProgressionState(): ProgressionState {
   return state;
 }
 
+export function isRewardHookId(value: unknown): value is RewardHookId {
+  return typeof value === 'string' && (REWARD_HOOK_IDS as readonly string[]).includes(value);
+}
+
 export function normalizeProgressionState(value: unknown): ProgressionState {
   const base = createDefaultProgressionState();
   const record = isRecord(value) ? value : {};
   const permanentUpgradeLevels = normalizeUpgradeLevels(record.permanentUpgradeLevels);
   const activePermanentUpgradeLevels = normalizeUpgradeLevels(record.activePermanentUpgradeLevels);
+  const weaponUpgradeLevels = normalizeWeaponShopUpgradeLevels(record.weaponUpgradeLevels, record.weaponMkLevels);
+  const unlockedShipIds = normalizeUnlockedShipIds(record.unlockedShipIds, base.unlockedShipIds);
+  const selectedShipId = normalizeSelectedShipId(record.selectedShipId, unlockedShipIds, base.selectedShipId);
 
   return {
     schemaVersion: 1,
-    totalCredits: Math.max(0, Math.floor(Number(record.totalCredits ?? base.totalCredits))),
-    selectedShipId: typeof record.selectedShipId === 'string' ? (record.selectedShipId as ShipId) : base.selectedShipId,
+    totalCredits: normalizeNonNegativeInteger(record.totalCredits, base.totalCredits),
+    selectedShipId,
     selectedSkinIds: normalizeSelectedSkinIds(record.selectedSkinIds),
-    unlockedShipIds: normalizeUniqueArray(record.unlockedShipIds, base.unlockedShipIds) as ShipId[],
+    unlockedShipIds,
     permanentUpgradeLevels,
     activePermanentUpgradeLevels: clampActiveUpgradeLevels(activePermanentUpgradeLevels, permanentUpgradeLevels),
-    unlockedRewardHooks: normalizeUniqueArray(record.unlockedRewardHooks, []) as RewardHookId[],
+    unlockedRewardHooks: normalizeRewardHookIds(record.unlockedRewardHooks),
     radarLevel: normalizeRadarLevel(record.radarLevel),
     sectorScannerLevel: normalizeScannerLevel(record.sectorScannerLevel),
     unlockedWeaponIds: normalizeUnlockedWeaponIds(record.unlockedWeaponIds, base.unlockedWeaponIds),
     weaponLoadout: normalizeWeaponLoadout(record.weaponLoadout),
-    weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels),
+    weaponMkLevels: normalizeWeaponMkLevels(record.weaponMkLevels, weaponUpgradeLevels),
+    shipUpgradeLevels: normalizeShipShopUpgradeLevels(record.shipUpgradeLevels),
+    weaponUpgradeLevels,
+    runPrepUpgradeLevels: normalizeRunPrepUpgradeLevels(record.runPrepUpgradeLevels),
+    pendingRunBoosts: normalizePendingRunBoosts(record.pendingRunBoosts),
     secretControlUnlocked: record.secretControlUnlocked === true
   };
 }
@@ -176,10 +208,109 @@ function normalizeUpgradeLevels(value: unknown): Record<PermanentUpgradeId, numb
   const levels = { ...INITIAL_PERMANENT_UPGRADE_LEVELS };
 
   for (const id of Object.keys(levels) as PermanentUpgradeId[]) {
-    levels[id] = Math.max(0, Math.floor(Number(source[id] ?? levels[id])));
+    levels[id] = normalizeNonNegativeInteger(source[id], levels[id]);
   }
 
   return levels;
+}
+
+function createDefaultShipUpgradeLevels(): ShipShopUpgradeLevels {
+  const levels: ShipShopUpgradeLevels = {};
+
+  for (const ship of shipRegistry) {
+    levels[ship.id] = {};
+    for (const upgradeId of SHIP_SHOP_UPGRADE_IDS) {
+      levels[ship.id]![upgradeId] = 0;
+    }
+  }
+
+  return levels;
+}
+
+function createDefaultWeaponUpgradeLevels(): WeaponShopUpgradeLevels {
+  const levels: WeaponShopUpgradeLevels = {};
+
+  for (const weaponId of ['pulse-cannon', 'ramming-shield', 'salvage-beam'] as WeaponId[]) {
+    levels[weaponId] = {};
+    for (const upgradeId of WEAPON_SHOP_UPGRADE_IDS) {
+      levels[weaponId]![upgradeId] = 0;
+    }
+  }
+
+  return levels;
+}
+
+function createDefaultRunPrepUpgradeLevels(): RunPrepUpgradeLevels {
+  const levels: RunPrepUpgradeLevels = {};
+
+  for (const upgradeId of RUN_PREP_UPGRADE_IDS) {
+    levels[upgradeId] = 0;
+  }
+
+  return levels;
+}
+
+function createDefaultPendingRunBoosts(): PendingRunBoosts {
+  const boosts: PendingRunBoosts = {};
+
+  for (const boostId of RUN_BOOST_IDS) {
+    boosts[boostId] = 0;
+  }
+
+  return boosts;
+}
+
+function normalizeShipShopUpgradeLevels(value: unknown): ShipShopUpgradeLevels {
+  const source = isRecord(value) ? value : {};
+  const levels = createDefaultShipUpgradeLevels();
+
+  for (const ship of shipRegistry) {
+    const rawShipSource = source[ship.id];
+    const shipSource = isRecord(rawShipSource) ? rawShipSource : {};
+    for (const upgradeId of SHIP_SHOP_UPGRADE_IDS) {
+      levels[ship.id]![upgradeId] = clampShopLevel(shipSource[upgradeId], 3);
+    }
+  }
+
+  return levels;
+}
+
+function normalizeWeaponShopUpgradeLevels(value: unknown, legacyMkLevels: unknown): WeaponShopUpgradeLevels {
+  const source = isRecord(value) ? value : {};
+  const legacyMk = isRecord(legacyMkLevels) ? legacyMkLevels : {};
+  const levels = createDefaultWeaponUpgradeLevels();
+
+  for (const weaponId of Object.keys(levels) as WeaponId[]) {
+    const weaponSource = isRecord(source[weaponId]) ? source[weaponId] : {};
+    for (const upgradeId of WEAPON_SHOP_UPGRADE_IDS) {
+      const legacyLevel = upgradeId === 'weapon-mk' ? Math.max(0, normalizeNonNegativeInteger(legacyMk[weaponId], 1) - 1) : 0;
+      levels[weaponId]![upgradeId] = clampShopLevel(weaponSource[upgradeId] ?? legacyLevel, 3);
+    }
+  }
+
+  return levels;
+}
+
+function normalizeRunPrepUpgradeLevels(value: unknown): RunPrepUpgradeLevels {
+  const source = isRecord(value) ? value : {};
+  const levels = createDefaultRunPrepUpgradeLevels();
+
+  for (const upgradeId of RUN_PREP_UPGRADE_IDS) {
+    levels[upgradeId] = clampShopLevel(source[upgradeId], 3);
+  }
+
+  return levels;
+}
+
+function normalizePendingRunBoosts(value: unknown): PendingRunBoosts {
+  const source = isRecord(value) ? value : {};
+  const boosts = createDefaultPendingRunBoosts();
+
+  for (const boostId of RUN_BOOST_IDS) {
+    boosts[boostId] = clampShopLevel(source[boostId], 1);
+  }
+
+  return boosts;
 }
 
 function clampActiveUpgradeLevels(
@@ -200,17 +331,39 @@ function normalizeUniqueArray(value: unknown, fallback: string[]): string[] {
   return [...new Set(source.filter((item): item is string => typeof item === 'string'))];
 }
 
+function normalizeUnlockedShipIds(value: unknown, fallback: ShipId[]): ShipId[] {
+  const source = Array.isArray(value) ? [...fallback, ...value] : fallback;
+  const shipIds = normalizeUniqueArray(source, fallback).filter(isShipId);
+  return shipIds.includes(DEFAULT_SHIP_ID) ? shipIds : [DEFAULT_SHIP_ID, ...shipIds];
+}
+
+function normalizeSelectedShipId(value: unknown, unlockedShipIds: ShipId[], fallback: ShipId): ShipId {
+  if (isShipId(value) && unlockedShipIds.includes(value)) {
+    return value;
+  }
+
+  return unlockedShipIds.includes(fallback) ? fallback : DEFAULT_SHIP_ID;
+}
+
+function normalizeRewardHookIds(value: unknown): RewardHookId[] {
+  return normalizeUniqueArray(value, []).filter(isRewardHookId);
+}
+
 function normalizeSelectedSkinIds(value: unknown): Partial<Record<ShipId, string>> {
   const source = isRecord(value) ? value : {};
   const skins: Partial<Record<ShipId, string>> = {};
 
   for (const [shipId, skinId] of Object.entries(source)) {
-    if (typeof skinId === 'string') {
-      skins[shipId as ShipId] = skinId;
+    if (isShipId(shipId) && isShipSkinId(shipId, skinId)) {
+      skins[shipId] = skinId;
     }
   }
 
   return skins;
+}
+
+function isShipSkinId(shipId: ShipId, value: unknown): value is string {
+  return typeof value === 'string' && Boolean(shipRegistry.find((ship) => ship.id === shipId)?.skins?.some((skin) => skin.id === value));
 }
 
 function normalizeWeaponLoadout(value: unknown): WeaponLoadoutState {
@@ -259,7 +412,7 @@ function normalizeWeaponLoadoutSlots(
   return slots;
 }
 
-function normalizeWeaponMkLevels(value: unknown): WeaponMkLevels {
+function normalizeWeaponMkLevels(value: unknown, weaponUpgradeLevels: WeaponShopUpgradeLevels): WeaponMkLevels {
   const source = isRecord(value) ? value : {};
   const levels: WeaponMkLevels = {
     'pulse-cannon': 1,
@@ -269,11 +422,21 @@ function normalizeWeaponMkLevels(value: unknown): WeaponMkLevels {
 
   for (const [weaponId, level] of Object.entries(source)) {
     if (isWeaponId(weaponId)) {
-      levels[weaponId] = Math.max(1, Math.floor(Number(level ?? 1)));
+      levels[weaponId] = Math.max(1, normalizeNonNegativeInteger(level, 1));
+    }
+  }
+
+  for (const [weaponId, upgrades] of Object.entries(weaponUpgradeLevels)) {
+    if (isWeaponId(weaponId)) {
+      levels[weaponId] = Math.max(levels[weaponId] ?? 1, 1 + (upgrades?.['weapon-mk'] ?? 0));
     }
   }
 
   return levels;
+}
+
+function clampShopLevel(value: unknown, maxLevel: number): number {
+  return Math.min(maxLevel, normalizeNonNegativeInteger(value, 0));
 }
 
 function normalizeUnlockedWeaponIds(value: unknown, fallback: WeaponId[]): WeaponId[] {
@@ -282,13 +445,18 @@ function normalizeUnlockedWeaponIds(value: unknown, fallback: WeaponId[]): Weapo
 }
 
 function normalizeScannerLevel(value: unknown): SectorScannerLevel {
-  const level = Math.max(0, Math.min(3, Math.floor(Number(value ?? 0))));
+  const level = Math.min(3, normalizeNonNegativeInteger(value, 0));
   return level as SectorScannerLevel;
 }
 
 function normalizeRadarLevel(value: unknown): RadarLevel {
-  const level = Math.max(0, Math.min(4, Math.floor(Number(value ?? 0))));
+  const level = Math.min(4, normalizeNonNegativeInteger(value, 0));
   return level as RadarLevel;
+}
+
+function normalizeNonNegativeInteger(value: unknown, fallback: number): number {
+  const numberValue = Number(value ?? fallback);
+  return Number.isFinite(numberValue) ? Math.max(0, Math.floor(numberValue)) : Math.max(0, Math.floor(fallback));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

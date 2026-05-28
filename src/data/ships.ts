@@ -330,6 +330,10 @@ export function getShipDefinition(shipId: ShipId): ShipRegistryEntry {
   return shipRegistry.find((ship) => ship.id === shipId) ?? shipRegistry[0];
 }
 
+export function isShipId(value: unknown): value is ShipId {
+  return typeof value === 'string' && shipRegistry.some((ship) => ship.id === value);
+}
+
 export function getShipDisplayStats(ship: ShipRegistryEntry): ShipDisplayStatRatings {
   return {
     hull: Math.round(ship.baseStats.maxHull),

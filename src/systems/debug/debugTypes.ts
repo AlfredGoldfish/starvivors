@@ -8,7 +8,7 @@ import type {
   DebugPhysicsTuningKey,
   DebugShipStatKey,
   DebugWeaponStatKey
-} from './debugState';
+} from './debugSharedTypes';
 import type { DeathShardStyle, DeathShardTuningKey } from '../deathEffects';
 import type { HudButtonVariant } from '../hudButtonVariants';
 

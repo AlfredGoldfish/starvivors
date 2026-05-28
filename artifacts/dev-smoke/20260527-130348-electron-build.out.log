@@ -1,0 +1,4 @@
+
+> starvivors@0.1.0 electron:build
+> tsc -p electron/tsconfig.json
+

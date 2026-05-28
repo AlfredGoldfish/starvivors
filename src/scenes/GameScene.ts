@@ -45,6 +45,21 @@ import {
 import { getRareEventDefinition, isRareEventDefinitionId, type RareEventDefinitionId } from '../data/rareEvents';
 import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
 import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
+import {
+  BOOST_EMERGENCY_PATCH_HULL_BONUS,
+  BOOST_FUEL_CANISTER_BONUS,
+  RUN_PREP_EXPANDED_FUEL_BONUS,
+  RUN_PREP_REROLL_COST_REDUCTION,
+  RUN_PREP_SCRAP_BROKERAGE_MULTIPLIER,
+  SHIP_HULL_RETROFIT_MAX_HULL_BONUS,
+  SHIP_RESERVE_TANKS_FUEL_BONUS,
+  SHIP_THRUSTER_TUNING_MULTIPLIER,
+  type RunBoostId,
+  type RunPrepUpgradeId,
+  type ShipShopUpgradeId,
+  type ShopSectionId,
+  type WeaponShopUpgradeId
+} from '../data/shopUpgrades';
 import { createForgeRegistryTextures, resolveForgeTextureKey } from '../data/forgeAssetRegistry';
 import {
   INITIAL_PERMANENT_UPGRADE_LEVELS,
@@ -90,7 +105,8 @@ import {
   clearPlayerProjectiles as clearPlayerProjectilesSystem,
   destroyPlayerProjectile as destroyPlayerProjectileSystem,
   fireProjectileWeapon as fireProjectileWeaponSystem,
-  updatePlayerProjectiles as updatePlayerProjectilesSystem
+  updatePlayerProjectiles as updatePlayerProjectilesSystem,
+  type ProjectileColorOverrides
 } from '../systems/projectileWeapons';
 import {
   tryHitCircleTargets,
@@ -159,12 +175,8 @@ import {
   type BlackHoleVacuumTuning,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
-import {
-  DebugState,
-  type DebugImpactSourceType,
-  type DebugShipStatKey,
-  type DebugWeaponStatKey
-} from '../systems/debug/debugState';
+import { DebugState } from '../systems/debug/debugState';
+import type { DebugImpactSourceType, DebugShipStatKey, DebugWeaponStatKey } from '../systems/debug/debugSharedTypes';
 import {
   createDebugShipLoadoutMarkdown,
   createDebugWeaponLoadoutMarkdown,
@@ -188,6 +200,20 @@ import {
 } from '../systems/debug/blackHoleDebugTuning';
 import type { DebugAsteroidTier, DebugEnemyType, DebugPlayerTeleportTarget } from '../systems/debug/debugTypes';
 import { DebugMenuHost } from '../systems/debug/debugMenuHost';
+import {
+  purchaseRadarUpgrade as purchaseRadarUpgradeSystem,
+  purchaseRunBoost as purchaseRunBoostSystem,
+  purchaseRunPrepUpgrade as purchaseRunPrepUpgradeSystem,
+  purchaseSectorScannerUpgrade as purchaseSectorScannerUpgradeSystem,
+  purchaseShipShopUpgrade as purchaseShipShopUpgradeSystem,
+  purchaseWeaponShopUpgrade as purchaseWeaponShopUpgradeSystem
+} from '../systems/progressionPurchases';
+import {
+  addCombatEntry,
+  buildResultsCombatStats,
+  createInitialRunCombatStats,
+  type RunCombatStats
+} from '../systems/resultsCombatStats';
 import { DEFAULT_BLACK_HOLE_FIELD_TUNING } from '../systems/worldForces';
 import {
   clearBasicAsteroids as clearBasicAsteroidsSystem,
@@ -250,11 +276,15 @@ import {
   resolveBodyImpactCollision as resolveBodyImpactCollisionSystem,
   resolveWorldImpactCollisions as resolveWorldImpactCollisionsSystem
 } from '../systems/worldImpacts';
-import { createCommandScreen, createSettingsHubScreen, createSplashScreen } from '../ui/preRunHubScreen';
-import { createResultsScreen, type ResultsScreenSection } from '../ui/resultsScreen';
+import {
+  createCommandScreen,
+  type PreRunNavConfig
+} from '../ui/preRunHubScreen';
+import { createResultsScreen, createStartResultsScreen, type ResultsScreenSection } from '../ui/resultsScreen';
 import { createShipSelectScreen } from '../ui/shipSelectScreen';
-import { createShopScreen } from '../ui/shopScreen';
+import { createShopScreen, type ShopTerminalUpgradeId } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
+import { createSettingsHubScreen, type SettingsScreenTab } from '../ui/settingsScreen';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import { createSecretControlOverlay, type SecretControlOverlayController, type SecretControlOverlayValues } from '../ui/secretControlOverlay';
 import {
@@ -279,6 +309,7 @@ import type {
   PlayerPickupKind,
   PlayerProjectile,
   RammingShieldCollision,
+  ResultsPanelTab,
   ScrapPickup,
   ScrapSourceType,
   SecondaryWeaponChoice,
@@ -290,6 +321,13 @@ import type {
   UpgradeOverlayChoice
 } from './gameTypes';
 import { installGameSceneHarness } from './gameSceneHarness';
+import {
+  runDebugMenuHangarHarness,
+  runStartupNavigationHarness,
+  type GameScenePreRunHarnessAdapter
+} from './gameScenePreRunHarness';
+import { createStagedDebriefHarnessState } from './gameSceneResultsStaging';
+import { runVisualModuleHarness } from './gameSceneVisualHarness';
 import {
   createBeamSlotRuntime,
   createBeamSlots,
@@ -384,9 +422,7 @@ import {
 } from '../systems/rareEventRuntime';
 import { createRareEventBody as createRareEventBodySystem } from '../systems/rareEventVisuals';
 import {
-  getNextRadarLevel,
   getRadarUpgradeCost,
-  getNextSectorScannerLevel,
   getSectorScannerCost,
   isSectorScannerAvailable,
   loadProgressionState,
@@ -422,9 +458,10 @@ import {
   resetControlSettings,
   resetGameSettings,
   saveGameSettings,
+  setKeyBindingIfAvailable,
+  isPrimaryFireInputActive,
   type BindingSlot,
   type GameSettings,
-  type MovementMode,
   type RunControlAction
 } from '../systems/gameSettings';
 
@@ -677,6 +714,8 @@ interface WorldEventInstance {
 
 type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
 
+const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 2200;
+
 interface WorldSquadInstance {
   id: string;
   squadId: EncounterDefinitionId;
@@ -694,6 +733,8 @@ interface WorldSquadInstance {
   stateUntil: number;
   activeEnemyIds: string[];
 }
+
+type HubNavConfig = Omit<PreRunNavConfig, 'scene' | 'container' | 'actionZones' | 'activeTab'>;
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -734,6 +775,9 @@ export class GameScene extends Phaser.Scene {
   private resultsButtonContainer?: Phaser.GameObjects.Container;
   private resultsButtonGraphics?: Phaser.GameObjects.Graphics;
   private resultsButtonText?: Phaser.GameObjects.Text;
+  private isDebriefAvailable = false;
+  private deathSequenceEndsAt = 0;
+  private hasAutoOpenedDebrief = false;
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
   private readonly performanceProfiler = new PerformanceProfilerSystem();
   private readonly autoRunDiagnostics = new AutoRunDiagnosticsSystem({
@@ -745,10 +789,18 @@ export class GameScene extends Phaser.Scene {
   private shipSelectScreen?: ScreenHandle;
   private shopScreen?: ScreenHandle;
   private shopBackTarget: ShopBackTarget = 'mainMenu';
+  private shopSelectedSection: ShopSectionId = 'systems';
+  private shopSelectedUpgradeId: ShopTerminalUpgradeId | null = null;
+  private shopListScrollIndex = 0;
   private resultsScreen?: ScreenHandle;
+  private resultsPanelTab: ResultsPanelTab = 'start';
+  private isBootStartContext = false;
   private pauseMenuScreen?: ScreenHandle;
   private ejectConfirmScreen?: ScreenHandle;
   private pauseMenuTab: PauseMenuTab = 'pause';
+  private settingsMenuTab: SettingsScreenTab = 'graphics';
+  private settingsBindingError: string | undefined;
+  private brightnessOverlay?: Phaser.GameObjects.Rectangle;
   private starfield!: StarfieldSystem;
   private gameSettings: GameSettings = loadGameSettings();
   private controlKeys = new Map<string, Phaser.Input.Keyboard.Key>();
@@ -769,7 +821,7 @@ export class GameScene extends Phaser.Scene {
   private deathShards: DeathShard[] = [];
   private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
-  private gameFlowState: GameFlowState = 'splash';
+  private gameFlowState: GameFlowState = 'results';
   private selectedShipId: ShipId = DEFAULT_SHIP_ID;
   private hangarPreviewShipId: ShipId = DEFAULT_SHIP_ID;
   private unlockedShipIds = new Set<ShipId>([DEFAULT_SHIP_ID]);
@@ -791,6 +843,7 @@ export class GameScene extends Phaser.Scene {
   private lastRunUnlockedRewards: RewardHookId[] = [];
   private hasPaidRunCredits = false;
   private lastRunSurvivalMs = 0;
+  private runCombatStats: RunCombatStats = createInitialRunCombatStats();
   private playerInvulnerableUntil = 0;
   private debugPlayerCollisionDamageImmune = false;
   private rammingShieldDashBurstRemaining = 0;
@@ -912,7 +965,9 @@ export class GameScene extends Phaser.Scene {
         requestEject: () => this.openEjectConfirmation()
       },
       {
-        hudButtonVariant: this.hudButtonVariant
+        hudButtonVariant: this.hudButtonVariant,
+        textScale: this.gameSettings.accessibility.textScale,
+        highContrast: this.gameSettings.accessibility.highContrast
       }
     );
     this.upgradeOverlayUi = new UpgradeOverlayUiController<UpgradeOverlayChoice>({
@@ -932,7 +987,8 @@ export class GameScene extends Phaser.Scene {
     this.createInput();
     this.createBackgroundTextures();
     this.applyProgressionState(loadProgressionState());
-    this.showSplashScreen();
+    this.showStartScreen();
+    this.applyRuntimeSettings();
     this.installTestHarness();
     this.autoRunDiagnostics.installGlobalHandlers();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
@@ -974,6 +1030,8 @@ export class GameScene extends Phaser.Scene {
       this.endPerformanceFrame();
       return;
     }
+
+    this.profileStep('debrief-gate', () => this.updateDeathDebriefGate(time));
 
     if (this.gameFlowState === 'results') {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
@@ -1035,7 +1093,6 @@ export class GameScene extends Phaser.Scene {
 
   private isPreRunFlowState(): boolean {
     return (
-      this.gameFlowState === 'splash' ||
       this.gameFlowState === 'command' ||
       this.gameFlowState === 'shipSelect' ||
       this.gameFlowState === 'shop' ||
@@ -1403,14 +1460,14 @@ export class GameScene extends Phaser.Scene {
     this.totalCredits = Math.max(0, this.totalCredits + amount);
     this.saveProgression();
 
-    if (this.gameFlowState === 'command' || this.gameFlowState === 'splash' || this.gameFlowState === 'settings') {
-      this.showMainMenu();
-    } else if (this.gameFlowState === 'shipSelect') {
-      this.showShipSelect();
-    } else if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
-    } else if (this.gameFlowState === 'results' && this.resultsScreen) {
-      this.showResultsScreen();
+    if (
+      this.gameFlowState === 'command' ||
+      this.gameFlowState === 'settings' ||
+      this.gameFlowState === 'shipSelect' ||
+      this.gameFlowState === 'shop' ||
+      this.gameFlowState === 'results'
+    ) {
+      this.refreshCurrentPanel();
     } else {
       this.updateGameplayHud(this.time.now);
     }
@@ -1599,7 +1656,7 @@ export class GameScene extends Phaser.Scene {
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
       secretControlUnlocked: this.progressionState.secretControlUnlocked,
       fuel: this.fuel,
-      fuelMax: RUN_FUEL_MAX,
+      fuelMax: this.getRunMaxFuel(),
       fuelDrainEnabled: this.debugFuelDrainEnabled,
       fuelDrainMode: this.debugFuelDrainMode,
       playerSpeed: this.playerVelocity.length(),
@@ -1660,6 +1717,7 @@ export class GameScene extends Phaser.Scene {
       runHarnessBeamVisual: () => this.runTestHarnessBeamVisual(),
       runHarnessBeamTipScreenshot: () => this.runTestHarnessBeamTipScreenshot(),
       runHarnessResultsContinueFuel: () => this.runTestHarnessResultsContinueFuel(),
+      runHarnessDebriefFlow: () => this.runTestHarnessDebriefFlow(),
       runHarnessAsteroidStaleDestroy: () => this.runTestHarnessAsteroidStaleDestroy(),
       runHarnessEnemyContactBalance: () => this.runTestHarnessEnemyContactBalance(),
       runHarnessWorldImpactCleanup: () => this.runTestHarnessWorldImpactCleanup(),
@@ -1667,7 +1725,10 @@ export class GameScene extends Phaser.Scene {
       runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
       runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
       runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog(),
-      runHarnessDebugMenuHangar: () => this.runTestHarnessDebugMenuHangar()
+      runHarnessDebugMenuHangar: () => this.runTestHarnessDebugMenuHangar(),
+      runHarnessShopTerminal: () => this.runTestHarnessShopTerminal(),
+      runHarnessStartupNavigation: () => this.runTestHarnessStartupNavigation(),
+      runHarnessVisualModule: (moduleId) => this.runTestHarnessVisualModule(moduleId)
     });
   }
 
@@ -1804,6 +1865,30 @@ export class GameScene extends Phaser.Scene {
         });
         return this.getTestHarnessState();
       },
+      finishDeathSequence: () => {
+        if (this.isPlayerDead && this.runEndReason === 'death') {
+          this.deathSequenceEndsAt = this.time.now;
+          this.updateDeathDebriefGate(this.time.now);
+          if (!this.isDebriefAvailable) {
+            this.isDebriefAvailable = true;
+            this.updateResultsButton();
+          }
+        }
+
+        return this.getTestHarnessState();
+      },
+      openDebrief: () => {
+        if (this.isDebriefAvailable) {
+          this.showResultsScreen();
+        }
+
+        return this.getTestHarnessState();
+      },
+      setAutoOpenDebrief: (enabled: boolean) => {
+        this.gameSettings = { ...this.gameSettings, autoOpenDebriefOnDeath: enabled };
+        saveGameSettings(this.gameSettings);
+        return this.getTestHarnessState();
+      },
       requestEject: () => {
         this.openEjectConfirmation();
         return this.getTestHarnessState();
@@ -1850,6 +1935,38 @@ export class GameScene extends Phaser.Scene {
       },
       purchaseSectorScanner: () => {
         this.purchaseSectorScanner();
+        return this.getTestHarnessState();
+      },
+      openShop: () => {
+        this.showShop('mainMenu');
+        return this.getTestHarnessState();
+      },
+      openShopFromDebrief: () => {
+        this.showResultsPanel('shop');
+        return this.getTestHarnessState();
+      },
+      openResultsPanel: (tab: ResultsPanelTab) => {
+        this.showResultsPanel(tab);
+        return this.getTestHarnessState();
+      },
+      selectShopSection: (section: ShopSectionId) => {
+        this.selectShopSection(section);
+        return this.getTestHarnessState();
+      },
+      purchaseShipUpgrade: (shipId: ShipId, upgradeId: ShipShopUpgradeId) => {
+        this.purchaseShopUpgrade(`ship:${shipId}:${upgradeId}`);
+        return this.getTestHarnessState();
+      },
+      purchaseWeaponUpgrade: (weaponId: WeaponId, upgradeId: WeaponShopUpgradeId) => {
+        this.purchaseShopUpgrade(`weapon:${weaponId}:${upgradeId}`);
+        return this.getTestHarnessState();
+      },
+      purchaseRunPrepUpgrade: (upgradeId: RunPrepUpgradeId) => {
+        this.purchaseShopUpgrade(`run-prep:${upgradeId}`);
+        return this.getTestHarnessState();
+      },
+      purchaseRunBoost: (boostId: RunBoostId) => {
+        this.purchaseShopUpgrade(`boost:${boostId}`);
         return this.getTestHarnessState();
       },
       fastForwardScanner: () => {
@@ -1926,6 +2043,7 @@ export class GameScene extends Phaser.Scene {
       this.progressionState.sectorScannerLevel,
       isSectorScannerAvailable(this.progressionState)
     );
+    const foregroundPanelCount = [this.mainMenuScreen, this.shipSelectScreen, this.shopScreen, this.resultsScreen].filter(Boolean).length;
 
     return {
       selectedShipId: selectedShip.id,
@@ -1955,8 +2073,14 @@ export class GameScene extends Phaser.Scene {
       rammingShieldDashMaxCharges: this.hasRammingShield() ? this.getRammingShieldStats().dashMaxCharges : 0,
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
+      playerX: this.player?.x ?? 0,
+      playerY: this.player?.y ?? 0,
       isPlayerDead: this.isPlayerDead,
       runEndReason: this.runEndReason,
+      isDebriefAvailable: this.isDebriefAvailable,
+      deathSequenceRemainingMs: this.isPlayerDead && !this.isDebriefAvailable
+        ? Math.max(0, Math.ceil(this.deathSequenceEndsAt - this.time.now))
+        : 0,
       canContinueRun: false,
       isEjectConfirmOpen: Boolean(this.ejectConfirmScreen),
       sectorScale: this.sectorScale,
@@ -1976,7 +2100,7 @@ export class GameScene extends Phaser.Scene {
       cameraFollowOffsetX: -this.cameraLead.x,
       cameraFollowOffsetY: -this.cameraLead.y,
       fuel: this.fuel,
-      maxFuel: RUN_FUEL_MAX,
+      maxFuel: this.getRunMaxFuel(),
       fuelDrainEnabled: this.debugFuelDrainEnabled,
       fuelDrainMode: this.debugFuelDrainMode,
       playerXp: this.playerXp,
@@ -2008,7 +2132,16 @@ export class GameScene extends Phaser.Scene {
       upgradeOverlayMode: this.upgradeOverlayMode,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
       isResultsScreenOpen: Boolean(this.resultsScreen),
+      resultsPanelTab: this.resultsPanelTab,
+      foregroundPanelCount,
       isResultsButtonVisible: Boolean(this.resultsButtonContainer?.visible),
+      damageDoneTotal: this.runCombatStats.damageDoneTotal,
+      damageTakenTotal: this.runCombatStats.damageTakenTotal,
+      healingReceivedTotal: this.runCombatStats.healingReceivedTotal,
+      shieldDamageBlocked: this.runCombatStats.shieldDamageBlocked,
+      finalDamageSource: this.runCombatStats.finalDamageSource,
+      finalDamageAmount: this.runCombatStats.finalDamageAmount,
+      autoOpenDebriefOnDeath: this.gameSettings.autoOpenDebriefOnDeath,
       autoWeaponId: this.playerWeapons.activeAutoWeaponId,
       primaryWeaponId: this.playerWeapons.activePrimaryWeaponId,
       secondaryWeaponId: this.playerWeapons.activeSecondaryWeaponId,
@@ -2024,6 +2157,12 @@ export class GameScene extends Phaser.Scene {
       damageControlLevel: this.getRunUpgradeLevelById('damage-control'),
       velocityLimiterLevel: this.getPermanentUpgradeLevel('velocity-limiter'),
       velocityLimiterActiveLevel: this.getActivePermanentUpgradeLevel('velocity-limiter'),
+      shopFlowState: this.gameFlowState,
+      shopSelectedSection: this.shopSelectedSection,
+      shipUpgradeLevels: this.progressionState.shipUpgradeLevels,
+      weaponUpgradeLevels: this.progressionState.weaponUpgradeLevels,
+      runPrepUpgradeLevels: this.progressionState.runPrepUpgradeLevels,
+      pendingRunBoosts: this.progressionState.pendingRunBoosts,
       playerVelocityLimit: this.getPlayerVelocityLimit(),
       playerSpeed: this.playerVelocity.length(),
       weaponDamageMultiplier: this.getActiveAutoWeaponDamageMultiplier(),
@@ -2109,53 +2248,63 @@ export class GameScene extends Phaser.Scene {
   }
 
   private runTestHarnessDebugMenuHangar(): void {
-    const getDebugNumberInputCount = () =>
-      typeof document === 'undefined' ? 0 : document.querySelectorAll('input[data-debug-key]').length;
+    runDebugMenuHangarHarness(this.createPreRunHarnessAdapter());
+  }
 
-    this.showShipSelect();
-    const initialInputCount = getDebugNumberInputCount();
-    this.openDebugMenu(this.time.now);
-    const opened = this.debugMenuHost?.isOpen() ?? false;
-    this.closeDebugMenu(this.time.now);
-    const closed = !(this.debugMenuHost?.isOpen() ?? true);
+  private runTestHarnessStartupNavigation(): void {
+    runStartupNavigationHarness(this.createPreRunHarnessAdapter());
+  }
 
-    this.openDebugMenu(this.time.now);
-    const openedBeforeRebuild = this.debugMenuHost?.isOpen() ?? false;
-    const inputCountBeforeRebuild = getDebugNumberInputCount();
-    this.showShipSelect();
-    const closedAfterRebuild = !(this.debugMenuHost?.isOpen() ?? true);
-    const inputCountAfterRebuild = getDebugNumberInputCount();
+  private createPreRunHarnessAdapter(): GameScenePreRunHarnessAdapter {
+    return {
+      getGameFlowState: () => this.gameFlowState,
+      getHarnessState: () => this.getTestHarnessState(),
+      getOpenModuleCount: () => [this.mainMenuScreen, this.shipSelectScreen, this.shopScreen, this.resultsScreen].filter(Boolean).length,
+      getTimeNow: () => this.time.now,
+      getDebugMenuOpenState: () => this.debugMenuHost?.isOpen() ?? null,
+      isShopOnlyModuleOpen: () => !this.shipSelectScreen && Boolean(this.shopScreen),
+      isPlayerSceneActive: () => Boolean(this.player?.scene),
+      showStartScreen: () => this.showStartScreen(),
+      showShipSelect: () => this.showShipSelect(),
+      showShopFromMainMenu: () => this.showShop('mainMenu'),
+      startRun: () => this.startRun(),
+      openDebugMenu: (now) => this.openDebugMenu(now),
+      closeDebugMenu: (now) => this.closeDebugMenu(now)
+    };
+  }
 
-    this.openDebugMenu(this.time.now);
-    const reopened = this.debugMenuHost?.isOpen() ?? false;
-    this.closeDebugMenu(this.time.now);
-    const closedAfterReopen = !(this.debugMenuHost?.isOpen() ?? true);
-    const finalInputCount = getDebugNumberInputCount();
-
-    const inputCountStable =
-      initialInputCount > 0 &&
-      inputCountBeforeRebuild === initialInputCount &&
-      inputCountAfterRebuild === initialInputCount &&
-      finalInputCount === initialInputCount;
-    const pass = opened && closed && openedBeforeRebuild && closedAfterRebuild && reopened && closedAfterReopen && inputCountStable;
-
-    document.body.setAttribute('data-starvivors-debug-menu-hangar-harness', pass ? 'pass' : 'fail');
-    document.body.setAttribute(
-      'data-starvivors-debug-menu-hangar-harness-details',
-      JSON.stringify({
-        opened,
-        closed,
-        openedBeforeRebuild,
-        closedAfterRebuild,
-        reopened,
-        closedAfterReopen,
-        initialInputCount,
-        inputCountBeforeRebuild,
-        inputCountAfterRebuild,
-        finalInputCount,
-        inputCountStable
-      })
+  private runTestHarnessVisualModule(moduleId: string | null): void {
+    runVisualModuleHarness(
+      {
+        showMainMenu: () => this.showMainMenu(),
+        showShipSelect: () => this.showShipSelect(),
+        showShopFromMainMenu: () => this.showShop('mainMenu'),
+        showSettings: () => this.showSettings(),
+        showStartScreen: () => this.showStartScreen(),
+        showResultsPanel: (tab) => this.showResultsPanel(tab),
+        openPauseSettings: () => {
+          this.startRun();
+          this.openPauseMenu(this.time.now, 'graphics');
+        },
+        stageDebrief: () => this.stageVisualDebriefHarness()
+      },
+      moduleId
     );
+  }
+
+  private stageVisualDebriefHarness(): void {
+    const staged = createStagedDebriefHarnessState();
+    this.createStagedArenaBackdrop();
+    this.runEndReason = staged.runEndReason;
+    this.isPlayerDead = staged.isPlayerDead;
+    this.isDebriefAvailable = staged.isDebriefAvailable;
+    this.playerHull = staged.playerHull;
+    this.lastRunSurvivalMs = staged.lastRunSurvivalMs;
+    this.lastRunScrapTotal = staged.lastRunScrapTotal;
+    this.lastRunScrapSpent = staged.lastRunScrapSpent;
+    this.lastRunScrapConverted = staged.lastRunScrapConverted;
+    this.lastRunCreditsEarned = staged.lastRunCreditsEarned;
+    this.runCombatStats = staged.combatStats;
   }
 
   private runTestHarnessSmoke(): void {
@@ -2211,7 +2360,10 @@ export class GameScene extends Phaser.Scene {
     const radarPurchased = harness.purchaseRadarUpgrade();
     const minimapOff = harness.toggleMinimap();
     const minimapOn = harness.toggleMinimap();
+    harness.setAutoOpenDebrief(false);
     const dead = harness.killPlayer();
+    const debriefReady = harness.finishDeathSequence();
+    const debriefOpened = harness.openDebrief();
     const afterDeadXp = harness.grantXp(1000);
     const restarted = harness.restartRun();
     const pass =
@@ -2267,8 +2419,17 @@ export class GameScene extends Phaser.Scene {
       !minimapOff.isMinimapVisible &&
       minimapOn.isMinimapVisible &&
       dead.isPlayerDead &&
-      dead.isResultsScreenOpen &&
+      !dead.isResultsScreenOpen &&
+      !dead.isDebriefAvailable &&
       !dead.isResultsButtonVisible &&
+      dead.deathSequenceRemainingMs > 0 &&
+      debriefReady.isDebriefAvailable &&
+      debriefReady.isResultsButtonVisible &&
+      !debriefReady.isResultsScreenOpen &&
+      debriefOpened.isResultsScreenOpen &&
+      !debriefOpened.isResultsButtonVisible &&
+      debriefOpened.damageTakenTotal > 0 &&
+      debriefOpened.finalDamageAmount > 0 &&
       afterDeadXp.playerXp === damageControlUpgrade.playerXp &&
       afterDeadXp.bankedUpgrades === damageControlUpgrade.bankedUpgrades &&
       restarted.hull === PLAYER_MAX_HULL &&
@@ -2318,8 +2479,295 @@ export class GameScene extends Phaser.Scene {
         minimapOff,
         minimapOn,
         dead,
+        debriefReady,
+        debriefOpened,
         afterDeadXp,
         restarted
+      })
+    );
+  }
+
+  private runTestHarnessShopTerminal(): void {
+    const snapshot = () => JSON.parse(JSON.stringify(this.getTestHarnessState())) as StarvivorsTestHarnessState;
+
+    this.applyProgressionState(resetProgressionState());
+    this.totalCredits = 5000;
+    this.saveProgression();
+
+    this.showShop('mainMenu');
+    const mainShop = snapshot();
+    this.selectShopSection('ships');
+    const shipsSection = snapshot();
+    this.purchaseShopUpgrade('ship:interceptor:hull-retrofit');
+    this.purchaseShopUpgrade('ship:interceptor:reserve-tanks');
+    const shipPurchased = snapshot();
+    this.selectShopSection('weapons');
+    this.purchaseShopUpgrade('weapon:pulse-cannon:weapon-mk');
+    this.purchaseShopUpgrade('weapon:pulse-cannon:accelerated-coils');
+    const weaponPurchased = snapshot();
+    this.selectShopSection('run-prep');
+    this.purchaseShopUpgrade('run-prep:expanded-launch-fuel');
+    this.purchaseShopUpgrade('run-prep:reroll-logistics');
+    this.purchaseShopUpgrade('run-prep:scrap-brokerage');
+    const runPrepPurchased = snapshot();
+    this.selectShopSection('boosts');
+    this.purchaseShopUpgrade('boost:emergency-patch-kit');
+    this.purchaseShopUpgrade('boost:fuel-canister');
+    const boostsArmed = snapshot();
+
+    this.startRun();
+    const launched = snapshot();
+    const pulseWeapon = getWeaponDefinition('pulse-cannon');
+    const resolvedPulse = this.getResolvedWeaponStats(pulseWeapon, 'primary').projectile;
+    const expectedMaxFuel =
+      RUN_FUEL_MAX +
+      SHIP_RESERVE_TANKS_FUEL_BONUS +
+      RUN_PREP_EXPANDED_FUEL_BONUS;
+    const boostCleared =
+      (this.progressionState.pendingRunBoosts['emergency-patch-kit'] ?? 0) === 0 &&
+      (this.progressionState.pendingRunBoosts['fuel-canister'] ?? 0) === 0;
+
+    this.damagePlayer(this.getPlayerMaxHull() + BOOST_EMERGENCY_PATCH_HULL_BONUS + 1, this.time.now, this.player.x, this.player.y, {
+      bypassShield: true,
+      bypassDefense: true
+    });
+    if (this.isPlayerDead && this.runEndReason === 'death') {
+      this.deathSequenceEndsAt = this.time.now;
+      this.updateDeathDebriefGate(this.time.now);
+      if (!this.isDebriefAvailable) {
+        this.isDebriefAvailable = true;
+        this.updateResultsButton();
+      }
+    }
+    this.showResultsScreen();
+    const debriefOpen = snapshot();
+    this.showResultsPanel('shop');
+    const shopFromDebrief = snapshot();
+
+    const pass =
+      mainShop.shopFlowState === 'shop' &&
+      mainShop.isResultsScreenOpen === false &&
+      shipsSection.shopSelectedSection === 'ships' &&
+      shipPurchased.shipUpgradeLevels.interceptor?.['hull-retrofit'] === 1 &&
+      shipPurchased.shipUpgradeLevels.interceptor?.['reserve-tanks'] === 1 &&
+      weaponPurchased.weaponUpgradeLevels['pulse-cannon']?.['weapon-mk'] === 1 &&
+      weaponPurchased.weaponUpgradeLevels['pulse-cannon']?.['accelerated-coils'] === 1 &&
+      runPrepPurchased.runPrepUpgradeLevels['expanded-launch-fuel'] === 1 &&
+      runPrepPurchased.runPrepUpgradeLevels['reroll-logistics'] === 1 &&
+      runPrepPurchased.runPrepUpgradeLevels['scrap-brokerage'] === 1 &&
+      boostsArmed.pendingRunBoosts['emergency-patch-kit'] === 1 &&
+      boostsArmed.pendingRunBoosts['fuel-canister'] === 1 &&
+      launched.maxHull === 45 &&
+      launched.hull === launched.maxHull + BOOST_EMERGENCY_PATCH_HULL_BONUS &&
+      launched.maxFuel === expectedMaxFuel &&
+      launched.fuel === expectedMaxFuel + BOOST_FUEL_CANISTER_BONUS &&
+      launched.nextRerollCost === REROLL_BASE_COST - RUN_PREP_REROLL_COST_REDUCTION &&
+      resolvedPulse !== undefined &&
+      resolvedPulse.damage > (pulseWeapon.damage ?? 0) &&
+      resolvedPulse.baseCooldownMs < (pulseWeapon.cooldownSeconds ?? 0) * 1000 &&
+      boostCleared &&
+      debriefOpen.isResultsScreenOpen &&
+      debriefOpen.shopFlowState === 'results' &&
+      shopFromDebrief.shopFlowState === 'results' &&
+      shopFromDebrief.resultsPanelTab === 'shop' &&
+      shopFromDebrief.foregroundPanelCount === 1 &&
+      !shopFromDebrief.isResultsScreenOpen;
+
+    document.body.setAttribute('data-starvivors-shop-terminal-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-shop-terminal-harness-details',
+      JSON.stringify({
+        mainShop,
+        shipsSection,
+        shipPurchased,
+        weaponPurchased,
+        runPrepPurchased,
+        boostsArmed,
+        launched,
+        debriefOpen,
+        shopFromDebrief,
+        resolvedPulse,
+        expectedMaxFuel,
+        boostCleared
+      })
+    );
+  }
+
+  private getResultsScrollHarnessState(): Record<string, { contentHeight: number; viewportHeight: number; overflow: boolean }> {
+    if (typeof document === 'undefined') {
+      return {};
+    }
+
+    const raw = document.body.getAttribute('data-starvivors-results-scroll-state') ?? '{}';
+    try {
+      return JSON.parse(raw) as Record<string, { contentHeight: number; viewportHeight: number; overflow: boolean }>;
+    } catch {
+      return {};
+    }
+  }
+
+  private runTestHarnessDebriefFlow(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-debrief-flow-harness', 'fail');
+      document.body.setAttribute('data-starvivors-debrief-flow-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.applyProgressionState(resetProgressionState());
+    this.totalCredits = 0;
+    this.saveProgression();
+    this.startRun();
+    harness.setAutoOpenDebrief(false);
+    const target = this.liveEnemies[0];
+    if (target) {
+      this.damageLiveEnemy(target, 12, 'player', false);
+    }
+    this.debugDamagePlayer(9);
+    this.debugHealPlayer(4);
+    for (let i = 0; i < 10; i += 1) {
+      const value = 30 + i * 7;
+      this.runCombatStats.damageDoneTotal += value;
+      addCombatEntry(this.runCombatStats.damageDoneBySource, `Harness Source ${i + 1}`, value);
+    }
+    for (const [index, upgrade] of UPGRADE_CHOICES.slice(0, 12).entries()) {
+      this.runUpgradeLevels[upgrade.id] = index + 1;
+    }
+    const manualDead = harness.killPlayer();
+    const manualReady = harness.finishDeathSequence();
+    this.lastRunUnlockedRewards = [
+      'mission.survey-signal',
+      'mission.salvage-cache',
+      'mission.enemy-probe',
+      'mission.mothership-contract',
+      'mission.rift-cache-contract',
+      'world-event.mothership-prototype',
+      'sector-scanner.black-hole-cache',
+      'sector-scanner.hunter-swarm'
+    ];
+    const manualOpened = harness.openDebrief();
+    const manualScrollState = this.getResultsScrollHarnessState();
+    harness.addCredits(5000);
+    this.showResultsPanel('shop');
+    const resultsShop = harness.getState();
+    const shopPurchased = harness.purchasePermanentUpgrade('velocity-limiter');
+    this.showResultsPanel('hangar');
+    const resultsHangar = harness.getState();
+    this.assignPreRunWeaponLoadout('primary', 1, 'pulse-cannon');
+    const hangarChanged = harness.getState();
+    this.showResultsPanel('command');
+    const resultsCommand = harness.getState();
+    const nextMission = missionRegistry.find((mission) => mission.id !== this.selectedMissionId) ?? missionRegistry[0];
+    this.selectedMissionId = nextMission.id;
+    this.refreshCurrentPanel();
+    const commandChanged = harness.getState();
+    this.showResultsPanel('settings');
+    const resultsSettings = harness.getState();
+    this.toggleAutoOpenDebriefSetting();
+    this.refreshCurrentPanel();
+    const settingsChanged = harness.getState();
+    this.showResultsPanel('debrief');
+    const resultsDebriefReturn = harness.getState();
+
+    harness.restartRun();
+    harness.setAutoOpenDebrief(true);
+    const autoDead = harness.killPlayer();
+    this.deathSequenceEndsAt = this.time.now;
+    this.updateDeathDebriefGate(this.time.now);
+    const autoOpened = harness.getState();
+
+    const manualPass =
+      manualDead.isPlayerDead &&
+      !manualDead.isResultsScreenOpen &&
+      !manualDead.isDebriefAvailable &&
+      manualDead.deathSequenceRemainingMs > 0 &&
+      manualReady.isDebriefAvailable &&
+      manualReady.isResultsButtonVisible &&
+      !manualReady.isResultsScreenOpen &&
+      manualOpened.isResultsScreenOpen &&
+      !manualOpened.isResultsButtonVisible &&
+      manualOpened.damageDoneTotal > 0 &&
+      manualOpened.damageTakenTotal > 0 &&
+      manualOpened.healingReceivedTotal > 0 &&
+      manualOpened.finalDamageAmount > 0 &&
+      manualOpened.finalDamageSource.length > 0 &&
+      manualScrollState.Upgrades?.overflow &&
+      manualScrollState['Damage Done']?.overflow &&
+      manualScrollState['Sector / Unlocks']?.overflow;
+    const stableResultsBackdrop = (state: StarvivorsTestHarnessState) =>
+      state.shopFlowState === 'results' &&
+      state.runEndReason === manualOpened.runEndReason &&
+      state.isPlayerDead === manualOpened.isPlayerDead &&
+      state.isDebriefAvailable === manualOpened.isDebriefAvailable &&
+      state.arenaWidth === manualOpened.arenaWidth &&
+      state.arenaHeight === manualOpened.arenaHeight &&
+      state.playerX === manualOpened.playerX &&
+      state.playerY === manualOpened.playerY &&
+      state.primaryWeaponId === manualOpened.primaryWeaponId &&
+      state.secondaryWeaponId === manualOpened.secondaryWeaponId &&
+      state.autoWeaponId === manualOpened.autoWeaponId &&
+      state.lastRunScrapTotal === manualOpened.lastRunScrapTotal &&
+      state.damageTakenTotal === manualOpened.damageTakenTotal &&
+      state.finalDamageAmount === manualOpened.finalDamageAmount;
+    const resultsPanelStates = [
+      resultsShop,
+      shopPurchased,
+      resultsHangar,
+      hangarChanged,
+      resultsCommand,
+      commandChanged,
+      resultsSettings,
+      settingsChanged,
+      resultsDebriefReturn
+    ];
+    const resultsPanelPass =
+      resultsPanelStates.every((state) => state.foregroundPanelCount === 1 && stableResultsBackdrop(state)) &&
+      resultsShop.resultsPanelTab === 'shop' &&
+      shopPurchased.resultsPanelTab === 'shop' &&
+      shopPurchased.velocityLimiterLevel === resultsShop.velocityLimiterLevel + 1 &&
+      resultsHangar.resultsPanelTab === 'hangar' &&
+      hangarChanged.resultsPanelTab === 'hangar' &&
+      resultsCommand.resultsPanelTab === 'command' &&
+      commandChanged.resultsPanelTab === 'command' &&
+      commandChanged.selectedMissionId === nextMission.id &&
+      resultsSettings.resultsPanelTab === 'settings' &&
+      settingsChanged.resultsPanelTab === 'settings' &&
+      settingsChanged.autoOpenDebriefOnDeath !== resultsSettings.autoOpenDebriefOnDeath &&
+      resultsDebriefReturn.resultsPanelTab === 'debrief' &&
+      resultsDebriefReturn.isResultsScreenOpen;
+    const autoPass =
+      autoDead.isPlayerDead &&
+      !autoDead.isResultsScreenOpen &&
+      autoDead.deathSequenceRemainingMs > 0 &&
+      autoOpened.isDebriefAvailable &&
+      autoOpened.isResultsScreenOpen &&
+      !autoOpened.isResultsButtonVisible &&
+      autoOpened.autoOpenDebriefOnDeath;
+    const pass = manualPass && resultsPanelPass && autoPass;
+
+    document.body.setAttribute('data-starvivors-debrief-flow-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-debrief-flow-harness-details',
+      JSON.stringify({
+        manualDead,
+        manualReady,
+        manualOpened,
+        manualScrollState,
+        resultsShop,
+        shopPurchased,
+        resultsHangar,
+        hangarChanged,
+        resultsCommand,
+        commandChanged,
+        resultsSettings,
+        settingsChanged,
+        resultsDebriefReturn,
+        resultsPanelPass,
+        autoDead,
+        autoOpened,
+        manualPass,
+        autoPass
       })
     );
   }
@@ -2737,7 +3185,7 @@ export class GameScene extends Phaser.Scene {
     const bulwarkDampedSpeed = this.playerVelocity.length();
 
     const pass =
-      initial.fuel === RUN_FUEL_MAX &&
+      initial.fuel === initial.maxFuel &&
       afterFuelDrain.fuel < initial.fuel &&
       Math.abs(emergencyThrustMultiplier - RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER) < 0.001 &&
       interceptorDampedSpeed > 275 &&
@@ -3996,7 +4444,10 @@ export class GameScene extends Phaser.Scene {
     const refilledFuel = harness.refillFuel();
     const drainToggled = harness.toggleFuelDrain();
     const modeToggled = harness.toggleFuelDrainMode();
+    harness.setAutoOpenDebrief(false);
     const dead = harness.killPlayer();
+    const deathDebriefReady = harness.finishDeathSequence();
+    const deathDebriefOpened = harness.openDebrief();
     const deathContinueBlocked = harness.continueRun();
 
     harness.restartRun();
@@ -4023,7 +4474,13 @@ export class GameScene extends Phaser.Scene {
       modeToggled.fuelDrainMode === 'thrust-only';
     const continuePass =
       dead.isPlayerDead &&
-      dead.isResultsScreenOpen &&
+      !dead.isResultsScreenOpen &&
+      !dead.isDebriefAvailable &&
+      dead.deathSequenceRemainingMs > 0 &&
+      deathDebriefReady.isDebriefAvailable &&
+      deathDebriefReady.isResultsButtonVisible &&
+      !deathDebriefReady.isResultsScreenOpen &&
+      deathDebriefOpened.isResultsScreenOpen &&
       deathContinueBlocked.isPlayerDead &&
       deathContinueBlocked.isResultsScreenOpen &&
       !deathContinueBlocked.canContinueRun &&
@@ -4053,6 +4510,8 @@ export class GameScene extends Phaser.Scene {
         drainToggled,
         modeToggled,
         dead,
+        deathDebriefReady,
+        deathDebriefOpened,
         deathContinueBlocked,
         ejectPrompt,
         ejectCancelled,
@@ -4266,7 +4725,8 @@ export class GameScene extends Phaser.Scene {
     );
   }
 
-  private rebuildWorld(): void {
+  private rebuildWorld(options: { consumePendingRunBoosts?: boolean } = {}): void {
+    const consumePendingRunBoosts = options.consumePendingRunBoosts ?? true;
     this.gameFlowState = 'running';
     const viewport = getViewportSize(this);
     this.sectorScale = this.getConfiguredSectorScale();
@@ -4294,7 +4754,7 @@ export class GameScene extends Phaser.Scene {
     );
     this.playerVelocity.set(0, 0);
     this.cameraLead.set(0, 0);
-    this.fuel = RUN_FUEL_MAX;
+    this.fuel = this.getRunMaxFuel();
     this.missionRuntime = undefined;
     this.missionObjectiveBeacon = undefined;
     this.missionObjectiveBeaconRing = undefined;
@@ -4311,6 +4771,10 @@ export class GameScene extends Phaser.Scene {
     this.lastRunUnlockedRewards = rewardReset.lastRunUnlockedRewards;
     this.hasPaidRunCredits = rewardReset.hasPaidRunCredits;
     this.lastRunSurvivalMs = rewardReset.lastRunSurvivalMs;
+    this.runCombatStats = createInitialRunCombatStats();
+    this.isDebriefAvailable = false;
+    this.deathSequenceEndsAt = 0;
+    this.hasAutoOpenedDebrief = false;
     const progressReset = createRunProgressResetState(INITIAL_XP_THRESHOLD);
     this.playerInvulnerableUntil = progressReset.playerInvulnerableUntil;
     this.isPlayerDead = progressReset.isPlayerDead;
@@ -4377,6 +4841,9 @@ export class GameScene extends Phaser.Scene {
     this.encounterDirectorState = timingReset.encounterDirectorState;
     this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
+    if (consumePendingRunBoosts) {
+      this.applyPendingRunBoosts();
+    }
     const overlayPauseReset = createOverlayPauseResetState();
     this.isUpgradeOverlayOpen = overlayPauseReset.isUpgradeOverlayOpen;
     this.isPauseMenuOpen = overlayPauseReset.isPauseMenuOpen;
@@ -4461,6 +4928,7 @@ export class GameScene extends Phaser.Scene {
     this.gameplayHud.create();
     this.minimap.create();
     this.collisionDebugOverlay.create();
+    this.applyRuntimeSettings();
 
     this.createUpgradeButton();
     this.createResultsButton();
@@ -4546,12 +5014,106 @@ export class GameScene extends Phaser.Scene {
 
     this.lastRunUnlockedRewards.push(...hooks.filter((hook) => !this.lastRunUnlockedRewards.includes(hook)));
     this.saveProgression();
-    if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
+    this.refreshCurrentPanel();
+  }
+
+  private createStagedArenaBackdrop(): void {
+    const viewport = getViewportSize(this);
+    this.sectorScale = this.getConfiguredSectorScale();
+    this.arena = createArenaSize(viewport, this.sectorScale);
+    const center = getArenaCenter(this.arena);
+
+    this.debugMenuHost?.destroy();
+    this.secretControlOverlay?.destroy();
+    this.deathShards = clearDeathShardsSystem(this.deathShards);
+    this.children.removeAll(true);
+    this.brightnessOverlay = undefined;
+    this.combatFeedback.clear();
+    this.debugMenuHost = undefined;
+    this.secretControlOverlay = undefined;
+    this.mainMenuScreen = undefined;
+    this.shipSelectScreen = undefined;
+    this.shopScreen = undefined;
+    this.resultsScreen = undefined;
+    this.pauseMenuScreen = undefined;
+    this.ejectConfirmScreen = undefined;
+    this.isPauseMenuOpen = false;
+    this.awaitingBinding = undefined;
+    this.ensureSelectedShipStartingWeaponAvailable(this.getSelectedShipDefinition());
+    this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition(), this.weaponLoadout);
+    this.rammingShieldImage = undefined;
+    this.rammingShieldState = createRammingShieldRuntimeState(
+      this.hasRammingShield(),
+      this.hasRammingShield() ? this.getRammingShieldStats() : undefined
+    );
+    this.playerVelocity.set(0, 0);
+    this.cameraLead.set(0, 0);
+    this.fuel = this.getRunMaxFuel();
+    this.playerHull = this.getPlayerMaxHull();
+    this.isPlayerDead = false;
+    this.runEndReason = 'none';
+    this.playerXp = 0;
+    this.bankedUpgrades = 0;
+    this.pendingRareUpgrades = 0;
+    this.rerollsThisRun = 0;
+    this.isDebriefAvailable = false;
+    this.deathSequenceEndsAt = 0;
+    this.hasAutoOpenedDebrief = false;
+    this.playerProjectiles = [];
+    this.enemyProjectiles = [];
+    this.basicEnemies = [];
+    this.shooterEnemies = [];
+    this.tankEnemies = [];
+    this.liveEnemies = [];
+    this.basicAsteroids = [];
+    this.enemyWreckageDebris = [];
+    this.deathShards = [];
+    this.scrapPickups = [];
+    this.worldEvents = [];
+    this.rareEvents = [];
+    this.worldSquads = [];
+    this.sectorAsteroidSpawns = [];
+    this.sectorScrapSpawns = [];
+    this.sectorSignalSpawns = [];
+    this.activeSectorAsteroids.clear();
+    this.activeSectorScrapPickups.clear();
+    this.activeSectorSignals.clear();
+    this.sectorSignalBeacons = [];
+    this.blackHole = undefined;
+    this.missionRuntime = undefined;
+    this.missionObjectiveBeacon = undefined;
+    this.missionObjectiveBeaconRing = undefined;
+    this.missionObjectiveBeaconCore = undefined;
+    this.sectorScannerRuntime = createSectorScannerRuntime();
+    this.minimap.reset();
+    this.starfield.resetState();
+    this.createStarfield();
+    this.player = this.createPlayerShip(center.x, center.y);
+    this.sectorSeed = this.getConfiguredSectorSeed();
+    this.sectorLayout = generateSectorLayout({
+      arena: this.arena,
+      seed: this.sectorSeed,
+      startX: center.x,
+      startY: center.y
+    });
+    this.cameras.main.startFollow(this.player, true, 1, 1);
+    this.cameras.main.setFollowOffset(0, 0);
+    this.cameras.main.centerOn(center.x, center.y);
+    this.resetBackgroundPlayerTracking();
+    this.updateBrightnessOverlay();
+  }
+
+  private ensureStagedArenaBackdrop(forceRebuild = false): void {
+    if (!forceRebuild && this.isPreRunFlowState() && this.player?.scene) {
+      return;
     }
+
+    this.createStagedArenaBackdrop();
   }
 
   private startRun(): void {
+    this.isBootStartContext = false;
+
     if (this.autoRunDiagnostics.isActive()) {
       this.autoRunDiagnostics.endRun('restart');
     }
@@ -4578,28 +5140,10 @@ export class GameScene extends Phaser.Scene {
     this.autoRunDiagnostics.startRun(this.getSelectedShipDefinition().displayName);
   }
 
-  private showSplashScreen(): void {
-    this.gameFlowState = 'splash';
-    this.secretControlOverlay?.destroy();
-    this.children.removeAll(true);
-    this.debugMenuHost = undefined;
-    this.secretControlOverlay = undefined;
-    this.mainMenuScreen = undefined;
-    this.shopScreen = undefined;
-    this.shipSelectScreen = undefined;
-    this.resultsScreen = undefined;
-    this.pauseMenuScreen = undefined;
-    this.ejectConfirmScreen = undefined;
-    this.isPauseMenuOpen = false;
-    this.awaitingBinding = undefined;
-
-    this.mainMenuScreen = createSplashScreen({
-      scene: this,
-      isActionActive: () => this.gameFlowState === 'splash',
-      resetCursor: () => this.resetUiCursor(),
-      onContinue: () => this.showShipSelect()
-    });
-    this.createDebugMenu();
+  private showStartScreen(): void {
+    this.rebuildWorld({ consumePendingRunBoosts: false });
+    this.isBootStartContext = true;
+    this.showResultsPanel('start');
   }
 
   private createSecretControlOverlay(): void {
@@ -4622,35 +5166,29 @@ export class GameScene extends Phaser.Scene {
       this.autoRunDiagnostics.endRun('main-menu');
     }
 
+    const previousFlowState = this.gameFlowState;
     this.gameFlowState = 'command';
-    this.deathShards = clearDeathShardsSystem(this.deathShards);
-    this.secretControlOverlay?.destroy();
-    this.children.removeAll(true);
-    this.debugMenuHost = undefined;
-    this.secretControlOverlay = undefined;
-    this.mainMenuScreen = undefined;
-    this.shopScreen = undefined;
-    this.shipSelectScreen = undefined;
-    this.resultsScreen = undefined;
-    this.pauseMenuScreen = undefined;
-    this.isPauseMenuOpen = false;
-    this.awaitingBinding = undefined;
+    this.ensureStagedArenaBackdrop(previousFlowState === 'results' || previousFlowState === 'running');
+    this.destroyForegroundPanelScreen();
+    this.mainMenuScreen = this.createCommandPanel(this.getPreRunNavConfig(), () => this.gameFlowState === 'command');
+    this.createDebugMenu();
+  }
 
-    this.mainMenuScreen = createCommandScreen({
+  private createCommandPanel(nav: HubNavConfig, isActionActive: () => boolean): ScreenHandle {
+    return createCommandScreen({
       scene: this,
       totalCredits: this.totalCredits,
       selectedShipName: this.getSelectedShipDefinition().displayName,
       selectedMissionId: this.selectedMissionId,
       selectedMission: this.getSelectedMissionDefinition(),
-      nav: this.getPreRunNavConfig(),
-      isActionActive: () => this.gameFlowState === 'command',
+      nav,
+      isActionActive,
       resetCursor: () => this.resetUiCursor(),
       onSelectMission: (missionId) => {
         this.selectedMissionId = missionId;
-        this.showMainMenu();
+        this.refreshCurrentPanel();
       }
     });
-    this.createDebugMenu();
   }
 
   private getSelectedMissionDefinition(): MissionDefinition {
@@ -4666,48 +5204,53 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showSettings(): void {
+    const previousFlowState = this.gameFlowState;
     this.gameFlowState = 'settings';
-    this.destroyMainMenuScreen();
-    this.destroyShipSelectScreen();
-    this.destroyShopScreen();
-
-    this.mainMenuScreen = createSettingsHubScreen({
-      scene: this,
-      settings: cloneGameSettings(this.gameSettings),
-      nav: this.getPreRunNavConfig(),
-      isActionActive: () => this.gameFlowState === 'settings',
-      resetCursor: () => this.resetUiCursor(),
-      onToggleMovementMode: () => {
-        this.gameSettings = {
-          ...this.gameSettings,
-          movementMode: this.gameSettings.movementMode === 'shipRelative' ? 'worldRelative' : 'shipRelative'
-        };
-        saveGameSettings(this.gameSettings);
-        this.showSettings();
-      },
-      onResetControls: () => {
-        this.gameSettings = resetControlSettings(this.gameSettings);
-        this.showSettings();
-      },
-      onResetAll: () => {
-        this.gameSettings = resetGameSettings();
-        this.showSettings();
-      }
-    });
+    if (previousFlowState !== 'settings') {
+      this.awaitingBinding = undefined;
+      this.settingsBindingError = undefined;
+    }
+    this.ensureStagedArenaBackdrop(previousFlowState === 'results' || previousFlowState === 'running');
+    this.destroyForegroundPanelScreen();
+    this.mainMenuScreen = this.createSettingsPanel(this.getPreRunNavConfig(), () => this.gameFlowState === 'settings');
     this.createDebugMenu();
   }
 
-  private getPreRunNavConfig(): {
-    canPlay: boolean;
-    playDisabledReason: string;
-    isActionActive: () => boolean;
-    resetCursor: () => void;
-    onPlay: () => void;
-    onShowCommand: () => void;
-    onShowHangar: () => void;
-    onShowShop: () => void;
-    onShowSettings: () => void;
-  } {
+  private createSettingsPanel(nav: HubNavConfig, isActionActive: () => boolean): ScreenHandle {
+    return createSettingsHubScreen({
+      scene: this,
+      settings: cloneGameSettings(this.gameSettings),
+      activeTab: this.settingsMenuTab,
+      nav,
+      awaitingBinding: this.awaitingBinding,
+      bindingError: this.settingsBindingError,
+      isActionActive,
+      resetCursor: () => this.resetUiCursor(),
+      onSelectTab: (tab) => {
+        this.settingsMenuTab = tab;
+        this.awaitingBinding = undefined;
+        this.settingsBindingError = undefined;
+        this.refreshCurrentPanel();
+      },
+      onChangeSettings: (settings) => this.commitGameSettings(settings),
+      onCaptureBinding: (action, slot) => this.startBindingCapture(action, slot),
+      onResetControls: () => {
+        this.gameSettings = resetControlSettings(this.gameSettings);
+        this.rebuildControlKeys();
+        this.settingsBindingError = undefined;
+        this.refreshCurrentPanel();
+      },
+      onResetAll: () => {
+        this.gameSettings = resetGameSettings();
+        this.rebuildControlKeys();
+        this.settingsBindingError = undefined;
+        this.applyRuntimeSettings();
+        this.refreshCurrentPanel();
+      }
+    });
+  }
+
+  private getPreRunNavConfig(): HubNavConfig {
     return createPreRunNavConfig({
       canPlay: this.canStartConfiguredRun(),
       playDisabledReason: this.getPlayDisabledReason(),
@@ -4721,12 +5264,31 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private showShipSelect(): void {
-    this.gameFlowState = 'shipSelect';
-    this.destroyMainMenuScreen();
-    this.destroyShipSelectScreen();
+  private getResultsNavConfig(): HubNavConfig {
+    return createPreRunNavConfig({
+      canPlay: this.canStartConfiguredRun(),
+      playDisabledReason: this.getPlayDisabledReason(),
+      isActionActive: () => this.gameFlowState === 'results',
+      resetCursor: () => this.resetUiCursor(),
+      onPlay: () => this.startRun(),
+      onShowCommand: () => this.showResultsPanel('command'),
+      onShowHangar: () => this.showResultsPanel('hangar'),
+      onShowShop: () => this.showResultsPanel('shop'),
+      onShowSettings: () => this.showResultsPanel('settings')
+    });
+  }
 
-    this.shipSelectScreen = createShipSelectScreen({
+  private showShipSelect(): void {
+    const previousFlowState = this.gameFlowState;
+    this.gameFlowState = 'shipSelect';
+    this.ensureStagedArenaBackdrop(previousFlowState === 'results' || previousFlowState === 'running');
+    this.destroyForegroundPanelScreen();
+    this.shipSelectScreen = this.createShipSelectPanel(this.getPreRunNavConfig(), () => this.gameFlowState === 'shipSelect');
+    this.createDebugMenu();
+  }
+
+  private createShipSelectPanel(nav: HubNavConfig, isActionActive: () => boolean): ScreenHandle {
+    return createShipSelectScreen({
       scene: this,
       totalCredits: this.totalCredits,
       selectedShipId: this.selectedShipId,
@@ -4739,32 +5301,31 @@ export class GameScene extends Phaser.Scene {
       weaponMkLevels: this.weaponMkLevels,
       selectedInventoryWeaponId: this.selectedHangarWeaponId,
       inventoryScrollIndex: this.hangarInventoryScrollIndex,
-      nav: this.getPreRunNavConfig(),
-      isActionActive: () => this.gameFlowState === 'shipSelect',
+      nav,
+      isActionActive,
       resetCursor: () => this.resetUiCursor(),
       onPreviewShip: (shipId) => {
         this.hangarPreviewShipId = shipId;
-        this.showShipSelect();
+        this.refreshCurrentPanel();
       },
       onShipAction: (ship) => this.handleShipAction(ship),
       onSelectSkin: (shipId, skinId) => {
         this.selectedSkinIds[shipId] = skinId;
         this.saveProgression();
-        this.showShipSelect();
+        this.refreshCurrentPanel();
       },
       onSelectInventoryWeapon: (weaponId) => {
         this.selectedHangarWeaponId = weaponId;
-        this.showShipSelect();
+        this.refreshCurrentPanel();
       },
       onAssignWeapon: (slot, slotIndex, weaponId) => this.assignPreRunWeaponLoadout(slot, slotIndex, weaponId),
       onClearWeapon: (slot, slotIndex) => this.clearPreRunWeaponLoadout(slot, slotIndex),
       onInventoryScroll: (delta) => {
         const maxIndex = Math.max(0, this.getAvailableHangarWeaponIds().length - 1);
         this.hangarInventoryScrollIndex = Phaser.Math.Clamp(this.hangarInventoryScrollIndex + delta, 0, maxIndex);
-        this.showShipSelect();
+        this.refreshCurrentPanel();
       }
     });
-    this.createDebugMenu();
   }
 
   private handleShipAction(ship: ShipRegistryEntry): void {
@@ -4781,7 +5342,7 @@ export class GameScene extends Phaser.Scene {
     this.hangarPreviewShipId = ship.id;
     this.ensureSelectedShipStartingWeaponAvailable(ship);
     this.saveProgression();
-    this.showShipSelect();
+    this.refreshCurrentPanel();
   }
 
   private isShipUnlocked(shipId: ShipId): boolean {
@@ -4827,7 +5388,7 @@ export class GameScene extends Phaser.Scene {
     this.hangarPreviewShipId = ship.id;
     this.ensureSelectedShipStartingWeaponAvailable(ship);
     this.saveProgression();
-    this.showShipSelect();
+    this.refreshCurrentPanel();
   }
 
   private assignPreRunWeaponLoadout(slot: WeaponSlotType, slotIndex: number, weaponId: WeaponId): void {
@@ -4841,14 +5402,14 @@ export class GameScene extends Phaser.Scene {
     this.weaponLoadout[slot][Phaser.Math.Clamp(slotIndex, 0, 2)] = weaponId;
     this.selectedHangarWeaponId = weaponId;
     this.saveProgression();
-    this.showShipSelect();
+    this.refreshCurrentPanel();
   }
 
   private clearPreRunWeaponLoadout(slot: WeaponSlotType, slotIndex: number): void {
     this.weaponLoadout = cloneWeaponLoadout(this.weaponLoadout);
     this.weaponLoadout[slot][Phaser.Math.Clamp(slotIndex, 0, 2)] = null;
     this.saveProgression();
-    this.showShipSelect();
+    this.refreshCurrentPanel();
   }
 
   private ensureSelectedShipStartingWeaponAvailable(ship: ShipRegistryEntry): void {
@@ -4908,21 +5469,31 @@ export class GameScene extends Phaser.Scene {
       this.autoRunDiagnostics.endRun('shop');
     }
 
-    this.shopBackTarget = backTarget;
+    const previousFlowState = this.gameFlowState;
+    const enteredFromResults = backTarget === 'results';
+    this.shopBackTarget = 'mainMenu';
     this.gameFlowState = 'shop';
-    this.destroyShopScreen();
-    this.destroyShipSelectScreen();
+    this.ensureStagedArenaBackdrop(enteredFromResults || previousFlowState === 'running');
+    this.destroyForegroundPanelScreen();
+    this.shopScreen = this.createShopPanel(this.getPreRunNavConfig(), () => this.gameFlowState === 'shop');
+    this.createDebugMenu();
+  }
 
-    if (backTarget === 'mainMenu') {
-      this.destroyMainMenuScreen();
-    } else {
-      this.destroyResultsScreen();
-    }
-
-    this.shopScreen = createShopScreen({
+  private createShopPanel(nav: HubNavConfig, isActionActive: () => boolean): ScreenHandle {
+    return createShopScreen({
       scene: this,
-      backTarget,
       totalCredits: this.totalCredits,
+      selectedSection: this.shopSelectedSection,
+      selectedUpgradeId: this.shopSelectedUpgradeId,
+      listScrollIndex: this.shopListScrollIndex,
+      selectedShipName: this.getSelectedShipDefinition().displayName,
+      selectedMissionLabel: this.getSelectedMissionDefinition().displayName,
+      ownedShipIds: this.unlockedShipIds,
+      ownedWeaponIds: new Set(this.getAvailableHangarWeaponIds()),
+      shipUpgradeLevels: this.progressionState.shipUpgradeLevels,
+      weaponUpgradeLevels: this.progressionState.weaponUpgradeLevels,
+      runPrepUpgradeLevels: this.progressionState.runPrepUpgradeLevels,
+      pendingRunBoosts: this.progressionState.pendingRunBoosts,
       radarLevel: this.progressionState.radarLevel,
       radarCost: getRadarUpgradeCost(this.progressionState),
       isSectorScannerAvailable: isSectorScannerAvailable(this.progressionState),
@@ -4933,16 +5504,15 @@ export class GameScene extends Phaser.Scene {
       isPermanentUpgradeMaxed: (upgrade) => this.isPermanentUpgradeMaxed(upgrade),
       canPurchasePermanentUpgrade: (upgrade) => this.canPurchasePermanentUpgrade(upgrade),
       getPermanentUpgradeCost: (upgrade) => this.getPermanentUpgradeCost(upgrade),
-      isActionActive: () => this.gameFlowState === 'shop',
+      isActionActive,
       resetCursor: () => this.resetUiCursor(),
-      nav: backTarget === 'mainMenu' ? this.getPreRunNavConfig() : undefined,
-      onPurchasePermanentUpgrade: (upgrade) => this.purchasePermanentUpgrade(upgrade),
+      nav,
+      onSelectSection: (section) => this.selectShopSection(section),
+      onSelectUpgrade: (id) => this.selectShopUpgrade(id),
+      onScrollList: (delta) => this.scrollShopList(delta),
+      onPurchaseSelected: (id) => this.purchaseShopUpgrade(id),
       onAdjustActivePermanentUpgradeLevel: (id, delta) => this.adjustActivePermanentUpgradeLevel(id, delta),
-      onPurchaseRadar: () => this.purchaseRadarUpgrade(),
-      onPurchaseSectorScanner: () => this.purchaseSectorScanner(),
-      onBack: () => this.handleShopBack()
     });
-    this.createDebugMenu();
   }
 
   private getPermanentUpgradeLevel(id: PermanentUpgradeId): number {
@@ -4967,15 +5537,66 @@ export class GameScene extends Phaser.Scene {
     return upgrade.baseCost * (this.getPermanentUpgradeLevel(upgrade.id) + 1);
   }
 
+  private selectShopSection(section: ShopSectionId): void {
+    this.shopSelectedSection = section;
+    this.shopSelectedUpgradeId = null;
+    this.shopListScrollIndex = 0;
+    this.refreshCurrentPanel();
+  }
+
+  private selectShopUpgrade(id: ShopTerminalUpgradeId): void {
+    this.shopSelectedUpgradeId = id;
+    this.refreshCurrentPanel();
+  }
+
+  private scrollShopList(delta: number): void {
+    this.shopListScrollIndex = Math.max(0, this.shopListScrollIndex + delta);
+    this.refreshCurrentPanel();
+  }
+
+  private getShipShopUpgradeLevel(shipId: ShipId, upgradeId: ShipShopUpgradeId): number {
+    return this.progressionState.shipUpgradeLevels[shipId]?.[upgradeId] ?? 0;
+  }
+
+  private getWeaponShopUpgradeLevel(weaponId: WeaponId, upgradeId: WeaponShopUpgradeId): number {
+    return this.progressionState.weaponUpgradeLevels[weaponId]?.[upgradeId] ?? 0;
+  }
+
+  private getRunPrepUpgradeLevel(upgradeId: RunPrepUpgradeId): number {
+    return this.progressionState.runPrepUpgradeLevels[upgradeId] ?? 0;
+  }
+
+  private hasPendingRunBoost(boostId: RunBoostId): boolean {
+    return (this.progressionState.pendingRunBoosts[boostId] ?? 0) > 0;
+  }
+
+  private getRunMaxFuel(): number {
+    const selectedShip = this.getSelectedShipDefinition();
+    return (
+      RUN_FUEL_MAX +
+      this.getShipShopUpgradeLevel(selectedShip.id, 'reserve-tanks') * SHIP_RESERVE_TANKS_FUEL_BONUS +
+      this.getRunPrepUpgradeLevel('expanded-launch-fuel') * RUN_PREP_EXPANDED_FUEL_BONUS
+    );
+  }
+
   private getSelectedShipDefinition(): ShipRegistryEntry {
     return getShipDefinition(this.selectedShipId);
   }
 
   private getResolvedPlayerStats(): PlayerStats {
     const selectedShip = this.getSelectedShipDefinition();
+    const baseStats = { ...this.debugState.getEffectiveShipBaseStats(selectedShip) };
+    const hullRetrofitLevel = this.getShipShopUpgradeLevel(selectedShip.id, 'hull-retrofit');
+    const thrusterTuningLevel = this.getShipShopUpgradeLevel(selectedShip.id, 'thruster-tuning');
+    const thrusterMultiplier = 1 + thrusterTuningLevel * SHIP_THRUSTER_TUNING_MULTIPLIER;
+
+    baseStats.maxHull += hullRetrofitLevel * SHIP_HULL_RETROFIT_MAX_HULL_BONUS;
+    baseStats.thrust *= thrusterMultiplier;
+    baseStats.brake *= thrusterMultiplier;
+    baseStats.strafe *= thrusterMultiplier;
 
     return resolvePlayerStats({
-      baseStats: this.debugState.getEffectiveShipBaseStats(selectedShip),
+      baseStats,
       passiveLevels: {
         hullPlating: this.getRunUpgradeLevelById('hull-plating'),
         engineTuning: this.getRunUpgradeLevelById('engine-tuning'),
@@ -5008,6 +5629,7 @@ export class GameScene extends Phaser.Scene {
       ship: this.getSelectedShipDefinition(),
       playerStats: this.getResolvedPlayerStats(),
       upgrades: this.getPlayerWeaponUpgradeState(),
+      shopUpgradeLevels: this.progressionState.weaponUpgradeLevels,
       debugTuning: {
         damageMultiplier: this.getActiveDebugWeaponDamageMultiplier(),
         fireRateMultiplier: this.getActiveDebugWeaponFireRateMultiplier()
@@ -5091,9 +5713,112 @@ export class GameScene extends Phaser.Scene {
     this.permanentUpgradeLevels[upgrade.id] += 1;
     this.activePermanentUpgradeLevels[upgrade.id] = this.permanentUpgradeLevels[upgrade.id];
     this.saveProgression();
-    if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
+    this.refreshCurrentPanel();
+  }
+
+  private purchaseShopUpgrade(id: ShopTerminalUpgradeId): void {
+    if (id.startsWith('system:permanent:')) {
+      const upgradeId = id.replace('system:permanent:', '') as PermanentUpgradeId;
+      const upgrade = PERMANENT_UPGRADE_DEFINITIONS.find((candidate) => candidate.id === upgradeId);
+      if (upgrade) {
+        this.purchasePermanentUpgrade(upgrade);
+      }
+      return;
     }
+
+    if (id === 'system:radar') {
+      this.purchaseRadarUpgrade();
+      return;
+    }
+
+    if (id === 'system:scanner') {
+      this.purchaseSectorScanner();
+      return;
+    }
+
+    if (id.startsWith('ship:')) {
+      this.purchaseShipShopUpgrade(id);
+      return;
+    }
+
+    if (id.startsWith('weapon:')) {
+      this.purchaseWeaponShopUpgrade(id);
+      return;
+    }
+
+    if (id.startsWith('run-prep:')) {
+      this.purchaseRunPrepUpgrade(id);
+      return;
+    }
+
+    if (id.startsWith('boost:')) {
+      this.purchaseRunBoost(id);
+    }
+  }
+
+  private purchaseShipShopUpgrade(id: ShopTerminalUpgradeId): void {
+    const [, shipId, upgradeId] = id.split(':') as [string, ShipId, ShipShopUpgradeId];
+    const result = purchaseShipShopUpgradeSystem(
+      this.progressionState,
+      this.totalCredits,
+      this.unlockedShipIds,
+      shipId,
+      upgradeId
+    );
+
+    if (!result.purchased) {
+      return;
+    }
+
+    this.totalCredits = result.totalCredits;
+    this.saveProgression();
+    this.refreshCurrentPanel();
+  }
+
+  private purchaseWeaponShopUpgrade(id: ShopTerminalUpgradeId): void {
+    const [, weaponId, upgradeId] = id.split(':') as [string, WeaponId, WeaponShopUpgradeId];
+    const result = purchaseWeaponShopUpgradeSystem(
+      this.progressionState,
+      this.weaponMkLevels,
+      this.totalCredits,
+      this.getAvailableHangarWeaponIds(),
+      weaponId,
+      upgradeId
+    );
+
+    if (!result.purchased) {
+      return;
+    }
+
+    this.totalCredits = result.totalCredits;
+    this.saveProgression();
+    this.refreshCurrentPanel();
+  }
+
+  private purchaseRunPrepUpgrade(id: ShopTerminalUpgradeId): void {
+    const upgradeId = id.replace('run-prep:', '') as RunPrepUpgradeId;
+    const result = purchaseRunPrepUpgradeSystem(this.progressionState, this.totalCredits, upgradeId);
+
+    if (!result.purchased) {
+      return;
+    }
+
+    this.totalCredits = result.totalCredits;
+    this.saveProgression();
+    this.refreshCurrentPanel();
+  }
+
+  private purchaseRunBoost(id: ShopTerminalUpgradeId): void {
+    const boostId = id.replace('boost:', '') as RunBoostId;
+    const result = purchaseRunBoostSystem(this.progressionState, this.totalCredits, boostId);
+
+    if (!result.purchased) {
+      return;
+    }
+
+    this.totalCredits = result.totalCredits;
+    this.saveProgression();
+    this.refreshCurrentPanel();
   }
 
   private adjustActivePermanentUpgradeLevel(id: PermanentUpgradeId, delta: number): void {
@@ -5101,42 +5826,32 @@ export class GameScene extends Phaser.Scene {
     const activeLevel = this.getActivePermanentUpgradeLevel(id);
     this.activePermanentUpgradeLevels[id] = Phaser.Math.Clamp(activeLevel + delta, 0, purchasedLevel);
     this.saveProgression();
-    if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
-    }
+    this.refreshCurrentPanel();
   }
 
   private purchaseRadarUpgrade(): void {
-    const nextLevel = getNextRadarLevel(this.progressionState);
-    const cost = getRadarUpgradeCost(this.progressionState);
+    const result = purchaseRadarUpgradeSystem(this.progressionState, this.totalCredits);
 
-    if (!nextLevel || cost === null || this.totalCredits < cost) {
+    if (!result.purchased) {
       return;
     }
 
-    this.totalCredits -= cost;
-    this.progressionState.radarLevel = nextLevel;
+    this.totalCredits = result.totalCredits;
     this.saveProgression();
     this.updateMinimap();
-    if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
-    }
+    this.refreshCurrentPanel();
   }
 
   private purchaseSectorScanner(): void {
-    const nextLevel = getNextSectorScannerLevel(this.progressionState);
-    const cost = getSectorScannerCost(this.progressionState);
+    const result = purchaseSectorScannerUpgradeSystem(this.progressionState, this.totalCredits);
 
-    if (!nextLevel || cost === null || this.totalCredits < cost) {
+    if (!result.purchased) {
       return;
     }
 
-    this.totalCredits -= cost;
-    this.progressionState.sectorScannerLevel = nextLevel;
+    this.totalCredits = result.totalCredits;
     this.saveProgression();
-    if (this.gameFlowState === 'shop') {
-      this.showShop(this.shopBackTarget);
-    }
+    this.refreshCurrentPanel();
   }
 
   private handleShopBack(): void {
@@ -5144,12 +5859,40 @@ export class GameScene extends Phaser.Scene {
     this.destroyShopScreen();
 
     if (backTarget === 'results' && this.isPlayerDead) {
-      this.gameFlowState = 'results';
-      this.showResultsScreen();
+      this.showResultsPanel('debrief');
       return;
     }
 
     this.showMainMenu();
+  }
+
+  private refreshCurrentPanel(): void {
+    switch (this.gameFlowState) {
+      case 'command':
+        this.showMainMenu();
+        break;
+      case 'shipSelect':
+        this.showShipSelect();
+        break;
+      case 'shop':
+        this.showShop(this.shopBackTarget);
+        break;
+      case 'settings':
+        this.showSettings();
+        break;
+      case 'results':
+        this.showResultsPanel(this.resultsPanelTab);
+        break;
+      case 'running':
+        break;
+    }
+  }
+
+  private destroyForegroundPanelScreen(): void {
+    this.destroyMainMenuScreen();
+    this.destroyShipSelectScreen();
+    this.destroyShopScreen();
+    this.destroyResultsScreen();
   }
 
   private destroyMainMenuScreen(): void {
@@ -7553,8 +8296,8 @@ export class GameScene extends Phaser.Scene {
 
   private emitScrapPickupFeedback(x: number, y: number, value: number): void {
     const position = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = Phaser.Math.Clamp(4 + Math.ceil(value / 4), 5, 12);
-    const flash = this.add.circle(position.x, position.y, 9, 0x73f2ff, 0.38);
+    const particleCount = this.getNonCriticalParticleCount(Phaser.Math.Clamp(4 + Math.ceil(value / 4), 5, 12));
+    const flash = this.add.circle(position.x, position.y, 9, 0x73f2ff, this.getFlashAlpha(0.38));
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -7756,7 +8499,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private refillFuel(): void {
-    this.fuel = RUN_FUEL_MAX;
+    this.fuel = this.getRunMaxFuel();
     this.updateGameplayHud(this.time.now);
   }
 
@@ -7767,6 +8510,26 @@ export class GameScene extends Phaser.Scene {
 
   private getFuelThrustMultiplier(): number {
     return this.fuel > 0 ? 1 : RUN_FUEL_EMERGENCY_THRUST_MULTIPLIER;
+  }
+
+  private applyPendingRunBoosts(): void {
+    let consumed = false;
+
+    if (this.hasPendingRunBoost('emergency-patch-kit')) {
+      this.playerHull += BOOST_EMERGENCY_PATCH_HULL_BONUS;
+      this.progressionState.pendingRunBoosts['emergency-patch-kit'] = 0;
+      consumed = true;
+    }
+
+    if (this.hasPendingRunBoost('fuel-canister')) {
+      this.fuel += BOOST_FUEL_CANISTER_BONUS;
+      this.progressionState.pendingRunBoosts['fuel-canister'] = 0;
+      consumed = true;
+    }
+
+    if (consumed) {
+      this.saveProgression();
+    }
   }
 
   private applyPlayerCoastDamping(deltaSeconds: number): void {
@@ -8364,6 +9127,7 @@ export class GameScene extends Phaser.Scene {
     this.gameplayHud.closeMissionLog();
     this.isPauseMenuOpen = true;
     this.pauseMenuTab = tab;
+    this.settingsBindingError = undefined;
     this.pauseMenuOpenedAt = time;
     this.refreshPauseMenu();
   }
@@ -8380,6 +9144,7 @@ export class GameScene extends Phaser.Scene {
     this.pauseMenuOpenedAt = 0;
     this.pauseMenuTab = 'pause';
     this.awaitingBinding = undefined;
+    this.settingsBindingError = undefined;
     this.pauseMenuScreen = destroyScreenHandle(this.pauseMenuScreen, {
       disableZones: true,
       resetCursor: () => this.resetUiCursor()
@@ -8402,6 +9167,7 @@ export class GameScene extends Phaser.Scene {
       settings: cloneGameSettings(this.gameSettings),
       activeTab: this.pauseMenuTab,
       awaitingBinding: this.awaitingBinding,
+      bindingError: this.settingsBindingError,
       isActionActive: () => this.isPauseMenuOpen,
       resetCursor: () => this.resetUiCursor(),
       onResume: () => {
@@ -8423,29 +9189,123 @@ export class GameScene extends Phaser.Scene {
       onSelectTab: (tab) => {
         this.pauseMenuTab = tab;
         this.awaitingBinding = undefined;
+        this.settingsBindingError = undefined;
         this.refreshPauseMenu();
       },
-      onSetMovementMode: (mode) => this.setMovementMode(mode),
+      onChangeSettings: (settings) => this.commitGameSettings(settings),
       onCaptureBinding: (action, slot) => this.startBindingCapture(action, slot),
       onResetControls: () => {
         this.gameSettings = resetControlSettings(this.gameSettings);
         this.rebuildControlKeys();
         this.awaitingBinding = undefined;
+        this.settingsBindingError = undefined;
         this.refreshPauseMenu();
       },
       onResetAll: () => {
         this.gameSettings = resetGameSettings();
         this.rebuildControlKeys();
         this.awaitingBinding = undefined;
+        this.settingsBindingError = undefined;
+        this.applyRuntimeSettings();
         this.refreshPauseMenu();
       }
     });
   }
 
-  private setMovementMode(mode: MovementMode): void {
-    this.gameSettings = { ...this.gameSettings, movementMode: mode };
+  private commitGameSettings(settings: GameSettings): void {
+    this.gameSettings = cloneGameSettings(settings);
     saveGameSettings(this.gameSettings);
-    this.refreshPauseMenu();
+    this.rebuildControlKeys();
+    this.settingsBindingError = undefined;
+    this.applyRuntimeSettings();
+    this.refreshActiveSettingsUi();
+  }
+
+  private applyRuntimeSettings(): void {
+    this.gameplayHud.setTextScale(this.gameSettings.accessibility.textScale);
+    this.gameplayHud.setHighContrast(this.gameSettings.accessibility.highContrast);
+    this.updateBrightnessOverlay();
+  }
+
+  private updateBrightnessOverlay(): void {
+    const brightness = this.gameSettings.graphics.brightness;
+    const delta = brightness - 1;
+    if (Math.abs(delta) < 0.01) {
+      this.brightnessOverlay?.destroy();
+      this.brightnessOverlay = undefined;
+      return;
+    }
+
+    const color = delta > 0 ? 0xf2fbff : 0x02040a;
+    const alpha = Math.min(0.18, Math.abs(delta) * (delta > 0 ? 0.42 : 0.72));
+    const overlay =
+      this.brightnessOverlay ??
+      this.add
+        .rectangle(this.scale.width / 2, this.scale.height / 2, this.scale.width, this.scale.height, color, alpha)
+        .setScrollFactor(0)
+        .setDepth(950);
+
+    this.brightnessOverlay = overlay;
+    overlay
+      .setPosition(this.scale.width / 2, this.scale.height / 2)
+      .setSize(this.scale.width, this.scale.height)
+      .setFillStyle(color, alpha)
+      .setBlendMode(delta > 0 ? Phaser.BlendModes.ADD : Phaser.BlendModes.NORMAL)
+      .setVisible(true);
+  }
+
+  private getFlashAlpha(alpha: number, critical = false): number {
+    if (!this.gameSettings.accessibility.reducedFlash) {
+      return alpha;
+    }
+
+    return alpha * (critical ? 0.48 : 0.28);
+  }
+
+  private getVfxDensity(): number {
+    return this.gameSettings.graphics.vfxDensity;
+  }
+
+  private getNonCriticalParticleCount(baseCount: number): number {
+    return Math.max(0, Math.round(baseCount * this.getVfxDensity()));
+  }
+
+  private shouldEmitNonCriticalVfx(): boolean {
+    const density = this.getVfxDensity();
+    return density >= 1 || Math.random() <= density;
+  }
+
+  private getCameraShakeScale(): number {
+    if (this.gameSettings.accessibility.reducedShake) {
+      return 0;
+    }
+
+    return this.gameSettings.graphics.screenShakeAmount;
+  }
+
+  private shakeCamera(durationMs: number, intensity: number): void {
+    const scale = this.getCameraShakeScale();
+    if (scale <= 0 || intensity <= 0) {
+      return;
+    }
+
+    this.cameras.main.shake(durationMs, intensity * scale);
+  }
+
+  private refreshActiveSettingsUi(): void {
+    if (this.isPauseMenuOpen) {
+      this.refreshPauseMenu();
+      return;
+    }
+
+    this.refreshCurrentPanel();
+  }
+
+  private toggleAutoOpenDebriefSetting(): void {
+    this.commitGameSettings({
+      ...this.gameSettings,
+      autoOpenDebriefOnDeath: !this.gameSettings.autoOpenDebriefOnDeath
+    });
   }
 
   private startBindingCapture(action: RunControlAction, slot: BindingSlot): void {
@@ -8454,22 +9314,27 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.awaitingBinding = { action, slot };
-    this.refreshPauseMenu();
+    this.settingsBindingError = undefined;
+    this.refreshActiveSettingsUi();
     this.input.keyboard.once('keydown', (event: KeyboardEvent) => {
       if (!this.awaitingBinding) {
         return;
       }
 
       if (event.code !== 'Escape') {
-        const keyBindings = cloneGameSettings(this.gameSettings).keyBindings;
-        keyBindings[action] = { ...keyBindings[action], [slot]: event.code };
-        this.gameSettings = { ...this.gameSettings, keyBindings };
-        saveGameSettings(this.gameSettings);
-        this.rebuildControlKeys();
+        const result = setKeyBindingIfAvailable(this.gameSettings, action, slot, event.code);
+        if (result.conflictLabel) {
+          this.settingsBindingError = `${event.code} is already assigned to ${result.conflictLabel}.`;
+        } else {
+          this.gameSettings = result.settings;
+          saveGameSettings(this.gameSettings);
+          this.rebuildControlKeys();
+          this.settingsBindingError = undefined;
+        }
       }
 
       this.awaitingBinding = undefined;
-      this.refreshPauseMenu();
+      this.refreshActiveSettingsUi();
     });
   }
 
@@ -8628,7 +9493,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getNextRerollCost(): number {
-    return this.debugRerollCostBase * (this.rerollsThisRun + 1);
+    const baseCost = Math.max(
+      1,
+      this.debugRerollCostBase - this.getRunPrepUpgradeLevel('reroll-logistics') * RUN_PREP_REROLL_COST_REDUCTION
+    );
+    return baseCost * (this.rerollsThisRun + 1);
   }
 
   private canRerollUpgradeOverlay(): boolean {
@@ -8835,9 +9704,13 @@ export class GameScene extends Phaser.Scene {
 
   private applyPassiveUpgrade(upgradeId: PassiveUpgradeId): void {
     if (upgradeId === 'hull-plating') {
+      const previousHull = this.playerHull;
       this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + HULL_PLATING_REPAIR);
+      this.recordHealingReceived(this.playerHull - previousHull, 'Hull Plating');
     } else if (upgradeId === 'damage-control') {
+      const previousHull = this.playerHull;
       this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + DAMAGE_CONTROL_REPAIR);
+      this.recordHealingReceived(this.playerHull - previousHull, 'Damage Control');
     }
   }
 
@@ -9305,18 +10178,22 @@ export class GameScene extends Phaser.Scene {
   private createResultsButton(): void {
     this.resultsButtonGraphics = this.add.graphics();
     this.resultsButtonText = this.add
-      .text(0, 0, 'See Results', {
+      .text(0, 0, 'DEBRIEF', {
         fontFamily: 'Consolas, "Courier New", monospace',
-        fontSize: '15px',
-        color: '#f2fbff'
+        fontSize: '12px',
+        fontStyle: 'bold',
+        color: '#f2fbff',
+        align: 'center',
+        fixedWidth: 198,
+        lineSpacing: 3
       })
       .setOrigin(0.5);
 
     this.resultsButtonContainer = this.add
-      .container(this.scale.width / 2, 54, [this.resultsButtonGraphics, this.resultsButtonText])
+      .container(this.scale.width / 2, this.scale.height - 238, [this.resultsButtonGraphics, this.resultsButtonText])
       .setScrollFactor(0)
       .setDepth(1003)
-      .setSize(170, 34)
+      .setSize(220, 52)
       .setInteractive({ useHandCursor: true });
 
     this.resultsButtonContainer.on('pointerdown', () => this.showResultsScreen());
@@ -9328,9 +10205,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isPlayerDead && !this.resultsScreen;
+    const isVisible = this.isDebriefAvailable && !this.resultsScreen;
     this.resultsButtonContainer
-      .setPosition(this.scale.width / 2, 54)
+      .setPosition(this.scale.width / 2, this.scale.height - 238)
       .setVisible(isVisible)
       .disableInteractive();
 
@@ -9339,10 +10216,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.resultsButtonGraphics.clear();
-    this.resultsButtonGraphics.fillStyle(0x071018, 0.94);
-    this.resultsButtonGraphics.fillRoundedRect(-85, -17, 170, 34, 6);
-    this.resultsButtonGraphics.lineStyle(2, 0xffc857, 0.9);
-    this.resultsButtonGraphics.strokeRoundedRect(-85, -17, 170, 34, 6);
+    this.resultsButtonText.setText('BLACK BOX RECOVERED\nDEBRIEF');
+    this.resultsButtonGraphics.fillStyle(0x02040a, 0.72);
+    this.resultsButtonGraphics.fillRoundedRect(-107, -21, 220, 52, 6);
+    this.resultsButtonGraphics.fillStyle(0x1b2634, 0.94);
+    this.resultsButtonGraphics.fillRoundedRect(-110, -26, 220, 52, 5);
+    this.resultsButtonGraphics.fillStyle(0xf2fbff, 0.1);
+    this.resultsButtonGraphics.fillRoundedRect(-104, -20, 208, 15, 5);
+    this.resultsButtonGraphics.fillStyle(0xc89452, 0.48);
+    this.resultsButtonGraphics.fillRect(-100, -17, 200, 2);
+    this.resultsButtonGraphics.lineStyle(7, 0xffc857, 0.1);
+    this.resultsButtonGraphics.strokeRoundedRect(-112, -28, 224, 56, 7);
+    this.resultsButtonGraphics.lineStyle(2.25, 0xffc857, 0.86);
+    this.resultsButtonGraphics.strokeRoundedRect(-110, -26, 220, 52, 5);
+    this.resultsButtonGraphics.lineStyle(1, 0xf2fbff, 0.16);
+    this.resultsButtonGraphics.strokeRoundedRect(-104, -20, 208, 40, 3);
+    this.resultsButtonGraphics.fillStyle(0xffc857, 0.78);
+    this.resultsButtonGraphics.fillRect(-98, 18, 196, 4);
   }
 
   private createUpgradeOverlay(): void {
@@ -9431,7 +10321,7 @@ export class GameScene extends Phaser.Scene {
     const burstCount = this.selectedShipId === 'bulwark' ? 18 : 10;
     const intensity = this.selectedShipId === 'bulwark' ? 1.55 : 1.05;
 
-    for (let index = 0; index < burstCount; index += 1) {
+    for (let index = 0; index < this.getNonCriticalParticleCount(burstCount); index += 1) {
       const localX = Phaser.Math.FloatBetween(-18, 18);
       const offset = this.getShipLocalOffset(localX, rearOffset, forward, right);
       const startX = this.player.x + offset.x;
@@ -9462,7 +10352,13 @@ export class GameScene extends Phaser.Scene {
     }
 
     const noseOffset = this.getShipLocalOffset(0, -54, forward, right);
-    const flash = this.add.circle(this.player.x + noseOffset.x, this.player.y + noseOffset.y, 22 * intensity, 0x73f2ff, 0.32);
+    const flash = this.add.circle(
+      this.player.x + noseOffset.x,
+      this.player.y + noseOffset.y,
+      22 * intensity,
+      0x73f2ff,
+      this.getFlashAlpha(0.32)
+    );
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -9482,6 +10378,10 @@ export class GameScene extends Phaser.Scene {
     forward: Phaser.Math.Vector2,
     right: Phaser.Math.Vector2
   ): void {
+    if (!this.shouldEmitNonCriticalVfx()) {
+      return;
+    }
+
     const offset = this.getShipLocalOffset(localOffset.x, localOffset.y, forward, right);
     const jitter = Phaser.Math.FloatBetween(-4.4, 4.4) * intensity;
     const startX = this.player.x + offset.x + right.x * jitter;
@@ -9949,6 +10849,7 @@ export class GameScene extends Phaser.Scene {
 
     const appliedDamage = Math.max(1, Math.round(damage - enemy.stats.defense));
     enemy.hp -= appliedDamage;
+    this.recordDamageDone(appliedDamage, source);
     this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.stats.maxHull, this.getEnemyHitRadius(enemy), appliedDamage, source, revealHealthBar);
     return appliedDamage;
   }
@@ -9965,6 +10866,7 @@ export class GameScene extends Phaser.Scene {
 
     const appliedDamage = Math.max(1, Math.round(damage));
     enemy.hp -= appliedDamage;
+    this.recordDamageDone(appliedDamage, source);
     this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.maxHp, enemy.definition.stats.radius, appliedDamage, source, revealHealthBar);
     return appliedDamage;
   }
@@ -9977,6 +10879,7 @@ export class GameScene extends Phaser.Scene {
   ): number {
     const appliedDamage = Math.max(0, Math.round(damage));
     asteroid.hp -= appliedDamage;
+    this.recordDamageDone(appliedDamage, source);
     this.emitDamageFeedback(
       asteroid,
       asteroid.body,
@@ -9998,6 +10901,7 @@ export class GameScene extends Phaser.Scene {
   ): number {
     const appliedDamage = Math.max(0, Math.round(damage));
     debris.hp -= appliedDamage;
+    this.recordDamageDone(appliedDamage, source);
     this.emitDamageFeedback(debris, debris.body, debris.hp, ENEMY_WRECKAGE_DEBRIS_HP, debris.hitRadius, appliedDamage, source, revealHealthBar);
     return appliedDamage;
   }
@@ -10080,6 +10984,7 @@ export class GameScene extends Phaser.Scene {
 
     const shieldHpBefore = this.rammingShieldState.hp;
     damageRammingShield(this.rammingShieldState, this.getRammingShieldStats(), damage, time);
+    this.recordShieldDamageBlocked(Math.min(damage, shieldHpBefore));
     if (shieldHpBefore > 0 && this.rammingShieldState.hp <= 0) {
       this.applyRammingShieldBreakEffects(time, impactX, impactY);
     }
@@ -10133,8 +11038,8 @@ export class GameScene extends Phaser.Scene {
 
   private emitRammingShieldDamageFeedback(impactX: number, impactY: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(impactX, impactY);
-    const particleCount = 9;
-    const flash = this.add.circle(effectPosition.x, effectPosition.y, 14, 0x42f5d7, 0.42);
+    const particleCount = this.getNonCriticalParticleCount(9);
+    const flash = this.add.circle(effectPosition.x, effectPosition.y, 14, 0x42f5d7, this.getFlashAlpha(0.42));
 
     flash.setDepth(13);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -10599,9 +11504,11 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.playerHull = Math.max(0, this.playerHull - hullDamage);
+    this.recordDamageTaken(hullDamage, options.source ?? 'enemy');
     this.isPulseEmergencyCharged = this.getRunUpgradeLevelById('pulse_emergency_discharge') > 0;
     this.emitFloatingDamageNumber(impactX, impactY, hullDamage, options.source ?? 'enemy');
     this.emitPlayerDamageFeedback(impactX, impactY);
+    this.shakeCamera(120, Math.min(0.012, 0.004 + hullDamage / Math.max(1, this.getPlayerMaxHull()) * 0.035));
     this.updateGameplayHud(time);
 
     if (this.playerHull <= 0) {
@@ -10627,13 +11534,13 @@ export class GameScene extends Phaser.Scene {
 
   private emitPlayerDamageFeedback(impactX = this.player.x, impactY = this.player.y): void {
     const effectPosition = this.getNearestWrappedRenderPosition(impactX, impactY);
-    const particleCount = 10;
+    const particleCount = this.getNonCriticalParticleCount(10);
 
     this.playerSprite.setTint(0xff5964);
 
     this.tweens.add({
       targets: this.playerSprite,
-      alpha: 0.45,
+      alpha: this.getFlashAlpha(0.45, true),
       yoyo: true,
       repeat: 1,
       duration: PLAYER_DAMAGE_FLASH_MS,
@@ -10689,7 +11596,7 @@ export class GameScene extends Phaser.Scene {
   private emitPlayerDeathShards(): void {
     const ship = this.getSelectedShipDefinition();
     const position = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
-    const flash = this.add.circle(position.x, position.y, 34, 0xfff2d2, 0.54);
+    const flash = this.add.circle(position.x, position.y, 34, 0xfff2d2, this.getFlashAlpha(0.54, true));
     const ring = this.add.circle(position.x, position.y, 42, 0xffc857, 0);
 
     flash.setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
@@ -10732,7 +11639,9 @@ export class GameScene extends Phaser.Scene {
 
     this.isPlayerDead = true;
     this.runEndReason = 'death';
-    this.gameFlowState = 'results';
+    this.isDebriefAvailable = false;
+    this.hasAutoOpenedDebrief = false;
+    this.deathSequenceEndsAt = this.time.now + DEATH_SEQUENCE_DEBRIEF_DELAY_MS;
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
     this.captureRunResults(this.time.now);
@@ -10751,8 +11660,25 @@ export class GameScene extends Phaser.Scene {
     }
     this.closeEjectConfirmation();
     this.updateGameplayHud(this.time.now);
-    this.showResultsScreen();
     this.autoRunDiagnostics.endRun('player-death');
+  }
+
+  private updateDeathDebriefGate(time: number): void {
+    if (!this.isPlayerDead || this.runEndReason !== 'death' || this.isDebriefAvailable || this.deathSequenceEndsAt <= 0) {
+      return;
+    }
+
+    if (time < this.deathSequenceEndsAt) {
+      return;
+    }
+
+    this.isDebriefAvailable = true;
+    this.updateResultsButton();
+
+    if (this.gameSettings.autoOpenDebriefOnDeath && !this.hasAutoOpenedDebrief) {
+      this.hasAutoOpenedDebrief = true;
+      this.showResultsScreen();
+    }
   }
 
   private restorePlayerHull(): void {
@@ -10763,6 +11689,9 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
     this.runEndReason = 'none';
+    this.isDebriefAvailable = false;
+    this.deathSequenceEndsAt = 0;
+    this.hasAutoOpenedDebrief = false;
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -10782,7 +11711,9 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    const previousHull = this.playerHull;
     this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + amount);
+    this.recordHealingReceived(this.playerHull - previousHull, 'Debug Repair');
     this.updateGameplayHud(this.time.now);
   }
 
@@ -10917,7 +11848,7 @@ export class GameScene extends Phaser.Scene {
       hull: this.playerHull,
       maxHull: this.getPlayerMaxHull(),
       fuel: this.fuel,
-      maxFuel: RUN_FUEL_MAX,
+      maxFuel: this.getRunMaxFuel(),
       runScrapTotal: this.runScrapTotal,
       trainingInvulnerable: this.debugState.playerInvulnerable,
       blackHoleActive: Boolean(this.blackHole)
@@ -10945,18 +11876,66 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getScrapCreditMultiplier(): number {
-    return this.getResolvedPlayerStats().greed;
+    return this.getResolvedPlayerStats().greed * (1 + this.getRunPrepUpgradeLevel('scrap-brokerage') * RUN_PREP_SCRAP_BROKERAGE_MULTIPLIER);
   }
 
   private showResultsScreen(): void {
+    this.showResultsPanel('debrief');
+  }
+
+  private showResultsPanel(tab: ResultsPanelTab): void {
     this.gameFlowState = 'results';
+    this.resultsPanelTab = tab;
     this.gameplayHud.closeMissionLog();
     this.sectorScannerArrow?.setVisible(false);
-    this.destroyResultsScreen();
+    this.destroyForegroundPanelScreen();
 
+    switch (tab) {
+      case 'start':
+        this.resultsScreen = createStartResultsScreen({
+          scene: this,
+          nav: this.getResultsNavConfig()
+        });
+        break;
+      case 'command':
+        this.mainMenuScreen = this.createCommandPanel(
+          this.getResultsNavConfig(),
+          () => this.gameFlowState === 'results' && this.resultsPanelTab === 'command'
+        );
+        break;
+      case 'hangar':
+        this.shipSelectScreen = this.createShipSelectPanel(
+          this.getResultsNavConfig(),
+          () => this.gameFlowState === 'results' && this.resultsPanelTab === 'hangar'
+        );
+        break;
+      case 'shop':
+        this.shopScreen = this.createShopPanel(
+          this.getResultsNavConfig(),
+          () => this.gameFlowState === 'results' && this.resultsPanelTab === 'shop'
+        );
+        break;
+      case 'settings':
+        this.mainMenuScreen = this.createSettingsPanel(
+          this.getResultsNavConfig(),
+          () => this.gameFlowState === 'results' && this.resultsPanelTab === 'settings'
+        );
+        break;
+      case 'debrief':
+        this.resultsScreen = this.createResultsDebriefPanel();
+        break;
+    }
+
+    this.updateResultsButton();
+    if (!this.debugMenuHost?.isCreated()) {
+      this.createDebugMenu();
+    }
+  }
+
+  private createResultsDebriefPanel(): ScreenHandle {
     const elapsedSeconds = Math.max(0, Math.floor(this.lastRunSurvivalMs / 1000));
 
-    this.resultsScreen = createResultsScreen({
+    return createResultsScreen({
       scene: this,
       outcomeTitle: this.getResultsOutcomeTitle(),
       survivalTimeLabel: this.formatSurvivalTime(elapsedSeconds),
@@ -10972,16 +11951,15 @@ export class GameScene extends Phaser.Scene {
       scrapToCreditRate: SCRAP_TO_CREDIT_RATE,
       scrapCreditMultiplier: this.getScrapCreditMultiplier(),
       summarySections: this.getResultsSummarySections(),
-      isActionActive: () => this.gameFlowState === 'results',
+      combatStats: buildResultsCombatStats(this.runCombatStats),
+      isActionActive: () => this.gameFlowState === 'results' && this.resultsPanelTab === 'debrief',
       resetCursor: () => this.resetUiCursor(),
       onRestartRun: () => this.startRun(),
-      onMainMenu: () => this.showMainMenu(),
-      onShop: () => this.showShop('results')
+      onMainMenu: () => this.showResultsPanel('command'),
+      onHangar: () => this.showResultsPanel('hangar'),
+      onShop: () => this.showResultsPanel('shop'),
+      onSettings: () => this.showResultsPanel('settings')
     });
-    this.updateResultsButton();
-    if (!this.debugMenuHost?.isCreated()) {
-      this.createDebugMenu();
-    }
   }
 
   private getResultsOutcomeTitle(): string {
@@ -11014,6 +11992,75 @@ export class GameScene extends Phaser.Scene {
     ];
   }
 
+  private recordDamageDone(amount: number, source: DamageFeedbackSource): void {
+    const rounded = Math.max(0, Math.round(amount));
+    if (rounded <= 0 || source === 'enemy' || source === 'environment') {
+      return;
+    }
+
+    this.runCombatStats.damageDoneTotal += rounded;
+    this.runCombatStats.highestHit = Math.max(this.runCombatStats.highestHit, rounded);
+    addCombatEntry(this.runCombatStats.damageDoneBySource, this.getDamageSourceLabel(source, true), rounded);
+  }
+
+  private recordDamageTaken(amount: number, source: DamageFeedbackSource): void {
+    const rounded = Math.max(0, Math.round(amount));
+    if (rounded <= 0) {
+      return;
+    }
+
+    this.runCombatStats.damageTakenTotal += rounded;
+    this.runCombatStats.finalDamageAmount = rounded;
+    this.runCombatStats.finalDamageSource = this.getDamageSourceLabel(source, false);
+    addCombatEntry(this.runCombatStats.damageTakenBySource, this.runCombatStats.finalDamageSource, rounded);
+  }
+
+  private recordHealingReceived(amount: number, sourceLabel: string): void {
+    const rounded = Math.max(0, Math.round(amount));
+    if (rounded <= 0) {
+      return;
+    }
+
+    this.runCombatStats.healingReceivedTotal += rounded;
+    this.runCombatStats.healingDoneTotal += rounded;
+    addCombatEntry(this.runCombatStats.healingBySource, sourceLabel, rounded);
+  }
+
+  private recordShieldDamageBlocked(amount: number): void {
+    const rounded = Math.max(0, Math.round(amount));
+    if (rounded <= 0) {
+      return;
+    }
+
+    this.runCombatStats.shieldDamageBlocked += rounded;
+    addCombatEntry(this.runCombatStats.damageTakenBySource, 'Ramming Shield Blocked', rounded);
+  }
+
+  private getDamageSourceLabel(source: DamageFeedbackSource, outgoing: boolean): string {
+    switch (source) {
+      case 'player':
+        return outgoing ? this.getPlayerWeaponDamageLabel() : 'Player Weapon';
+      case 'shield':
+        return outgoing ? 'Ramming Shield' : 'Ramming Shield';
+      case 'enemy':
+        return 'Enemy Contact / Projectile';
+      case 'asteroid':
+        return outgoing ? 'Asteroid Impact' : 'Asteroid Collision';
+      case 'debris':
+        return outgoing ? 'Debris Impact' : 'Debris Collision';
+      case 'blackHole':
+        return 'Black Hole';
+      case 'environment':
+        return 'Environment';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  private getPlayerWeaponDamageLabel(): string {
+    return this.getActivePrimaryWeaponDefinition()?.displayName ?? this.getEffectiveAutoWeaponDefinition()?.displayName ?? 'Player Weapons';
+  }
+
   private getResultsBuildLines(): string[] {
     const ship = this.getSelectedShipDefinition();
     const primary = this.getActivePrimaryWeaponDefinition();
@@ -11037,13 +12084,11 @@ export class GameScene extends Phaser.Scene {
         const definition = UPGRADE_CHOICES.find((upgrade) => upgrade.id === upgradeId);
         return `${definition?.name ?? upgradeId} x${level}`;
       });
-    const visible = earned.slice(0, 5);
 
     return [
       `Banked ${this.bankedUpgrades}`,
       `Rerolls ${this.rerollsThisRun}`,
-      ...(visible.length > 0 ? visible : ['No run upgrades selected']),
-      ...(earned.length > visible.length ? [`+${earned.length - visible.length} more`] : [])
+      ...(earned.length > 0 ? earned : ['No run upgrades selected'])
     ];
   }
 
@@ -11073,6 +12118,9 @@ export class GameScene extends Phaser.Scene {
     this.gameFlowState = 'running';
     this.isPlayerDead = false;
     this.runEndReason = 'none';
+    this.isDebriefAvailable = false;
+    this.deathSequenceEndsAt = 0;
+    this.hasAutoOpenedDebrief = false;
     this.playerHull = Math.max(this.playerHull, this.getPlayerMaxHull());
     this.player.setVisible(true);
     this.playerSprite.clearTint();
@@ -11168,8 +12216,10 @@ export class GameScene extends Phaser.Scene {
     const spawnX = wrapCoordinate(request.x, this.arena.width);
     const spawnY = wrapCoordinate(request.y, this.arena.height);
     const rotation = Math.atan2(direction.x, -direction.y);
-    const body = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, request.color, rotation);
-    const wrapMirrorBody = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, request.color, rotation);
+    const colors = this.getEnemyProjectileColorOverrides();
+    const projectileColor = colors?.bodyColor ?? request.color;
+    const body = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, projectileColor, rotation);
+    const wrapMirrorBody = this.createLiveEnemyProjectileBody(spawnX, spawnY, request.radius, projectileColor, rotation);
     wrapMirrorBody.setVisible(false);
 
     this.enemyProjectiles.push({
@@ -11195,10 +12245,11 @@ export class GameScene extends Phaser.Scene {
     color: number,
     rotation: number
   ): Phaser.GameObjects.Container {
-    const glow = this.add.ellipse(0, 0, radius * 4.5, radius * 4.5, color, 0.24);
+    const colors = this.getEnemyProjectileColorOverrides();
+    const glow = this.add.ellipse(0, 0, radius * 4.5, radius * 4.5, colors?.glowColor ?? color, 0.24);
     glow.setBlendMode(Phaser.BlendModes.ADD);
-    const core = this.add.ellipse(0, 0, radius * 1.1, radius * 2.2, color, 0.94);
-    core.setStrokeStyle(1, 0xf2fbff, 0.75);
+    const core = this.add.ellipse(0, 0, radius * 1.1, radius * 2.2, colors?.bodyColor ?? color, 0.94);
+    core.setStrokeStyle(1, colors?.strokeColor ?? 0xf2fbff, 0.75);
     const projectile = this.add.container(x, y, [glow, core]);
     projectile.setRotation(rotation);
     projectile.setDepth(8);
@@ -11225,7 +12276,7 @@ export class GameScene extends Phaser.Scene {
 
   private emitLiveEnemyBurst(x: number, y: number, color: number, count = 8): void {
     const position = this.getNearestWrappedRenderPosition(x, y);
-    for (let i = 0; i < count; i += 1) {
+    for (let i = 0; i < this.getNonCriticalParticleCount(count); i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
       const distance = Phaser.Math.FloatBetween(14, 46);
       const particle = this.add.circle(position.x, position.y, Phaser.Math.FloatBetween(2, 5), color, 0.72);
@@ -11310,7 +12361,8 @@ export class GameScene extends Phaser.Scene {
         arena: this.arena,
         enemy,
         direction,
-        time
+        time,
+        colors: this.getEnemyProjectileColorOverrides()
       })
     );
   }
@@ -11848,6 +12900,8 @@ export class GameScene extends Phaser.Scene {
       (this.debugMenuHost?.containsPointer(pointer) ?? false) ||
       (this.secretControlOverlay?.containsPointer(pointer) ?? false);
     const isPointerBlockedByHud = this.gameplayHud.containsPointer(pointer);
+    const manualPrimaryFiring =
+      this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && !isPointerBlockedByHud && pointer.leftButtonDown());
 
     updateActivePlayerWeaponRuntime({
       state: this.playerWeapons,
@@ -11855,7 +12909,7 @@ export class GameScene extends Phaser.Scene {
       deltaSeconds,
       isPlayerDead: this.isPlayerDead,
       isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-      isPrimaryFiring: this.isControlDown('fire') || (!isPointerBlockedByDebugMenu && !isPointerBlockedByHud && pointer.leftButtonDown()),
+      isPrimaryFiring: isPrimaryFireInputActive(this.gameSettings, manualPrimaryFiring),
       isSecondaryFiring: !isPointerBlockedByHud && pointer.rightButtonDown(),
       isSecondaryBlocked: isPointerBlockedByDebugMenu || isPointerBlockedByHud,
       getActiveAutoWeapon: () => this.getEffectiveAutoWeaponDefinition(),
@@ -11880,6 +12934,39 @@ export class GameScene extends Phaser.Scene {
     }
 
     return this.fireProjectileWeapon(resolved, time);
+  }
+
+  private getPlayerProjectileColorOverrides(): ProjectileColorOverrides | undefined {
+    if (!this.gameSettings.accessibility.colorSafeShots) {
+      return undefined;
+    }
+
+    return {
+      glowColor: 0x42d9ff,
+      bodyColor: 0xf2fbff,
+      bodyStrokeColor: 0x1864ff,
+      trailColor: 0x42d9ff
+    };
+  }
+
+  private getEnemyProjectileColorOverrides(): { glowColor: number; bodyColor: number; strokeColor: number } | undefined {
+    if (this.gameSettings.accessibility.colorSafeShots) {
+      return {
+        glowColor: 0xffb000,
+        bodyColor: 0xffd166,
+        strokeColor: 0x02040a
+      };
+    }
+
+    if (this.gameSettings.accessibility.highContrast) {
+      return {
+        glowColor: 0xff3045,
+        bodyColor: 0xfff0a0,
+        strokeColor: 0x02040a
+      };
+    }
+
+    return undefined;
   }
 
   private useRammingShieldWeapon(stats: RammingShieldStats | undefined, time: number): boolean {
@@ -12151,7 +13238,7 @@ export class GameScene extends Phaser.Scene {
   private emitBeamIgnitionBurst(beam: ResolvedBeamWeaponStats): void {
     const forward = this.getForwardDirection(this.player.rotation);
     const position = this.getBeamEmitterPosition(forward);
-    const flash = this.add.circle(position.x, position.y, Math.max(8, beam.width * 0.85), 0x69f0ae, 0.36);
+    const flash = this.add.circle(position.x, position.y, Math.max(8, beam.width * 0.85), 0x69f0ae, this.getFlashAlpha(0.36));
 
     flash.setDepth(BEAM_RENDER_DEPTH + 0.1).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -12165,7 +13252,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitBeamTipSpark(x: number, y: number, forward: Phaser.Math.Vector2, heatProgress: number): void {
-    const sparkCount = Phaser.Math.Between(1, heatProgress > 0.65 ? 2 : 1);
+    const sparkCount = this.getNonCriticalParticleCount(Phaser.Math.Between(1, heatProgress > 0.65 ? 2 : 1));
     const right = new Phaser.Math.Vector2(forward.y, -forward.x);
 
     for (let i = 0; i < sparkCount; i += 1) {
@@ -12199,8 +13286,8 @@ export class GameScene extends Phaser.Scene {
     const right = new Phaser.Math.Vector2(forward.y, -forward.x);
     const contact = this.getBeamContactPoint(body, radius, activeRange);
     const flashRadius = Math.max(3, Math.min(11, beam.width * 0.42 + radius * 0.08));
-    const flash = this.add.circle(contact.x, contact.y, flashRadius, 0xf2fbff, 0.62);
-    const sparkCount = Phaser.Math.Between(3, heatProgress > 0.65 ? 6 : 5);
+    const flash = this.add.circle(contact.x, contact.y, flashRadius, 0xf2fbff, this.getFlashAlpha(0.62));
+    const sparkCount = this.getNonCriticalParticleCount(Phaser.Math.Between(3, heatProgress > 0.65 ? 6 : 5));
 
     flash.setDepth(BEAM_RENDER_DEPTH + 0.18).setBlendMode(Phaser.BlendModes.ADD);
     this.tweens.add({
@@ -12355,6 +13442,7 @@ export class GameScene extends Phaser.Scene {
       playerY: this.player.y,
       playerRotation: this.player.rotation,
       getForwardDirection: (rotation) => this.getForwardDirection(rotation),
+      projectileColors: this.getPlayerProjectileColorOverrides(),
       ...modifiers
     });
 
@@ -12377,6 +13465,7 @@ export class GameScene extends Phaser.Scene {
       updateToroidalRenderMirror: (body, wrapMirrorBody, viewRadius) =>
         this.updateToroidalRenderMirror(body, wrapMirrorBody, viewRadius),
       steerProjectile: (projectile, homingDeltaSeconds) => this.steerPulseProjectile(projectile, homingDeltaSeconds),
+      vfxDensity: this.getVfxDensity(),
       tryHitTarget: (projectile) =>
         this.tryHitLiveEnemy(projectile) ||
         this.tryHitWorldEvent(projectile) ||
@@ -12451,7 +13540,7 @@ export class GameScene extends Phaser.Scene {
 
           this.tweens.add({
             targets: child,
-            alpha: fill ? 0.9 : 0.82,
+            alpha: this.getFlashAlpha(fill ? 0.9 : 0.82),
             yoyo: true,
             duration: fill ? DAMAGE_FLASH_MS * 0.5 : DAMAGE_FLASH_MS * 0.38,
             ease: 'Quad.easeOut',
@@ -12467,8 +13556,8 @@ export class GameScene extends Phaser.Scene {
 
   private emitShipBulletImpactExplosion(x: number, y: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = 10;
-    const flash = this.add.circle(effectPosition.x, effectPosition.y, 10, 0xf2fbff, 0.58);
+    const particleCount = this.getNonCriticalParticleCount(10);
+    const flash = this.add.circle(effectPosition.x, effectPosition.y, 10, 0xf2fbff, this.getFlashAlpha(0.58));
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -12511,7 +13600,8 @@ export class GameScene extends Phaser.Scene {
 
   private emitShipCollisionImpactExplosion(x: number, y: number): void {
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = 9;
+    const particleCount = this.getNonCriticalParticleCount(9);
+    this.shakeCamera(95, 0.006);
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -12550,18 +13640,20 @@ export class GameScene extends Phaser.Scene {
     x = effectPosition.x;
     y = effectPosition.y;
     const impactScale = Phaser.Math.Clamp(projectileHitRadius / PLAYER_PROJECTILE_HIT_RADIUS, 0.75, 2.2);
-    const particleCount = Math.round(Phaser.Math.Clamp(8 * impactScale, 7, 16));
+    const particleCount = this.getNonCriticalParticleCount(Math.round(Phaser.Math.Clamp(8 * impactScale, 7, 16)));
     const flashRadius = 14 * impactScale;
-    const flash = this.add.circle(x, y, flashRadius, 0xf2fbff, 0.18);
+    const flash = this.add.circle(x, y, flashRadius, 0xf2fbff, this.getFlashAlpha(0.18));
     const ring = this.add.circle(x, y, flashRadius * 0.78, 0xf2fbff, 0);
     const dust = this.add.circle(x, y, 16 * impactScale, 0xc2ad8f, 0.34);
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
-    ring.setStrokeStyle(2, 0xf2fbff, 0.62);
+    ring.setStrokeStyle(2, 0xf2fbff, this.getFlashAlpha(0.62));
     ring.setDepth(12);
     ring.setBlendMode(Phaser.BlendModes.ADD);
+    dust.setAlpha(this.getFlashAlpha(0.34));
     dust.setDepth(11);
+    this.shakeCamera(80, 0.0035 * impactScale);
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -12622,9 +13714,9 @@ export class GameScene extends Phaser.Scene {
     y = effectPosition.y;
     const tierConfig = ASTEROID_TIER_CONFIG[tier];
     const ring = this.add.circle(x, y, tierConfig.hitRadius * 0.62, 0x9fd8ff, 0);
-    const particleCount = Phaser.Math.Clamp(tier * 5, 6, 25);
+    const particleCount = this.getNonCriticalParticleCount(Phaser.Math.Clamp(tier * 5, 6, 25));
 
-    ring.setStrokeStyle(2, 0x73f2ff, 0.56);
+    ring.setStrokeStyle(2, 0x73f2ff, this.getFlashAlpha(0.56));
     ring.setDepth(6);
     ring.setBlendMode(Phaser.BlendModes.ADD);
 
@@ -12824,9 +13916,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     let remaining = cappedAmount;
+    let shieldRestore = 0;
     if (this.hasRammingShield()) {
       const shieldMax = this.getRammingShieldMaxHp();
-      const shieldRestore = Math.min(remaining, Math.max(0, shieldMax - this.rammingShieldState.hp));
+      shieldRestore = Math.min(remaining, Math.max(0, shieldMax - this.rammingShieldState.hp));
       this.rammingShieldState.hp += shieldRestore;
       remaining -= shieldRestore;
       if (shieldRestore > 0) {
@@ -12834,10 +13927,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
+    const hullBefore = this.playerHull;
     if (remaining > 0) {
       this.playerHull = Math.min(this.getPlayerMaxHull(), this.playerHull + remaining);
     }
 
+    this.recordHealingReceived(shieldRestore + Math.max(0, this.playerHull - hullBefore), 'Sapping Pulse');
     this.pulseLifestealRestoredThisWindow += cappedAmount - remaining + Math.max(0, remaining);
     this.updateGameplayHud(time);
   }
@@ -12875,7 +13970,7 @@ export class GameScene extends Phaser.Scene {
   private applyPulseExplosion(projectile: PlayerProjectile, sourceKey: object, x: number, y: number): void {
     const radius = projectile.effects.explosionRadius;
     const baseDamage = projectile.damage * projectile.effects.explosionDamageMultiplier;
-    const flash = this.add.circle(x, y, radius, 0x73f2ff, 0.16);
+    const flash = this.add.circle(x, y, radius, 0x73f2ff, this.getFlashAlpha(0.16));
 
     flash.setDepth(9);
     flash.setBlendMode(Phaser.BlendModes.ADD);
@@ -13142,6 +14237,7 @@ export class GameScene extends Phaser.Scene {
 
     const appliedDamage = Math.max(1, Math.round(damage));
     event.hp = Math.max(0, event.hp - appliedDamage);
+    this.recordDamageDone(appliedDamage, 'player');
     this.emitFloatingDamageNumber(event.body.x, event.body.y, appliedDamage, 'player');
 
     if (event.hp <= 0) {
@@ -13786,7 +14882,7 @@ export class GameScene extends Phaser.Scene {
       playerXp: this.playerXp,
       nextXpThreshold: this.nextXpThreshold,
       fuel: this.fuel,
-      maxFuel: RUN_FUEL_MAX,
+      maxFuel: this.getRunMaxFuel(),
       missionName: missionDefinition.shortName,
       missionStatus: this.getMissionHudStatus(),
       missionObjectiveDistance: this.getMissionObjectiveDistance(),
@@ -14087,7 +15183,7 @@ export class GameScene extends Phaser.Scene {
         `Sector: ${this.sectorSeed} / regions ${this.sectorLayout.regions.length} / active ${this.activeSectorAsteroids.size}/${this.sectorAsteroidSpawns.length} asteroids, ${this.activeSectorScrapPickups.size}/${this.sectorScrapSpawns.length} scrap, ${this.activeSectorSignals.size}/${this.sectorSignalSpawns.length} signals\n` +
         `Player: ${Math.round(this.player.x)}, ${Math.round(this.player.y)} (wrapped)\n` +
         `Hull: ${this.playerHull} / ${this.getPlayerMaxHull()}${this.isPlayerDead ? ' (dead)' : ''}\n` +
-        `Fuel: ${Math.ceil(this.fuel)} / ${RUN_FUEL_MAX}, drain ${this.debugFuelDrainEnabled ? this.debugFuelDrainMode : 'paused'}\n` +
+        `Fuel: ${Math.ceil(this.fuel)} / ${this.getRunMaxFuel()}, drain ${this.debugFuelDrainEnabled ? this.debugFuelDrainMode : 'paused'}\n` +
         `XP: ${this.playerXp} / ${this.nextXpThreshold}, Banked upgrades: ${this.bankedUpgrades}\n` +
         `Scrap: ${this.runScrapTotal} run / ${this.scrapPickups.length} pickups\n` +
         `Upgrades: D${this.getRunUpgradeLevelById('pulse_damage')} F${
@@ -14112,10 +15208,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private handleResize(): void {
-    if (this.gameFlowState === 'splash') {
-      this.showSplashScreen();
-      return;
-    }
+    this.updateBrightnessOverlay();
 
     if (this.gameFlowState === 'command') {
       this.showMainMenu();
@@ -14138,11 +15231,25 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.gameFlowState === 'results') {
-      if (this.resultsScreen) {
-        this.showResultsScreen();
+      if (this.isBootStartContext) {
+        const activeTab = this.resultsPanelTab;
+        this.rebuildWorld({ consumePendingRunBoosts: false });
+        this.isBootStartContext = true;
+        this.showResultsPanel(activeTab);
+        return;
+      }
+
+      if (this.resultsScreen || this.mainMenuScreen || this.shipSelectScreen || this.shopScreen) {
+        this.showResultsPanel(this.resultsPanelTab);
       } else {
         this.updateResultsButton();
       }
+      return;
+    }
+
+    if (this.isPlayerDead && this.runEndReason === 'death') {
+      this.updateGameplayHud(this.time.now);
+      this.updateResultsButton();
       return;
     }
 

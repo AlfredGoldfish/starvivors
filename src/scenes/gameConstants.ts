@@ -1,6 +1,6 @@
 import { basicEnemy, shooterEnemy, tankEnemy } from '../data/enemies';
 import type { BlackHoleWhirlpoolTuning } from '../systems/blackHole';
-import type { DebugImpactSourceType } from '../systems/debug/debugState';
+import type { DebugImpactSourceType } from '../systems/debug/debugSharedTypes';
 import type { AsteroidTier, AsteroidTierConfig, EnemySpawnType } from './gameTypes';
 
 export const STAR_COLORS = [0x52627f, 0x6f89b7, 0xa8c7ff, 0x42f5d7];

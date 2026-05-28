@@ -1,6 +1,6 @@
 # Starvivors Complete Game Checklist
 
-Last reviewed: 2026-05-27
+Last reviewed: 2026-05-28
 
 This file tracks the gap between the current playable Starvivors prototype and a complete, polished game. It is intentionally practical: every item should be something a future session can read, update, and verify.
 
@@ -53,12 +53,17 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 ## B. HUD, Menus, And UX
 
-- [~] Combat HUD/dashboard has a final default variant.
+- [x] Combat HUD/dashboard has a final default variant.
   - Done when: one default HUD variant is frozen, readable at target resolutions, and non-default research variants are hidden or developer-only.
   - Evidence: 2026-05-27 pass froze HUD variant 10 as the player default and moved URL variant overrides behind `?devHudVariants=1`.
-  - Next: screenshot at 1280x720, 1920x1080, and narrow/mobile ratios.
+  - Evidence: 2026-05-27 pass removed the default weapon hotbar bay/backplate and flattened weapon button faces so they no longer read as permanent black-bordered buttons.
+  - Evidence: 2026-05-27 pass removed the top XP cockpit card, changed XP to a standalone rail, and kept XP/run timer text below it.
+  - Evidence: 2026-05-27 pass added a compact narrow-width dashboard so hull/fuel meters, weapon slots, scrap, mission, and eject fit in one bottom panel.
+  - Evidence: 2026-05-27 build passed, `testHarness=weaponHotbar` passed, and screenshots were captured at `artifacts/visual-smoke/hud-default-1280x720.png`, `artifacts/visual-smoke/hud-default-1920x1080.png`, and `artifacts/visual-smoke/hud-default-500x844.png`.
+  - Next: keep this screenshot set as the regression baseline for future HUD changes.
 - [~] Main command and pre-run hub feel like one product.
   - Done when: command, hangar, shop, settings, and debrief share navigation, selected-tab treatment, disabled states, and back behavior.
+  - Evidence: 2026-05-27 pass removed split-color header bands and top divider lines from shared and pre-run menu panel shells.
   - Next: normalize the pre-run navigation component and focus states.
 - [~] Ship select and hangar communicate ship identity.
   - Done when: each active ship has unique art, clear stats, starting loadout, one visible passive/mechanic, and no misleading "coming soon" promise.
@@ -72,9 +77,13 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - [~] Minimap/radar/scanner are understandable.
   - Done when: radar levels have player-facing names, icons, layer explanations, and scanner behavior is visually distinct from radar.
   - Next: label radar unlock layers and add scanner pulse/target category feedback.
-- [~] Pause/settings menus are real, not placeholder-heavy.
+- [x] Pause/settings menus are real, not placeholder-heavy.
   - Done when: graphics, sound, controls, gameplay, and accessibility tabs either do real work or hide future-only entries.
-  - Next: implement volume, shake, flash, contrast, text scale, and keybind conflict behavior.
+  - Evidence: 2026-05-28 pass replaced pre-run/results/pause settings with one shared tabbed editor for Graphics, Sound, Controls, Gameplay, and Accessibility.
+  - Evidence: 2026-05-28 pass added persisted VFX density, screen shake amount, brightness, saved audio mix defaults, movement/debrief preferences, reduced shake/flash, high contrast, text scale, color-safe shots, and primary auto-fire assist.
+  - Evidence: 2026-05-28 pass blocks duplicate keybind assignment, keeps Esc as binding cancel, and shows conflict copy when a duplicate is attempted or loaded.
+  - Evidence: 2026-05-28 build, full Vitest suite, and `testHarness=debriefFlow` passed; settings screenshots captured at `artifacts/visual-smoke/settings-prerun-1280x720.png`, `artifacts/visual-smoke/settings-prerun-500x844.png`, `artifacts/visual-smoke/settings-pause-1280x720.png`, and `artifacts/visual-smoke/settings-pause-500x844.png`.
+  - Next: use future audio pass to connect the saved Sound defaults to real menu/run/result audio sources.
 
 ## C. Combat Feel And Readability
 
@@ -171,12 +180,14 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - [ ] Music/ambience direction exists in game.
   - Done when: menu, run, danger/event, and results ambience have at least placeholder implementation with volume control.
   - Next: defer until SFX categories are in place.
-- [~] Accessibility settings are represented in UI.
+- [x] Accessibility settings are represented in UI.
   - Done when: reduced shake, reduced flash, high-contrast telegraphs, text scale, color-safe shots, and optional input assist actually affect gameplay/rendering.
-  - Next: replace placeholder settings with real toggles.
+  - Evidence: 2026-05-28 pass wired reduced shake to camera shake suppression/scaling, reduced flash to bright feedback alpha, high contrast to warning HUD/enemy projectile readability, text scale to settings/pause/HUD text, color-safe shots to player/enemy projectile palettes, and input assist to primary-slot auto-fire only.
+  - Next: broaden accessibility QA during combat polish, especially dense-event readability.
 - [~] Controls/keybinds are robust.
   - Done when: rebinding handles conflicts, pause while binding, reset defaults, mouse/keyboard clarity, and a gamepad decision.
-  - Next: input audit pass.
+  - Evidence: 2026-05-28 pass added duplicate-binding blocking, conflict messaging, Esc cancel, reset controls, reset all, migration/default tests, and persistence coverage.
+  - Next: input audit pass, including the explicit gamepad decision.
 
 ## H. Performance, QA, And Release Hardening
 
@@ -185,7 +196,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
-  - Next: add screenshot smoke set for command, hangar, shop, pause/settings, upgrade overlay, HUD, minimap/radar levels, results, and Enemy Lab Forge.
+  - Evidence: 2026-05-28 pass added a `pauseSettings` visual module harness path and captured desktop/narrow settings screenshots for pre-run and pause settings.
+  - Next: add screenshot smoke set for command, hangar, shop, upgrade overlay, HUD, minimap/radar levels, results, and Enemy Lab Forge.
 - [~] Performance profiling exists.
   - Done when: repeatable stress scenarios exist for asteroid burst, swarm, mothership, rare event, high-upgrade Pulse, beam, and black hole.
   - Next: create canned 2-minute stress runs.
@@ -218,3 +230,8 @@ Current focus: Pass A.
 - 2026-05-27: Added start-of-session checklist reminder protocol with an explicit opt-out/respect-current-task rule.
 - 2026-05-27: Added start-of-session checkpoint commit prompt and scoped-commit rule.
 - 2026-05-27: Continued Pass A by freezing HUD variant 10 as the player default and tightening mission/eject/result wording; screenshot verification remains next.
+- 2026-05-27: Removed the stray top menu header band/divider from shared and pre-run menu panel shells; build and pre-run screenshot smoke passed.
+- 2026-05-27: Removed the default weapon hotbar backplate/rim treatment that read as an always-visible black border; build and HUD screenshot smoke passed.
+- 2026-05-27: Removed the top XP cockpit card, replaced the segmented XP meter with a standalone rail, and kept the XP counter/run timer below it; build and 1280x720 HUD screenshot smoke passed.
+- 2026-05-27: Completed the combat HUD/dashboard checklist item by adding a compact narrow-width dashboard and refreshing 1280x720, 1920x1080, and 500x844 HUD screenshots; build and `testHarness=weaponHotbar` passed.
+- 2026-05-28: Completed the basic settings pass with a shared settings editor, persisted graphics/sound/gameplay/accessibility fields, keybind conflict blocking, primary auto-fire assist, rendering/accessibility hooks, full Vitest pass, build pass, and four settings smoke screenshots.

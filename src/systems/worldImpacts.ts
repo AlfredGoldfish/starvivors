@@ -16,7 +16,7 @@ import type {
   TankEnemy
 } from '../scenes/gameTypes';
 import type { EnemyLabInstance } from './enemyLabSpawner';
-import type { DebugImpactSourceType } from './debug/debugState';
+import type { DebugImpactSourceType } from './debug/debugSharedTypes';
 import {
   createCircleCollisionShape,
   createOrientedCapsuleCollisionShape,

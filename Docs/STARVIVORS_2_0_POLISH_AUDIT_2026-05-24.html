@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Starvivors 2.0 Full-System Polish Audit</title>
+  <style>
+    @page { size: Letter; margin: 0.55in; }
+    body {
+      margin: 0;
+      color: #10202a;
+      background: #ffffff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 10px;
+      line-height: 1.35;
+    }
+    h1, h2, h3 { margin: 0 0 8px; color: #071018; }
+    h1 { font-size: 24px; letter-spacing: 0; }
+    h2 { margin-top: 20px; padding-top: 10px; border-top: 2px solid #163040; font-size: 16px; }
+    h3 { margin-top: 14px; font-size: 12px; }
+    p { margin: 0 0 8px; }
+    .meta {
+      margin: 8px 0 16px;
+      padding: 10px;
+      border: 1px solid #9fb6c4;
+      background: #f2f7fa;
+    }
+    .callout {
+      padding: 10px;
+      border-left: 4px solid #00a6a6;
+      background: #f5fbfb;
+      margin: 10px 0 14px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 8px 0 14px;
+      break-inside: auto;
+    }
+    tr { break-inside: avoid; }
+    th, td {
+      vertical-align: top;
+      border: 1px solid #b9c8d0;
+      padding: 5px 6px;
+    }
+    th {
+      background: #153040;
+      color: #ffffff;
+      font-weight: 700;
+      text-align: left;
+    }
+    tbody tr:nth-child(even) td { background: #f8fbfc; }
+    .w-system { width: 17%; }
+    .w-state { width: 11%; }
+    .w-objects { width: 22%; }
+    .w-polish { width: 27%; }
+    .w-suggest { width: 23%; }
+    .state {
+      display: inline-block;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .implemented { background: #daf5e8; color: #065f46; }
+    .mvp { background: #fff0c2; color: #7a4a00; }
+    .prototype { background: #e6edff; color: #1e3a8a; }
+    .wip { background: #f3e8ff; color: #6b21a8; }
+    .missing { background: #ffe1e1; color: #991b1b; }
+    .risk { background: #ffe9d6; color: #9a3412; }
+    .small { font-size: 9px; color: #465a64; }
+    ul { margin: 4px 0 8px 18px; padding: 0; }
+    li { margin: 2px 0; }
+    .page-break { break-before: page; }
+  </style>
+</head>
+<body>
+  <h1>Starvivors 2.0 Full-System Polish Audit</h1>
+  <div class="meta">
+    <p><strong>Prepared:</strong> 2026-05-24</p>
+    <p><strong>Repo basis:</strong> local Starvivors workspace, current clean working tree, build passing with <code>npm.cmd run build</code>.</p>
+    <p><strong>Sources reviewed:</strong> 2.0 GDD/build plan, phase notes, GameScene owned runtime fields, data registries, UI modules, system modules, asset folders, Forge registry, and source TODO/deferred markers.</p>
+  </div>
+
+  <div class="callout">
+    <p><strong>Summary:</strong> The game is broad enough that polish should now be tracked as a whole-product pass, not only as isolated phase work. The strongest implemented pillars are the 2.0 run loop, mission/free-range selection, ship/loadout basics, Pulse Cannon, sector generation, squads, mothership/rare event prototypes, reward persistence, HUD/radar/results work, and the initial Asset Forge pipeline.</p>
+    <p><strong>Main risk:</strong> Many systems are playable but not yet cohesive: menus use the new cockpit treatment unevenly, art direction is split between Forge/vector/procedural/PNG, audio is absent, accessibility/settings are placeholder-heavy, and several active objects still rely on scene-owned Phaser lifecycle code rather than focused ownership.</p>
+  </div>
+
+  <h2>Status Scale</h2>
+  <table>
+    <tr><th>Status</th><th>Meaning</th></tr>
+    <tr><td><span class="state implemented">Implemented</span></td><td>Works in the current build and has at least one real user path. Still may need polish.</td></tr>
+    <tr><td><span class="state mvp">MVP</span></td><td>Playable or usable but rough, incomplete in presentation, balance, content depth, or edge cases.</td></tr>
+    <tr><td><span class="state prototype">Prototype</span></td><td>Framework exists and proves direction, but needs content, final presentation, tuning, and stronger verification.</td></tr>
+    <tr><td><span class="state wip">WIP</span></td><td>Active work has begun but the product surface is not settled.</td></tr>
+    <tr><td><span class="state missing">Missing/Mentioned</span></td><td>Mentioned in docs, data, or plans but absent, placeholder-only, or not promoted to live gameplay.</td></tr>
+    <tr><td><span class="state risk">Risk</span></td><td>Works now but has maintenance, readability, scaling, UX, or performance risk.</td></tr>
+  </table>
+
+  <h2>Top Polish Priorities</h2>
+  <table>
+    <tr><th>Priority</th><th>Why It Matters</th><th>Suggested Shape</th></tr>
+    <tr><td>1. Whole-run clarity</td><td>Players need to understand why they launched, what to do, when they are done, and what they earned.</td><td>Close Phase 17 with mission tracker, radar, result copy, and eject/continue language reviewed in one pass.</td></tr>
+    <tr><td>2. Asset cohesion</td><td>The project mixes PNG ships, procedural enemies, Forge textures, generated candidates, and UI graphics.</td><td>Promote Forge replacements for all core ships, all live enemy silhouettes, mission/radar icons, and weapon/upgrade icons.</td></tr>
+    <tr><td>3. Audio and feedback</td><td>No audio assets were found. Dangerous actions lack sound identity.</td><td>Start Phase 18 with a small sound set: player fire, enemy fire, hit, hull damage, pickup, upgrade, low fuel, mission complete, eject, black hole warning.</td></tr>
+    <tr><td>4. Menu finish</td><td>Command, hangar, shop, settings, pause, upgrade, and results all exist but need final hierarchy and readability.</td><td>One UI pass that normalizes button affordance, icon use, text density, empty states, and controller/keyboard focus.</td></tr>
+    <tr><td>5. Combat readability</td><td>Enemy telegraphs, impacts, shield states, beam heat, black holes, and asteroid danger need consistent readable language.</td><td>Audit every lethal or high-stakes action for visual cue, audio cue, HUD warning, and accessibility alternative.</td></tr>
+    <tr><td>6. Content surface cleanup</td><td>Some systems have one prototype item only: rare events, world events, missions, Forge registry, radar/shop progression.</td><td>Label prototype content clearly, then add two or three high-value variants only after the base presentation is coherent.</td></tr>
+  </table>
+
+  <h2>Systems, Menus, Objects, and Polish Matrix</h2>
+  <table>
+    <tr>
+      <th class="w-system">System/Menu</th>
+      <th class="w-state">State</th>
+      <th class="w-objects">Active objects/sprites/data</th>
+      <th class="w-polish">Needs polish</th>
+      <th class="w-suggest">Suggestions</th>
+    </tr>
+    <tr>
+      <td>Run lifecycle and flow state</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Game flow states, run start, death, eject, continue, results, run result capture.</td>
+      <td>State transitions are broad and still largely orchestrated from GameScene. Edge-case language around completed mission plus continued exploration needs consistent treatment.</td>
+      <td>Add a run-state QA checklist: start, free range, mission complete, continue, eject cancel, eject confirm, death, restart, return to hub.</td>
+    </tr>
+    <tr>
+      <td>Splash and main command menu</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Screen handles, cockpit backdrop, selected mission summary, run launch actions.</td>
+      <td>Needs a stronger first-read of current mode, selected ship, selected weapon, and why a run cannot start.</td>
+      <td>Make the command screen behave like a compact launch console: ship, contract/free-range, loadout, risk, launch readiness.</td>
+    </tr>
+    <tr>
+      <td>Pre-run hub navigation</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Command, hangar, shop, settings tabs through preRunHubScreen.</td>
+      <td>Needs uniform navigation affordance, selected tab treatment, and back behavior across all pre-run screens.</td>
+      <td>Keep one persistent top/bottom nav component with visible current tab, disabled states, and consistent keyboard focus.</td>
+    </tr>
+    <tr>
+      <td>Ship select and hangar</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Interceptor, Bulwark, Engineer; skins; stat ratings; starting weapons; loadout slots.</td>
+      <td>Engineer uses the Interceptor texture fallback. Ship fantasy/passives exist in copy but need stronger in-game proof. Mastery bonuses say coming soon.</td>
+      <td>Give every ship a unique Forge/cached sprite, one passive that visibly triggers, and a concise side-by-side stat comparison.</td>
+    </tr>
+    <tr>
+      <td>Loadout and weapon assignment</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Primary/secondary/auto slots, weapon inventory, starting weapon rules, hotbar assignment helpers.</td>
+      <td>Needs clearer slot identity and warnings when loadout rules block a selection.</td>
+      <td>Add icons for primary, secondary, auto, ship starter, locked, and source ship. Keep text short.</td>
+    </tr>
+    <tr>
+      <td>Shop and permanent upgrades</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>11 permanent upgrades, radar upgrades, sector scanner purchases, credits, active level controls.</td>
+      <td>Upgrade categories are useful but not yet emotionally interesting. Need clearer cost/value, maxed state, reset/active-level meaning, and progression balance.</td>
+      <td>Group shop into Ship, Weapon, Utility, Radar/Scanner. Show current effect, next effect, total owned, active level, and why an item matters.</td>
+    </tr>
+    <tr>
+      <td>Pause menu and settings</td>
+      <td><span class="state wip">WIP</span></td>
+      <td>Pause, graphics, sound, controls, gameplay, accessibility tabs.</td>
+      <td>Several tabs are explicitly placeholder-heavy. Sound has no assets to control. Accessibility settings need real behavior.</td>
+      <td>Turn placeholders into either real toggles or hidden future entries. Prioritize screen shake, flash intensity, contrast telegraphs, text scale, volume, keybinds.</td>
+    </tr>
+    <tr>
+      <td>Controls and rebinding</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Keyboard/mouse controls, binding slots, run control actions, awaiting binding state.</td>
+      <td>Needs controller support decision, focus handling for menus, and clear binding conflict feedback.</td>
+      <td>Add an input audit pass covering keyboard, mouse, gamepad plan, pause while binding, and reset defaults.</td>
+    </tr>
+    <tr>
+      <td>Debug menu and secret controls</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Tabs for run, player, ship, weapons, physics, collision, spawns, effects, black hole, visuals; secret overlay.</td>
+      <td>Developer surface is powerful but dense. Some labels expose implementation rather than testing intent.</td>
+      <td>Keep debug dense, but add scenario presets for common polish tests: low fuel, mission complete, heavy asteroid field, rare event, boss, shield build.</td>
+    </tr>
+    <tr>
+      <td>Test harnesses and diagnostics</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Smoke, phase harnesses 7 through 15.5, contact, beam, HUD mission log, result/fuel checks.</td>
+      <td>Harnesses are useful but scenario bodies still live deep in GameScene. Phase 16/17 visual acceptance is not represented as cleanly as gameplay harnesses.</td>
+      <td>Add visual smoke pages for HUD variants, Forge assets, radar levels, and menu screenshots. Extract harness scenario bodies later.</td>
+    </tr>
+    <tr>
+      <td>Results screen</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Outcome title, rewards, build lines, upgrade lines, sector lines, continue/eject/death states.</td>
+      <td>Needs stronger learning value: why run ended, mission status, what rewards persisted, and suggested next action.</td>
+      <td>Add a clean report hierarchy: Outcome, Contract, Cargo, Upgrades, Damage/Threats, Sector, Unlocks.</td>
+    </tr>
+    <tr>
+      <td>Combat HUD/dashboard</td>
+      <td><span class="state wip">WIP</span></td>
+      <td>GameplayHudSystem, fuel, hull, scrap, XP rail, mission button/log, weapons, scanner, radar, eject button, warning chips, variants.</td>
+      <td>Phase 17H has variants, but the final default needs one decisive pass for text fit, icon clarity, warning priority, and mobile/desktop framing.</td>
+      <td>Pick one variant, freeze it, then test at 1280x720, 1920x1080, and narrow/mobile ratios with screenshots.</td>
+    </tr>
+    <tr>
+      <td>Minimap and radar progression</td>
+      <td><span class="state wip">WIP</span></td>
+      <td>MinimapSystem, radar levels 0-4, layer gating, signal markers, resources, threats, anomalies, scanner reveal.</td>
+      <td>Readable hierarchy has started, but full minimap redesign is deferred. Need player-facing explanation of radar levels.</td>
+      <td>Make radar levels unlock named layers with icons: Map, Objectives, Signals, Resources, Threats, Anomalies.</td>
+    </tr>
+    <tr>
+      <td>Sector scanner</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Scanner runtime, scan timer, scanner targets, world/rare event targets, arrow graphics.</td>
+      <td>Needs clearer difference from radar, stronger scan feedback, and better target prioritization UI.</td>
+      <td>Use a timed pulse animation, scan completion sound, target category icon, distance/risk label, and shop upgrade preview.</td>
+    </tr>
+    <tr>
+      <td>Upgrade overlay</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Three choices, reroll, banked upgrades, weapon summaries, keyboard selection.</td>
+      <td>Upgrade cards need exact before/after stat deltas, branch/evolution progress, rarity treatment, and clearer incompatibility/targeting.</td>
+      <td>For every card show affected weapon/system, current level, new level, exact stat change, and tags. Add icons via Forge.</td>
+    </tr>
+    <tr>
+      <td>In-run upgrade data</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Pulse, projectile, passive, beam, ramming upgrades; data-only Plasma Wake; many high-tier effects.</td>
+      <td>Most upgrade behavior is present, but balance/readability needs a pass. Plasma Wake is data-only and should be hidden or completed.</td>
+      <td>Create a build audit sheet: each upgrade has gameplay effect, visible effect, tooltip, audio cue, and balance note.</td>
+    </tr>
+    <tr>
+      <td>Progression and storage</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Progression state, credits, unlock hooks, ship unlocks, weapon loadouts, radar/scanner levels, active permanent levels.</td>
+      <td>Needs fail-safe save migration, reset/export/import, and clearer distinction between owned unlocks and active power.</td>
+      <td>Add versioned save schema notes, in-game reset confirmation, and dev save snapshot export in debug menu.</td>
+    </tr>
+    <tr>
+      <td>Rewards and economy</td>
+      <td><span class="state prototype">Prototype</span></td>
+      <td>Scrap, credits conversion, reward resolver, mission/world/rare hooks, upgrade crates.</td>
+      <td>Rare parts are planned but not present. Scrap overlaps as XP, currency, and reward, so player meaning needs clarity.</td>
+      <td>Define resource roles: XP is in-run power, scrap is cargo/value, credits are post-run spend, rare parts are unlock milestones.</td>
+    </tr>
+    <tr>
+      <td>Free Range and missions</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Free Range, Survey Signal, Salvage Cache, Enemy Probe, Mothership Contract, Rift Cache Contract.</td>
+      <td>Mission UI is functional but still contract-placeholder flavored. Mission completion needs more ceremony and map guidance.</td>
+      <td>Add mission briefing cards with objective, region, danger, reward, optional completion/end behavior, and radar/scanner promise.</td>
+    </tr>
+    <tr>
+      <td>Mission objective beacons</td>
+      <td><span class="state prototype">Prototype</span></td>
+      <td>Mission objective container, ring, core, reach-radius checks, objective labels.</td>
+      <td>Beacon needs final art, sound, distance/risk feedback, and different looks for survey/cache/probe/event contracts.</td>
+      <td>Create Forge mission beacon icons and world marker variants; add arrival pulse and completion state.</td>
+    </tr>
+    <tr>
+      <td>Sector generation</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>2x default sector, scale options 1/2/3/5, regions, seed, safe drift, asteroid belts, salvage fields, enemy territory, anomaly signals.</td>
+      <td>Needs more visible regional identity and balancing of travel time, density, and fuel pressure.</td>
+      <td>Make each region visibly distinct in space and radar, then tune spawn/signal/resource density per region.</td>
+    </tr>
+    <tr>
+      <td>Sector runtime activation</td>
+      <td><span class="state risk">Risk</span></td>
+      <td>Active sector asteroid/scrap/signal maps, weak maps, offscreen activation, coalescing, rollup timers.</td>
+      <td>Performance approach is good, but object lifecycle is still scene-owned and complex.</td>
+      <td>Keep behavior stable, but add metrics for active vs total sector objects and a debug overlay for activation radius.</td>
+    </tr>
+    <tr>
+      <td>World squads and encounter director</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Scout Pack, Gunner Escort, Strike Wing, Support Group, Sniper Screen, Carrier Group; activation/disengage.</td>
+      <td>Needs better world behavior identity: patrol, guard, ambush, reinforce, retreat, return to territory.</td>
+      <td>Add one clear behavior per squad type before adding more squads. Use radar labels and formation icons.</td>
+    </tr>
+    <tr>
+      <td>Unified enemy runtime</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>15 lab enemy definitions, live enemies, behavior handlers, procedural visuals, Forge Scout asset.</td>
+      <td>Only Scout has a promoted Forge asset. Some behaviors need live-game balance/readability passes and audio cues.</td>
+      <td>Promote Forge art and telegraph/audio cue for each dangerous role in priority order: sniper, charger, exploder, support, carrier.</td>
+    </tr>
+    <tr>
+      <td>Legacy enemies</td>
+      <td><span class="state risk">Risk</span></td>
+      <td>Basic, shooter, tank arrays and PNG sprites still exist beside live enemy runtime.</td>
+      <td>Compatibility is useful but increases bug risk when changing collision, minimap, rewards, and damage.</td>
+      <td>Decide whether legacy enemies are tutorial/fallback content or migrate fully to lab runtime.</td>
+    </tr>
+    <tr>
+      <td>World events</td>
+      <td><span class="state prototype">Prototype</span></td>
+      <td>Prototype Mothership, guard squads, hp, hit radius, danger radius, reward drops, contract guarantee.</td>
+      <td>Only one event exists. Mothership is stationary and not final boss art/balance. Stronghold kind is in type but no definition.</td>
+      <td>Add weak points, spawn bays, warning radius treatment, destruction stages, final art, and a separate Stronghold prototype.</td>
+    </tr>
+    <tr>
+      <td>Rare events</td>
+      <td><span class="state prototype">Prototype</span></td>
+      <td>Unstable Black-Hole Cache, Hunter Swarm, ambient spawn, guaranteed mission target, rewards.</td>
+      <td>Framework exists but event storytelling is light. Needs signal, danger, reward, and completion ceremony polish.</td>
+      <td>Make each rare event feel like a story: unique radar icon, intro ping, danger warning, local visual language, reward reveal.</td>
+    </tr>
+    <tr>
+      <td>Player flight and fuel</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Shared player flight runtime, velocity, thrust/strafe/brake, fuel drain only from thrust, emergency 10% thrust.</td>
+      <td>Needs final feel tuning per ship and clearer low/empty fuel feedback. Fuel pickups/caches are planned but absent.</td>
+      <td>Add low-fuel HUD/audio warning, emergency mobility tutorial cue, and later fuel caches as route decisions.</td>
+    </tr>
+    <tr>
+      <td>Player ships and skins</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Interceptor implemented, Bulwark/Engineer MVP, skin tint data, unlock costs.</td>
+      <td>Ship art, passives, mastery, and cosmetic unlocks need final direction. Engineer needs unique runtime sprite.</td>
+      <td>Promote three core ship Forge assets, then add one mastery hook per ship and hide future mastery copy until real.</td>
+    </tr>
+    <tr>
+      <td>Pulse Cannon</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Held manual projectile weapon, primary/secondary support, Forge neon bolt, many upgrade effects.</td>
+      <td>Needs final sound, muzzle/impact polish, better upgrade visualization, and balance pass against squads/events.</td>
+      <td>Make Pulse Cannon the gold-standard weapon pass: muzzle flash, bolt trail, hit flash, upgrade deltas, audio, controller feel.</td>
+    </tr>
+    <tr>
+      <td>Ramming Shield</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Shield image, dash charges, guard/bash damage, break effects, deflector/mirror/nova/aegis/stagger upgrades.</td>
+      <td>Needs better telegraph for shield HP, dash charges, bash window, blocked damage, and unsafe recovery.</td>
+      <td>Add shield arc health read, charge pips, impact sound, blocked-projectile sparks, and a short post-bash recovery cue.</td>
+    </tr>
+    <tr>
+      <td>Salvage Beam</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Held beam, heat, overheat, tick damage, beam upgrades, tip sparks, ignition/vent effects.</td>
+      <td>Needs clearer heat UI, beam hit feedback, audio loop, and unique Engineer identity.</td>
+      <td>Add a beam heat meter in the weapon slot, color shift near overheat, audio ramp, and stronger contact sparks.</td>
+    </tr>
+    <tr>
+      <td>Projectile runtime</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Player, enemy, and world projectile types; pierce, range, statuses, black-hole capture, hit helpers.</td>
+      <td>Mostly solid, but future plasma trails need persistent area damage runtime. Enemy projectile readability needs audio/contrast.</td>
+      <td>Finish or hide Plasma Wake. Standardize projectile colors and silhouettes by owner/damage type.</td>
+    </tr>
+    <tr>
+      <td>Enemy projectiles</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Shooter projectiles, live enemy projectile requests, sniper/bolt definitions, obstruction hits.</td>
+      <td>Danger level is not always readable before hit. Needs owner color, telegraph pairing, and shield interaction polish.</td>
+      <td>Give each enemy projectile class a shape, sound, color, hit spark, and optional warning line for high damage shots.</td>
+    </tr>
+    <tr>
+      <td>Physics, collision, world impacts</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Unified body helpers, world impacts, player contact runtime, spatial hash, hard/soft collision, knockback.</td>
+      <td>System is powerful but hard to reason about because callbacks and scene effects remain broad.</td>
+      <td>Keep tuning stable, add debug profiles for contact damage sources, and document each collision layer/mask contract.</td>
+    </tr>
+    <tr>
+      <td>Asteroids</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Tiers 1-10, four PNG variants, wrap mirrors, breakup recipes, coalescing, burst caps, damage flashes.</td>
+      <td>Gameplay is mature, but art/readability needs tier distinction and audio/impact clarity. PNG style differs from Forge direction.</td>
+      <td>Create Forge/cached asteroid tier language or retouched PNG set. Add tier-scaled cracks, chunk silhouettes, and impact sound.</td>
+    </tr>
+    <tr>
+      <td>Debris and wreckage</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Enemy wreckage debris, destructible hazard behavior, death shards, throttled effects.</td>
+      <td>Normal enemy deaths no longer spawn persistent debris, but debris identity as hazard vs loot needs clearer visual language.</td>
+      <td>Use debris only for deliberate hazards and event fields. Give debris damage indicators and salvage color separate from scrap.</td>
+    </tr>
+    <tr>
+      <td>Scrap pickups and loot</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>Scrap tiers 1-4, tier rollup, scrap as resource and XP source, upgrade crates.</td>
+      <td>Needs clearer pickup values, magnet/vacuum feedback, and differentiation between scrap, credits, XP, and upgrade crates.</td>
+      <td>Add pickup value burst labels, resource icons, and a short HUD cargo pulse when scrap converts to rewards.</td>
+    </tr>
+    <tr>
+      <td>Black holes and world forces</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>BlackHoleSystem, gravity/whirlpool, capture, consumption, warning visuals, debug tuning, field saves.</td>
+      <td>Needs final visual identity, audio warning, performance guardrails, and consistent interaction with enemies/projectiles/debris.</td>
+      <td>Keep cached/simple visuals. Add distance warning, pull line language, low-frequency audio, and rare-event-specific treatment.</td>
+    </tr>
+    <tr>
+      <td>Combat feedback and effects</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Floating damage, impact explosions, shield feedback, beam sparks, asteroid ghost/grow-in, death shards.</td>
+      <td>Needs hierarchy so important feedback beats decorative feedback. Accessibility options are not wired enough.</td>
+      <td>Classify effects as critical, combat, reward, ambient. Add density scaling and high-contrast mode.</td>
+    </tr>
+    <tr>
+      <td>Starfield/background/camera</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>StarfieldSystem, parallax layers, camera lead, wrap-aware rendering.</td>
+      <td>Background is functional but could better communicate region identity and speed without clutter.</td>
+      <td>Add subtle region tint/debris/signal motifs and keep parallax performance measured.</td>
+    </tr>
+    <tr>
+      <td>Asset Forge pipeline</td>
+      <td><span class="state wip">WIP</span></td>
+      <td>Forge schema, renderer, SVG/export/import, AI task protocol, editor, promotion bundles, five implemented registry assets.</td>
+      <td>Pipeline is promising but only initial acceptance assets are promoted. In-app provider calls and direct source patching are deferred.</td>
+      <td>Use Forge as the required path for all new promoted ships, enemies, projectiles, pickups, UI icons, mission icons, and radar icons.</td>
+    </tr>
+    <tr>
+      <td>AI candidate asset folders</td>
+      <td><span class="state wip">WIP</span></td>
+      <td>Generated candidates for HUD frames, warning chips, weapon slot frames, resource/stat/weapon icons, ships, enemy ships, bosses.</td>
+      <td>Candidates are not runtime assets. They need curation, background cleanup, slicing, scale tests, and promotion decisions.</td>
+      <td>Create a candidate review board: Accept, Revise, Reject, Promote to Forge recipe, Promote to PNG fallback.</td>
+    </tr>
+    <tr>
+      <td>Audio</td>
+      <td><span class="state missing">Missing/Mentioned</span></td>
+      <td>No mp3/wav/ogg/flac/m4a assets found in the workspace.</td>
+      <td>All weapon, impact, UI, warning, pickup, mission, enemy, black-hole, and result sounds are absent.</td>
+      <td>Start with a tiny reusable sound set and settings sliders: master, music, SFX, UI. Then add per-enemy telegraph cues.</td>
+    </tr>
+    <tr>
+      <td>Accessibility</td>
+      <td><span class="state missing">Missing/Mentioned</span></td>
+      <td>Pause/settings accessibility placeholders; planned reduced shake, high contrast, flash/text scale, input assist.</td>
+      <td>Needs real toggles tied to rendering and gameplay feedback, not just menu labels.</td>
+      <td>Implement reduced flash, reduced shake, high-contrast telegraphs, text scale, color-safe enemy shots, and optional auto-fire/aim assist.</td>
+    </tr>
+    <tr>
+      <td>Desktop bridge and packaging</td>
+      <td><span class="state mvp">MVP</span></td>
+      <td>Electron scripts, desktop bridge, desktop build script, dev desktop command.</td>
+      <td>Steam/desktop release polish is post-prototype. Needs full-screen/window options, save location behavior, icon, installer, crash logging.</td>
+      <td>Keep browser as primary until loop polish is stronger. Later run desktop smoke separately from web build.</td>
+    </tr>
+    <tr>
+      <td>Performance profiling</td>
+      <td><span class="state implemented">Implemented</span></td>
+      <td>PerformanceProfilerSystem, report export, counts/flags, previous lag report, debug diagnostics.</td>
+      <td>Needs a routine benchmark suite before adding more visuals and audio.</td>
+      <td>Add canned 2-minute stress runs: asteroid burst, swarm, mothership, rare event, high-upgrade Pulse, beam, black hole.</td>
+    </tr>
+  </table>
+
+  <h2 class="page-break">Active Runtime Object and Sprite Inventory</h2>
+  <h3>Scene-owned active objects</h3>
+  <table>
+    <tr><th>Object group</th><th>Current active objects</th><th>Polish note</th></tr>
+    <tr><td>Player</td><td>Player container, player image, player velocity, ramming shield image, thruster timing, hull, invulnerability, fuel.</td><td>Needs unique ship sprites, clearer thruster/fuel feedback, and per-ship feel polish.</td></tr>
+    <tr><td>Weapons/projectiles</td><td>Player projectiles, enemy projectiles, beam slot graphics/state, muzzle/trail/impact effects, black-hole captured projectiles.</td><td>Needs final owner color language, audio, and upgrade-specific visual feedback.</td></tr>
+    <tr><td>Enemies</td><td>Legacy basic/shooter/tank arrays, live lab enemy array, enemy bodies, wrap mirrors, behavior state, squad membership.</td><td>Needs single final runtime ownership strategy and full Forge art coverage.</td></tr>
+    <tr><td>World hazards</td><td>Basic asteroids, asteroid mirrors, debris containers, death shards, black hole system.</td><td>Needs visual cohesion and danger readability across asteroid tiers, debris, and black holes.</td></tr>
+    <tr><td>Pickups</td><td>Scrap pickups, active sector scrap, upgrade crate pickup texture/key, pickup feedback.</td><td>Needs icon/value clarity and future fuel/rare-part pickup identity.</td></tr>
+    <tr><td>Sector content</td><td>Sector layout, asteroid/scrap/signal spawns, active sector maps, signal beacons, mission objective beacon.</td><td>Needs clearer region and signal art, plus more obvious discovered/undiscovered state.</td></tr>
+    <tr><td>Events</td><td>World events, rare events, mothership visuals, rare-event completion/reward feedback, guard squads.</td><td>Needs final event spectacle, warning language, and event-specific sprites/icons.</td></tr>
+    <tr><td>UI/HUD</td><td>Gameplay HUD, minimap, sector scanner arrow, upgrade overlay, results button/screen, pause menu, shop, ship select, debug menu, secret overlay.</td><td>Needs final visual hierarchy, icon replacement, consistent focus/click states, and settings that do real work.</td></tr>
+  </table>
+
+  <h3>Current asset files and runtime texture families</h3>
+  <table>
+    <tr><th>Asset family</th><th>Found assets</th><th>State</th><th>Polish direction</th></tr>
+    <tr><td>Player ships</td><td>spaceship_1, spaceship_2, spaceship_3, bulwark, bulwark2, bulwark_teeth; Forge Interceptor.</td><td><span class="state mvp">Mixed</span></td><td>Promote Interceptor, Bulwark, Engineer as cohesive Forge/cached assets. Decide whether old PNGs are fallback or retired.</td></tr>
+    <tr><td>Enemy ships</td><td>enemy_chaser, enemy_shooter, enemy_tank, spaceship_enemy_1; procedural lab visuals; Forge Scout.</td><td><span class="state wip">Mixed</span></td><td>Promote Forge art for all 15 live enemy roles and keep procedural fallback only for lab editing.</td></tr>
+    <tr><td>Asteroids</td><td>astroid_1 through astroid_4 PNGs; tier system is gameplay-driven.</td><td><span class="state implemented">Implemented</span></td><td>Add tier-distinct silhouettes/marks and consistent damage/breakup visual language.</td></tr>
+    <tr><td>Debris and scrap</td><td>debri, scrap, scrap_tier_1/2/3/4 PNG and SVG tier assets; Forge tier-1 scrap.</td><td><span class="state implemented">Implemented</span></td><td>Forge or polish all scrap tiers and make debris visually separate from collectible scrap.</td></tr>
+    <tr><td>Weapons</td><td>ramming shield PNG; Pulse projectile Forge neon bolt; beam is code-rendered.</td><td><span class="state mvp">MVP</span></td><td>Add weapon icons, stronger beam/shield art, muzzle/impact sprites, and audio identity.</td></tr>
+    <tr><td>Upgrade UI</td><td>upgrade_create PNG; upgrade overlay drawn by Phaser UI.</td><td><span class="state mvp">MVP</span></td><td>Create upgrade icons by category/weapon/rarity. Use exact stat deltas.</td></tr>
+    <tr><td>HUD/UI candidates</td><td>AI candidates for status readout, warning chip, weapon slot frame, resource/stat/weapon icons.</td><td><span class="state wip">WIP</span></td><td>Review and promote a selected set. Avoid baking unreadable text or white backgrounds into runtime UI.</td></tr>
+    <tr><td>Audio</td><td>No audio files found.</td><td><span class="state missing">Missing</span></td><td>Create a minimal sound set before deeper combat polish.</td></tr>
+  </table>
+
+  <h2>Missing or Mentioned Objects, Sprites, Menus, and Systems</h2>
+  <table>
+    <tr><th>Missing/mentioned item</th><th>Where it fits</th><th>Current implication</th><th>Suggested treatment</th></tr>
+    <tr><td>Stronghold event</td><td>World events and missions</td><td>Type exists as a world event kind, but only mothership-prototype is defined.</td><td>Add a first stronghold with turrets/bays/weakpoints after mothership polish.</td></tr>
+    <tr><td>Moving mothership, spawn bays, weak points, final boss art</td><td>World events</td><td>Prototype mothership is stationary and structurally simple.</td><td>Phase it: warning radius, guard waves, weakpoints, bay spawns, movement, final art.</td></tr>
+    <tr><td>Rare events: Thousand Swarm, Dead Fleet, Command Net, Reactor Cascade, Sniper Constellation, Mirror Shield Convoy</td><td>Rare event/content expansion</td><td>Named or implied by the 2.0 plan but not implemented.</td><td>Add only after Unstable Black-Hole Cache and Hunter Swarm feel special.</td></tr>
+    <tr><td>Additional mission templates</td><td>Mission system</td><td>Destroy Target, Recover Object, Survive Zone, Clear Stronghold, Hunt Rare Enemy, Investigate Signal, Assassinate Commander, Escape Pursuit, Destroy Mothership are planned categories; current set covers only a subset.</td><td>Build one mission per proven event/region type, not many shallow contracts.</td></tr>
+    <tr><td>Future ships: Carrier, Void Skiff, more unlockable variants</td><td>Ships/loadouts/progression</td><td>Only Interceptor, Bulwark, Engineer are active.</td><td>Do not add until the three core ships have unique art, passives, and balance.</td></tr>
+    <tr><td>Ship mastery bonuses</td><td>Ship progression</td><td>All three ships mention level 20 mastery coming soon.</td><td>Hide or implement mastery preview. Avoid promising invisible progression.</td></tr>
+    <tr><td>Fuel cells, fuel caches, fuel upgrades/modules</td><td>Fuel/economy/world resources</td><td>Fuel is thrust-use-only; world fuel drops are planned but absent.</td><td>Add rare fuel caches after low-fuel feedback is readable.</td></tr>
+    <tr><td>Rare parts</td><td>Economy/unlocks</td><td>Planned as a resource but not present in current data flow.</td><td>Use rare parts only for meaningful unlocks, not stat grind.</td></tr>
+    <tr><td>Controller support</td><td>Controls/accessibility</td><td>Planned historically, not required for first playable prototype.</td><td>Design focus/firing/aim behavior before wiring controller UI.</td></tr>
+    <tr><td>Audio categories and assets</td><td>Phase 18</td><td>No audio assets currently exist.</td><td>Build sound categories and sliders together with first sound pack.</td></tr>
+    <tr><td>High-contrast telegraphs, reduced shake/flash, aim assist/auto-fire</td><td>Accessibility</td><td>Planned in Phase 18 and partially represented as settings placeholders.</td><td>Implement as real gameplay/render toggles and add harness/screenshot coverage.</td></tr>
+    <tr><td>Forge assets for all non-Scout enemies</td><td>Asset pipeline/enemies</td><td>Only Scout has a promoted Forge asset.</td><td>Prioritize Sniper, Wedge Striker, Reactor Drone, Shield Frigate, Carrier Foundry.</td></tr>
+    <tr><td>Forge assets for Bulwark and Engineer</td><td>Ships/assets</td><td>Interceptor has Forge asset; Bulwark uses PNG; Engineer uses fallback ship texture.</td><td>Promote unique ship assets before adding new ships.</td></tr>
+    <tr><td>Mission, radar, resource, stat, weapon, upgrade, telegraph icons</td><td>UI/assets</td><td>Some AI candidate sheets exist, but runtime icon coverage is incomplete.</td><td>Create a locked icon set and use it consistently in HUD, shop, missions, and upgrade overlay.</td></tr>
+    <tr><td>Plasma Wake runtime</td><td>Pulse upgrade/effects</td><td>Data-only upgrade notes say persistent area-damage trail runtime is required.</td><td>Either implement area trail with performance cap or keep hidden from upgrade pool.</td></tr>
+    <tr><td>Full data-only off-screen pickup storage</td><td>Scrap/performance</td><td>Deferred from scrap rollup work.</td><td>Only revisit if active pickup counts become a problem after visual polish.</td></tr>
+    <tr><td>Direct in-app AI provider calls</td><td>Asset Forge</td><td>Manual export/import exists; provider calls are deferred.</td><td>Keep manual flow until promotion quality standards are stable.</td></tr>
+    <tr><td>Direct browser-side source patching for asset promotions</td><td>Asset Forge/dev tooling</td><td>Promotion bundles are exported but source patching is manual.</td><td>Keep manual patching unless promotion volume becomes high.</td></tr>
+  </table>
+
+  <h2>Recommended Polish Roadmap</h2>
+  <table>
+    <tr><th>Pass</th><th>Scope</th><th>Definition of done</th></tr>
+    <tr><td>Pass A: Phase 17 closeout</td><td>HUD, radar, mission log, results, menu consistency, screenshots.</td><td>One default HUD variant, readable mission/free-range states, results explain outcome and rewards, build passes, visual smoke captured.</td></tr>
+    <tr><td>Pass B: Core asset cohesion</td><td>Forge assets for three ships, 15 enemy roles, scrap tiers, weapon/mission/radar/upgrade icons.</td><td>Every common active object has either promoted Forge art or an intentional fallback label.</td></tr>
+    <tr><td>Pass C: Phase 18 audio/feedback/accessibility</td><td>Sound categories, first sound pack, high-contrast telegraphs, reduced shake/flash, low-fuel and enemy danger cues.</td><td>Every lethal or high-stakes action has visual and audio feedback plus an accessibility-friendly alternative.</td></tr>
+    <tr><td>Pass D: Content prototype uplift</td><td>Mothership, rare events, missions, scanner/radar rewards, shop clarity.</td><td>Each prototype system has at least two polished examples or is clearly marked as future.</td></tr>
+    <tr><td>Pass E: Balance and performance sweep</td><td>Ships, weapons, upgrades, enemies, asteroids, events, economy, sector density.</td><td>Stress harnesses pass, no major frame spikes, and each ship/weapon has a distinct viable path.</td></tr>
+  </table>
+
+  <h2>Immediate Suggested Task List</h2>
+  <ol>
+    <li>Freeze the Phase 17 HUD/dashboard variant and remove or demote research variants from normal player paths.</li>
+    <li>Create a screenshot smoke set for command, hangar, shop, pause/settings, upgrade overlay, HUD, minimap/radar levels, results, and Enemy Lab Forge.</li>
+    <li>Promote unique Forge/cached sprites for Bulwark and Engineer, then replace Engineer's Interceptor texture fallback.</li>
+    <li>Promote Forge enemy assets for Wedge Striker, Needle Sniper, Reactor Drone, Shield Frigate, and Carrier Foundry.</li>
+    <li>Build the first audio pass and wire real sound sliders.</li>
+    <li>Turn accessibility placeholders into real settings: reduced shake, reduced flash, high-contrast telegraphs, text scale.</li>
+    <li>Add mission briefing polish and mission completion ceremony for reach-location, world event, and rare event objectives.</li>
+    <li>Give the mothership weakpoints or spawn bays before adding another world anchor.</li>
+    <li>Hide or finish data-only Plasma Wake and "coming soon" mastery promises.</li>
+    <li>Run a stress/build pass after each visual/audio batch to protect the current performance gains.</li>
+  </ol>
+</body>
+</html>

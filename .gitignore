@@ -1,9 +1,12 @@
 *.zip
+!Docs/**/*.zip
+!artifacts/**/*.zip
+/*.png
 node_modules/
 dist/
 dist-electron/
 release/
 runtime-data/
-.vite-dev-server.pid
-vite-dev*.log
-nano_key.txt
+/.vite-dev-server.pid
+/vite-dev*.log
+/nano_key.txt

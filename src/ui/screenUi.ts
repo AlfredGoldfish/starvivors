@@ -50,6 +50,10 @@ export interface ScreenButtonConfig {
   label: string;
   callback: () => void;
   isEnabled?: boolean;
+  isSelected?: boolean;
+  fontSize?: string;
+  fillColor?: number;
+  strokeColor?: number;
   isActionActive: () => boolean;
   resetCursor: () => void;
 }
@@ -82,7 +86,6 @@ export function drawCockpitPanel(graphics: Phaser.GameObjects.Graphics, config: 
   const accent = config.accentColor ?? UI_COLORS.cyan;
   const fill = config.fillColor ?? UI_COLORS.panel;
   const alpha = config.alpha ?? 0.96;
-  const headerHeight = config.headerHeight ?? 0;
 
   graphics.fillStyle(fill, alpha);
   graphics.fillRoundedRect(config.x, config.y, config.width, config.height, 8);
@@ -90,13 +93,6 @@ export function drawCockpitPanel(graphics: Phaser.GameObjects.Graphics, config: 
   graphics.strokeRoundedRect(config.x, config.y, config.width, config.height, 8);
   graphics.lineStyle(1, UI_COLORS.steel, 0.42);
   graphics.strokeRoundedRect(config.x + 7, config.y + 7, config.width - 14, config.height - 14, 5);
-
-  if (headerHeight > 0) {
-    graphics.fillStyle(UI_COLORS.plateHot, 0.42);
-    graphics.fillRect(config.x + 1, config.y + 1, config.width - 2, headerHeight);
-    graphics.lineStyle(1, UI_COLORS.brass, 0.32);
-    graphics.lineBetween(config.x + 18, config.y + headerHeight + 1, config.x + config.width - 18, config.y + headerHeight + 1);
-  }
 
   if (config.title && config.titleScene && config.titleContainer) {
     config.titleContainer.add(
@@ -125,9 +121,10 @@ export function drawCockpitDivider(
 
 export function addScreenButton(config: ScreenButtonConfig): void {
   const isEnabled = config.isEnabled ?? true;
+  const isSelected = Boolean(config.isSelected && isEnabled);
   const buttonBackground = config.scene.add.graphics();
-  const fill = isEnabled ? UI_COLORS.plate : UI_COLORS.disabled;
-  const stroke = isEnabled ? UI_COLORS.cyan : UI_COLORS.steel;
+  const fill = isEnabled ? config.fillColor ?? (isSelected ? UI_COLORS.plateHot : UI_COLORS.plate) : UI_COLORS.disabled;
+  const stroke = isEnabled ? config.strokeColor ?? (isSelected ? UI_COLORS.brass : UI_COLORS.cyan) : UI_COLORS.steel;
   let isPressed = false;
 
   const drawButtonBackground = (offset: number): void => {
@@ -149,7 +146,7 @@ export function addScreenButton(config: ScreenButtonConfig): void {
   const buttonText = config.scene.add
     .text(config.x, config.y + config.height / 2, config.label, {
       fontFamily: UI_FONT,
-      fontSize: '16px',
+      fontSize: config.fontSize ?? '16px',
       color: isEnabled ? '#f2fbff' : '#8090a6',
       align: 'center',
       fixedWidth: config.width - 10
