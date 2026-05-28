@@ -99,4 +99,38 @@ describe('audio manager', () => {
       expect(definition.layers.every((layer) => layer.durationMs > 0 && layer.gain > 0)).toBe(true);
     }
   });
+
+  it('keeps player shooting cues present with softened high-frequency content', () => {
+    const playerFire = AUDIO_CUE_REGISTRY['player-fire'];
+    const playerBurstFire = AUDIO_CUE_REGISTRY['player-burst-fire'];
+
+    expect(playerFire.layers.length).toBeGreaterThan(0);
+    expect(playerBurstFire.layers.length).toBeGreaterThan(0);
+    expect(getCuePeakFrequency(playerFire)).toBeLessThanOrEqual(1180);
+    expect(getCueTotalGain(playerFire)).toBeLessThanOrEqual(0.09);
+    expect(getCueOscillatorWaveforms(playerFire)).not.toContain('square');
+    expect(getCuePeakFrequency(playerBurstFire)).toBeLessThanOrEqual(1450);
+    expect(getCueTotalGain(playerBurstFire)).toBeLessThanOrEqual(0.07);
+    expect(getCueOscillatorWaveforms(playerBurstFire)).not.toContain('sawtooth');
+  });
 });
+
+function getCuePeakFrequency(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): number {
+  return Math.max(
+    ...definition.layers.flatMap((layer) => {
+      if (layer.type === 'oscillator') {
+        return [layer.frequencyStartHz, layer.frequencyEndHz ?? layer.frequencyStartHz];
+      }
+
+      return [layer.filterStartHz ?? 0, layer.filterEndHz ?? layer.filterStartHz ?? 0];
+    })
+  );
+}
+
+function getCueTotalGain(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): number {
+  return definition.layers.reduce((total, layer) => total + layer.gain, 0);
+}
+
+function getCueOscillatorWaveforms(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): OscillatorType[] {
+  return definition.layers.flatMap((layer) => (layer.type === 'oscillator' ? [layer.waveform] : []));
+}

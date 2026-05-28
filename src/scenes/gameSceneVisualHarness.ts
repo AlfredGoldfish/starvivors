@@ -10,6 +10,7 @@ export interface GameSceneVisualHarnessAdapter {
   showResultsPanel: (tab: ResultsPanelTab) => void;
   openPauseSettings: () => void;
   openPauseSoundSettings: () => void;
+  openLaunchConfirmation: () => void;
   stageDebrief: () => void;
 }
 
@@ -59,6 +60,10 @@ export function runVisualModuleHarness(adapter: GameSceneVisualHarnessAdapter, m
       break;
     case 'pauseSoundSettings':
       adapter.openPauseSoundSettings();
+      break;
+    case 'launchConfirm':
+      adapter.showStartScreen();
+      adapter.openLaunchConfirmation();
       break;
     case 'start':
     default:

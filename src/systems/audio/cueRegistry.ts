@@ -85,8 +85,8 @@ export const AUDIO_CUE_REGISTRY: Record<AudioCueId, AudioCueDefinition> = {
     category: 'sfx',
     cooldownMs: 55,
     layers: [
-      { type: 'oscillator', waveform: 'square', gain: 0.08, frequencyStartHz: 740, frequencyEndHz: 260, durationMs: 72, attackMs: 4 },
-      { type: 'noise', gain: 0.035, durationMs: 58, filterType: 'highpass', filterStartHz: 1400, filterEndHz: 2600 }
+      { type: 'oscillator', waveform: 'triangle', gain: 0.062, frequencyStartHz: 620, frequencyEndHz: 210, durationMs: 82, attackMs: 5 },
+      { type: 'noise', gain: 0.022, durationMs: 64, filterType: 'lowpass', filterStartHz: 1180, filterEndHz: 760 }
     ]
   },
   'player-burst-fire': {
@@ -94,8 +94,8 @@ export const AUDIO_CUE_REGISTRY: Record<AudioCueId, AudioCueDefinition> = {
     category: 'sfx',
     cooldownMs: 42,
     layers: [
-      { type: 'oscillator', waveform: 'sawtooth', gain: 0.055, frequencyStartHz: 520, frequencyEndHz: 820, durationMs: 62, attackMs: 3 },
-      { type: 'noise', gain: 0.024, durationMs: 42, filterType: 'bandpass', filterStartHz: 1900, filterEndHz: 2800 }
+      { type: 'oscillator', waveform: 'triangle', gain: 0.045, frequencyStartHz: 460, frequencyEndHz: 680, durationMs: 70, attackMs: 4 },
+      { type: 'noise', gain: 0.016, durationMs: 48, filterType: 'bandpass', filterStartHz: 1050, filterEndHz: 1450 }
     ]
   },
   'enemy-fire': {

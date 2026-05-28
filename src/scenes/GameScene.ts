@@ -286,6 +286,7 @@ import { createShipSelectScreen } from '../ui/shipSelectScreen';
 import { createShopScreen, type ShopTerminalUpgradeId } from '../ui/shopScreen';
 import { createPauseMenuScreen, type PauseMenuTab } from '../ui/pauseMenu';
 import { createSettingsHubScreen, type SettingsScreenTab } from '../ui/settingsScreen';
+import { createLaunchConfirmScreen } from '../ui/launchConfirmScreen';
 import { addScreenButton, destroyScreenHandle, type ScreenHandle } from '../ui/screenUi';
 import { createSecretControlOverlay, type SecretControlOverlayController, type SecretControlOverlayValues } from '../ui/secretControlOverlay';
 import {
@@ -329,6 +330,11 @@ import {
 } from './gameScenePreRunHarness';
 import { createStagedDebriefHarnessState } from './gameSceneResultsStaging';
 import { runVisualModuleHarness } from './gameSceneVisualHarness';
+import {
+  cancelLaunchConfirmation as cancelLaunchConfirmationFlow,
+  confirmLaunch as confirmLaunchFlow,
+  requestLaunchConfirmation as requestLaunchConfirmationFlow
+} from './gameSceneLaunchConfirmation';
 import {
   createBeamSlotRuntime,
   createBeamSlots,
@@ -799,6 +805,7 @@ export class GameScene extends Phaser.Scene {
   private isBootStartContext = false;
   private pauseMenuScreen?: ScreenHandle;
   private ejectConfirmScreen?: ScreenHandle;
+  private launchConfirmScreen?: ScreenHandle;
   private pauseMenuTab: PauseMenuTab = 'pause';
   private pendingVisualPauseSettingsTab?: Exclude<PauseMenuTab, 'pause'>;
   private settingsMenuTab: SettingsScreenTab = 'graphics';
@@ -1005,6 +1012,7 @@ export class GameScene extends Phaser.Scene {
     this.beginPerformanceFrame(time, delta);
     this.profileStep('debug-menu-input', () => this.updateDebugMenuInput(time));
     this.profileStep('secret-control-input', () => this.updateSecretControlInput(time));
+    this.profileStep('launch-confirmation-input', () => this.updateLaunchConfirmationInput());
 
     if (this.isPreRunFlowState()) {
       this.profileStep('debug-menu-refresh', () => this.refreshDebugMenu(time));
@@ -1105,6 +1113,16 @@ export class GameScene extends Phaser.Scene {
       this.gameFlowState === 'shop' ||
       this.gameFlowState === 'settings'
     );
+  }
+
+  private updateLaunchConfirmationInput(): void {
+    if (!this.launchConfirmScreen || this.awaitingBinding) {
+      return;
+    }
+
+    if (Phaser.Input.Keyboard.JustDown(this.escapeKey)) {
+      this.cancelLaunchConfirmation();
+    }
   }
 
   private createInput(): void {
@@ -1909,6 +1927,18 @@ export class GameScene extends Phaser.Scene {
         this.confirmEject();
         return this.getTestHarnessState();
       },
+      requestLaunch: () => {
+        this.requestLaunchConfirmation();
+        return this.getTestHarnessState();
+      },
+      cancelLaunch: () => {
+        this.cancelLaunchConfirmation();
+        return this.getTestHarnessState();
+      },
+      confirmLaunch: () => {
+        this.confirmLaunch();
+        return this.getTestHarnessState();
+      },
       continueRun: () => {
         this.continueCurrentRun();
         return this.getTestHarnessState();
@@ -2092,6 +2122,7 @@ export class GameScene extends Phaser.Scene {
         : 0,
       canContinueRun: false,
       isEjectConfirmOpen: Boolean(this.ejectConfirmScreen),
+      isLaunchConfirmOpen: Boolean(this.launchConfirmScreen),
       sectorScale: this.sectorScale,
       sectorSeed: this.sectorSeed,
       sectorRegionCount: this.sectorLayout.regions.length,
@@ -2379,6 +2410,7 @@ export class GameScene extends Phaser.Scene {
         openPauseSoundSettings: () => {
           this.stageVisualPauseSettings('sound');
         },
+        openLaunchConfirmation: () => this.requestLaunchConfirmation(),
         stageDebrief: () => this.stageVisualDebriefHarness()
       },
       moduleId
@@ -4829,6 +4861,7 @@ export class GameScene extends Phaser.Scene {
   private rebuildWorld(options: { consumePendingRunBoosts?: boolean } = {}): void {
     const consumePendingRunBoosts = options.consumePendingRunBoosts ?? true;
     this.gameFlowState = 'running';
+    this.destroyLaunchConfirmationScreen();
     const viewport = getViewportSize(this);
     this.sectorScale = this.getConfiguredSectorScale();
     this.arena = createArenaSize(viewport, this.sectorScale);
@@ -4844,6 +4877,7 @@ export class GameScene extends Phaser.Scene {
     this.mainMenuScreen = undefined;
     this.shipSelectScreen = undefined;
     this.shopScreen = undefined;
+    this.launchConfirmScreen = undefined;
     this.ejectConfirmScreen = undefined;
     this.ensureSelectedShipStartingWeaponAvailable(this.getSelectedShipDefinition());
     this.playerWeapons = createPlayerWeaponRuntimeState(this.getSelectedShipDefinition(), this.weaponLoadout);
@@ -5225,8 +5259,67 @@ export class GameScene extends Phaser.Scene {
     this.createStagedArenaBackdrop();
   }
 
+  private requestLaunchConfirmation(): void {
+    requestLaunchConfirmationFlow({
+      canStartConfiguredRun: () => this.canStartConfiguredRun(),
+      showShipSelect: () => this.showShipSelect(),
+      openConfirmationScreen: () => this.openLaunchConfirmationScreen(),
+      closeConfirmationScreen: () => this.destroyLaunchConfirmationScreen(),
+      isConfirmationOpen: () => Boolean(this.launchConfirmScreen),
+      startRun: () => this.startRun(),
+      playBackCue: () => this.playUiCue('ui-back')
+    });
+  }
+
+  private openLaunchConfirmationScreen(): void {
+    if (this.launchConfirmScreen || (!this.isPreRunFlowState() && this.gameFlowState !== 'results')) {
+      return;
+    }
+
+    this.launchConfirmScreen = createLaunchConfirmScreen({
+      scene: this,
+      isActionActive: () => Boolean(this.launchConfirmScreen) && (this.isPreRunFlowState() || this.gameFlowState === 'results'),
+      resetCursor: () => this.resetUiCursor(),
+      onConfirm: () => this.confirmLaunch(),
+      onCancel: () => this.cancelLaunchConfirmation()
+    });
+    this.playUiCue('ui-confirm');
+  }
+
+  private confirmLaunch(): void {
+    confirmLaunchFlow({
+      canStartConfiguredRun: () => this.canStartConfiguredRun(),
+      showShipSelect: () => this.showShipSelect(),
+      openConfirmationScreen: () => this.openLaunchConfirmationScreen(),
+      closeConfirmationScreen: () => this.destroyLaunchConfirmationScreen(),
+      isConfirmationOpen: () => Boolean(this.launchConfirmScreen),
+      startRun: () => this.startRun(),
+      playBackCue: () => this.playUiCue('ui-back')
+    });
+  }
+
+  private cancelLaunchConfirmation(): void {
+    cancelLaunchConfirmationFlow({
+      canStartConfiguredRun: () => this.canStartConfiguredRun(),
+      showShipSelect: () => this.showShipSelect(),
+      openConfirmationScreen: () => this.openLaunchConfirmationScreen(),
+      closeConfirmationScreen: () => this.destroyLaunchConfirmationScreen(),
+      isConfirmationOpen: () => Boolean(this.launchConfirmScreen),
+      startRun: () => this.startRun(),
+      playBackCue: () => this.playUiCue('ui-back')
+    });
+  }
+
+  private destroyLaunchConfirmationScreen(): void {
+    this.launchConfirmScreen = destroyScreenHandle(this.launchConfirmScreen, {
+      disableZones: true,
+      resetCursor: () => this.resetUiCursor()
+    });
+  }
+
   private startRun(): void {
     this.isBootStartContext = false;
+    this.destroyLaunchConfirmationScreen();
 
     if (this.autoRunDiagnostics.isActive()) {
       this.autoRunDiagnostics.endRun('restart');
@@ -5381,7 +5474,7 @@ export class GameScene extends Phaser.Scene {
       playDisabledReason: this.getPlayDisabledReason(),
       isActionActive: () => this.isPreRunFlowState(),
       resetCursor: () => this.resetUiCursor(),
-      onPlay: () => this.startRun(),
+      onPlay: () => this.requestLaunchConfirmation(),
       onShowCommand: () => this.showMainMenu(),
       onShowHangar: () => this.showShipSelect(),
       onShowShop: () => this.showShop('mainMenu'),
@@ -5395,7 +5488,7 @@ export class GameScene extends Phaser.Scene {
       playDisabledReason: this.getPlayDisabledReason(),
       isActionActive: () => this.gameFlowState === 'results',
       resetCursor: () => this.resetUiCursor(),
-      onPlay: () => this.startRun(),
+      onPlay: () => this.requestLaunchConfirmation(),
       onShowCommand: () => this.showResultsPanel('command'),
       onShowHangar: () => this.showResultsPanel('hangar'),
       onShowShop: () => this.showResultsPanel('shop'),
@@ -6030,6 +6123,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private destroyForegroundPanelScreen(): void {
+    this.destroyLaunchConfirmationScreen();
     this.destroyMainMenuScreen();
     this.destroyShipSelectScreen();
     this.destroyShopScreen();
@@ -12151,7 +12245,7 @@ export class GameScene extends Phaser.Scene {
       combatStats: buildResultsCombatStats(this.runCombatStats),
       isActionActive: () => this.gameFlowState === 'results' && this.resultsPanelTab === 'debrief',
       resetCursor: () => this.resetUiCursor(),
-      onRestartRun: () => this.startRun(),
+      onRestartRun: () => this.requestLaunchConfirmation(),
       onMainMenu: () => this.showResultsPanel('command'),
       onHangar: () => this.showResultsPanel('hangar'),
       onShop: () => this.showResultsPanel('shop'),

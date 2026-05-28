@@ -97,6 +97,7 @@ export interface StarvivorsTestHarnessState {
   deathSequenceRemainingMs: number;
   canContinueRun: boolean;
   isEjectConfirmOpen: boolean;
+  isLaunchConfirmOpen: boolean;
   sectorScale: number;
   sectorSeed: string;
   sectorRegionCount: number;
@@ -232,6 +233,9 @@ export interface StarvivorsTestHarness {
   requestEject: () => StarvivorsTestHarnessState;
   cancelEject: () => StarvivorsTestHarnessState;
   confirmEject: () => StarvivorsTestHarnessState;
+  requestLaunch: () => StarvivorsTestHarnessState;
+  cancelLaunch: () => StarvivorsTestHarnessState;
+  confirmLaunch: () => StarvivorsTestHarnessState;
   continueRun: () => StarvivorsTestHarnessState;
   refillFuel: () => StarvivorsTestHarnessState;
   emptyFuel: () => StarvivorsTestHarnessState;

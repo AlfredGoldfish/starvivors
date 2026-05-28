@@ -38,6 +38,15 @@ describe('visual module harness routing', () => {
     expect(adapter.openPauseSoundSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('routes launch confirmation through the start screen visual hook', () => {
+    const adapter = createAdapter();
+
+    runVisualModuleHarness(adapter, 'launchConfirm');
+
+    expect(adapter.showStartScreen).toHaveBeenCalledTimes(1);
+    expect(adapter.openLaunchConfirmation).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to the start screen for unknown modules', () => {
     const adapter = createAdapter();
 
@@ -58,6 +67,7 @@ function createAdapter(): GameSceneVisualHarnessAdapter {
     showResultsPanel: vi.fn(),
     openPauseSettings: vi.fn(),
     openPauseSoundSettings: vi.fn(),
+    openLaunchConfirmation: vi.fn(),
     stageDebrief: vi.fn()
   };
 }

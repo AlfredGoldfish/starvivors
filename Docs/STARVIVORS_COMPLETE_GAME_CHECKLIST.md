@@ -64,6 +64,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - [~] Main command and pre-run hub feel like one product.
   - Done when: command, hangar, shop, settings, and debrief share navigation, selected-tab treatment, disabled states, and back behavior.
   - Evidence: 2026-05-27 pass removed split-color header bands and top divider lines from shared and pre-run menu panel shells.
+  - Evidence: 2026-05-28 pass added a confirmation popup to hub LAUNCH actions across start, command, hangar, shop, settings, and debrief contexts.
   - Next: normalize the pre-run navigation component and focus states.
 - [~] Ship select and hangar communicate ship identity.
   - Done when: each active ship has unique art, clear stats, starting loadout, one visible passive/mechanic, and no misleading "coming soon" promise.
@@ -175,6 +176,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Done when: master/music/SFX/UI sliders work and core sounds exist for player fire, enemy fire, hit, hull damage, pickup, upgrade, low fuel, mission complete, eject, and black-hole warning.
   - Evidence: 2026-05-28 first SFX pass added procedural Web Audio cues for player/enemy fire, impacts, shield/world/debris feedback, hull damage/death/eject, pickups/upgrades, low fuel, mission complete, black-hole warning, and UI confirm/back/tab/error.
   - Evidence: 2026-05-28 pass wired master, SFX, UI, and mute settings to playback and added an audio harness covering effective gains and representative cue recording; music volume remains persisted and clearly reserved for the later music/ambience pass.
+  - Evidence: 2026-05-28 pass softened player-fire and player-burst-fire procedural cues by lowering high-frequency content, reducing gain, and switching brittle oscillators to triangle waves.
   - Next: add actual music/ambience sources, then promote this from partial to complete once the music slider controls an active source.
 - [ ] Enemy and hazard audio cues exist.
   - Done when: dangerous enemy actions and major hazards have recognizable cues that improve readability.
@@ -237,3 +239,4 @@ Current focus: Pass A.
 - 2026-05-27: Removed the top XP cockpit card, replaced the segmented XP meter with a standalone rail, and kept the XP counter/run timer below it; build and 1280x720 HUD screenshot smoke passed.
 - 2026-05-27: Completed the combat HUD/dashboard checklist item by adding a compact narrow-width dashboard and refreshing 1280x720, 1920x1080, and 500x844 HUD screenshots; build and `testHarness=weaponHotbar` passed.
 - 2026-05-28: Completed the basic settings pass with a shared settings editor, persisted graphics/sound/gameplay/accessibility fields, keybind conflict blocking, primary auto-fire assist, rendering/accessibility hooks, full Vitest pass, build pass, and four settings smoke screenshots.
+- 2026-05-28: Softened rapid player shooting SFX and added a hub launch confirmation popup; full Vitest, build, startup-navigation smoke, and launch-confirm screenshot smoke passed.
