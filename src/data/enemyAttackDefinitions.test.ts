@@ -77,6 +77,29 @@ describe('enemy attack definitions', () => {
     expect(getDefaultEnemyAttackLoadout('spawner-nest')[0].params).toMatchObject({ spawnId: 'shard-drone', glyphRadiusPx: 180 });
   });
 
+  it('marks Batch B attacks ready with final default slot params', () => {
+    const batchB = ENEMY_ATTACK_DEFINITIONS.filter((definition) => definition.lab.batch === 'B');
+
+    expect(batchB.map((definition) => definition.id)).toEqual([
+      'sweep-laser',
+      'healing-beam',
+      'shield-wall',
+      'plasma-puddle'
+    ]);
+    expect(batchB.every((definition) => definition.lab.status === 'ready')).toBe(true);
+    expect(createDefaultAttackLoadoutSlot('sweep-laser').params).toMatchObject({ sweepMs: 1300, arcDegrees: 80, damagePerSecond: 28 });
+    expect(createDefaultAttackLoadoutSlot('healing-beam').params).toMatchObject({ rangePx: 280, healPerSecond: 13, retargetMs: 250 });
+    expect(createDefaultAttackLoadoutSlot('shield-wall').params).toMatchObject({ activeMs: 1200, arcDegrees: 95, reflect: false });
+    expect(createDefaultAttackLoadoutSlot('plasma-puddle').params).toMatchObject({ landingMs: 650, durationMs: 3600, tickDamage: 4, slow: 0.25 });
+  });
+
+  it('initializes Batch B defaults through enemy loadouts where assigned', () => {
+    expect(getDefaultEnemyAttackLoadout('shield-frigate')[0].attackId).toBe('shield-wall');
+    expect(getDefaultEnemyAttackLoadout('repair-skiff')[0].attackId).toBe('healing-beam');
+    expect(getDefaultEnemyAttackLoadout('reflector')[0].params).toMatchObject({ reflect: true });
+    expect(getDefaultEnemyAttackLoadout('frost-gunner')[0].params).toMatchObject({ statusKind: 'frost', slow: 0.25 });
+  });
+
   it('surfaces invalid attack ids through loadout validation', () => {
     const errors = validateAttackLoadoutSlots([
       { attackId: 'unknown-attack' as never, enabled: true }

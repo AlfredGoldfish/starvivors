@@ -50,6 +50,8 @@ export interface AttackSlotRuntime {
   executedInPhase: boolean;
   pendingImpacts: AttackPendingImpact[];
   lastTelegraphAt: number;
+  lastTickAt: number;
+  lastRetargetAt: number;
 }
 
 export interface AttackHostRuntime {
@@ -160,6 +162,7 @@ export interface AttackVisualRequest {
   target?: AttackTargetSnapshot;
   telegraph?: AttackTelegraphRecipe;
   effect?: AttackEffectRecipe;
+  params?: Record<string, EnemyAttackParamValue>;
   progress: number;
   durationMs: number;
 }
@@ -241,7 +244,9 @@ export function createAttackHostRuntime(input: {
         phaseStartedAt: input.time,
         executedInPhase: false,
         pendingImpacts: [],
-        lastTelegraphAt: input.time
+        lastTelegraphAt: input.time,
+        lastTickAt: input.time,
+        lastRetargetAt: input.time
       };
     })
   };
@@ -277,6 +282,8 @@ export function queueAttackSlot(runtime: AttackHostRuntime, slotIndex: number, t
   slot.executedInPhase = false;
   slot.pendingImpacts = [];
   slot.lastTelegraphAt = time;
+  slot.lastTickAt = time;
+  slot.lastRetargetAt = time;
   return true;
 }
 
@@ -366,7 +373,8 @@ export function resolveRuntimeTelegraphRecipe(
   const base = {
     ...definition.telegraph,
     ...pickRecipeOverrides(params, ['radiusPx', 'rangePx', 'durationMs']),
-    ...pickRadiusAliasOverride(params)
+    ...pickRadiusAliasOverride(params),
+    ...pickTelegraphDurationAliasOverride(definition, params)
   };
   const reduced = options.reducedEffects ? definition.reducedEffects ?? {} : {};
   const recipe = { ...base, ...reduced };
@@ -392,7 +400,8 @@ export function resolveRuntimeEffectRecipe(
   const base = {
     ...definition.activeEffect,
     ...pickRecipeOverrides(params, ['radiusPx', 'widthPx', 'durationMs']),
-    ...pickRadiusAliasOverride(params)
+    ...pickRadiusAliasOverride(params),
+    ...pickEffectDurationAliasOverride(definition, params)
   };
   const reduced = options.reducedEffects ? definition.reducedEffects ?? {} : {};
   const recipe = { ...base, ...reduced };
@@ -423,6 +432,8 @@ function startNextAvailablePhase(
   slot.phase = nextPhase;
   slot.phaseStartedAt = input.time;
   slot.executedInPhase = false;
+  slot.lastTickAt = input.time;
+  slot.lastRetargetAt = input.time;
   events.push({ type: 'phase-start', attackId: slot.definition.id, slotIndex, phase: nextPhase });
 
   if (nextPhase === 'windup' || nextPhase === 'channel') {
@@ -431,6 +442,11 @@ function startNextAvailablePhase(
 
   if (nextPhase === 'active') {
     requestEffect(input, slot, 'active', 'resolve');
+    if (isSustainedActiveAttack(slot)) {
+      slot.lastTickAt = input.time - getSustainedTickMs(slot);
+      executeSustainedActiveTick(input, slot, slotIndex, events, false);
+      return;
+    }
     executeOrScheduleActive(input, slot, slotIndex, events);
   }
 }
@@ -539,7 +555,9 @@ function refreshTrackingTarget(input: UpdateAttackHostRuntimeInput, slot: Attack
   const timing = resolveAttackTiming(slot.definition, slot.slot);
   const shouldTrack =
     (slot.definition.id === 'rail-line' && elapsed < getNumberParam(params, 'aimMs', timing.windupMs)) ||
-    slot.definition.id === 'mortar-lob';
+    slot.definition.id === 'mortar-lob' ||
+    slot.definition.id === 'sweep-laser' ||
+    slot.definition.id === 'plasma-puddle';
 
   if (!shouldTrack) {
     return;
@@ -573,6 +591,12 @@ function getTelegraphRefreshMs(slot: AttackSlotRuntime): number {
       return 150;
     case 'summon-glyphs':
       return slot.phase === 'channel' ? 180 : 220;
+    case 'sweep-laser':
+      return 110;
+    case 'healing-beam':
+      return 140;
+    case 'plasma-puddle':
+      return 150;
     default:
       return 0;
   }
@@ -581,13 +605,13 @@ function getTelegraphRefreshMs(slot: AttackSlotRuntime): number {
 function executeAttack(
   input: UpdateAttackHostRuntimeInput,
   slot: AttackSlotRuntime,
-  options: { target?: AttackTargetSnapshot; beat?: AttackRuntimeBeat } = {}
+  options: { target?: AttackTargetSnapshot; beat?: AttackRuntimeBeat; damageOverride?: number } = {}
 ): void {
   const params = resolveAttackLoadoutSlotParams(slot.slot);
   const target = options.target ?? slot.target;
   const origin = { x: input.host.body.x, y: input.host.body.y };
   const direction = getDirectionToTarget(input, slot, target);
-  const damage = getNumberParam(params, 'damage', slot.definition.execution.damage ?? 0) * (input.damageScale ?? 1);
+  const damage = (options.damageOverride ?? getNumberParam(params, 'damage', slot.definition.execution.damage ?? 0)) * (input.damageScale ?? 1);
   const radius = getNumberParam(
     params,
     'radiusPx',
@@ -721,12 +745,102 @@ function executeActiveTick(
   slotIndex: number,
   events: AttackRuntimeEvent[]
 ): void {
+  if (isSustainedActiveAttack(slot)) {
+    executeSustainedActiveTick(input, slot, slotIndex, events, true);
+    return;
+  }
+
   if (slot.executedInPhase) {
     return;
   }
 
   requestEffect(input, slot, 'active', 'resolve');
   executeOrScheduleActive(input, slot, slotIndex, events);
+}
+
+function executeSustainedActiveTick(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  slotIndex: number,
+  events: AttackRuntimeEvent[],
+  renderEffect: boolean
+): void {
+  const tickMs = getSustainedTickMs(slot);
+  if (tickMs <= 0 || input.time - slot.lastTickAt < tickMs) {
+    return;
+  }
+
+  if (slot.definition.id === 'healing-beam') {
+    refreshSustainedHealTarget(input, slot);
+  }
+
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const tickSeconds = tickMs / 1000;
+  const beat: AttackRuntimeBeat = slot.definition.id === 'plasma-puddle' ? 'impact' : 'channel';
+
+  if (renderEffect && slot.definition.id !== 'plasma-puddle') {
+    requestEffect(input, slot, 'active', beat);
+  }
+
+  if (slot.definition.id === 'healing-beam') {
+    const target = slot.target;
+    if (target) {
+      input.callbacks.heal?.({
+        sourceHostId: input.host.hostId,
+        targetId: target.id,
+        amount: getNumberParam(params, 'healPerSecond', 12) * tickSeconds
+      });
+      events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+    }
+  } else if (slot.definition.id === 'sweep-laser') {
+    executeAttack(input, slot, {
+      beat,
+      damageOverride: getNumberParam(params, 'damagePerSecond', slot.definition.execution.damage ?? 0) * tickSeconds
+    });
+    events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+  } else if (slot.definition.id === 'plasma-puddle') {
+    executeAttack(input, slot, {
+      beat,
+      damageOverride: getNumberParam(params, 'tickDamage', slot.definition.execution.damage ?? 0)
+    });
+    events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+  }
+
+  slot.lastTickAt = input.time;
+}
+
+function refreshSustainedHealTarget(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const retargetMs = Math.max(50, getNumberParam(params, 'retargetMs', 250));
+  if (input.time - slot.lastRetargetAt < retargetMs) {
+    return;
+  }
+
+  const target = selectAttackTarget(input, slot);
+  if (target) {
+    slot.target = target;
+  }
+  slot.lastRetargetAt = input.time;
+}
+
+function isSustainedActiveAttack(slot: AttackSlotRuntime): boolean {
+  return slot.definition.id === 'sweep-laser' ||
+    slot.definition.id === 'healing-beam' ||
+    slot.definition.id === 'plasma-puddle';
+}
+
+function getSustainedTickMs(slot: AttackSlotRuntime): number {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  if (slot.definition.id === 'healing-beam') {
+    return Math.max(50, getNumberParam(params, 'tickMs', getNumberParam(params, 'retargetMs', 250)));
+  }
+  if (slot.definition.id === 'plasma-puddle') {
+    return Math.max(80, getNumberParam(params, 'tickMs', 500));
+  }
+  if (slot.definition.id === 'sweep-laser') {
+    return Math.max(60, getNumberParam(params, 'tickMs', 180));
+  }
+  return 0;
 }
 
 function requestTelegraph(
@@ -782,6 +896,7 @@ function createVisualRequest(
     y: input.host.body.y,
     direction: getDirectionToTarget(input, slot, slot.target),
     target: slot.target,
+    params: resolveAttackLoadoutSlotParams(slot.slot),
     progress: durationMs > 0 ? Math.min(1, elapsed / durationMs) : 1,
     durationMs
   };
@@ -799,6 +914,15 @@ function resolveTelegraphRequestDuration(
   }
   if (slot.definition.id === 'mortar-lob' || slot.definition.id === 'emp-nova') {
     return Math.max(180, Math.min(320, duration));
+  }
+  if (slot.definition.id === 'sweep-laser') {
+    return Math.max(160, Math.min(300, duration));
+  }
+  if (slot.definition.id === 'plasma-puddle') {
+    return Math.max(220, Math.min(420, duration));
+  }
+  if (slot.definition.id === 'healing-beam') {
+    return Math.max(140, Math.min(260, duration));
   }
   if (slot.definition.id === 'summon-glyphs') {
     return phase === 'channel'
@@ -932,12 +1056,35 @@ function getDirectionToTarget(
   slot: AttackSlotRuntime,
   target: AttackTargetSnapshot | undefined
 ): AttackVectorLike {
+  const baseDirection = getBaseDirectionToTarget(input, slot, target);
+  if (slot.definition.id === 'sweep-laser' && slot.phase === 'active') {
+    const params = resolveAttackLoadoutSlotParams(slot.slot);
+    const timing = resolveAttackTiming(slot.definition, slot.slot);
+    const activeMs = Math.max(1, timing.activeMs);
+    const progress = clamp01((input.time - slot.phaseStartedAt) / activeMs);
+    const arcRadians = degreesToRadians(getNumberParam(params, 'arcDegrees', 80));
+    return rotateVector(baseDirection, -arcRadians * 0.5 + arcRadians * progress);
+  }
+
+  return baseDirection;
+}
+
+function getBaseDirectionToTarget(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  target: AttackTargetSnapshot | undefined
+): AttackVectorLike {
   if (!target) {
     const rotation = input.host.body.rotation ?? 0;
     return normalize({ x: Math.sin(rotation), y: -Math.cos(rotation) });
   }
 
   const offset = input.getWrappedDirection(input.host.body.x, input.host.body.y, target.x, target.y);
+  if (lengthSq(offset) <= 0.0001) {
+    const rotation = input.host.body.rotation ?? 0;
+    return normalize({ x: Math.sin(rotation), y: -Math.cos(rotation) });
+  }
+
   if (
     slot.definition.targeting.leadTarget &&
     !input.host.manualTriggerOnly &&
@@ -968,10 +1115,10 @@ function resolveAttackTiming(definition: EnemyAttackDefinition, slot: AttackLoad
   const railLockMs = getNumberParam(params, 'lockMs', 0);
   const defaultWindupMs = definition.id === 'rail-line' && !hasWindupOverride && railAimMs > 0 && railLockMs > 0
     ? railAimMs + railLockMs
-    : definition.timing.windupMs;
-  const defaultActiveMs = definition.id === 'mortar-lob' && !hasActiveOverride
-    ? getNumberParam(params, 'travelMs', definition.timing.activeMs ?? 100)
-    : definition.timing.activeMs ?? 100;
+    : definition.id === 'plasma-puddle' && !hasWindupOverride
+      ? getNumberParam(params, 'landingMs', definition.timing.windupMs)
+      : definition.timing.windupMs;
+  const defaultActiveMs = resolveDefaultActiveMs(definition, params, hasActiveOverride);
 
   return {
     initialDelayMs: getNumberParam(params, 'initialDelayMs', definition.timing.initialDelayMs),
@@ -981,6 +1128,24 @@ function resolveAttackTiming(definition: EnemyAttackDefinition, slot: AttackLoad
     activeMs: getNumberParam(params, 'activeMs', defaultActiveMs),
     recoveryMs: getNumberParam(params, 'recoveryMs', definition.timing.recoveryMs)
   };
+}
+
+function resolveDefaultActiveMs(
+  definition: EnemyAttackDefinition,
+  params: Record<string, EnemyAttackParamValue>,
+  hasActiveOverride: boolean
+): number {
+  if (definition.id === 'mortar-lob' && !hasActiveOverride) {
+    return getNumberParam(params, 'travelMs', definition.timing.activeMs ?? 100);
+  }
+  if (definition.id === 'sweep-laser' && !hasActiveOverride) {
+    return getNumberParam(params, 'sweepMs', definition.timing.activeMs ?? 100);
+  }
+  if (definition.id === 'plasma-puddle' && !hasActiveOverride) {
+    return getNumberParam(params, 'durationMs', definition.timing.activeMs ?? 100);
+  }
+
+  return definition.timing.activeMs ?? 100;
 }
 
 function getPhaseDuration(phase: AttackRuntimePhase, timing: AttackTiming): number {
@@ -1008,7 +1173,7 @@ function createAttackStatuses(
   const status: AttackStatusRequest = {
     kind: statusKind,
     durationMs,
-    intensity: getNumberParam(params, 'statusIntensity', statusKind === 'slow' ? 0.65 : 1)
+    intensity: getNumberParam(params, 'statusIntensity', getNumberParam(params, 'slow', statusKind === 'slow' ? 0.65 : 1))
   };
 
   if (statusKind === 'electric') {
@@ -1058,6 +1223,40 @@ function pickRadiusAliasOverride(
   return radiusPx === undefined ? {} : { radiusPx };
 }
 
+function pickTelegraphDurationAliasOverride(
+  definition: EnemyAttackDefinition,
+  params: Record<string, EnemyAttackParamValue>
+): Partial<AttackTelegraphRecipe> {
+  const durationMs =
+    definition.id === 'rail-line'
+      ? getNumberParam(params, 'windupMs', getNumberParam(params, 'aimMs', definition.telegraph.durationMs ?? definition.timing.windupMs))
+      : definition.id === 'mortar-lob' || definition.id === 'sweep-laser'
+        ? getNumberParam(params, 'windupMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
+        : definition.id === 'plasma-puddle'
+          ? getNumberParam(params, 'landingMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
+          : undefined;
+
+  return durationMs === undefined ? {} : { durationMs };
+}
+
+function pickEffectDurationAliasOverride(
+  definition: EnemyAttackDefinition,
+  params: Record<string, EnemyAttackParamValue>
+): Partial<AttackEffectRecipe> {
+  const durationMs =
+    definition.id === 'mortar-lob'
+      ? getNumberParam(params, 'travelMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+      : definition.id === 'sweep-laser'
+        ? getNumberParam(params, 'sweepMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+        : definition.id === 'healing-beam' || definition.id === 'shield-wall'
+          ? getNumberParam(params, 'activeMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+          : definition.id === 'plasma-puddle'
+            ? getNumberParam(params, 'durationMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+            : undefined;
+
+  return durationMs === undefined ? {} : { durationMs };
+}
+
 function getFirstNumberParam(
   params: Record<string, EnemyAttackParamValue>,
   keys: string[]
@@ -1094,4 +1293,21 @@ function normalize(vector: AttackVectorLike): AttackVectorLike {
     x: vector.x / length,
     y: vector.y / length
   };
+}
+
+function degreesToRadians(degrees: number): number {
+  return (degrees * Math.PI) / 180;
+}
+
+function rotateVector(vector: AttackVectorLike, radians: number): AttackVectorLike {
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  return normalize({
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos
+  });
+}
+
+function clamp01(value: number): number {
+  return Math.max(0, Math.min(1, value));
 }

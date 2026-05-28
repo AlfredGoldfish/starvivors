@@ -7,7 +7,9 @@ import {
   resolveRuntimeTelegraphRecipe,
   updateAttackHostRuntime,
   type AttackAreaDamageRequest,
+  type AttackHealRequest,
   type AttackProjectileRequest,
+  type AttackShieldRequest,
   type AttackTargetSnapshot
 } from './enemyAttackRuntime';
 
@@ -353,6 +355,161 @@ describe('enemy attack runtime', () => {
     expect(areas[0].toX).toBeGreaterThan(0);
   });
 
+  it('healing-beam chooses damaged allies first and retargets on cadence', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'repair-host',
+      definitionId: 'repair-skiff',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'healing-beam',
+        enabled: true,
+        params: { initialDelayMs: 0, windupMs: 0, activeMs: 400, tickMs: 100, retargetMs: 100, healPerSecond: 10, rangePx: 300 }
+      }]
+    });
+    const heals: AttackHealRequest[] = [];
+    const lowAlly: AttackTargetSnapshot = { ...allyTarget, id: 'ally-low', hp: 20, maxHp: 100 };
+    const otherAlly: AttackTargetSnapshot = { ...allyTarget, id: 'ally-other', x: 130, hp: 70, maxHp: 100 };
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [otherAlly, lowAlly],
+      getWrappedDirection: createDirection,
+      callbacks: { heal: (request) => heals.push(request) }
+    });
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 100,
+      deltaSeconds: 0.016,
+      targets: [{ ...lowAlly, hp: 100 }, { ...otherAlly, hp: 40 }],
+      getWrappedDirection: createDirection,
+      callbacks: { heal: (request) => heals.push(request) }
+    });
+
+    expect(heals.map((request) => request.targetId)).toEqual(['ally-low', 'ally-other']);
+    expect(heals[0].amount).toBeCloseTo(1);
+  });
+
+  it('sweep-laser produces repeated line damage ticks during sweep timing', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'sweep-host',
+      definitionId: 'needle-sniper',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'sweep-laser',
+        enabled: true,
+        params: { initialDelayMs: 0, windupMs: 0, sweepMs: 400, tickMs: 100, damagePerSecond: 20, rangePx: 400, arcDegrees: 60 }
+      }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    for (const time of [0, 50, 100, 200]) {
+      updateAttackHostRuntime({
+        host: runtime,
+        time,
+        deltaSeconds: 0.016,
+        targets: [playerTarget],
+        getWrappedDirection: createDirection,
+        callbacks: { areaDamage: (request) => areas.push(request) }
+      });
+    }
+
+    expect(areas).toHaveLength(3);
+    expect(areas.every((request) => request.attackId === 'sweep-laser' && request.shape === 'line')).toBe(true);
+    expect(areas.map((request) => request.damage)).toEqual([2, 2, 2]);
+    expect(areas[0].toY).not.toBe(areas[2].toY);
+  });
+
+  it('shield-wall emits shield requests with normal and reflect mode params', () => {
+    const normal = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'shield-host',
+      definitionId: 'shield-frigate',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{ attackId: 'shield-wall', enabled: true, params: { initialDelayMs: 0, windupMs: 0, activeMs: 800, arcDegrees: 100 } }]
+    });
+    const reflect = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'reflect-host',
+      definitionId: 'reflector',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{ attackId: 'shield-wall', enabled: true, params: { initialDelayMs: 0, windupMs: 0, activeMs: 700, arcDegrees: 120, reflect: true } }]
+    });
+    const shields: AttackShieldRequest[] = [];
+
+    for (const host of [normal, reflect]) {
+      updateAttackHostRuntime({
+        host,
+        time: 0,
+        deltaSeconds: 0.016,
+        targets: [playerTarget],
+        getWrappedDirection: createDirection,
+        callbacks: { shield: (request) => shields.push(request) }
+      });
+    }
+
+    expect(shields).toMatchObject([
+      { sourceHostId: 'shield-host', reflect: false, arcDegrees: 100, durationMs: 800 },
+      { sourceHostId: 'reflect-host', reflect: true, arcDegrees: 120, durationMs: 700 }
+    ]);
+  });
+
+  it('plasma-puddle delays landing, then emits lingering tick damage and status requests', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 };
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'puddle-host',
+      definitionId: 'frost-gunner',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'plasma-puddle',
+        enabled: true,
+        params: { initialDelayMs: 0, landingMs: 50, durationMs: 300, tickMs: 100, tickDamage: 4, slow: 0.25 }
+      }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget,
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    expect(areas).toHaveLength(0);
+
+    for (const time of [51, 120, 151]) {
+      updateAttackHostRuntime({
+        host: runtime,
+        time,
+        deltaSeconds: 0.016,
+        targets: [playerTarget],
+        pointTarget,
+        getWrappedDirection: createDirection,
+        callbacks: { areaDamage: (request) => areas.push(request) }
+      });
+    }
+
+    expect(areas).toHaveLength(2);
+    expect(areas[0]).toMatchObject({ attackId: 'plasma-puddle', beat: 'impact', shape: 'circle', x: 160, y: 0, damage: 4 });
+    expect(areas[0].statuses?.[0]).toMatchObject({ kind: 'frost', intensity: 0.25 });
+  });
+
   it('normalizes reduced and high-contrast Batch A telegraph and effect recipes', () => {
     const slot = createDefaultAttackLoadoutSlot('rail-line');
     const recipe = resolveRuntimeTelegraphRecipe(
@@ -373,6 +530,42 @@ describe('enemy attack runtime', () => {
     );
     expect(effect.radiusPx).toBe(190);
     expect(effect.widthPx).toBeGreaterThanOrEqual(5);
+  });
+
+  it('normalizes reduced and high-contrast Batch B telegraph and effect recipes', () => {
+    const sweepSlot = createDefaultAttackLoadoutSlot('sweep-laser');
+    sweepSlot.params = { ...(sweepSlot.params ?? {}), sweepMs: 900, arcDegrees: 70 };
+    const sweepTelegraph = resolveRuntimeTelegraphRecipe(
+      getEnemyAttackDefinition('sweep-laser'),
+      sweepSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    const sweepEffect = resolveRuntimeEffectRecipe(
+      getEnemyAttackDefinition('sweep-laser'),
+      sweepSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+
+    expect(sweepTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(4);
+    expect(sweepEffect.durationMs).toBe(900);
+    expect(sweepEffect.widthPx).toBeGreaterThanOrEqual(7);
+
+    const puddleSlot = createDefaultAttackLoadoutSlot('plasma-puddle');
+    puddleSlot.params = { ...(puddleSlot.params ?? {}), landingMs: 400, durationMs: 1200, radiusPx: 160 };
+    const puddleTelegraph = resolveRuntimeTelegraphRecipe(
+      getEnemyAttackDefinition('plasma-puddle'),
+      puddleSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    const puddleEffect = resolveRuntimeEffectRecipe(
+      getEnemyAttackDefinition('plasma-puddle'),
+      puddleSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+
+    expect(puddleTelegraph.durationMs).toBe(400);
+    expect(puddleEffect.durationMs).toBe(1200);
+    expect(puddleEffect.radiusPx).toBe(160);
   });
 });
 

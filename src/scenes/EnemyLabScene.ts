@@ -643,13 +643,21 @@ export class EnemyLabScene extends Phaser.Scene {
     this.labMode = 'attack-tester';
     const center = this.getPreviewPosition();
     this.spawnAttackTestTarget('dummy', center.x, center.y);
-    this.spawnAttackTestTarget('enemy', wrapCoordinate(center.x + 130, this.arena.width), center.y);
-    this.spawnAttackTestTarget('ally', wrapCoordinate(center.x - 130, this.arena.width), center.y);
+    const enemyTarget = this.spawnAttackTestTarget('enemy', wrapCoordinate(center.x + 130, this.arena.width), center.y);
+    const allyTarget = this.spawnAttackTestTarget('ally', wrapCoordinate(center.x - 130, this.arena.width), center.y);
+    enemyTarget.hp = 70;
+    allyTarget.hp = 45;
+    this.updateAttackTestTargetLabel(enemyTarget);
+    this.updateAttackTestTargetLabel(allyTarget);
     this.attackTesterSlots = [
       this.createHarnessAttackSlot('rail-line', { initialDelayMs: 0, windupMs: 60, activeMs: 120 }),
       this.createHarnessAttackSlot('mortar-lob', { initialDelayMs: 0, windupMs: 40, travelMs: 120, activeMs: 120 }),
       this.createHarnessAttackSlot('emp-nova', { initialDelayMs: 0, windupMs: 40, activeMs: 120 }),
-      this.createHarnessAttackSlot('summon-glyphs', { initialDelayMs: 0, windupMs: 40, channelMs: 60, activeMs: 120, count: 2 })
+      this.createHarnessAttackSlot('summon-glyphs', { initialDelayMs: 0, windupMs: 40, channelMs: 60, activeMs: 120, count: 2 }),
+      this.createHarnessAttackSlot('sweep-laser', { initialDelayMs: 0, windupMs: 40, sweepMs: 260, tickMs: 80, activeMs: 260 }),
+      this.createHarnessAttackSlot('healing-beam', { initialDelayMs: 0, windupMs: 30, activeMs: 260, tickMs: 80, retargetMs: 80 }),
+      this.createHarnessAttackSlot('shield-wall', { initialDelayMs: 0, windupMs: 30, activeMs: 220, arcDegrees: 105, reflect: true }),
+      this.createHarnessAttackSlot('plasma-puddle', { initialDelayMs: 0, landingMs: 50, durationMs: 260, tickMs: 80 })
     ];
     this.attackTesterRuntime = undefined;
     this.attackTesterRuntimeSignature = '';
@@ -669,6 +677,7 @@ export class EnemyLabScene extends Phaser.Scene {
       this.updateAttackTesterRuntime(queuedAt, 0.016);
       this.updateAttackTesterRuntime(queuedAt + 180, 0.016);
       this.updateAttackTesterRuntime(queuedAt + 320, 0.016);
+      this.updateAttackTesterRuntime(queuedAt + 440, 0.016);
     });
 
     document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', 'ready');
@@ -676,7 +685,10 @@ export class EnemyLabScene extends Phaser.Scene {
       targets: this.attackTestTargets.length,
       projectiles: this.projectiles.length,
       transientProps: this.testProps.length,
-      slots: this.attackTesterSlots.map((slot) => slot.attackId)
+      slots: this.attackTesterSlots.map((slot) => slot.attackId),
+      batchBSlots: this.attackTesterSlots
+        .map((slot) => slot.attackId)
+        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'B')
     }));
   }
 
@@ -1273,6 +1285,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const enemy = this.enemies.find((candidate) => candidate.id === request.targetId);
     if (enemy) {
       enemy.hp = Math.min(enemy.maxHp, enemy.hp + request.amount);
+      this.drawAttackHealPulse(enemy.body.x, enemy.body.y, 0x66bb6a, 180);
       this.emitLabBurst(enemy.body.x, enemy.body.y, 0x66bb6a, 4);
       return;
     }
@@ -1281,6 +1294,7 @@ export class EnemyLabScene extends Phaser.Scene {
     if (target) {
       target.hp = Math.min(target.maxHp, target.hp + request.amount);
       this.updateAttackTestTargetLabel(target);
+      this.drawAttackHealPulse(target.body.x, target.body.y, 0x66bb6a, 180);
       this.emitLabBurst(target.body.x, target.body.y, 0x66bb6a, 4);
     }
   }
@@ -1357,7 +1371,21 @@ export class EnemyLabScene extends Phaser.Scene {
     const duration = Math.max(120, request.durationMs || recipe.durationMs || 240);
     const target = request.target;
 
-    if (recipe.kind === 'line-lock' || recipe.kind === 'detect-beam' || recipe.kind === 'sweep-lane') {
+    if (recipe.kind === 'sweep-lane') {
+      this.drawAttackSweepLane(
+        request.x,
+        request.y,
+        directionFromAttackRequest(request.direction),
+        readAttackNumberParam(request.params, 'rangePx', recipe.rangePx ?? 720),
+        readAttackNumberParam(request.params, 'arcDegrees', 80),
+        color,
+        accentColor,
+        duration
+      );
+      return;
+    }
+
+    if (recipe.kind === 'line-lock' || recipe.kind === 'detect-beam') {
       const range = recipe.rangePx ?? 720;
       const endX = target?.x ?? request.x + request.direction.x * range;
       const endY = target?.y ?? request.y + request.direction.y * range;
@@ -1383,7 +1411,7 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    if (recipe.kind === 'landing-circle' && request.attackId === 'mortar-lob') {
+    if (recipe.kind === 'landing-circle' && (request.attackId === 'mortar-lob' || request.attackId === 'plasma-puddle')) {
       this.drawAttackLandingReticle(target?.x ?? request.x, target?.y ?? request.y, recipe.radiusPx ?? 120, color, accentColor, duration);
       return;
     }
@@ -1405,19 +1433,33 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     if (recipe.kind === 'tether') {
-      const line = this.add.line(0, 0, request.x, request.y, target?.x ?? request.x, target?.y ?? request.y, color, 0.5);
-      line.setOrigin(0, 0);
-      line.setStrokeStyle(recipe.strokeWidthPx ?? 2, color, 0.56);
-      line.setDepth(14);
-      this.trackTransientLabProp(line, duration, { alpha: 0.05 });
+      this.drawAttackSupportTether(
+        request.x,
+        request.y,
+        target?.x ?? request.x,
+        target?.y ?? request.y,
+        color,
+        accentColor,
+        duration,
+        recipe.strokeWidthPx ?? 2,
+        true
+      );
       return;
     }
 
     if (recipe.kind === 'shield-arc') {
-      const circle = this.add.circle(request.x, request.y, recipe.radiusPx ?? 90, color, 0.035);
-      circle.setStrokeStyle(recipe.strokeWidthPx ?? 4, color, 0.78);
-      circle.setDepth(14);
-      this.trackTransientLabProp(circle, duration, { alpha: 0.08, scale: 1.08 });
+      this.drawAttackShieldArc(
+        request.x,
+        request.y,
+        directionFromAttackRequest(request.direction),
+        recipe.radiusPx ?? 90,
+        readAttackNumberParam(request.params, 'arcDegrees', 95),
+        color,
+        accentColor,
+        duration,
+        request.params?.reflect === true,
+        false
+      );
     }
   }
 
@@ -1447,8 +1489,9 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     if (effect.kind === 'beam' || effect.kind === 'sweep-beam') {
-      const endX = target?.x ?? request.x + request.direction.x * 1100;
-      const endY = target?.y ?? request.y + request.direction.y * 1100;
+      const range = readAttackNumberParam(request.params, 'rangePx', 1100);
+      const endX = effect.kind === 'sweep-beam' ? request.x + request.direction.x * range : target?.x ?? request.x + request.direction.x * range;
+      const endY = effect.kind === 'sweep-beam' ? request.y + request.direction.y * range : target?.y ?? request.y + request.direction.y * range;
       const glow = this.add.line(0, 0, request.x, request.y, endX, endY, color, 0.22);
       glow.setOrigin(0, 0);
       glow.setStrokeStyle((effect.widthPx ?? 5) * 2.4, color, 0.24);
@@ -1472,6 +1515,8 @@ export class EnemyLabScene extends Phaser.Scene {
       this.trackTransientLabProp(line, duration, { alpha: 0 });
       if (request.attackId === 'rail-line') {
         this.drawAttackLockMarker(endX, endY, accentColor, Math.max(120, duration));
+      } else if (request.attackId === 'sweep-laser') {
+        this.drawAttackSweepEndpoint(endX, endY, accentColor, Math.max(120, Math.min(220, duration)));
       }
       return;
     }
@@ -1507,19 +1552,33 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     if (effect.kind === 'support-tether' || effect.kind === 'scrap-link') {
-      const line = this.add.line(0, 0, request.x, request.y, target?.x ?? request.x, target?.y ?? request.y, color, 0.52);
-      line.setOrigin(0, 0);
-      line.setStrokeStyle(effect.widthPx ?? 2, color, 0.56);
-      line.setDepth(15);
-      this.trackTransientLabProp(line, duration, { alpha: 0.04 });
+      this.drawAttackSupportTether(
+        request.x,
+        request.y,
+        target?.x ?? request.x,
+        target?.y ?? request.y,
+        color,
+        accentColor,
+        duration,
+        effect.widthPx ?? 2,
+        effect.kind === 'support-tether'
+      );
       return;
     }
 
     if (effect.kind === 'shield-arc') {
-      const circle = this.add.circle(request.x, request.y, effect.radiusPx ?? 95, color, 0.04);
-      circle.setStrokeStyle(effect.widthPx ?? 4, color, 0.82);
-      circle.setDepth(15);
-      this.trackTransientLabProp(circle, duration, { alpha: 0.08, scale: 1.04 });
+      this.drawAttackShieldArc(
+        request.x,
+        request.y,
+        directionFromAttackRequest(request.direction),
+        effect.radiusPx ?? 95,
+        readAttackNumberParam(request.params, 'arcDegrees', 95),
+        color,
+        accentColor,
+        duration,
+        request.params?.reflect === true,
+        true
+      );
       return;
     }
 
@@ -1585,6 +1644,11 @@ export class EnemyLabScene extends Phaser.Scene {
         readabilityMode: this.readabilityMode,
         depth: 16
       });
+      return;
+    }
+
+    if (request.attackId === 'plasma-puddle') {
+      this.drawAttackPuddleTick(request.x, request.y, request.radius ?? definition.activeEffect.radiusPx ?? 125, color, 180);
     }
   }
 
@@ -1645,6 +1709,175 @@ export class EnemyLabScene extends Phaser.Scene {
     vertical.setDepth(14);
     vertical.setBlendMode(Phaser.BlendModes.ADD);
     this.trackTransientLabProp(vertical, duration, { alpha: 0.04 });
+  }
+
+  private drawAttackSweepLane(
+    x: number,
+    y: number,
+    direction: Phaser.Math.Vector2,
+    range: number,
+    arcDegrees: number,
+    color: number,
+    accentColor: number,
+    duration: number
+  ): void {
+    const normalized = direction.lengthSq() > 0 ? direction.clone().normalize() : new Phaser.Math.Vector2(0, -1);
+    const halfArc = Phaser.Math.DegToRad(Math.max(8, arcDegrees) * 0.5);
+    const startDirection = rotateSceneDirection(normalized, -halfArc);
+    const endDirection = rotateSceneDirection(normalized, halfArc);
+    const centerEndX = x + normalized.x * range;
+    const centerEndY = y + normalized.y * range;
+    const startEndX = x + startDirection.x * range;
+    const startEndY = y + startDirection.y * range;
+    const endEndX = x + endDirection.x * range;
+    const endEndY = y + endDirection.y * range;
+
+    const graphics = this.add.graphics({ x, y });
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 3.2 : 2.2, color, 0.54);
+    graphics.beginPath();
+    graphics.arc(0, 0, range, Math.atan2(startDirection.y, startDirection.x), Math.atan2(endDirection.y, endDirection.x), false);
+    graphics.strokePath();
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 3 : 1.8, color, 0.48);
+    graphics.lineBetween(0, 0, startDirection.x * range, startDirection.y * range);
+    graphics.lineBetween(0, 0, endDirection.x * range, endDirection.y * range);
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 2.4 : 1.4, accentColor, 0.42);
+    graphics.lineBetween(0, 0, normalized.x * range, normalized.y * range);
+    graphics.setDepth(14);
+    graphics.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(graphics, duration, { alpha: 0.08 });
+
+    const centerLine = this.add.line(0, 0, x, y, centerEndX, centerEndY, accentColor, 0.36);
+    centerLine.setOrigin(0, 0);
+    centerLine.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 2.4 : 1.4, accentColor, 0.4);
+    centerLine.setDepth(14);
+    centerLine.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(centerLine, duration, { alpha: 0.04 });
+
+    this.drawAttackSweepEndpoint(startEndX, startEndY, color, duration);
+    this.drawAttackSweepEndpoint(endEndX, endEndY, color, duration);
+  }
+
+  private drawAttackSweepEndpoint(x: number, y: number, color: number, duration: number): void {
+    const marker = this.add.circle(x, y, this.readabilityMode === 'high-contrast' ? 7 : 5, color, 0.08);
+    marker.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 2.6 : 1.6, color, 0.74);
+    marker.setDepth(17);
+    marker.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(marker, duration, { scale: 1.55, alpha: 0 });
+  }
+
+  private drawAttackSupportTether(
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+    color: number,
+    accentColor: number,
+    duration: number,
+    width: number,
+    highlightTarget: boolean
+  ): void {
+    const glow = this.add.line(0, 0, sourceX, sourceY, targetX, targetY, color, 0.22);
+    glow.setOrigin(0, 0);
+    glow.setStrokeStyle(Math.max(4, width * 3), color, this.reducedEffects ? 0.12 : 0.2);
+    glow.setDepth(14);
+    glow.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(glow, duration, { alpha: 0.02 });
+
+    const line = this.add.line(0, 0, sourceX, sourceY, targetX, targetY, accentColor, 0.68);
+    line.setOrigin(0, 0);
+    line.setStrokeStyle(this.readabilityMode === 'high-contrast' ? Math.max(3, width) : width, accentColor, 0.72);
+    line.setDepth(15);
+    line.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(line, duration, { alpha: 0.04 });
+
+    if (highlightTarget) {
+      this.drawAttackHealPulse(targetX, targetY, color, Math.max(140, Math.min(260, duration)));
+    }
+  }
+
+  private drawAttackShieldArc(
+    x: number,
+    y: number,
+    direction: Phaser.Math.Vector2,
+    radius: number,
+    arcDegrees: number,
+    color: number,
+    accentColor: number,
+    duration: number,
+    reflect: boolean,
+    active: boolean
+  ): void {
+    const normalized = direction.lengthSq() > 0 ? direction.clone().normalize() : new Phaser.Math.Vector2(0, -1);
+    const halfArc = Phaser.Math.DegToRad(Math.max(12, arcDegrees) * 0.5);
+    const startDirection = rotateSceneDirection(normalized, -halfArc);
+    const endDirection = rotateSceneDirection(normalized, halfArc);
+    const startAngle = Math.atan2(startDirection.y, startDirection.x);
+    const endAngle = Math.atan2(endDirection.y, endDirection.x);
+    const shieldColor = reflect ? accentColor : color;
+    const graphics = this.add.graphics({ x, y });
+    graphics.lineStyle(active ? 5 : 3, shieldColor, active ? 0.88 : 0.62);
+    graphics.beginPath();
+    graphics.arc(0, 0, radius, startAngle, endAngle, false);
+    graphics.strokePath();
+    graphics.lineStyle(active ? 2.2 : 1.4, shieldColor, reflect ? 0.72 : 0.46);
+    graphics.lineBetween(0, 0, startDirection.x * radius, startDirection.y * radius);
+    graphics.lineBetween(0, 0, endDirection.x * radius, endDirection.y * radius);
+    if (reflect) {
+      graphics.lineStyle(1.6, color, 0.86);
+      graphics.beginPath();
+      graphics.arc(0, 0, radius * 0.72, startAngle, endAngle, false);
+      graphics.strokePath();
+      for (let index = 0; index < 3; index += 1) {
+        const lerp = (index + 1) / 4;
+        const spokeDirection = rotateSceneDirection(startDirection, halfArc * 2 * lerp);
+        graphics.lineBetween(spokeDirection.x * radius * 0.74, spokeDirection.y * radius * 0.74, spokeDirection.x * radius, spokeDirection.y * radius);
+      }
+    }
+    graphics.setDepth(active ? 16 : 14);
+    graphics.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(graphics, duration, { alpha: active ? 0.1 : 0.04 });
+  }
+
+  private drawAttackHealPulse(x: number, y: number, color: number, duration: number): void {
+    const ring = this.add.circle(x, y, 12, color, 0.035);
+    ring.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 2, color, 0.72);
+    ring.setDepth(17);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(ring, duration, { scale: 1.8, alpha: 0 });
+
+    const size = this.readabilityMode === 'high-contrast' ? 11 : 8;
+    const horizontal = this.add.line(0, 0, x - size, y, x + size, y, color, 0.72);
+    horizontal.setOrigin(0, 0);
+    horizontal.setStrokeStyle(2, color, 0.72);
+    horizontal.setDepth(17);
+    horizontal.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(horizontal, duration, { alpha: 0 });
+
+    const vertical = this.add.line(0, 0, x, y - size, x, y + size, color, 0.72);
+    vertical.setOrigin(0, 0);
+    vertical.setStrokeStyle(2, color, 0.72);
+    vertical.setDepth(17);
+    vertical.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(vertical, duration, { alpha: 0 });
+  }
+
+  private drawAttackPuddleTick(x: number, y: number, radius: number, color: number, duration: number): void {
+    const tick = this.add.circle(x, y, Math.max(10, radius * 0.24), color, 0.04);
+    tick.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 1.8, color, 0.72);
+    tick.setDepth(17);
+    tick.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(tick, duration, { scale: 1.5, alpha: 0 });
+
+    emitEffectSparkBurst(this, x, y, {
+      kind: 'spark-burst',
+      color,
+      radius: Math.min(70, radius * 0.58),
+      durationMs: duration,
+      intensity: this.reducedEffects ? 0.45 : 0.68,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode,
+      depth: 17
+    });
   }
 
   private launchAttackMortarProjectile(
@@ -6286,6 +6519,32 @@ export class EnemyLabScene extends Phaser.Scene {
     this.resetBackgroundPlayerTracking();
     this.clearEnemyCollisionDebug();
   }
+}
+
+function readAttackNumberParam(
+  params: Record<string, EnemyAttackParamValue> | undefined,
+  key: string,
+  fallback: number
+): number {
+  const value = params?.[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function directionFromAttackRequest(direction: { x: number; y: number }): Phaser.Math.Vector2 {
+  const vector = new Phaser.Math.Vector2(direction.x, direction.y);
+  if (vector.lengthSq() <= 0.0001) {
+    return new Phaser.Math.Vector2(0, -1);
+  }
+  return vector.normalize();
+}
+
+function rotateSceneDirection(direction: Phaser.Math.Vector2, radians: number): Phaser.Math.Vector2 {
+  const sin = Math.sin(radians);
+  const cos = Math.cos(radians);
+  return new Phaser.Math.Vector2(
+    direction.x * cos - direction.y * sin,
+    direction.x * sin + direction.y * cos
+  ).normalize();
 }
 
 function summarizeEnemyLabDiagnostics(frames: EnemyLabDiagnosticsFrame[]) {

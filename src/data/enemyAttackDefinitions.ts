@@ -184,13 +184,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['needle-sniper'],
     sourceRole: 'sniper',
     tags: ['beam', 'line', 'readability-critical'],
-    defaultParams: { windupMs: 500, sweepMs: 1300, arcDegrees: 80, damagePerSecond: 28 },
-    timing: { initialDelayMs: 450, cooldownMs: 3600, windupMs: 500, channelMs: 1300, recoveryMs: 650 },
+    defaultParams: { windupMs: 500, sweepMs: 1300, arcDegrees: 80, damagePerSecond: 28, tickMs: 180, rangePx: 1250 },
+    timing: { initialDelayMs: 450, cooldownMs: 3600, windupMs: 500, activeMs: 1300, recoveryMs: 650 },
     targeting: { targetKind: 'player', rangePx: 1250, leadTarget: false, requiresLineOfSight: true },
-    telegraph: { kind: 'sweep-lane', color: ATTACK_AREA, accentColor: ATTACK_WHITE, rangePx: 1250, durationMs: 500 },
-    activeEffect: { kind: 'sweep-beam', color: ATTACK_WHITE, accentColor: ATTACK_WARNING, widthPx: 7, durationMs: 1300 },
+    telegraph: { kind: 'sweep-lane', color: ATTACK_AREA, accentColor: ATTACK_WHITE, strokeWidthPx: 3, rangePx: 1250, durationMs: 500 },
+    activeEffect: { kind: 'sweep-beam', color: ATTACK_WHITE, accentColor: ATTACK_WARNING, widthPx: 8, durationMs: 1300 },
     execution: { kind: 'sweep-laser', damage: 28 },
-    lab: { batch: 'B', status: 'planned', notes: 'Danger lane rotates slowly before the active beam sweeps.' }
+    reducedEffects: { strokeWidthPx: 4, widthPx: 7 },
+    lab: { batch: 'B', status: 'ready', notes: 'Broad warning lane resolves into repeated line ticks while the beam sweeps through the authored arc.' }
   },
   {
     id: 'healing-beam',
@@ -198,13 +199,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['repair-skiff'],
     sourceRole: 'repair',
     tags: ['support'],
-    defaultParams: { rangePx: 280, healPerSecond: 13, retargetMs: 250 },
-    timing: { initialDelayMs: 200, cooldownMs: 500, windupMs: 120, channelMs: 900, recoveryMs: 180 },
+    defaultParams: { rangePx: 280, healPerSecond: 13, retargetMs: 250, tickMs: 250, activeMs: 900 },
+    timing: { initialDelayMs: 200, cooldownMs: 650, windupMs: 120, activeMs: 900, recoveryMs: 180 },
     targeting: { targetKind: 'ally', rangePx: 280, preferDamagedAlly: true },
     telegraph: { kind: 'tether', color: 0x66bb6a, accentColor: ATTACK_WHITE, rangePx: 280, durationMs: 120 },
     activeEffect: { kind: 'support-tether', color: 0x66bb6a, accentColor: ATTACK_WHITE, durationMs: 900 },
     execution: { kind: 'healing-beam' },
-    lab: { batch: 'B', status: 'planned', notes: 'Damaged ally priority must be obvious at a glance.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 3 },
+    lab: { batch: 'B', status: 'ready', notes: 'Damaged ally priority retargets on cadence with visible tether and heal pulse ticks.' }
   },
   {
     id: 'shield-wall',
@@ -212,13 +214,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['shield-frigate', 'reflector'],
     sourceRole: 'shield',
     tags: ['defense', 'support'],
-    defaultParams: { activeMs: 1200, cooldownMs: 2800, arcDegrees: 95, reflect: false },
+    defaultParams: { activeMs: 1200, cooldownMs: 2800, arcDegrees: 95, reflect: false, radiusPx: 112, damageReduction: 0.48 },
     timing: { initialDelayMs: 300, cooldownMs: 2800, windupMs: 220, activeMs: 1200, recoveryMs: 450 },
     targeting: { targetKind: 'self', rangePx: 180 },
     telegraph: { kind: 'shield-arc', color: ATTACK_SUPPORT, accentColor: ATTACK_WHITE, radiusPx: 112, durationMs: 220 },
     activeEffect: { kind: 'shield-arc', color: ATTACK_SUPPORT, radiusPx: 112, durationMs: 1200 },
     execution: { kind: 'shield-wall', reflect: false },
-    lab: { batch: 'B', status: 'planned', notes: 'Directional defensive arc; reflector uses the same attack with reflect enabled.' }
+    reducedEffects: { strokeWidthPx: 4, widthPx: 5 },
+    lab: { batch: 'B', status: 'ready', notes: 'Self windup opens a directional arc; reflector loadouts set reflect true for distinct defensive timing.' }
   },
   {
     id: 'plasma-puddle',
@@ -226,13 +229,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['frost-gunner'],
     sourceRole: 'freezer',
     tags: ['area', 'status'],
-    defaultParams: { landingMs: 650, durationMs: 3600, radiusPx: 125, tickDamage: 4, slow: 0.25 },
+    defaultParams: { landingMs: 650, durationMs: 3600, radiusPx: 125, tickDamage: 4, tickMs: 500, slow: 0.25, statusDurationMs: 900 },
     timing: { initialDelayMs: 350, cooldownMs: 3000, windupMs: 650, activeMs: 3600, recoveryMs: 350 },
     targeting: { targetKind: 'point', rangePx: 760, leadTarget: true },
     telegraph: { kind: 'landing-circle', color: ATTACK_STATUS, radiusPx: 125, durationMs: 650 },
     activeEffect: { kind: 'puddle-zone', color: ATTACK_STATUS, radiusPx: 125, durationMs: 3600 },
     execution: { kind: 'plasma-puddle', damage: 4, statusKind: 'frost' },
-    lab: { batch: 'B', status: 'planned', notes: 'Landing mark resolves into a lingering slow/damage zone.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'B', status: 'ready', notes: 'Landing reticle resolves after delay into a lingering hazard with slow/status tick feedback.' }
   },
   {
     id: 'cluster-bomb',

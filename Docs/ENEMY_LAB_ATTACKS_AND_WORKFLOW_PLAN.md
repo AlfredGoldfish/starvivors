@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 5 Batch A complete in Enemy Lab. Batch B/C attack polish remains planned. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 5 Batch A and Batch B complete in Enemy Lab. Batch C attack polish remains planned. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -605,7 +605,7 @@ Acceptance:
 
 ### Phase 5: Attack Batches
 
-Status: Batch A completed 2026-05-28. Batch B and Batch C remain planned for later phases.
+Status: Batch A and Batch B completed 2026-05-28. Batch C remains planned for a later phase.
 
 Progress:
 
@@ -616,14 +616,19 @@ Progress:
 - Added repeated windup/channel telegraph refresh for Batch A without changing live `GameScene` combat.
 - Polished Enemy Lab visuals for Batch A: rail tracking/lock/beam markers, mortar landing reticle/arc/splash, EMP warning/status burst, and summon glyph ownership links.
 - Updated the deterministic `enemyLabAttacks` harness to run `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs`.
+- Marked Batch B definitions `ready` with final lab defaults for `sweep-laser`, `healing-beam`, `shield-wall`, and `plasma-puddle`.
+- Added sustained active ticks for Batch B: sweep line damage over `sweepMs`, healing ticks with damaged-ally retarget cadence, and lingering puddle tick damage/status.
+- Added Batch B timing/recipe aliases so current-slot params drive `sweepMs`, `arcDegrees`, `healPerSecond`, `retargetMs`, `activeMs`, `durationMs`, `tickDamage`, `slow`, and `reflect`.
+- Polished Enemy Lab visuals for Batch B: broad sweep lane/endpoints, healing tether plus target pulse, directional shield arcs with reflect styling, plasma landing reticle, lingering hazard ring, and status tick feedback.
+- Expanded the deterministic `enemyLabAttacks` harness to keep Batch A slots and add all four Batch B slots with dummy, enemy, and damaged ally targets.
 
 Verification:
 
-- `npm.cmd run test` passed with 19 files and 82 tests.
+- `npm.cmd run test` passed with 19 files and 89 tests.
 - `npm.cmd run build` passed.
 - `npm.cmd run electron:build` passed.
 - Headless `/enemy-lab.html` smoke showed `enemy-lab-overlay is-mode-basic`, active Basic tab, and Attack Tester target controls present.
-- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `mortar-lob`, `emp-nova`, `summon-glyphs`, `sweep-laser`, `healing-beam`, `shield-wall`, and `plasma-puddle`; `batchBSlots` reported all four Batch B attacks.
 - Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
 
 Batch A:
