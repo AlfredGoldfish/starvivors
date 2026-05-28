@@ -100,6 +100,29 @@ describe('enemy attack definitions', () => {
     expect(getDefaultEnemyAttackLoadout('frost-gunner')[0].params).toMatchObject({ statusKind: 'frost', slow: 0.25 });
   });
 
+  it('marks Batch C attacks ready with final default slot params', () => {
+    const batchC = ENEMY_ATTACK_DEFINITIONS.filter((definition) => definition.lab.batch === 'C');
+
+    expect(batchC.map((definition) => definition.id)).toEqual([
+      'cluster-bomb',
+      'alarm-ping',
+      'berserker-shockwave',
+      'mine-reveal'
+    ]);
+    expect(batchC.every((definition) => definition.lab.status === 'ready')).toBe(true);
+    expect(createDefaultAttackLoadoutSlot('cluster-bomb').params).toMatchObject({ travelMs: 800, splitCount: 5, secondaryRadiusPx: 70, delayMs: 420 });
+    expect(createDefaultAttackLoadoutSlot('alarm-ping').params).toMatchObject({ detectMs: 700, callDelayMs: 900, squadId: 'scout-pack' });
+    expect(createDefaultAttackLoadoutSlot('berserker-shockwave').params).toMatchObject({ radiusPx: 180, knockback: 240, slowMs: 700 });
+    expect(createDefaultAttackLoadoutSlot('mine-reveal').params).toMatchObject({ chargeMs: 420, blastRadiusPx: 125, damage: 26 });
+  });
+
+  it('initializes Batch C defaults through enemy loadouts where assigned', () => {
+    expect(getDefaultEnemyAttackLoadout('ambusher-mine')[0].attackId).toBe('mine-reveal');
+    expect(getDefaultEnemyAttackLoadout('berserker')[0].attackId).toBe('berserker-shockwave');
+    expect(getDefaultEnemyAttackLoadout('patrol-guard')[0].attackId).toBe('alarm-ping');
+    expect(createDefaultAttackLoadoutSlot('cluster-bomb').params).toMatchObject({ radiusPx: 140, secondaryRadiusPx: 70 });
+  });
+
   it('surfaces invalid attack ids through loadout validation', () => {
     const errors = validateAttackLoadoutSlots([
       { attackId: 'unknown-attack' as never, enabled: true }

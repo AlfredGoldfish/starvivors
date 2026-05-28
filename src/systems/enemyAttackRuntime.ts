@@ -103,6 +103,7 @@ export interface AttackStatusRequest {
   kind: 'frost' | 'electric' | 'slow';
   durationMs: number;
   intensity?: number;
+  knockback?: number;
   damagePerSecond?: number;
   tickMs?: number;
   accelerationDrag?: number;
@@ -212,6 +213,10 @@ interface AttackTiming {
 interface AttackPendingImpact {
   executeAt: number;
   target?: AttackTargetSnapshot;
+  beat?: AttackRuntimeBeat;
+  damageOverride?: number;
+  radiusOverride?: number;
+  clusterStage?: 'primary' | 'secondary';
 }
 
 export function createAttackHostRuntime(input: {
@@ -492,8 +497,16 @@ function processPendingImpacts(
       continue;
     }
 
-    executeAttack(input, slot, { target: impact.target, beat: 'impact' });
+    executeAttack(input, slot, {
+      target: impact.target,
+      beat: impact.beat ?? 'impact',
+      damageOverride: impact.damageOverride,
+      radiusOverride: impact.radiusOverride
+    });
     events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+    if (impact.clusterStage === 'primary') {
+      pending.push(...createClusterBombSecondaryImpacts(input, slot, impact.target));
+    }
   }
   slot.pendingImpacts = pending;
 }
@@ -504,12 +517,19 @@ function executeOrScheduleActive(
   slotIndex: number,
   events: AttackRuntimeEvent[]
 ): void {
+  if (slot.definition.id === 'cluster-bomb') {
+    scheduleClusterBombImpacts(input, slot);
+    slot.executedInPhase = true;
+    return;
+  }
+
   if (shouldDelayActiveExecution(slot)) {
     const delayMs = getDelayedImpactMs(slot);
     if (delayMs > 0) {
       slot.pendingImpacts.push({
         executeAt: input.time + delayMs,
-        target: slot.target ? createAttackTargetSnapshot(slot.target) : undefined
+        target: slot.target ? createAttackTargetSnapshot(slot.target) : undefined,
+        beat: 'impact'
       });
       slot.executedInPhase = true;
       return;
@@ -545,6 +565,103 @@ function getDelayedImpactMs(slot: AttackSlotRuntime): number {
   return Math.max(0, getNumberParam(params, 'travelMs', resolveAttackTiming(slot.definition, slot.slot).activeMs));
 }
 
+function scheduleClusterBombImpacts(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const travelMs = Math.max(0, getNumberParam(params, 'travelMs', resolveAttackTiming(slot.definition, slot.slot).activeMs));
+  slot.pendingImpacts.push({
+    executeAt: input.time + travelMs,
+    target: slot.target ? createAttackTargetSnapshot(slot.target) : createSelfTargetSnapshot(input),
+    beat: 'impact',
+    clusterStage: 'primary'
+  });
+}
+
+function createClusterBombSecondaryImpacts(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  centerTarget: AttackTargetSnapshot | undefined
+): AttackPendingImpact[] {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const count = Math.max(1, Math.min(8, Math.trunc(getNumberParam(params, 'splitCount', 5))));
+  const delayMs = Math.max(0, getNumberParam(params, 'delayMs', 420));
+  const secondaryRadius = Math.max(12, getNumberParam(params, 'secondaryRadiusPx', slot.definition.activeEffect.radiusPx ?? 70));
+  const primaryRadius = Math.max(secondaryRadius, getNumberParam(params, 'radiusPx', slot.definition.telegraph.radiusPx ?? 140));
+  const splitDistance = Math.max(
+    secondaryRadius * 1.35,
+    getNumberParam(params, 'splitDistancePx', primaryRadius * 0.62)
+  );
+  const center = centerTarget ? createAttackTargetSnapshot(centerTarget) : createSelfTargetSnapshot(input);
+  const impacts: AttackPendingImpact[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const angle = -Math.PI * 0.5 + (Math.PI * 2 * index) / count;
+    const target = createAttackTargetSnapshot({
+      ...center,
+      id: `${center.id}-cluster-${index + 1}`,
+      x: center.x + Math.cos(angle) * splitDistance,
+      y: center.y + Math.sin(angle) * splitDistance,
+      radius: secondaryRadius,
+      label: `${center.label ?? 'cluster'} split ${index + 1}`
+    });
+    requestClusterBombSecondaryTelegraph(input, slot, target, secondaryRadius, delayMs);
+    impacts.push({
+      executeAt: input.time + delayMs,
+      target,
+      beat: 'impact',
+      radiusOverride: secondaryRadius,
+      clusterStage: 'secondary'
+    });
+  }
+
+  return impacts;
+}
+
+function requestClusterBombSecondaryTelegraph(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  target: AttackTargetSnapshot,
+  radius: number,
+  durationMs: number
+): void {
+  if (input.telegraphsEnabled === false) {
+    return;
+  }
+
+  const telegraph = {
+    ...resolveRuntimeTelegraphRecipe(slot.definition, slot.slot, input),
+    kind: 'landing-circle' as const,
+    radiusPx: radius,
+    durationMs
+  };
+  input.callbacks.telegraph?.({
+    sourceHostId: input.host.hostId,
+    ownerKind: input.host.hostKind,
+    attackId: slot.definition.id,
+    phase: 'active',
+    beat: 'anticipation',
+    x: input.host.body.x,
+    y: input.host.body.y,
+    direction: getDirectionToTarget(input, slot, target),
+    target,
+    telegraph,
+    params: resolveAttackLoadoutSlotParams(slot.slot),
+    progress: 0,
+    durationMs
+  });
+}
+
+function createSelfTargetSnapshot(input: UpdateAttackHostRuntimeInput): AttackTargetSnapshot {
+  return {
+    id: input.host.hostId,
+    kind: 'self',
+    x: input.host.body.x,
+    y: input.host.body.y,
+    radius: 32,
+    velocity: input.host.velocity,
+    label: input.host.definitionId
+  };
+}
+
 function refreshTrackingTarget(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
   if (slot.phase !== 'windup') {
     return;
@@ -556,8 +673,11 @@ function refreshTrackingTarget(input: UpdateAttackHostRuntimeInput, slot: Attack
   const shouldTrack =
     (slot.definition.id === 'rail-line' && elapsed < getNumberParam(params, 'aimMs', timing.windupMs)) ||
     slot.definition.id === 'mortar-lob' ||
+    slot.definition.id === 'cluster-bomb' ||
     slot.definition.id === 'sweep-laser' ||
-    slot.definition.id === 'plasma-puddle';
+    slot.definition.id === 'plasma-puddle' ||
+    slot.definition.id === 'alarm-ping' ||
+    slot.definition.id === 'mine-reveal';
 
   if (!shouldTrack) {
     return;
@@ -587,10 +707,15 @@ function getTelegraphRefreshMs(slot: AttackSlotRuntime): number {
     case 'rail-line':
       return 90;
     case 'mortar-lob':
+    case 'cluster-bomb':
     case 'emp-nova':
+    case 'berserker-shockwave':
+    case 'mine-reveal':
       return 150;
     case 'summon-glyphs':
       return slot.phase === 'channel' ? 180 : 220;
+    case 'alarm-ping':
+      return slot.phase === 'channel' ? 180 : 100;
     case 'sweep-laser':
       return 110;
     case 'healing-beam':
@@ -605,14 +730,14 @@ function getTelegraphRefreshMs(slot: AttackSlotRuntime): number {
 function executeAttack(
   input: UpdateAttackHostRuntimeInput,
   slot: AttackSlotRuntime,
-  options: { target?: AttackTargetSnapshot; beat?: AttackRuntimeBeat; damageOverride?: number } = {}
+  options: { target?: AttackTargetSnapshot; beat?: AttackRuntimeBeat; damageOverride?: number; radiusOverride?: number } = {}
 ): void {
   const params = resolveAttackLoadoutSlotParams(slot.slot);
   const target = options.target ?? slot.target;
   const origin = { x: input.host.body.x, y: input.host.body.y };
   const direction = getDirectionToTarget(input, slot, target);
   const damage = (options.damageOverride ?? getNumberParam(params, 'damage', slot.definition.execution.damage ?? 0)) * (input.damageScale ?? 1);
-  const radius = getNumberParam(
+  const radius = options.radiusOverride ?? getNumberParam(
     params,
     'radiusPx',
     getNumberParam(params, 'blastRadiusPx', getNumberParam(params, 'splashRadiusPx', slot.definition.activeEffect.radiusPx ?? slot.definition.targeting.rangePx))
@@ -688,11 +813,11 @@ function executeAttack(
         sourceHostId: input.host.hostId,
         ownerKind: input.host.hostKind,
         attackId: slot.definition.id,
-        definitionId: String(params.spawnId ?? params.childId ?? 'scout'),
+        definitionId: String(params.squadId ?? params.spawnId ?? params.childId ?? 'scout'),
         count: Math.max(1, Math.trunc(getNumberParam(params, 'count', getNumberParam(params, 'childCount', 1)))),
         x: target?.x ?? origin.x,
         y: target?.y ?? origin.y,
-        radius: getNumberParam(params, 'glyphRadiusPx', slot.definition.activeEffect.radiusPx ?? 160)
+        radius: getNumberParam(params, 'glyphRadiusPx', getNumberParam(params, 'radiusPx', slot.definition.activeEffect.radiusPx ?? 160))
       });
       break;
     case 'healing-beam':
@@ -1006,15 +1131,7 @@ function selectAttackTarget(
       }
     }
 
-    return createAttackTargetSnapshot({
-      id: input.host.hostId,
-      kind: 'self',
-      x: input.host.body.x,
-      y: input.host.body.y,
-      radius: 32,
-      velocity: input.host.velocity,
-      label: input.host.definitionId
-    });
+    return createAttackTargetSnapshot(createSelfTargetSnapshot(input));
   }
 
   if (targetKind === 'point' && input.pointTarget) {
@@ -1115,8 +1232,12 @@ function resolveAttackTiming(definition: EnemyAttackDefinition, slot: AttackLoad
   const railLockMs = getNumberParam(params, 'lockMs', 0);
   const defaultWindupMs = definition.id === 'rail-line' && !hasWindupOverride && railAimMs > 0 && railLockMs > 0
     ? railAimMs + railLockMs
+    : definition.id === 'alarm-ping' && !hasWindupOverride
+      ? getNumberParam(params, 'detectMs', definition.timing.windupMs)
     : definition.id === 'plasma-puddle' && !hasWindupOverride
       ? getNumberParam(params, 'landingMs', definition.timing.windupMs)
+      : definition.id === 'mine-reveal' && !hasWindupOverride
+        ? getNumberParam(params, 'chargeMs', definition.timing.windupMs)
       : definition.timing.windupMs;
   const defaultActiveMs = resolveDefaultActiveMs(definition, params, hasActiveOverride);
 
@@ -1124,7 +1245,13 @@ function resolveAttackTiming(definition: EnemyAttackDefinition, slot: AttackLoad
     initialDelayMs: getNumberParam(params, 'initialDelayMs', definition.timing.initialDelayMs),
     cooldownMs: getNumberParam(params, 'cooldownMs', definition.timing.cooldownMs),
     windupMs: getNumberParam(params, 'windupMs', defaultWindupMs),
-    channelMs: getNumberParam(params, 'channelMs', definition.timing.channelMs ?? 0),
+    channelMs: getNumberParam(
+      params,
+      'channelMs',
+      definition.id === 'alarm-ping'
+        ? getNumberParam(params, 'callDelayMs', definition.timing.channelMs ?? 0)
+        : definition.timing.channelMs ?? 0
+    ),
     activeMs: getNumberParam(params, 'activeMs', defaultActiveMs),
     recoveryMs: getNumberParam(params, 'recoveryMs', definition.timing.recoveryMs)
   };
@@ -1137,6 +1264,9 @@ function resolveDefaultActiveMs(
 ): number {
   if (definition.id === 'mortar-lob' && !hasActiveOverride) {
     return getNumberParam(params, 'travelMs', definition.timing.activeMs ?? 100);
+  }
+  if (definition.id === 'cluster-bomb' && !hasActiveOverride) {
+    return getNumberParam(params, 'travelMs', 800) + getNumberParam(params, 'delayMs', 420);
   }
   if (definition.id === 'sweep-laser' && !hasActiveOverride) {
     return getNumberParam(params, 'sweepMs', definition.timing.activeMs ?? 100);
@@ -1173,7 +1303,8 @@ function createAttackStatuses(
   const status: AttackStatusRequest = {
     kind: statusKind,
     durationMs,
-    intensity: getNumberParam(params, 'statusIntensity', getNumberParam(params, 'slow', statusKind === 'slow' ? 0.65 : 1))
+    intensity: getNumberParam(params, 'statusIntensity', getNumberParam(params, 'slow', statusKind === 'slow' ? 0.65 : 1)),
+    knockback: getNumberParam(params, 'knockback', 0)
   };
 
   if (statusKind === 'electric') {
@@ -1230,11 +1361,15 @@ function pickTelegraphDurationAliasOverride(
   const durationMs =
     definition.id === 'rail-line'
       ? getNumberParam(params, 'windupMs', getNumberParam(params, 'aimMs', definition.telegraph.durationMs ?? definition.timing.windupMs))
-      : definition.id === 'mortar-lob' || definition.id === 'sweep-laser'
+      : definition.id === 'mortar-lob' || definition.id === 'cluster-bomb' || definition.id === 'sweep-laser'
         ? getNumberParam(params, 'windupMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
+        : definition.id === 'alarm-ping'
+          ? getNumberParam(params, 'detectMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
         : definition.id === 'plasma-puddle'
           ? getNumberParam(params, 'landingMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
-          : undefined;
+          : definition.id === 'mine-reveal'
+            ? getNumberParam(params, 'chargeMs', definition.telegraph.durationMs ?? definition.timing.windupMs)
+            : undefined;
 
   return durationMs === undefined ? {} : { durationMs };
 }
@@ -1246,13 +1381,17 @@ function pickEffectDurationAliasOverride(
   const durationMs =
     definition.id === 'mortar-lob'
       ? getNumberParam(params, 'travelMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
-      : definition.id === 'sweep-laser'
-        ? getNumberParam(params, 'sweepMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
-        : definition.id === 'healing-beam' || definition.id === 'shield-wall'
-          ? getNumberParam(params, 'activeMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
-          : definition.id === 'plasma-puddle'
-            ? getNumberParam(params, 'durationMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
-            : undefined;
+      : definition.id === 'cluster-bomb'
+        ? getNumberParam(params, 'travelMs', 800) + getNumberParam(params, 'delayMs', 420)
+        : definition.id === 'sweep-laser'
+          ? getNumberParam(params, 'sweepMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+          : definition.id === 'alarm-ping'
+            ? getNumberParam(params, 'callDelayMs', definition.activeEffect.durationMs ?? definition.timing.channelMs ?? 100)
+            : definition.id === 'healing-beam' || definition.id === 'shield-wall'
+              ? getNumberParam(params, 'activeMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+              : definition.id === 'plasma-puddle'
+                ? getNumberParam(params, 'durationMs', definition.activeEffect.durationMs ?? definition.timing.activeMs ?? 100)
+                : undefined;
 
   return durationMs === undefined ? {} : { durationMs };
 }

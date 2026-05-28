@@ -657,7 +657,11 @@ export class EnemyLabScene extends Phaser.Scene {
       this.createHarnessAttackSlot('sweep-laser', { initialDelayMs: 0, windupMs: 40, sweepMs: 260, tickMs: 80, activeMs: 260 }),
       this.createHarnessAttackSlot('healing-beam', { initialDelayMs: 0, windupMs: 30, activeMs: 260, tickMs: 80, retargetMs: 80 }),
       this.createHarnessAttackSlot('shield-wall', { initialDelayMs: 0, windupMs: 30, activeMs: 220, arcDegrees: 105, reflect: true }),
-      this.createHarnessAttackSlot('plasma-puddle', { initialDelayMs: 0, landingMs: 50, durationMs: 260, tickMs: 80 })
+      this.createHarnessAttackSlot('plasma-puddle', { initialDelayMs: 0, landingMs: 50, durationMs: 260, tickMs: 80 }),
+      this.createHarnessAttackSlot('cluster-bomb', { initialDelayMs: 0, windupMs: 40, travelMs: 90, delayMs: 110, splitCount: 4, activeMs: 200 }),
+      this.createHarnessAttackSlot('alarm-ping', { initialDelayMs: 0, detectMs: 40, callDelayMs: 70, channelMs: 70, activeMs: 120, squadId: 'scout-pack' }),
+      this.createHarnessAttackSlot('berserker-shockwave', { initialDelayMs: 0, windupMs: 40, activeMs: 120, radiusPx: 170, slowMs: 500, knockback: 220 }),
+      this.createHarnessAttackSlot('mine-reveal', { initialDelayMs: 0, chargeMs: 50, activeMs: 120, blastRadiusPx: 125 })
     ];
     this.attackTesterRuntime = undefined;
     this.attackTesterRuntimeSignature = '';
@@ -688,7 +692,10 @@ export class EnemyLabScene extends Phaser.Scene {
       slots: this.attackTesterSlots.map((slot) => slot.attackId),
       batchBSlots: this.attackTesterSlots
         .map((slot) => slot.attackId)
-        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'B')
+        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'B'),
+      batchCSlots: this.attackTesterSlots
+        .map((slot) => slot.attackId)
+        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'C')
     }));
   }
 
@@ -1408,11 +1415,28 @@ export class EnemyLabScene extends Phaser.Scene {
       if (isLock && request.attackId === 'rail-line') {
         this.drawAttackLockMarker(endX, endY, accentColor, duration);
       }
+      if (request.attackId === 'alarm-ping') {
+        this.drawAttackAlarmMarker(endX, endY, accentColor, duration);
+      }
       return;
     }
 
-    if (recipe.kind === 'landing-circle' && (request.attackId === 'mortar-lob' || request.attackId === 'plasma-puddle')) {
+    if (recipe.kind === 'landing-circle' && (request.attackId === 'mortar-lob' || request.attackId === 'plasma-puddle' || request.attackId === 'cluster-bomb')) {
       this.drawAttackLandingReticle(target?.x ?? request.x, target?.y ?? request.y, recipe.radiusPx ?? 120, color, accentColor, duration);
+      return;
+    }
+
+    if (recipe.kind === 'hidden-reveal' && request.attackId === 'mine-reveal') {
+      this.drawAttackMineReveal(
+        request.x,
+        request.y,
+        target?.x ?? request.x,
+        target?.y ?? request.y,
+        readAttackNumberParam(request.params, 'blastRadiusPx', recipe.radiusPx ?? 120),
+        color,
+        accentColor,
+        duration
+      );
       return;
     }
 
@@ -1424,6 +1448,9 @@ export class EnemyLabScene extends Phaser.Scene {
       circle.setStrokeStyle(recipe.strokeWidthPx ?? 2, color, this.readabilityMode === 'high-contrast' ? 0.86 : 0.62);
       circle.setDepth(13);
       this.trackTransientLabProp(circle, duration, { radius, alpha: 0.08 });
+      if (request.attackId === 'berserker-shockwave') {
+        this.drawAttackBerserkerStatePulse(request.x, request.y, radius, color, accentColor, duration);
+      }
       return;
     }
 
@@ -1526,19 +1553,64 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
+    if (effect.kind === 'cluster-split') {
+      const targetX = target?.x ?? request.x + request.direction.x * 260;
+      const targetY = target?.y ?? request.y + request.direction.y * 260;
+      const travelMs = Math.max(80, readAttackNumberParam(request.params, 'travelMs', Math.min(duration, 800)));
+      this.launchAttackMortarProjectile(request.x, request.y, targetX, targetY, color, accentColor, travelMs);
+      this.drawAttackClusterSplitSpokes(
+        targetX,
+        targetY,
+        readAttackNumberParam(request.params, 'radiusPx', 140),
+        readAttackNumberParam(request.params, 'secondaryRadiusPx', effect.radiusPx ?? 70),
+        Math.max(1, Math.trunc(readAttackNumberParam(request.params, 'splitCount', 5))),
+        color,
+        accentColor,
+        duration
+      );
+      return;
+    }
+
+    if (effect.kind === 'alarm-ping') {
+      this.drawAttackAlarmPing(
+        request.x,
+        request.y,
+        target?.x ?? request.x,
+        target?.y ?? request.y,
+        effect.radiusPx ?? 220,
+        color,
+        accentColor,
+        duration
+      );
+      return;
+    }
+
+    if (effect.kind === 'blast-radius' && request.attackId === 'mine-reveal') {
+      const blastX = target?.x ?? request.x;
+      const blastY = target?.y ?? request.y;
+      emitEffectWarningRadius(this, blastX, blastY, {
+        kind: 'warning-radius',
+        color,
+        radius: effect.radiusPx ?? readAttackNumberParam(request.params, 'blastRadiusPx', 125),
+        durationMs: duration,
+        intensity: 1.1,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode
+      });
+      return;
+    }
+
     if (
       effect.kind === 'nova-ring' ||
       effect.kind === 'shockwave' ||
       effect.kind === 'blast-radius' ||
       effect.kind === 'puddle-zone' ||
-      effect.kind === 'cluster-split' ||
-      effect.kind === 'alarm-ping' ||
       effect.kind === 'buff-pulse' ||
       effect.kind === 'shards'
     ) {
       const radius = effect.radiusPx ?? 140;
-      const x = effect.kind === 'puddle-zone' || effect.kind === 'cluster-split' ? target?.x ?? request.x : request.x;
-      const y = effect.kind === 'puddle-zone' || effect.kind === 'cluster-split' ? target?.y ?? request.y : request.y;
+      const x = effect.kind === 'puddle-zone' ? target?.x ?? request.x : request.x;
+      const y = effect.kind === 'puddle-zone' ? target?.y ?? request.y : request.y;
       emitEffectWarningRadius(this, x, y, {
         kind: 'warning-radius',
         color,
@@ -1609,13 +1681,13 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const definition = getEnemyAttackDefinition(request.attackId);
     const color = resolveEnemyLabEffectColor(definition.activeEffect.color, this.readabilityMode);
-    if (request.attackId === 'mortar-lob') {
+    if (request.attackId === 'mortar-lob' || request.attackId === 'cluster-bomb') {
       emitEffectWarningRadius(this, request.x, request.y, {
         kind: 'warning-radius',
         color,
         radius: request.radius ?? definition.activeEffect.radiusPx ?? 140,
         durationMs: 260,
-        intensity: 1.12,
+        intensity: request.attackId === 'cluster-bomb' ? 1.04 : 1.12,
         reducedEffects: this.reducedEffects,
         readabilityMode: this.readabilityMode,
         depth: 16
@@ -1623,9 +1695,9 @@ export class EnemyLabScene extends Phaser.Scene {
       emitEffectSparkBurst(this, request.x, request.y, {
         kind: 'spark-burst',
         color,
-        radius: Math.min(90, request.radius ?? 80),
+        radius: Math.min(request.attackId === 'cluster-bomb' ? 76 : 90, request.radius ?? 80),
         durationMs: 260,
-        intensity: 1,
+        intensity: request.attackId === 'cluster-bomb' ? 0.88 : 1,
         reducedEffects: this.reducedEffects,
         readabilityMode: this.readabilityMode,
         depth: 17
@@ -1649,6 +1721,54 @@ export class EnemyLabScene extends Phaser.Scene {
 
     if (request.attackId === 'plasma-puddle') {
       this.drawAttackPuddleTick(request.x, request.y, request.radius ?? definition.activeEffect.radiusPx ?? 125, color, 180);
+      return;
+    }
+
+    if (request.attackId === 'berserker-shockwave') {
+      emitEffectRingPulse(this, request.x, request.y, {
+        kind: 'blink-ring',
+        color,
+        radius: request.radius ?? definition.activeEffect.radiusPx ?? 180,
+        durationMs: 240,
+        intensity: 1,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode,
+        depth: 16
+      });
+      emitEffectSparkBurst(this, request.x, request.y, {
+        kind: 'spark-burst',
+        color,
+        radius: Math.min(120, request.radius ?? 100),
+        durationMs: 220,
+        intensity: this.reducedEffects ? 0.55 : 0.82,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode,
+        depth: 17
+      });
+      return;
+    }
+
+    if (request.attackId === 'mine-reveal') {
+      emitEffectWarningRadius(this, request.x, request.y, {
+        kind: 'warning-radius',
+        color,
+        radius: request.radius ?? definition.activeEffect.radiusPx ?? 125,
+        durationMs: 220,
+        intensity: 1.1,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode,
+        depth: 16
+      });
+      emitEffectSparkBurst(this, request.x, request.y, {
+        kind: 'spark-burst',
+        color,
+        radius: Math.min(82, request.radius ?? 70),
+        durationMs: 220,
+        intensity: this.reducedEffects ? 0.62 : 0.92,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode,
+        depth: 17
+      });
     }
   }
 
@@ -1709,6 +1829,124 @@ export class EnemyLabScene extends Phaser.Scene {
     vertical.setDepth(14);
     vertical.setBlendMode(Phaser.BlendModes.ADD);
     this.trackTransientLabProp(vertical, duration, { alpha: 0.04 });
+  }
+
+  private drawAttackClusterSplitSpokes(
+    x: number,
+    y: number,
+    primaryRadius: number,
+    secondaryRadius: number,
+    splitCount: number,
+    color: number,
+    accentColor: number,
+    duration: number
+  ): void {
+    const count = Math.max(1, Math.min(8, splitCount));
+    const splitDistance = Math.max(secondaryRadius * 1.35, primaryRadius * 0.62);
+    const graphics = this.add.graphics({ x, y });
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 2.6 : 1.6, accentColor, this.reducedEffects ? 0.32 : 0.48);
+    for (let index = 0; index < count; index += 1) {
+      const angle = -Math.PI * 0.5 + (Math.PI * 2 * index) / count;
+      const endX = Math.cos(angle) * splitDistance;
+      const endY = Math.sin(angle) * splitDistance;
+      graphics.lineBetween(0, 0, endX, endY);
+      graphics.strokeCircle(endX, endY, Math.max(10, secondaryRadius * 0.24));
+    }
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 3 : 2, color, 0.56);
+    graphics.strokeCircle(0, 0, Math.max(16, primaryRadius * 0.22));
+    graphics.setDepth(15);
+    graphics.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(graphics, duration, { alpha: 0.03 });
+  }
+
+  private drawAttackAlarmMarker(x: number, y: number, color: number, duration: number): void {
+    const ring = this.add.circle(x, y, 13, color, 0.025);
+    ring.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3.2 : 2.2, color, 0.82);
+    ring.setDepth(17);
+    ring.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(ring, duration, { scale: 1.55, alpha: 0 });
+
+    const stem = this.add.line(0, 0, x, y - 9, x, y + 4, color, 0.78);
+    stem.setOrigin(0, 0);
+    stem.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 2, color, 0.8);
+    stem.setDepth(17);
+    stem.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(stem, duration, { alpha: 0.04 });
+
+    const dot = this.add.circle(x, y + 10, 2.8, color, 0.78);
+    dot.setDepth(17);
+    dot.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(dot, duration, { alpha: 0.04 });
+  }
+
+  private drawAttackAlarmPing(
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+    radius: number,
+    color: number,
+    accentColor: number,
+    duration: number
+  ): void {
+    this.drawSummonOwnershipLink(sourceX, sourceY, targetX, targetY, color, Math.max(260, duration));
+    this.drawAttackAlarmMarker(targetX, targetY, accentColor, Math.max(180, duration));
+
+    const pulse = this.add.circle(targetX, targetY, Math.max(18, radius * 0.22), color, 0.035);
+    pulse.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 4 : 2.6, color, 0.74);
+    pulse.setDepth(16);
+    pulse.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(pulse, duration, { radius, alpha: 0.02 });
+  }
+
+  private drawAttackMineReveal(
+    sourceX: number,
+    sourceY: number,
+    targetX: number,
+    targetY: number,
+    radius: number,
+    color: number,
+    accentColor: number,
+    duration: number
+  ): void {
+    const sourceRing = this.add.circle(sourceX, sourceY, 14, accentColor, 0.02);
+    sourceRing.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 2, accentColor, 0.72);
+    sourceRing.setDepth(15);
+    sourceRing.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(sourceRing, duration, { scale: 1.85, alpha: 0.02 });
+
+    const chargeLine = this.add.line(0, 0, sourceX, sourceY, targetX, targetY, accentColor, 0.58);
+    chargeLine.setOrigin(0, 0);
+    chargeLine.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 1.8, accentColor, 0.62);
+    chargeLine.setDepth(14);
+    chargeLine.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(chargeLine, duration, { alpha: 0.03 });
+
+    this.drawAttackLandingReticle(targetX, targetY, radius, color, accentColor, duration);
+  }
+
+  private drawAttackBerserkerStatePulse(
+    x: number,
+    y: number,
+    radius: number,
+    color: number,
+    accentColor: number,
+    duration: number
+  ): void {
+    const graphics = this.add.graphics({ x, y });
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 3.2 : 2.2, accentColor, 0.66);
+    graphics.strokeCircle(0, 0, Math.max(18, radius * 0.28));
+    graphics.lineStyle(this.readabilityMode === 'high-contrast' ? 2.4 : 1.6, color, 0.58);
+    graphics.strokeCircle(0, 0, Math.max(24, radius * 0.42));
+    for (let index = 0; index < 6; index += 1) {
+      const angle = (Math.PI * 2 * index) / 6;
+      const inner = radius * 0.28;
+      const outer = radius * 0.42;
+      graphics.lineBetween(Math.cos(angle) * inner, Math.sin(angle) * inner, Math.cos(angle) * outer, Math.sin(angle) * outer);
+    }
+    graphics.setDepth(16);
+    graphics.setBlendMode(Phaser.BlendModes.ADD);
+    this.trackTransientLabProp(graphics, duration, { alpha: 0.03 });
   }
 
   private drawAttackSweepLane(

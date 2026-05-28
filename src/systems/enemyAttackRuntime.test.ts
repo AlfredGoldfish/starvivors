@@ -10,6 +10,7 @@ import {
   type AttackHealRequest,
   type AttackProjectileRequest,
   type AttackShieldRequest,
+  type AttackSummonRequest,
   type AttackTargetSnapshot
 } from './enemyAttackRuntime';
 
@@ -510,6 +511,183 @@ describe('enemy attack runtime', () => {
     expect(areas[0].statuses?.[0]).toMatchObject({ kind: 'frost', intensity: 0.25 });
   });
 
+  it('cluster-bomb schedules primary impact and delayed secondary split impacts', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 };
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'cluster-host',
+      definitionId: 'impact-bomber',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'cluster-bomb',
+        enabled: true,
+        params: { initialDelayMs: 0, windupMs: 5, travelMs: 30, delayMs: 20, splitCount: 3, secondaryRadiusPx: 44, activeMs: 50 }
+      }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    for (const time of [0, 6, 35]) {
+      updateAttackHostRuntime({
+        host: runtime,
+        time,
+        deltaSeconds: 0.016,
+        targets: [playerTarget],
+        pointTarget,
+        getWrappedDirection: createDirection,
+        callbacks: { areaDamage: (request) => areas.push(request) }
+      });
+    }
+    expect(areas).toHaveLength(0);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 36,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget,
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    expect(areas).toHaveLength(1);
+    expect(areas[0]).toMatchObject({ attackId: 'cluster-bomb', beat: 'impact', x: 160, y: 0 });
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 56,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget,
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(4);
+    expect(areas.slice(1).every((request) => request.attackId === 'cluster-bomb' && request.radius === 44)).toBe(true);
+    expect(new Set(areas.slice(1).map((request) => `${request.x},${request.y}`)).size).toBe(3);
+  });
+
+  it('alarm-ping waits through detect and call timing before summoning the configured squad id', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'alarm-host',
+      definitionId: 'patrol-guard',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'alarm-ping',
+        enabled: true,
+        params: { initialDelayMs: 0, detectMs: 20, callDelayMs: 30, squadId: 'scout-pack', count: 2, radiusPx: 180 }
+      }]
+    });
+    const summons: AttackSummonRequest[] = [];
+
+    for (const time of [0, 21, 49]) {
+      updateAttackHostRuntime({
+        host: runtime,
+        time,
+        deltaSeconds: 0.016,
+        targets: [playerTarget],
+        getWrappedDirection: createDirection,
+        callbacks: { summon: (request) => summons.push(request) }
+      });
+    }
+    expect(summons).toHaveLength(0);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 51,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      getWrappedDirection: createDirection,
+      callbacks: { summon: (request) => summons.push(request) }
+    });
+
+    expect(summons).toMatchObject([
+      { attackId: 'alarm-ping', definitionId: 'scout-pack', count: 2, radius: 180 }
+    ]);
+  });
+
+  it('berserker-shockwave emits self-centered area status with slow and knockback params preserved', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'berserker-host',
+      definitionId: 'berserker',
+      body: { x: 14, y: 8, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'berserker-shockwave',
+        enabled: true,
+        params: { initialDelayMs: 0, windupMs: 0, radiusPx: 190, knockback: 260, slowMs: 640, slow: 0.5 }
+      }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(1);
+    expect(areas[0]).toMatchObject({ attackId: 'berserker-shockwave', targetKind: 'self', x: 14, y: 8, radius: 190 });
+    expect(areas[0].statuses?.[0]).toMatchObject({ kind: 'slow', durationMs: 640, intensity: 0.5, knockback: 260 });
+  });
+
+  it('mine-reveal respects chargeMs and blastRadiusPx before delayed blast damage', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'mine-host',
+      definitionId: 'ambusher-mine',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{
+        attackId: 'mine-reveal',
+        enabled: true,
+        params: { initialDelayMs: 0, chargeMs: 35, blastRadiusPx: 155, damage: 30 }
+      }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 34,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    expect(areas).toHaveLength(0);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 36,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toMatchObject([
+      { attackId: 'mine-reveal', shape: 'circle', x: 100, y: 0, radius: 155, damage: 30 }
+    ]);
+  });
+
   it('normalizes reduced and high-contrast Batch A telegraph and effect recipes', () => {
     const slot = createDefaultAttackLoadoutSlot('rail-line');
     const recipe = resolveRuntimeTelegraphRecipe(
@@ -566,6 +744,46 @@ describe('enemy attack runtime', () => {
     expect(puddleTelegraph.durationMs).toBe(400);
     expect(puddleEffect.durationMs).toBe(1200);
     expect(puddleEffect.radiusPx).toBe(160);
+  });
+
+  it('normalizes reduced and high-contrast Batch C telegraph and effect recipes', () => {
+    const clusterSlot = createDefaultAttackLoadoutSlot('cluster-bomb');
+    clusterSlot.params = { ...(clusterSlot.params ?? {}), travelMs: 300, delayMs: 160, secondaryRadiusPx: 82 };
+    const clusterTelegraph = resolveRuntimeTelegraphRecipe(
+      getEnemyAttackDefinition('cluster-bomb'),
+      clusterSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    const clusterEffect = resolveRuntimeEffectRecipe(
+      getEnemyAttackDefinition('cluster-bomb'),
+      clusterSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+
+    expect(clusterTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(3);
+    expect(clusterEffect.durationMs).toBe(460);
+    expect(clusterEffect.widthPx).toBeGreaterThanOrEqual(5);
+
+    const alarmSlot = createDefaultAttackLoadoutSlot('alarm-ping');
+    alarmSlot.params = { ...(alarmSlot.params ?? {}), detectMs: 260, callDelayMs: 520 };
+    const alarmTelegraph = resolveRuntimeTelegraphRecipe(
+      getEnemyAttackDefinition('alarm-ping'),
+      alarmSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    expect(alarmTelegraph.durationMs).toBe(260);
+    expect(alarmTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(3);
+
+    const mineSlot = createDefaultAttackLoadoutSlot('mine-reveal');
+    mineSlot.params = { ...(mineSlot.params ?? {}), chargeMs: 310, blastRadiusPx: 150 };
+    const mineTelegraph = resolveRuntimeTelegraphRecipe(
+      getEnemyAttackDefinition('mine-reveal'),
+      mineSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    expect(mineTelegraph.durationMs).toBe(310);
+    expect(mineTelegraph.radiusPx).toBe(150);
+    expect(mineTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(4);
   });
 });
 

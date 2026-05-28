@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 5 Batch A and Batch B complete in Enemy Lab. Batch C attack polish remains planned. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 5 Batch A, Batch B, and Batch C complete in Enemy Lab. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -605,7 +605,7 @@ Acceptance:
 
 ### Phase 5: Attack Batches
 
-Status: Batch A and Batch B completed 2026-05-28. Batch C remains planned for a later phase.
+Status: Batch A, Batch B, and Batch C completed 2026-05-28.
 
 Progress:
 
@@ -621,14 +621,21 @@ Progress:
 - Added Batch B timing/recipe aliases so current-slot params drive `sweepMs`, `arcDegrees`, `healPerSecond`, `retargetMs`, `activeMs`, `durationMs`, `tickDamage`, `slow`, and `reflect`.
 - Polished Enemy Lab visuals for Batch B: broad sweep lane/endpoints, healing tether plus target pulse, directional shield arcs with reflect styling, plasma landing reticle, lingering hazard ring, and status tick feedback.
 - Expanded the deterministic `enemyLabAttacks` harness to keep Batch A slots and add all four Batch B slots with dummy, enemy, and damaged ally targets.
+- Marked Batch C definitions `ready` with final lab defaults for `cluster-bomb`, `alarm-ping`, `berserker-shockwave`, and `mine-reveal`.
+- Added delayed multi-impact support for `cluster-bomb`: primary lob travel, primary impact, split warning reticles, and delayed secondary impact circles.
+- Added Batch C timing/recipe aliases so current-slot params drive `travelMs`, `splitCount`, `secondaryRadiusPx`, `delayMs`, `detectMs`, `callDelayMs`, `chargeMs`, `blastRadiusPx`, `knockback`, and `slowMs`.
+- Kept `alarm-ping` as a channel-to-summon attack using the existing summon callback, resolving `squadId` as the requested squad/definition id.
+- Kept `berserker-shockwave` and `mine-reveal` lab-authored only: shockwave previews HP-threshold/state cues without live HP gating, and mine reveal uses existing lab target selection without a hidden enemy AI rewrite.
+- Polished Enemy Lab visuals for Batch C: cluster split spokes/secondary reticles, alarm detection marker and call pulse, berserker windup/state/impact burst, and mine reveal charge/blast feedback.
+- Expanded the deterministic `enemyLabAttacks` harness to keep Batch A+B slots and add all four Batch C slots with point, enemy, self, and summon target coverage.
 
 Verification:
 
-- `npm.cmd run test` passed with 19 files and 89 tests.
+- `npm.cmd run test` passed with 19 files and 96 tests.
 - `npm.cmd run build` passed.
 - `npm.cmd run electron:build` passed.
-- Headless `/enemy-lab.html` smoke showed `enemy-lab-overlay is-mode-basic`, active Basic tab, and Attack Tester target controls present.
-- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `mortar-lob`, `emp-nova`, `summon-glyphs`, `sweep-laser`, `healing-beam`, `shield-wall`, and `plasma-puddle`; `batchBSlots` reported all four Batch B attacks.
+- Headless `/enemy-lab.html` smoke on local dev port 5175 showed `enemy-lab-overlay is-mode-basic`, active Basic tab, and Attack Tester target controls `attackTesterSpawnDummy`, `attackTesterSpawnEnemy`, and `attackTesterSpawnAlly`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` on local dev port 5175 reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `mortar-lob`, `emp-nova`, `summon-glyphs`, `sweep-laser`, `healing-beam`, `shield-wall`, `plasma-puddle`, `cluster-bomb`, `alarm-ping`, `berserker-shockwave`, and `mine-reveal`; `batchBSlots` and `batchCSlots` reported all four attacks in each batch.
 - Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
 
 Batch A:

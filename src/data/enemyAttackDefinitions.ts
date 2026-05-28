@@ -244,13 +244,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['impact-bomber'],
     sourceRole: 'exploder',
     tags: ['lob', 'area'],
-    defaultParams: { travelMs: 800, splitCount: 5, secondaryRadiusPx: 70, delayMs: 420 },
-    timing: { initialDelayMs: 450, cooldownMs: 3600, windupMs: 550, activeMs: 1220, recoveryMs: 520 },
+    defaultParams: { windupMs: 560, travelMs: 800, splitCount: 5, radiusPx: 140, secondaryRadiusPx: 70, delayMs: 420, damage: 18 },
+    timing: { initialDelayMs: 450, cooldownMs: 3600, windupMs: 560, activeMs: 1220, recoveryMs: 520 },
     targeting: { targetKind: 'point', rangePx: 850, leadTarget: true },
-    telegraph: { kind: 'landing-circle', color: ATTACK_AREA, radiusPx: 140, durationMs: 550 },
+    telegraph: { kind: 'landing-circle', color: ATTACK_AREA, accentColor: ATTACK_WHITE, radiusPx: 140, durationMs: 560 },
     activeEffect: { kind: 'cluster-split', color: ATTACK_AREA, radiusPx: 70, durationMs: 1220 },
     execution: { kind: 'cluster-bomb', damage: 18 },
-    lab: { batch: 'C', status: 'planned', notes: 'Main lob splits into smaller delayed secondary danger circles.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'C', status: 'ready', notes: 'Main lob lands with a primary blast, then splits into delayed secondary impact circles.' }
   },
   {
     id: 'alarm-ping',
@@ -258,13 +259,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['patrol-guard'],
     sourceRole: 'patrol',
     tags: ['alarm', 'summon'],
-    defaultParams: { detectMs: 700, callDelayMs: 900, squadId: 'scout-pack' },
-    timing: { initialDelayMs: 250, cooldownMs: 4800, windupMs: 700, channelMs: 900, recoveryMs: 500, interruptible: true },
+    defaultParams: { detectMs: 700, callDelayMs: 900, squadId: 'scout-pack', count: 3, radiusPx: 220 },
+    timing: { initialDelayMs: 250, cooldownMs: 4800, windupMs: 700, channelMs: 900, activeMs: 180, recoveryMs: 500, interruptible: true },
     targeting: { targetKind: 'player', rangePx: 650, requiresLineOfSight: true },
     telegraph: { kind: 'detect-beam', color: ATTACK_AREA, accentColor: ATTACK_WHITE, rangePx: 650, durationMs: 700 },
     activeEffect: { kind: 'alarm-ping', color: ATTACK_AREA, radiusPx: 220, durationMs: 900 },
     execution: { kind: 'alarm-ping', spawnId: 'scout-pack' },
-    lab: { batch: 'C', status: 'planned', notes: 'Detection beam marks the player, then calls a squad if uninterrupted.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'C', status: 'ready', notes: 'Detection beam marks the target, then a channel resolves into a squad call pulse.' }
   },
   {
     id: 'berserker-shockwave',
@@ -272,13 +274,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['berserker'],
     sourceRole: 'berserker',
     tags: ['area', 'status'],
-    defaultParams: { hpThresholds: '0.5/0.25', radiusPx: 180, knockback: 240, slowMs: 700 },
-    timing: { initialDelayMs: 0, cooldownMs: 9999, windupMs: 260, activeMs: 180, recoveryMs: 420 },
+    defaultParams: { hpThresholds: '0.5/0.25', windupMs: 360, radiusPx: 180, damage: 6, knockback: 240, slowMs: 700, slow: 0.58 },
+    timing: { initialDelayMs: 0, cooldownMs: 9999, windupMs: 360, activeMs: 180, recoveryMs: 420 },
     targeting: { targetKind: 'self', rangePx: 180 },
-    telegraph: { kind: 'expanding-ring', color: ATTACK_WARNING, accentColor: ATTACK_WHITE, radiusPx: 180, durationMs: 260 },
+    telegraph: { kind: 'expanding-ring', color: ATTACK_WARNING, accentColor: ATTACK_WHITE, radiusPx: 180, durationMs: 360 },
     activeEffect: { kind: 'shockwave', color: ATTACK_WARNING, radiusPx: 180, durationMs: 180 },
     execution: { kind: 'berserker-shockwave', damage: 6, statusKind: 'slow' },
-    lab: { batch: 'C', status: 'planned', notes: 'HP-gated roar pulse with visible state changes before impact.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 5 },
+    lab: { batch: 'C', status: 'ready', notes: 'Lab-authored self pulse previews HP-threshold state cues without live HP gating.' }
   },
   {
     id: 'mine-reveal',
@@ -286,13 +289,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['ambusher-mine'],
     sourceRole: 'ambusher',
     tags: ['contact', 'area', 'readability-critical'],
-    defaultParams: { revealRangePx: 220, chargeMs: 420, blastRadiusPx: 125, damage: 26 },
+    defaultParams: { revealRangePx: 220, chargeMs: 420, blastRadiusPx: 125, damage: 26, rangePx: 220 },
     timing: { initialDelayMs: 0, cooldownMs: 2600, windupMs: 420, activeMs: 180, recoveryMs: 360 },
     targeting: { targetKind: 'player', rangePx: 220 },
     telegraph: { kind: 'hidden-reveal', color: ATTACK_AREA, accentColor: ATTACK_WHITE, radiusPx: 125, durationMs: 420 },
     activeEffect: { kind: 'blast-radius', color: ATTACK_WARNING, radiusPx: 125, durationMs: 180 },
     execution: { kind: 'mine-reveal', damage: 26 },
-    lab: { batch: 'C', status: 'planned', notes: 'Hidden/reveal/strike beats must remain fair at combat scale.' }
+    reducedEffects: { strokeWidthPx: 4, widthPx: 5 },
+    lab: { batch: 'C', status: 'ready', notes: 'Hidden reveal and charge line resolve into a delayed readable blast radius.' }
   },
   {
     id: 'contact-ram',
