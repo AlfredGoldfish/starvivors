@@ -14,6 +14,7 @@ import {
 
 export type AttackRuntimePhase = 'idle' | 'windup' | 'channel' | 'active' | 'recovery';
 export type AttackRuntimeReadabilityMode = 'normal' | 'color-safe' | 'high-contrast';
+export type AttackRuntimeBeat = 'tracking' | 'lock' | 'anticipation' | 'channel' | 'resolve' | 'impact';
 
 export interface AttackVectorLike {
   x: number;
@@ -47,6 +48,8 @@ export interface AttackSlotRuntime {
   target?: AttackTargetSnapshot;
   queuedAt?: number;
   executedInPhase: boolean;
+  pendingImpacts: AttackPendingImpact[];
+  lastTelegraphAt: number;
 }
 
 export interface AttackHostRuntime {
@@ -79,6 +82,7 @@ export interface AttackAreaDamageRequest {
   sourceHostId: string;
   ownerKind: AttackHostKind;
   attackId: EnemyAttackId;
+  beat?: AttackRuntimeBeat;
   targetKind: AttackTargetKind;
   shape: 'circle' | 'line';
   x: number;
@@ -149,6 +153,7 @@ export interface AttackVisualRequest {
   ownerKind: AttackHostKind;
   attackId: EnemyAttackId;
   phase: AttackRuntimePhase;
+  beat?: AttackRuntimeBeat;
   x: number;
   y: number;
   direction: AttackVectorLike;
@@ -201,6 +206,11 @@ interface AttackTiming {
   recoveryMs: number;
 }
 
+interface AttackPendingImpact {
+  executeAt: number;
+  target?: AttackTargetSnapshot;
+}
+
 export function createAttackHostRuntime(input: {
   hostKind: AttackHostKind;
   hostId: string;
@@ -229,7 +239,9 @@ export function createAttackHostRuntime(input: {
         nextReadyAt: input.time + timing.initialDelayMs + offset,
         phase: 'idle',
         phaseStartedAt: input.time,
-        executedInPhase: false
+        executedInPhase: false,
+        pendingImpacts: [],
+        lastTelegraphAt: input.time
       };
     })
   };
@@ -263,6 +275,8 @@ export function queueAttackSlot(runtime: AttackHostRuntime, slotIndex: number, t
   slot.nextReadyAt = time;
   slot.queuedAt = time;
   slot.executedInPhase = false;
+  slot.pendingImpacts = [];
+  slot.lastTelegraphAt = time;
   return true;
 }
 
@@ -281,6 +295,8 @@ export function updateAttackHostRuntime(input: UpdateAttackHostRuntimeInput): At
     if (slot.slot.enabled === false) {
       return;
     }
+
+    processPendingImpacts(input, slot, slotIndex, events);
 
     if (slot.phase === 'idle') {
       const canStart = input.time >= slot.nextReadyAt && (!host.manualTriggerOnly || slot.queuedAt !== undefined);
@@ -304,8 +320,13 @@ export function updateAttackHostRuntime(input: UpdateAttackHostRuntimeInput): At
     const timing = resolveAttackTiming(slot.definition, slot.slot);
     const duration = getPhaseDuration(slot.phase, timing);
     const elapsed = input.time - slot.phaseStartedAt;
+    if (slot.phase === 'windup' || slot.phase === 'channel') {
+      refreshTrackingTarget(input, slot);
+      refreshTelegraph(input, slot);
+    }
+
     if (slot.phase === 'active') {
-      executeActiveTick(input, slot);
+      executeActiveTick(input, slot, slotIndex, events);
     }
 
     if (elapsed < duration) {
@@ -344,7 +365,8 @@ export function resolveRuntimeTelegraphRecipe(
   const params = resolveAttackLoadoutSlotParams(slot);
   const base = {
     ...definition.telegraph,
-    ...pickRecipeOverrides(params, ['radiusPx', 'rangePx', 'durationMs'])
+    ...pickRecipeOverrides(params, ['radiusPx', 'rangePx', 'durationMs']),
+    ...pickRadiusAliasOverride(params)
   };
   const reduced = options.reducedEffects ? definition.reducedEffects ?? {} : {};
   const recipe = { ...base, ...reduced };
@@ -369,7 +391,8 @@ export function resolveRuntimeEffectRecipe(
   const params = resolveAttackLoadoutSlotParams(slot);
   const base = {
     ...definition.activeEffect,
-    ...pickRecipeOverrides(params, ['radiusPx', 'widthPx', 'durationMs'])
+    ...pickRecipeOverrides(params, ['radiusPx', 'widthPx', 'durationMs']),
+    ...pickRadiusAliasOverride(params)
   };
   const reduced = options.reducedEffects ? definition.reducedEffects ?? {} : {};
   const recipe = { ...base, ...reduced };
@@ -407,10 +430,8 @@ function startNextAvailablePhase(
   }
 
   if (nextPhase === 'active') {
-    requestEffect(input, slot, 'active');
-    executeAttack(input, slot);
-    slot.executedInPhase = true;
-    events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+    requestEffect(input, slot, 'active', 'resolve');
+    executeOrScheduleActive(input, slot, slotIndex, events);
   }
 }
 
@@ -438,11 +459,134 @@ function startRecoveryOrIdle(
   events.push({ type: 'phase-start', attackId: slot.definition.id, slotIndex, phase: 'recovery' });
 }
 
-function executeAttack(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+function processPendingImpacts(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  slotIndex: number,
+  events: AttackRuntimeEvent[]
+): void {
+  if (slot.pendingImpacts.length <= 0) {
+    return;
+  }
+
+  const pending: AttackPendingImpact[] = [];
+  for (const impact of slot.pendingImpacts) {
+    if (input.time < impact.executeAt) {
+      pending.push(impact);
+      continue;
+    }
+
+    executeAttack(input, slot, { target: impact.target, beat: 'impact' });
+    events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+  }
+  slot.pendingImpacts = pending;
+}
+
+function executeOrScheduleActive(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  slotIndex: number,
+  events: AttackRuntimeEvent[]
+): void {
+  if (shouldDelayActiveExecution(slot)) {
+    const delayMs = getDelayedImpactMs(slot);
+    if (delayMs > 0) {
+      slot.pendingImpacts.push({
+        executeAt: input.time + delayMs,
+        target: slot.target ? createAttackTargetSnapshot(slot.target) : undefined
+      });
+      slot.executedInPhase = true;
+      return;
+    }
+  }
+
+  executeAttack(input, slot, { beat: 'resolve' });
+  slot.executedInPhase = true;
+  events.push({ type: 'execute', attackId: slot.definition.id, slotIndex });
+}
+
+function shouldDelayActiveExecution(slot: AttackSlotRuntime): boolean {
+  return slot.definition.id === 'mortar-lob';
+}
+
+function getDelayedImpactMs(slot: AttackSlotRuntime): number {
+  const rawParams = slot.slot.params ?? {};
   const params = resolveAttackLoadoutSlotParams(slot.slot);
-  const target = slot.target;
+  const explicitImpactDelay = rawParams.impactDelayMs;
+  const explicitTravel = rawParams.travelMs;
+  const explicitActive = rawParams.activeMs;
+
+  if (typeof explicitImpactDelay === 'number' && Number.isFinite(explicitImpactDelay)) {
+    return Math.max(0, explicitImpactDelay);
+  }
+  if (typeof explicitTravel === 'number' && Number.isFinite(explicitTravel)) {
+    return Math.max(0, explicitTravel);
+  }
+  if (typeof explicitActive === 'number' && Number.isFinite(explicitActive)) {
+    return Math.max(0, explicitActive);
+  }
+
+  return Math.max(0, getNumberParam(params, 'travelMs', resolveAttackTiming(slot.definition, slot.slot).activeMs));
+}
+
+function refreshTrackingTarget(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+  if (slot.phase !== 'windup') {
+    return;
+  }
+
+  const elapsed = input.time - slot.phaseStartedAt;
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const timing = resolveAttackTiming(slot.definition, slot.slot);
+  const shouldTrack =
+    (slot.definition.id === 'rail-line' && elapsed < getNumberParam(params, 'aimMs', timing.windupMs)) ||
+    slot.definition.id === 'mortar-lob';
+
+  if (!shouldTrack) {
+    return;
+  }
+
+  const target = selectAttackTarget(input, slot);
+  if (target) {
+    slot.target = target;
+  }
+}
+
+function refreshTelegraph(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+  const refreshMs = getTelegraphRefreshMs(slot);
+  if (refreshMs <= 0 || input.time - slot.lastTelegraphAt < refreshMs) {
+    return;
+  }
+
+  requestTelegraph(input, slot, slot.phase);
+}
+
+function getTelegraphRefreshMs(slot: AttackSlotRuntime): number {
+  if (slot.phase !== 'windup' && slot.phase !== 'channel') {
+    return 0;
+  }
+
+  switch (slot.definition.id) {
+    case 'rail-line':
+      return 90;
+    case 'mortar-lob':
+    case 'emp-nova':
+      return 150;
+    case 'summon-glyphs':
+      return slot.phase === 'channel' ? 180 : 220;
+    default:
+      return 0;
+  }
+}
+
+function executeAttack(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  options: { target?: AttackTargetSnapshot; beat?: AttackRuntimeBeat } = {}
+): void {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const target = options.target ?? slot.target;
   const origin = { x: input.host.body.x, y: input.host.body.y };
-  const direction = getDirectionToTarget(input, target);
+  const direction = getDirectionToTarget(input, slot, target);
   const damage = getNumberParam(params, 'damage', slot.definition.execution.damage ?? 0) * (input.damageScale ?? 1);
   const radius = getNumberParam(
     params,
@@ -476,6 +620,7 @@ function executeAttack(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRunt
         sourceHostId: input.host.hostId,
         ownerKind: input.host.hostKind,
         attackId: slot.definition.id,
+        beat: options.beat ?? 'resolve',
         targetKind: slot.definition.targeting.targetKind,
         shape: 'line',
         x: origin.x,
@@ -502,6 +647,7 @@ function executeAttack(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRunt
         sourceHostId: input.host.hostId,
         ownerKind: input.host.hostKind,
         attackId: slot.definition.id,
+        beat: options.beat ?? 'resolve',
         targetKind: slot.definition.targeting.targetKind,
         shape: 'circle',
         x: slot.definition.targeting.targetKind === 'self' || !target ? origin.x : target.x,
@@ -569,14 +715,18 @@ function executeAttack(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRunt
   }
 }
 
-function executeActiveTick(input: UpdateAttackHostRuntimeInput, slot: AttackSlotRuntime): void {
+function executeActiveTick(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  slotIndex: number,
+  events: AttackRuntimeEvent[]
+): void {
   if (slot.executedInPhase) {
     return;
   }
 
-  requestEffect(input, slot, 'active');
-  executeAttack(input, slot);
-  slot.executedInPhase = true;
+  requestEffect(input, slot, 'active', 'resolve');
+  executeOrScheduleActive(input, slot, slotIndex, events);
 }
 
 function requestTelegraph(
@@ -588,9 +738,11 @@ function requestTelegraph(
     return;
   }
 
-  const durationMs = getPhaseDuration(phase, resolveAttackTiming(slot.definition, slot.slot));
+  const timing = resolveAttackTiming(slot.definition, slot.slot);
+  const durationMs = resolveTelegraphRequestDuration(slot, phase, timing);
+  slot.lastTelegraphAt = input.time;
   input.callbacks.telegraph?.({
-    ...createVisualRequest(input, slot, phase, durationMs),
+    ...createVisualRequest(input, slot, phase, durationMs, resolveVisualBeat(input, slot, phase)),
     telegraph: resolveRuntimeTelegraphRecipe(slot.definition, slot.slot, input)
   });
 }
@@ -598,15 +750,16 @@ function requestTelegraph(
 function requestEffect(
   input: UpdateAttackHostRuntimeInput,
   slot: AttackSlotRuntime,
-  phase: AttackRuntimePhase
+  phase: AttackRuntimePhase,
+  beat?: AttackRuntimeBeat
 ): void {
   const timing = resolveAttackTiming(slot.definition, slot.slot);
   input.callbacks.effect?.({
-    ...createVisualRequest(input, slot, phase, getPhaseDuration('active', timing)),
+    ...createVisualRequest(input, slot, phase, getPhaseDuration('active', timing), beat),
     effect: resolveRuntimeEffectRecipe(slot.definition, slot.slot, input)
   });
   input.callbacks.labEffect?.({
-    ...createVisualRequest(input, slot, phase, getPhaseDuration('active', timing)),
+    ...createVisualRequest(input, slot, phase, getPhaseDuration('active', timing), beat),
     effect: resolveRuntimeEffectRecipe(slot.definition, slot.slot, input)
   });
 }
@@ -615,7 +768,8 @@ function createVisualRequest(
   input: UpdateAttackHostRuntimeInput,
   slot: AttackSlotRuntime,
   phase: AttackRuntimePhase,
-  durationMs: number
+  durationMs: number,
+  beat?: AttackRuntimeBeat
 ): Omit<AttackVisualRequest, 'telegraph' | 'effect'> {
   const elapsed = Math.max(0, input.time - slot.phaseStartedAt);
   return {
@@ -623,12 +777,89 @@ function createVisualRequest(
     ownerKind: input.host.hostKind,
     attackId: slot.definition.id,
     phase,
+    beat,
     x: input.host.body.x,
     y: input.host.body.y,
-    direction: getDirectionToTarget(input, slot.target),
+    direction: getDirectionToTarget(input, slot, slot.target),
     target: slot.target,
     progress: durationMs > 0 ? Math.min(1, elapsed / durationMs) : 1,
     durationMs
+  };
+}
+
+function resolveTelegraphRequestDuration(
+  slot: AttackSlotRuntime,
+  phase: AttackRuntimePhase,
+  timing: AttackTiming
+): number {
+  const duration = getPhaseDuration(phase, timing);
+  if (slot.definition.id === 'rail-line') {
+    const params = resolveAttackLoadoutSlotParams(slot.slot);
+    return Math.max(120, Math.min(260, getNumberParam(params, 'lockMs', 180)));
+  }
+  if (slot.definition.id === 'mortar-lob' || slot.definition.id === 'emp-nova') {
+    return Math.max(180, Math.min(320, duration));
+  }
+  if (slot.definition.id === 'summon-glyphs') {
+    return phase === 'channel'
+      ? Math.max(240, Math.min(420, duration))
+      : Math.max(180, Math.min(280, duration));
+  }
+  return duration;
+}
+
+function resolveVisualBeat(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  phase: AttackRuntimePhase
+): AttackRuntimeBeat | undefined {
+  if (phase === 'active') {
+    return 'resolve';
+  }
+  if (phase === 'channel') {
+    return 'channel';
+  }
+  if (phase !== 'windup') {
+    return undefined;
+  }
+
+  if (slot.definition.id === 'rail-line') {
+    const params = resolveAttackLoadoutSlotParams(slot.slot);
+    const elapsed = input.time - slot.phaseStartedAt;
+    return elapsed < getNumberParam(params, 'aimMs', resolveAttackTiming(slot.definition, slot.slot).windupMs)
+      ? 'tracking'
+      : 'lock';
+  }
+
+  return 'anticipation';
+}
+
+function createPointTargetSnapshot(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  pointTarget: AttackTargetSnapshot
+): AttackTargetSnapshot {
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const timing = resolveAttackTiming(slot.definition, slot.slot);
+  const target = createAttackTargetSnapshot(pointTarget);
+  const leadMs = slot.definition.targeting.leadTarget && target.velocity
+    ? Math.min(1800, timing.windupMs + getNumberParam(params, 'travelMs', timing.activeMs))
+    : 0;
+
+  let x = target.x + (target.velocity?.x ?? 0) * (leadMs / 1000);
+  let y = target.y + (target.velocity?.y ?? 0) * (leadMs / 1000);
+  const rangePx = getNumberParam(params, 'rangePx', slot.definition.targeting.rangePx);
+  const offset = input.getWrappedDirection(input.host.body.x, input.host.body.y, x, y);
+  const distance = Math.sqrt(lengthSq(offset));
+  if (distance > rangePx && distance > 0.0001) {
+    x = input.host.body.x + (offset.x / distance) * rangePx;
+    y = input.host.body.y + (offset.y / distance) * rangePx;
+  }
+
+  return {
+    ...target,
+    x,
+    y
   };
 }
 
@@ -663,21 +894,23 @@ function selectAttackTarget(
   }
 
   if (targetKind === 'point' && input.pointTarget) {
-    return createAttackTargetSnapshot(input.pointTarget);
+    return createPointTargetSnapshot(input, slot, input.pointTarget);
   }
 
   const allowedKinds = input.targetKindMap?.(targetKind, input.host, definition) ?? [targetKind];
   const candidates = input.targets.filter((target) => allowedKinds.includes(target.kind));
   if (targetKind === 'point' && candidates.length === 0 && input.pointTarget) {
-    return createAttackTargetSnapshot(input.pointTarget);
+    return createPointTargetSnapshot(input, slot, input.pointTarget);
   }
 
+  const params = resolveAttackLoadoutSlotParams(slot.slot);
+  const rangePx = getNumberParam(params, 'rangePx', definition.targeting.rangePx);
   const inRange = candidates
     .map((target) => ({
       target,
       distanceSq: lengthSq(input.getWrappedDirection(input.host.body.x, input.host.body.y, target.x, target.y))
     }))
-    .filter(({ distanceSq }) => distanceSq <= definition.targeting.rangePx * definition.targeting.rangePx);
+    .filter(({ distanceSq }) => distanceSq <= rangePx * rangePx);
 
   if (definition.targeting.preferDamagedAlly) {
     const damaged = inRange.filter(({ target }) =>
@@ -694,16 +927,26 @@ function selectAttackTarget(
   return selected ? createAttackTargetSnapshot(selected) : undefined;
 }
 
-function getDirectionToTarget(input: UpdateAttackHostRuntimeInput, target: AttackTargetSnapshot | undefined): AttackVectorLike {
+function getDirectionToTarget(
+  input: UpdateAttackHostRuntimeInput,
+  slot: AttackSlotRuntime,
+  target: AttackTargetSnapshot | undefined
+): AttackVectorLike {
   if (!target) {
     const rotation = input.host.body.rotation ?? 0;
     return normalize({ x: Math.sin(rotation), y: -Math.cos(rotation) });
   }
 
   const offset = input.getWrappedDirection(input.host.body.x, input.host.body.y, target.x, target.y);
-  if (!input.host.manualTriggerOnly && target.velocity && lengthSq(target.velocity) > 1 && lengthSq(offset) > 1) {
+  if (
+    slot.definition.targeting.leadTarget &&
+    !input.host.manualTriggerOnly &&
+    target.velocity &&
+    lengthSq(target.velocity) > 1 &&
+    lengthSq(offset) > 1
+  ) {
     const projectileSpeed = getNumberParam(
-      resolveAttackLoadoutSlotParams(input.host.attacks[0]?.slot ?? { attackId: 'simple-bolt', enabled: true }),
+      resolveAttackLoadoutSlotParams(slot.slot),
       'projectileSpeed',
       430
     );
@@ -719,12 +962,23 @@ function getDirectionToTarget(input: UpdateAttackHostRuntimeInput, target: Attac
 
 function resolveAttackTiming(definition: EnemyAttackDefinition, slot: AttackLoadoutSlot): AttackTiming {
   const params = resolveAttackLoadoutSlotParams(slot);
+  const hasWindupOverride = typeof params.windupMs === 'number' && Number.isFinite(params.windupMs);
+  const hasActiveOverride = typeof params.activeMs === 'number' && Number.isFinite(params.activeMs);
+  const railAimMs = getNumberParam(params, 'aimMs', 0);
+  const railLockMs = getNumberParam(params, 'lockMs', 0);
+  const defaultWindupMs = definition.id === 'rail-line' && !hasWindupOverride && railAimMs > 0 && railLockMs > 0
+    ? railAimMs + railLockMs
+    : definition.timing.windupMs;
+  const defaultActiveMs = definition.id === 'mortar-lob' && !hasActiveOverride
+    ? getNumberParam(params, 'travelMs', definition.timing.activeMs ?? 100)
+    : definition.timing.activeMs ?? 100;
+
   return {
     initialDelayMs: getNumberParam(params, 'initialDelayMs', definition.timing.initialDelayMs),
     cooldownMs: getNumberParam(params, 'cooldownMs', definition.timing.cooldownMs),
-    windupMs: getNumberParam(params, 'windupMs', definition.timing.windupMs),
+    windupMs: getNumberParam(params, 'windupMs', defaultWindupMs),
     channelMs: getNumberParam(params, 'channelMs', definition.timing.channelMs ?? 0),
-    activeMs: getNumberParam(params, 'activeMs', definition.timing.activeMs ?? 100),
+    activeMs: getNumberParam(params, 'activeMs', defaultActiveMs),
     recoveryMs: getNumberParam(params, 'recoveryMs', definition.timing.recoveryMs)
   };
 }
@@ -795,6 +1049,26 @@ function pickRecipeOverrides(
     }
   }
   return overrides;
+}
+
+function pickRadiusAliasOverride(
+  params: Record<string, EnemyAttackParamValue>
+): Partial<AttackTelegraphRecipe & AttackEffectRecipe> {
+  const radiusPx = getFirstNumberParam(params, ['radiusPx', 'splashRadiusPx', 'blastRadiusPx', 'glyphRadiusPx', 'auraRadiusPx']);
+  return radiusPx === undefined ? {} : { radiusPx };
+}
+
+function getFirstNumberParam(
+  params: Record<string, EnemyAttackParamValue>,
+  keys: string[]
+): number | undefined {
+  for (const key of keys) {
+    const value = params[key];
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+  }
+  return undefined;
 }
 
 function getNumberParam(params: Record<string, EnemyAttackParamValue>, key: string, fallback: number): number {

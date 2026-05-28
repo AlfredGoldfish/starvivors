@@ -54,6 +54,29 @@ describe('enemy attack definitions', () => {
     expect(normalized.weight).toBe(0);
   });
 
+  it('marks Batch A attacks ready with final default slot params', () => {
+    const batchA = ENEMY_ATTACK_DEFINITIONS.filter((definition) => definition.lab.batch === 'A');
+
+    expect(batchA.map((definition) => definition.id)).toEqual([
+      'rail-line',
+      'mortar-lob',
+      'emp-nova',
+      'summon-glyphs'
+    ]);
+    expect(batchA.every((definition) => definition.lab.status === 'ready')).toBe(true);
+    expect(createDefaultAttackLoadoutSlot('rail-line').params).toMatchObject({ aimMs: 900, lockMs: 320, rangePx: 1550 });
+    expect(createDefaultAttackLoadoutSlot('mortar-lob').params).toMatchObject({ windupMs: 650, travelMs: 850, splashRadiusPx: 150 });
+    expect(createDefaultAttackLoadoutSlot('emp-nova').params).toMatchObject({ radiusPx: 230, slowMs: 2400, drag: 0.2 });
+    expect(createDefaultAttackLoadoutSlot('summon-glyphs').params).toMatchObject({ channelMs: 900, count: 3, glyphRadiusPx: 220 });
+  });
+
+  it('initializes Batch A defaults through enemy loadouts where assigned', () => {
+    expect(getDefaultEnemyAttackLoadout('needle-sniper')[0].attackId).toBe('rail-line');
+    expect(getDefaultEnemyAttackLoadout('electric-leech')[0].attackId).toBe('emp-nova');
+    expect(getDefaultEnemyAttackLoadout('carrier')[0].attackId).toBe('summon-glyphs');
+    expect(getDefaultEnemyAttackLoadout('spawner-nest')[0].params).toMatchObject({ spawnId: 'shard-drone', glyphRadiusPx: 180 });
+  });
+
   it('surfaces invalid attack ids through loadout validation', () => {
     const errors = validateAttackLoadoutSlots([
       { attackId: 'unknown-attack' as never, enabled: true }

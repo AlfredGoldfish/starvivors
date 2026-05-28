@@ -125,13 +125,13 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     sourceRole: 'sniper',
     tags: ['line', 'readability-critical'],
     defaultParams: { aimMs: 900, lockMs: 320, damage: 30, rangePx: 1550 },
-    timing: { initialDelayMs: 250, cooldownMs: 2600, windupMs: 900, activeMs: 120, recoveryMs: 380 },
-    targeting: { targetKind: 'player', rangePx: 1550, leadTarget: true, requiresLineOfSight: true },
-    telegraph: { kind: 'line-lock', color: ATTACK_AREA, accentColor: ATTACK_WHITE, strokeWidthPx: 2, rangePx: 1550, durationMs: 900 },
-    activeEffect: { kind: 'beam', color: ATTACK_WHITE, accentColor: ATTACK_WARNING, widthPx: 6, durationMs: 120 },
+    timing: { initialDelayMs: 250, cooldownMs: 3100, windupMs: 1220, activeMs: 110, recoveryMs: 420 },
+    targeting: { targetKind: 'player', rangePx: 1550, leadTarget: false, requiresLineOfSight: true },
+    telegraph: { kind: 'line-lock', color: ATTACK_AREA, accentColor: ATTACK_WHITE, strokeWidthPx: 2, rangePx: 1550, durationMs: 1220 },
+    activeEffect: { kind: 'beam', color: ATTACK_WHITE, accentColor: ATTACK_WARNING, widthPx: 7, durationMs: 110 },
     execution: { kind: 'rail-line', damage: 30 },
-    reducedEffects: { strokeWidthPx: 3 },
-    lab: { batch: 'A', status: 'planned', notes: 'Warning line tracks, then locks before a high-damage beam resolves.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 6 },
+    lab: { batch: 'A', status: 'ready', notes: 'Tracks through aim, flashes a locked line, then resolves a high-damage beam.' }
   },
   {
     id: 'mortar-lob',
@@ -139,13 +139,14 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     baseHostIds: ['impact-bomber'],
     sourceRole: 'exploder',
     tags: ['lob', 'area'],
-    defaultParams: { windupMs: 650, travelMs: 850, splashRadiusPx: 150, damage: 22 },
-    timing: { initialDelayMs: 350, cooldownMs: 2800, windupMs: 650, activeMs: 850, recoveryMs: 420 },
+    defaultParams: { windupMs: 650, travelMs: 850, splashRadiusPx: 150, damage: 22, rangePx: 900 },
+    timing: { initialDelayMs: 350, cooldownMs: 3200, windupMs: 650, activeMs: 850, recoveryMs: 460 },
     targeting: { targetKind: 'point', rangePx: 900, leadTarget: true },
     telegraph: { kind: 'landing-circle', color: ATTACK_AREA, radiusPx: 150, durationMs: 650 },
     activeEffect: { kind: 'lob-projectile', color: ATTACK_AREA, accentColor: ATTACK_WHITE, radiusPx: 150, durationMs: 850 },
     execution: { kind: 'mortar-lob', damage: 22 },
-    lab: { batch: 'A', status: 'planned', notes: 'Predictive landing circle and arcing projectile for artillery readability.' }
+    reducedEffects: { strokeWidthPx: 3 },
+    lab: { batch: 'A', status: 'ready', notes: 'Predictive landing circle launches an arcing shell, then resolves delayed splash at impact.' }
   },
   {
     id: 'emp-nova',
@@ -159,7 +160,8 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     telegraph: { kind: 'expanding-ring', color: ATTACK_STATUS, accentColor: ATTACK_WHITE, radiusPx: 230, durationMs: 520 },
     activeEffect: { kind: 'nova-ring', color: ATTACK_STATUS, radiusPx: 230, durationMs: 220 },
     execution: { kind: 'emp-nova', damage: 6, statusKind: 'electric' },
-    lab: { batch: 'A', status: 'planned', notes: 'Radial low-damage status pulse with thrust/turn drag.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 5 },
+    lab: { batch: 'A', status: 'ready', notes: 'Expanding warning ring resolves into a low-damage electric drag pulse.' }
   },
   {
     id: 'summon-glyphs',
@@ -173,7 +175,8 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     telegraph: { kind: 'glyphs', color: ATTACK_SUPPORT, accentColor: ATTACK_WHITE, radiusPx: 220, durationMs: 900 },
     activeEffect: { kind: 'summon-glyphs', color: ATTACK_SUPPORT, radiusPx: 220, durationMs: 180 },
     execution: { kind: 'summon-glyphs', spawnId: 'scout' },
-    lab: { batch: 'A', status: 'planned', notes: 'Visible channel glyphs spawn adds unless interrupted.' }
+    reducedEffects: { strokeWidthPx: 3 },
+    lab: { batch: 'A', status: 'ready', notes: 'Channel glyphs persist through the cast and spawn clearly owned adds.' }
   },
   {
     id: 'sweep-laser',

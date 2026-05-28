@@ -3,6 +3,7 @@ import { createDefaultAttackLoadoutSlot, getEnemyAttackDefinition, type AttackLo
 import {
   createAttackHostRuntime,
   queueAttackSlot,
+  resolveRuntimeEffectRecipe,
   resolveRuntimeTelegraphRecipe,
   updateAttackHostRuntime,
   type AttackAreaDamageRequest,
@@ -134,7 +135,7 @@ describe('enemy attack runtime', () => {
     expect(runtime.attacks[0].nextReadyAt).toBe(77);
   });
 
-  it('queues only the selected manual Attack Tester slot', () => {
+  it('queues only the selected manual Batch A Attack Tester slot', () => {
     const runtime = createAttackHostRuntime({
       hostKind: 'player-test',
       hostId: 'player-test',
@@ -145,10 +146,10 @@ describe('enemy attack runtime', () => {
       manualTriggerOnly: true,
       loadout: [
         createDefaultAttackLoadoutSlot('rail-line'),
-        { ...createDefaultAttackLoadoutSlot('simple-bolt'), params: { windupMs: 5, initialDelayMs: 0 } }
+        { ...createDefaultAttackLoadoutSlot('emp-nova'), params: { windupMs: 5, initialDelayMs: 0 } }
       ]
     });
-    const projectiles: AttackProjectileRequest[] = [];
+    const areas: AttackAreaDamageRequest[] = [];
 
     queueAttackSlot(runtime, 1, 0);
     updateAttackHostRuntime({
@@ -158,7 +159,7 @@ describe('enemy attack runtime', () => {
       targets: [enemyTarget],
       targetKindMap: (targetKind) => targetKind === 'player' ? ['enemy'] : [targetKind],
       getWrappedDirection: createDirection,
-      callbacks: { spawnProjectile: (request) => projectiles.push(request) }
+      callbacks: { areaDamage: (request) => areas.push(request) }
     });
     updateAttackHostRuntime({
       host: runtime,
@@ -167,10 +168,10 @@ describe('enemy attack runtime', () => {
       targets: [enemyTarget],
       targetKindMap: (targetKind) => targetKind === 'player' ? ['enemy'] : [targetKind],
       getWrappedDirection: createDirection,
-      callbacks: { spawnProjectile: (request) => projectiles.push(request) }
+      callbacks: { areaDamage: (request) => areas.push(request) }
     });
 
-    expect(projectiles.map((request) => request.attackId)).toEqual(['simple-bolt']);
+    expect(areas.map((request) => request.attackId)).toEqual(['emp-nova']);
     expect(runtime.attacks[0].phase).toBe('idle');
   });
 
@@ -186,7 +187,7 @@ describe('enemy attack runtime', () => {
       loadout: [
         { attackId: 'simple-bolt', enabled: true, params: { initialDelayMs: 0, windupMs: 0 } },
         { attackId: 'healing-beam', enabled: true, params: { initialDelayMs: 0, windupMs: 0, channelMs: 0 }, cooldownOffsetMs: 0 },
-        { attackId: 'mortar-lob', enabled: true, params: { initialDelayMs: 0, windupMs: 0 }, cooldownOffsetMs: 0 },
+        { attackId: 'mortar-lob', enabled: true, params: { initialDelayMs: 0, windupMs: 0, travelMs: 0 }, cooldownOffsetMs: 0 },
         { attackId: 'emp-nova', enabled: true, params: { initialDelayMs: 0, windupMs: 0 }, cooldownOffsetMs: 0 }
       ]
     });
@@ -240,7 +241,119 @@ describe('enemy attack runtime', () => {
     expect(runtime.definitionId).toBe('scout');
   });
 
-  it('normalizes reduced and high-contrast telegraph recipes', () => {
+  it('delays mortar lob impact until the projectile travel completes', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'mortar-host',
+      definitionId: 'impact-bomber',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{ attackId: 'mortar-lob', enabled: true, params: { initialDelayMs: 0, windupMs: 5, travelMs: 30, activeMs: 30, recoveryMs: 5 } }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget: { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 },
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 6,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget: { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 },
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    expect(runtime.attacks[0].phase).toBe('active');
+    expect(areas).toHaveLength(0);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 35,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget: { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 },
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+    expect(areas).toHaveLength(0);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 36,
+      deltaSeconds: 0.016,
+      targets: [playerTarget],
+      pointTarget: { id: 'point', kind: 'point', x: 160, y: 0, radius: 12 },
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(1);
+    expect(areas[0]).toMatchObject({ attackId: 'mortar-lob', beat: 'impact', x: 160, y: 0 });
+    expect(runtime.attacks[0].phase).toBe('recovery');
+  });
+
+  it('tracks rail targets during aim and keeps the locked target for resolve', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'sniper-host',
+      definitionId: 'needle-sniper',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [{ attackId: 'rail-line', enabled: true, params: { initialDelayMs: 0, aimMs: 20, lockMs: 10, activeMs: 5 } }]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [{ ...playerTarget, x: 100 }],
+      getWrappedDirection: createDirection,
+      callbacks: {}
+    });
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 10,
+      deltaSeconds: 0.016,
+      targets: [{ ...playerTarget, x: 200 }],
+      getWrappedDirection: createDirection,
+      callbacks: {}
+    });
+    expect(runtime.attacks[0].target?.x).toBe(200);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 25,
+      deltaSeconds: 0.016,
+      targets: [{ ...playerTarget, x: 300 }],
+      getWrappedDirection: createDirection,
+      callbacks: {}
+    });
+    expect(runtime.attacks[0].target?.x).toBe(200);
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 31,
+      deltaSeconds: 0.016,
+      targets: [{ ...playerTarget, x: 300 }],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(1);
+    expect(areas[0].toX).toBeGreaterThan(0);
+  });
+
+  it('normalizes reduced and high-contrast Batch A telegraph and effect recipes', () => {
     const slot = createDefaultAttackLoadoutSlot('rail-line');
     const recipe = resolveRuntimeTelegraphRecipe(
       getEnemyAttackDefinition('rail-line'),
@@ -250,6 +363,16 @@ describe('enemy attack runtime', () => {
 
     expect(recipe.color).toBe(0xffffff);
     expect(recipe.strokeWidthPx).toBeGreaterThanOrEqual(3);
+
+    const mortarSlot = createDefaultAttackLoadoutSlot('mortar-lob');
+    mortarSlot.params = { ...(mortarSlot.params ?? {}), splashRadiusPx: 190 };
+    const effect = resolveRuntimeEffectRecipe(
+      getEnemyAttackDefinition('mortar-lob'),
+      mortarSlot,
+      { reducedEffects: true, readabilityMode: 'high-contrast' }
+    );
+    expect(effect.radiusPx).toBe(190);
+    expect(effect.widthPx).toBeGreaterThanOrEqual(5);
   });
 });
 

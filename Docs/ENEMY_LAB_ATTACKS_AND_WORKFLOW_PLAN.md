@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 4 complete in Enemy Lab. Phase 5 attack batch polish is next. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 5 Batch A complete in Enemy Lab. Batch B/C attack polish remains planned. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -605,6 +605,27 @@ Acceptance:
 
 ### Phase 5: Attack Batches
 
+Status: Batch A completed 2026-05-28. Batch B and Batch C remain planned for later phases.
+
+Progress:
+
+- Marked Batch A definitions `ready` with final lab defaults for `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs`.
+- Added runtime beats for tracking, lock, anticipation, channel, resolve, and delayed impact.
+- Added delayed impact execution for `mortar-lob`, with `travelMs` driving active travel and splash timing.
+- Fixed current-slot parameter use for range, projectile lead, and radius aliases such as `splashRadiusPx` and `glyphRadiusPx`.
+- Added repeated windup/channel telegraph refresh for Batch A without changing live `GameScene` combat.
+- Polished Enemy Lab visuals for Batch A: rail tracking/lock/beam markers, mortar landing reticle/arc/splash, EMP warning/status burst, and summon glyph ownership links.
+- Updated the deterministic `enemyLabAttacks` harness to run `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs`.
+
+Verification:
+
+- `npm.cmd run test` passed with 19 files and 82 tests.
+- `npm.cmd run build` passed.
+- `npm.cmd run electron:build` passed.
+- Headless `/enemy-lab.html` smoke showed `enemy-lab-overlay is-mode-basic`, active Basic tab, and Attack Tester target controls present.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs`.
+- Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
+
 Batch A:
 
 - `rail-line`
@@ -634,6 +655,16 @@ Acceptance per attack:
 - Works on base host, another enemy host, and player test host where target rules make sense.
 - Has default params documented in the registry.
 - Does not require a new movement behavior id.
+
+### Future Attack Audio Pairing Reminder
+
+Status: planned for later; no audio implementation in Phase 5.
+
+Tasks:
+
+- Pair finalized attack telegraph, resolve, impact, and recovery beats with enemy/hazard SFX once the visual batches are stable.
+- Keep reduced-flash/reduced-effects readability intact when audio cues are added.
+- Use the saved Sound settings and existing procedural SFX hooks instead of adding one-off playback paths.
 
 ### Phase 6: Verification And Polish
 
