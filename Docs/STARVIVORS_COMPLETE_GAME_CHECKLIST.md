@@ -171,9 +171,11 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 ## G. Audio, Accessibility, And Settings
 
-- [ ] First audio pass exists.
+- [~] First audio pass exists.
   - Done when: master/music/SFX/UI sliders work and core sounds exist for player fire, enemy fire, hit, hull damage, pickup, upgrade, low fuel, mission complete, eject, and black-hole warning.
-  - Next: create tiny reusable sound set before deeper combat polish.
+  - Evidence: 2026-05-28 first SFX pass added procedural Web Audio cues for player/enemy fire, impacts, shield/world/debris feedback, hull damage/death/eject, pickups/upgrades, low fuel, mission complete, black-hole warning, and UI confirm/back/tab/error.
+  - Evidence: 2026-05-28 pass wired master, SFX, UI, and mute settings to playback and added an audio harness covering effective gains and representative cue recording; music volume remains persisted and clearly reserved for the later music/ambience pass.
+  - Next: add actual music/ambience sources, then promote this from partial to complete once the music slider controls an active source.
 - [ ] Enemy and hazard audio cues exist.
   - Done when: dangerous enemy actions and major hazards have recognizable cues that improve readability.
   - Next: pair cues with telegraph pass.

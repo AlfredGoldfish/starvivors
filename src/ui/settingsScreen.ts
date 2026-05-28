@@ -229,15 +229,15 @@ function addSoundTab(config: SharedSettingsEditorConfig): void {
   addBodyText(
     config,
     y,
-    'Saved mix defaults for the future audio pass. No active audio sources are playing in this build.'
+    'Master, SFX, and UI now drive procedural effects. Music is saved for the later music/ambience pass.'
   );
   y += rowStep(config) * 1.38;
-  addToggleSetting(config, y, 'Mute saved mix', config.settings.sound.muted, () =>
+  addToggleSetting(config, y, 'Mute audio', config.settings.sound.muted, () =>
     updateSettings(config, { sound: { ...config.settings.sound, muted: !config.settings.sound.muted } }));
   y += rowStep(config);
   addVolumeSetting(config, y, 'Master', 'masterVolume');
   y += rowStep(config);
-  addVolumeSetting(config, y, 'Music', 'musicVolume');
+  addVolumeSetting(config, y, 'Music (reserved)', 'musicVolume');
   y += rowStep(config);
   addVolumeSetting(config, y, 'SFX', 'sfxVolume');
   y += rowStep(config);

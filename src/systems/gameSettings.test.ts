@@ -67,6 +67,9 @@ describe('game settings', () => {
     settings.graphics.vfxDensity = 0.25;
     settings.graphics.screenShakeAmount = 2;
     settings.sound.masterVolume = 0.35;
+    settings.sound.musicVolume = 0.45;
+    settings.sound.sfxVolume = 0.55;
+    settings.sound.uiVolume = 0.65;
     settings.sound.muted = true;
     settings.accessibility.reducedFlash = true;
     settings.accessibility.textScale = 1.25;
@@ -79,6 +82,9 @@ describe('game settings', () => {
     expect(saved.graphics.vfxDensity).toBe(0.25);
     expect(saved.graphics.screenShakeAmount).toBe(1);
     expect(saved.sound.masterVolume).toBe(0.35);
+    expect(saved.sound.musicVolume).toBe(0.45);
+    expect(saved.sound.sfxVolume).toBe(0.55);
+    expect(saved.sound.uiVolume).toBe(0.65);
     expect(saved.sound.muted).toBe(true);
     expect(saved.accessibility.reducedFlash).toBe(true);
     expect(saved.accessibility.textScale).toBe(1.25);

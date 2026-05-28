@@ -175,6 +175,7 @@ import {
   type BlackHoleVacuumTuning,
   type BlackHoleWhirlpoolTuning
 } from '../systems/blackHole';
+import { AudioManager, type AudioCueId } from '../systems/audio/audioManager';
 import { DebugState } from '../systems/debug/debugState';
 import type { DebugImpactSourceType, DebugShipStatKey, DebugWeaponStatKey } from '../systems/debug/debugSharedTypes';
 import {
@@ -785,6 +786,7 @@ export class GameScene extends Phaser.Scene {
     getProfiler: () => this.performanceProfiler,
     getTimeMs: () => this.time.now
   });
+  private readonly audio = new AudioManager();
   private mainMenuScreen?: ScreenHandle;
   private shipSelectScreen?: ScreenHandle;
   private shopScreen?: ScreenHandle;
@@ -798,6 +800,7 @@ export class GameScene extends Phaser.Scene {
   private pauseMenuScreen?: ScreenHandle;
   private ejectConfirmScreen?: ScreenHandle;
   private pauseMenuTab: PauseMenuTab = 'pause';
+  private pendingVisualPauseSettingsTab?: Exclude<PauseMenuTab, 'pause'>;
   private settingsMenuTab: SettingsScreenTab = 'graphics';
   private settingsBindingError: string | undefined;
   private brightnessOverlay?: Phaser.GameObjects.Rectangle;
@@ -985,6 +988,10 @@ export class GameScene extends Phaser.Scene {
       getForwardDirection: (rotation) => this.getForwardDirection(rotation)
     });
     this.createInput();
+    this.audio.applySettings(this.gameSettings.sound);
+    this.audio.installUnlockListeners();
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => this.audio.dispose());
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.audio.dispose());
     this.createBackgroundTextures();
     this.applyProgressionState(loadProgressionState());
     this.showStartScreen();
@@ -1725,6 +1732,7 @@ export class GameScene extends Phaser.Scene {
       runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
       runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
       runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog(),
+      runHarnessAudio: () => this.runTestHarnessAudio(),
       runHarnessDebugMenuHangar: () => this.runTestHarnessDebugMenuHangar(),
       runHarnessShopTerminal: () => this.runTestHarnessShopTerminal(),
       runHarnessStartupNavigation: () => this.runTestHarnessStartupNavigation(),
@@ -2044,6 +2052,7 @@ export class GameScene extends Phaser.Scene {
       isSectorScannerAvailable(this.progressionState)
     );
     const foregroundPanelCount = [this.mainMenuScreen, this.shipSelectScreen, this.shopScreen, this.resultsScreen].filter(Boolean).length;
+    const audioSnapshot = this.audio.getSnapshot();
 
     return {
       selectedShipId: selectedShip.id,
@@ -2142,6 +2151,17 @@ export class GameScene extends Phaser.Scene {
       finalDamageSource: this.runCombatStats.finalDamageSource,
       finalDamageAmount: this.runCombatStats.finalDamageAmount,
       autoOpenDebriefOnDeath: this.gameSettings.autoOpenDebriefOnDeath,
+      audioAvailable: audioSnapshot.available,
+      audioUnlocked: audioSnapshot.unlocked,
+      audioMuted: audioSnapshot.muted,
+      audioMasterVolume: audioSnapshot.volumes.masterVolume,
+      audioMusicVolume: audioSnapshot.volumes.musicVolume,
+      audioSfxVolume: audioSnapshot.volumes.sfxVolume,
+      audioUiVolume: audioSnapshot.volumes.uiVolume,
+      audioEffectiveSfxGain: audioSnapshot.effectiveGains.sfx,
+      audioEffectiveUiGain: audioSnapshot.effectiveGains.ui,
+      audioEffectiveMusicGain: audioSnapshot.effectiveGains.music,
+      audioRecentCueIds: audioSnapshot.recentCueIds,
       autoWeaponId: this.playerWeapons.activeAutoWeaponId,
       primaryWeaponId: this.playerWeapons.activePrimaryWeaponId,
       secondaryWeaponId: this.playerWeapons.activeSecondaryWeaponId,
@@ -2247,6 +2267,73 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  private runTestHarnessAudio(): void {
+    document.body.setAttribute('data-starvivors-audio-harness', 'pending');
+    const originalSettings = cloneGameSettings(this.gameSettings);
+    const audioSettings = cloneGameSettings(this.gameSettings);
+    audioSettings.sound = {
+      masterVolume: 0.5,
+      musicVolume: 0.2,
+      sfxVolume: 0.4,
+      uiVolume: 0.3,
+      muted: false
+    };
+
+    this.gameSettings = audioSettings;
+    saveGameSettings(this.gameSettings);
+    this.applyRuntimeSettings();
+    const settingsState = this.getTestHarnessState();
+    this.audio.clearHistory();
+
+    const expectedCueIds: AudioCueId[] = [
+      'player-fire',
+      'enemy-fire',
+      'projectile-hit',
+      'scrap-pickup',
+      'upgrade-pickup',
+      'upgrade-selected',
+      'low-fuel-warning',
+      'mission-complete',
+      'black-hole-warning',
+      'ui-confirm',
+      'ui-back'
+    ];
+    for (const cueId of expectedCueIds) {
+      this.playAudioCue(cueId, { bypassCooldown: true });
+    }
+
+    const cueState = this.getTestHarnessState();
+    const recentCueIds = new Set(cueState.audioRecentCueIds);
+    const settingsApplied =
+      Math.abs(settingsState.audioEffectiveSfxGain - 0.2) < 0.001 &&
+      Math.abs(settingsState.audioEffectiveUiGain - 0.15) < 0.001 &&
+      Math.abs(settingsState.audioEffectiveMusicGain - 0.1) < 0.001;
+    const cuesRecorded = expectedCueIds.every((cueId) => recentCueIds.has(cueId));
+    const pass = settingsApplied && cuesRecorded;
+
+    document.body.setAttribute('data-starvivors-audio-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-audio-harness-details',
+      JSON.stringify({
+        settingsApplied,
+        cuesRecorded,
+        expectedCueIds,
+        audioAvailable: cueState.audioAvailable,
+        audioUnlocked: cueState.audioUnlocked,
+        audioRecentCueIds: cueState.audioRecentCueIds,
+        effectiveGains: {
+          sfx: settingsState.audioEffectiveSfxGain,
+          ui: settingsState.audioEffectiveUiGain,
+          music: settingsState.audioEffectiveMusicGain
+        }
+      })
+    );
+
+    this.gameSettings = originalSettings;
+    saveGameSettings(this.gameSettings);
+    this.applyRuntimeSettings();
+  }
+
   private runTestHarnessDebugMenuHangar(): void {
     runDebugMenuHangarHarness(this.createPreRunHarnessAdapter());
   }
@@ -2280,16 +2367,30 @@ export class GameScene extends Phaser.Scene {
         showShipSelect: () => this.showShipSelect(),
         showShopFromMainMenu: () => this.showShop('mainMenu'),
         showSettings: () => this.showSettings(),
+        showSoundSettings: () => {
+          this.settingsMenuTab = 'sound';
+          this.showSettings();
+        },
         showStartScreen: () => this.showStartScreen(),
         showResultsPanel: (tab) => this.showResultsPanel(tab),
         openPauseSettings: () => {
-          this.startRun();
-          this.openPauseMenu(this.time.now, 'graphics');
+          this.stageVisualPauseSettings('graphics');
+        },
+        openPauseSoundSettings: () => {
+          this.stageVisualPauseSettings('sound');
         },
         stageDebrief: () => this.stageVisualDebriefHarness()
       },
       moduleId
     );
+  }
+
+  private stageVisualPauseSettings(tab: Exclude<PauseMenuTab, 'pause'>): void {
+    this.pendingVisualPauseSettingsTab = tab;
+    this.startRun();
+    if (this.gameFlowState !== 'running') {
+      this.pendingVisualPauseSettingsTab = undefined;
+    }
   }
 
   private stageVisualDebriefHarness(): void {
@@ -4925,6 +5026,7 @@ export class GameScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(1000);
 
+    this.openPendingVisualPauseSettings();
     this.gameplayHud.create();
     this.minimap.create();
     this.collisionDebugOverlay.create();
@@ -4938,6 +5040,18 @@ export class GameScene extends Phaser.Scene {
     this.updateGameplayHud(this.time.now);
     this.updateMinimap();
     this.updateDebugText(0);
+  }
+
+  private openPendingVisualPauseSettings(): void {
+    const tab = this.pendingVisualPauseSettingsTab;
+    if (!tab) {
+      return;
+    }
+
+    this.pendingVisualPauseSettingsTab = undefined;
+    this.openPauseMenu(this.time.now, tab);
+    document.body.setAttribute('data-starvivors-visual-pause-open', String(this.isPauseMenuOpen));
+    document.body.setAttribute('data-starvivors-visual-pause-tab', this.pauseMenuTab);
   }
 
   private getConfiguredSectorScale(): SectorScale {
@@ -5129,6 +5243,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    this.playUiCue('ui-confirm');
     this.selectedMissionId = this.getConfiguredMissionId();
     this.destroyMainMenuScreen();
     this.destroyShipSelectScreen();
@@ -5167,6 +5282,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     const previousFlowState = this.gameFlowState;
+    if (previousFlowState !== 'command') {
+      this.playUiCue('ui-tab');
+    }
     this.gameFlowState = 'command';
     this.ensureStagedArenaBackdrop(previousFlowState === 'results' || previousFlowState === 'running');
     this.destroyForegroundPanelScreen();
@@ -5205,6 +5323,9 @@ export class GameScene extends Phaser.Scene {
 
   private showSettings(): void {
     const previousFlowState = this.gameFlowState;
+    if (previousFlowState !== 'settings') {
+      this.playUiCue('ui-tab');
+    }
     this.gameFlowState = 'settings';
     if (previousFlowState !== 'settings') {
       this.awaitingBinding = undefined;
@@ -5227,6 +5348,7 @@ export class GameScene extends Phaser.Scene {
       isActionActive,
       resetCursor: () => this.resetUiCursor(),
       onSelectTab: (tab) => {
+        this.playUiCue('ui-tab');
         this.settingsMenuTab = tab;
         this.awaitingBinding = undefined;
         this.settingsBindingError = undefined;
@@ -5238,6 +5360,8 @@ export class GameScene extends Phaser.Scene {
         this.gameSettings = resetControlSettings(this.gameSettings);
         this.rebuildControlKeys();
         this.settingsBindingError = undefined;
+        this.applyRuntimeSettings();
+        this.playUiCue('ui-confirm');
         this.refreshCurrentPanel();
       },
       onResetAll: () => {
@@ -5245,6 +5369,7 @@ export class GameScene extends Phaser.Scene {
         this.rebuildControlKeys();
         this.settingsBindingError = undefined;
         this.applyRuntimeSettings();
+        this.playUiCue('ui-confirm');
         this.refreshCurrentPanel();
       }
     });
@@ -5280,6 +5405,9 @@ export class GameScene extends Phaser.Scene {
 
   private showShipSelect(): void {
     const previousFlowState = this.gameFlowState;
+    if (previousFlowState !== 'shipSelect') {
+      this.playUiCue('ui-tab');
+    }
     this.gameFlowState = 'shipSelect';
     this.ensureStagedArenaBackdrop(previousFlowState === 'results' || previousFlowState === 'running');
     this.destroyForegroundPanelScreen();
@@ -5470,6 +5598,9 @@ export class GameScene extends Phaser.Scene {
     }
 
     const previousFlowState = this.gameFlowState;
+    if (previousFlowState !== 'shop') {
+      this.playUiCue('ui-tab');
+    }
     const enteredFromResults = backTarget === 'results';
     this.shopBackTarget = 'mainMenu';
     this.gameFlowState = 'shop';
@@ -5541,11 +5672,13 @@ export class GameScene extends Phaser.Scene {
     this.shopSelectedSection = section;
     this.shopSelectedUpgradeId = null;
     this.shopListScrollIndex = 0;
+    this.playUiCue('ui-tab');
     this.refreshCurrentPanel();
   }
 
   private selectShopUpgrade(id: ShopTerminalUpgradeId): void {
     this.shopSelectedUpgradeId = id;
+    this.playUiCue('ui-tab');
     this.refreshCurrentPanel();
   }
 
@@ -5713,6 +5846,7 @@ export class GameScene extends Phaser.Scene {
     this.permanentUpgradeLevels[upgrade.id] += 1;
     this.activePermanentUpgradeLevels[upgrade.id] = this.permanentUpgradeLevels[upgrade.id];
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5772,6 +5906,7 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits = result.totalCredits;
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5792,6 +5927,7 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits = result.totalCredits;
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5805,6 +5941,7 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits = result.totalCredits;
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5818,6 +5955,7 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits = result.totalCredits;
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5826,6 +5964,7 @@ export class GameScene extends Phaser.Scene {
     const activeLevel = this.getActivePermanentUpgradeLevel(id);
     this.activePermanentUpgradeLevels[id] = Phaser.Math.Clamp(activeLevel + delta, 0, purchasedLevel);
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5839,6 +5978,7 @@ export class GameScene extends Phaser.Scene {
     this.totalCredits = result.totalCredits;
     this.saveProgression();
     this.updateMinimap();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -5851,6 +5991,7 @@ export class GameScene extends Phaser.Scene {
 
     this.totalCredits = result.totalCredits;
     this.saveProgression();
+    this.playUiCue('ui-confirm');
     this.refreshCurrentPanel();
   }
 
@@ -7391,6 +7532,10 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
+    if (result.isInsideInfluence) {
+      this.playSfxCue('black-hole-warning');
+    }
+
     if (!this.isBlackHolePlayerCaptureEnabled) {
       this.blackHolePlayerCaptureStartedAt = null;
       return;
@@ -8242,6 +8387,7 @@ export class GameScene extends Phaser.Scene {
   private collectScrapPickup(scrap: ScrapPickup): void {
     if (scrap.kind === 'banked-upgrade') {
       this.bankedUpgrades += 1;
+      this.playSfxCue('upgrade-pickup');
       this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Upgrade banked', 0xffc857);
       this.destroyScrapPickup(scrap);
       this.updateGameplayHud(this.time.now);
@@ -8251,6 +8397,7 @@ export class GameScene extends Phaser.Scene {
 
     if (scrap.kind === 'special-upgrade') {
       this.pendingRareUpgrades += 1;
+      this.playSfxCue('rare-upgrade-pickup');
       this.emitUpgradePickupFeedback(scrap.body.x, scrap.body.y, 'Rare upgrade banked', 0xffc857);
       this.destroyScrapPickup(scrap);
       this.updateGameplayHud(this.time.now);
@@ -8261,6 +8408,7 @@ export class GameScene extends Phaser.Scene {
     const scrapValue = this.getCollectedScrapValue(scrap.value);
     this.addRunScrap(scrapValue);
     this.grantXp(this.getScrapXpValue(scrapValue));
+    this.playSfxCue('scrap-pickup');
     this.emitScrapPickupFeedback(scrap.body.x, scrap.body.y, scrapValue);
     this.destroyScrapPickup(scrap);
   }
@@ -8495,7 +8643,12 @@ export class GameScene extends Phaser.Scene {
         ? RUN_FUEL_SUPPORT_THRUST_DRAIN_PER_SECOND
         : 0;
     const drain = Math.max(mainDrain, supportDrain);
+    const previousFuel = this.fuel;
     this.fuel = Math.max(0, this.fuel - drain * deltaSeconds);
+    const lowFuelThreshold = this.getRunMaxFuel() * 0.18;
+    if (drain > 0 && this.fuel <= lowFuelThreshold && previousFuel > this.fuel) {
+      this.playSfxCue('low-fuel-warning');
+    }
   }
 
   private refillFuel(): void {
@@ -8630,6 +8783,7 @@ export class GameScene extends Phaser.Scene {
     this.missionRuntime.completedAt = time;
     this.missionRuntime.failedAt = null;
     this.missionRuntime.failureReason = null;
+    this.playSfxCue('mission-complete', { bypassCooldown: true });
     const resolution = resolveMissionReward(this.progressionState, this.missionRuntime.definition);
     this.recordUnlockedRewards(resolution.newlyUnlockedHooks);
     this.updateGameplayHud(time);
@@ -8874,12 +9028,16 @@ export class GameScene extends Phaser.Scene {
       width: 150,
       height: 40,
       label: 'Stay',
-      callback: () => this.closeEjectConfirmation(),
+      callback: () => {
+        this.playUiCue('ui-back');
+        this.closeEjectConfirmation();
+      },
       isActionActive: () => Boolean(this.ejectConfirmScreen) && this.gameFlowState === 'running',
       resetCursor: () => this.resetUiCursor()
     });
 
     this.ejectConfirmScreen = { container, actionZones };
+    this.playUiCue('ui-confirm');
   }
 
   private closeEjectConfirmation(): void {
@@ -8909,6 +9067,7 @@ export class GameScene extends Phaser.Scene {
     this.failMission('run-ended', this.time.now);
     this.captureRunResults(this.time.now);
     this.payRunCredits();
+    this.playSfxCue('eject-confirmed', { bypassCooldown: true });
     this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
@@ -9130,6 +9289,7 @@ export class GameScene extends Phaser.Scene {
     this.settingsBindingError = undefined;
     this.pauseMenuOpenedAt = time;
     this.refreshPauseMenu();
+    this.playUiCue('ui-confirm');
   }
 
   private closePauseMenu(time: number): void {
@@ -9151,6 +9311,7 @@ export class GameScene extends Phaser.Scene {
     });
     this.isPauseMenuOpen = false;
     this.updateGameplayHud(time);
+    this.playUiCue('ui-back');
   }
 
   private refreshPauseMenu(): void {
@@ -9187,6 +9348,7 @@ export class GameScene extends Phaser.Scene {
         this.showMainMenu();
       },
       onSelectTab: (tab) => {
+        this.playUiCue('ui-tab');
         this.pauseMenuTab = tab;
         this.awaitingBinding = undefined;
         this.settingsBindingError = undefined;
@@ -9199,6 +9361,8 @@ export class GameScene extends Phaser.Scene {
         this.rebuildControlKeys();
         this.awaitingBinding = undefined;
         this.settingsBindingError = undefined;
+        this.applyRuntimeSettings();
+        this.playUiCue('ui-confirm');
         this.refreshPauseMenu();
       },
       onResetAll: () => {
@@ -9207,6 +9371,7 @@ export class GameScene extends Phaser.Scene {
         this.awaitingBinding = undefined;
         this.settingsBindingError = undefined;
         this.applyRuntimeSettings();
+        this.playUiCue('ui-confirm');
         this.refreshPauseMenu();
       }
     });
@@ -9218,13 +9383,28 @@ export class GameScene extends Phaser.Scene {
     this.rebuildControlKeys();
     this.settingsBindingError = undefined;
     this.applyRuntimeSettings();
+    this.playUiCue('ui-confirm');
     this.refreshActiveSettingsUi();
   }
 
   private applyRuntimeSettings(): void {
     this.gameplayHud.setTextScale(this.gameSettings.accessibility.textScale);
     this.gameplayHud.setHighContrast(this.gameSettings.accessibility.highContrast);
+    this.audio.applySettings(this.gameSettings.sound);
     this.updateBrightnessOverlay();
+  }
+
+  private playAudioCue(cueId: AudioCueId, options: { bypassCooldown?: boolean } = {}): boolean {
+    const now = this.time?.now ?? (typeof performance === 'undefined' ? Date.now() : performance.now());
+    return this.audio.playCue(cueId, now, options);
+  }
+
+  private playSfxCue(cueId: AudioCueId, options: { bypassCooldown?: boolean } = {}): boolean {
+    return this.playAudioCue(cueId, options);
+  }
+
+  private playUiCue(cueId: AudioCueId, options: { bypassCooldown?: boolean } = {}): boolean {
+    return this.playAudioCue(cueId, options);
   }
 
   private updateBrightnessOverlay(): void {
@@ -9325,12 +9505,16 @@ export class GameScene extends Phaser.Scene {
         const result = setKeyBindingIfAvailable(this.gameSettings, action, slot, event.code);
         if (result.conflictLabel) {
           this.settingsBindingError = `${event.code} is already assigned to ${result.conflictLabel}.`;
+          this.playUiCue('ui-error');
         } else {
           this.gameSettings = result.settings;
           saveGameSettings(this.gameSettings);
           this.rebuildControlKeys();
           this.settingsBindingError = undefined;
+          this.playUiCue('ui-confirm');
         }
+      } else {
+        this.playUiCue('ui-back');
       }
 
       this.awaitingBinding = undefined;
@@ -9418,6 +9602,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshUpgradeOverlayText();
     this.upgradeOverlayUi.showOverlay();
     this.updateUpgradeButton();
+    this.playUiCue('ui-confirm');
   }
 
   private openRareUpgradeOverlay(time: number): void {
@@ -9442,6 +9627,7 @@ export class GameScene extends Phaser.Scene {
     this.refreshUpgradeOverlayText();
     this.upgradeOverlayUi.showOverlay();
     this.updateUpgradeButton();
+    this.playUiCue('ui-confirm');
   }
 
   private closeUpgradeOverlay(time: number): void {
@@ -9632,6 +9818,7 @@ export class GameScene extends Phaser.Scene {
     this.hasResolvedSecondaryWeaponChoice = true;
     this.ensureRammingShieldRuntime();
     this.bankedUpgrades -= 1;
+    this.playUiCue('upgrade-selected');
     this.advanceOrCloseNormalUpgradeOverlay(time);
   }
 
@@ -9659,6 +9846,7 @@ export class GameScene extends Phaser.Scene {
     } else {
       this.bankedUpgrades -= 1;
     }
+    this.playUiCue('upgrade-selected');
 
     if (isRareChoice) {
       this.advanceOrCloseRareUpgradeOverlay(time);
@@ -11037,6 +11225,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitRammingShieldDamageFeedback(impactX: number, impactY: number): void {
+    this.playSfxCue('shield-block');
     const effectPosition = this.getNearestWrappedRenderPosition(impactX, impactY);
     const particleCount = this.getNonCriticalParticleCount(9);
     const flash = this.add.circle(effectPosition.x, effectPosition.y, 14, 0x42f5d7, this.getFlashAlpha(0.42));
@@ -11507,6 +11696,7 @@ export class GameScene extends Phaser.Scene {
     this.recordDamageTaken(hullDamage, options.source ?? 'enemy');
     this.isPulseEmergencyCharged = this.getRunUpgradeLevelById('pulse_emergency_discharge') > 0;
     this.emitFloatingDamageNumber(impactX, impactY, hullDamage, options.source ?? 'enemy');
+    this.playSfxCue('hull-damage');
     this.emitPlayerDamageFeedback(impactX, impactY);
     this.shakeCamera(120, Math.min(0.012, 0.004 + hullDamage / Math.max(1, this.getPlayerMaxHull()) * 0.035));
     this.updateGameplayHud(time);
@@ -11526,6 +11716,7 @@ export class GameScene extends Phaser.Scene {
     while (this.playerXp >= this.nextXpThreshold) {
       this.playerXp -= this.nextXpThreshold;
       this.bankedUpgrades += 1;
+      this.playSfxCue('upgrade-pickup');
       this.nextXpThreshold = Math.ceil(this.nextXpThreshold * XP_THRESHOLD_GROWTH);
     }
 
@@ -11646,6 +11837,7 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = 0;
     this.captureRunResults(this.time.now);
     this.payRunCredits();
+    this.playSfxCue('player-death', { bypassCooldown: true });
     this.emitPlayerDeathShards();
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
@@ -11884,6 +12076,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private showResultsPanel(tab: ResultsPanelTab): void {
+    const previousFlowState = this.gameFlowState;
+    const previousResultsTab = this.resultsPanelTab;
+    if (!this.isBootStartContext && (previousFlowState !== 'results' || previousResultsTab !== tab)) {
+      this.playUiCue('ui-tab');
+    }
     this.gameFlowState = 'results';
     this.resultsPanelTab = tab;
     this.gameplayHud.closeMissionLog();
@@ -12236,6 +12433,7 @@ export class GameScene extends Phaser.Scene {
       expiresAt: this.time.now + (request.range / Math.max(1, request.speed)) * 1000,
       distanceRemaining: request.range
     });
+    this.playSfxCue('enemy-fire');
   }
 
   private createLiveEnemyProjectileBody(
@@ -12365,6 +12563,7 @@ export class GameScene extends Phaser.Scene {
         colors: this.getEnemyProjectileColorOverrides()
       })
     );
+    this.playSfxCue('enemy-fire');
   }
 
   private updateEnemyProjectiles(time: number, deltaSeconds: number): void {
@@ -12437,6 +12636,7 @@ export class GameScene extends Phaser.Scene {
       targets: this.enemyWreckageDebris,
       getTargetHitRadius: (debris) => this.getDebrisCollisionRadius(debris),
       onHit: (debris, i) => {
+        this.playSfxCue('debris-impact');
         this.damageDebris(
           debris,
           this.rollSourceDamage(projectile.damage, projectile.damageVariance ?? ENEMY_PROJECTILE_DAMAGE_VARIANCE),
@@ -13403,7 +13603,8 @@ export class GameScene extends Phaser.Scene {
       damageMultiplier,
       areaMultiplier,
       isOverloaded,
-      isEmergencyEmpowered
+      isEmergencyEmpowered,
+      isBurstFollowUp: false
     });
 
     for (let burstIndex = 1; burstIndex < burstCount; burstIndex += 1) {
@@ -13416,7 +13617,8 @@ export class GameScene extends Phaser.Scene {
           damageMultiplier,
           areaMultiplier,
           isOverloaded,
-          isEmergencyEmpowered
+          isEmergencyEmpowered,
+          isBurstFollowUp: true
         });
       });
     }
@@ -13432,8 +13634,10 @@ export class GameScene extends Phaser.Scene {
       areaMultiplier: number;
       isOverloaded: boolean;
       isEmergencyEmpowered: boolean;
+      isBurstFollowUp: boolean;
     }
   ): { cooldownMs: number } {
+    const { isBurstFollowUp, ...projectileModifiers } = modifiers;
     const result = fireProjectileWeaponSystem({
       scene: this,
       resolved,
@@ -13443,10 +13647,13 @@ export class GameScene extends Phaser.Scene {
       playerRotation: this.player.rotation,
       getForwardDirection: (rotation) => this.getForwardDirection(rotation),
       projectileColors: this.getPlayerProjectileColorOverrides(),
-      ...modifiers
+      ...projectileModifiers
     });
 
     this.playerProjectiles.push(...result.projectiles);
+    if (result.projectiles.length > 0) {
+      this.playSfxCue(isBurstFollowUp ? 'player-burst-fire' : 'player-fire');
+    }
     return { cooldownMs: result.cooldownMs };
   }
 
@@ -13555,6 +13762,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitShipBulletImpactExplosion(x: number, y: number): void {
+    this.playSfxCue('projectile-hit');
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     const particleCount = this.getNonCriticalParticleCount(10);
     const flash = this.add.circle(effectPosition.x, effectPosition.y, 10, 0xf2fbff, this.getFlashAlpha(0.58));
@@ -13599,6 +13807,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private emitShipCollisionImpactExplosion(x: number, y: number): void {
+    this.playSfxCue('world-impact');
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     const particleCount = this.getNonCriticalParticleCount(9);
     this.shakeCamera(95, 0.006);
@@ -13636,6 +13845,7 @@ export class GameScene extends Phaser.Scene {
     _tier: AsteroidTier,
     projectileHitRadius = PLAYER_PROJECTILE_HIT_RADIUS
   ): void {
+    this.playSfxCue('asteroid-impact');
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
     x = effectPosition.x;
     y = effectPosition.y;
@@ -14429,6 +14639,7 @@ export class GameScene extends Phaser.Scene {
       targets: this.enemyWreckageDebris,
       getTargetHitRadius: (debris) => this.getDebrisCollisionRadius(debris),
       onHit: (debris, i) => {
+        this.playSfxCue('debris-impact');
         const appliedDamage = this.damageDebris(
           debris,
           this.rollPlayerDamage(projectile.damage, projectile.damageVariance ?? PLAYER_WEAPON_DAMAGE_VARIANCE),

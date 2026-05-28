@@ -156,6 +156,17 @@ export interface StarvivorsTestHarnessState {
   finalDamageSource: string;
   finalDamageAmount: number;
   autoOpenDebriefOnDeath: boolean;
+  audioAvailable: boolean;
+  audioUnlocked: boolean;
+  audioMuted: boolean;
+  audioMasterVolume: number;
+  audioMusicVolume: number;
+  audioSfxVolume: number;
+  audioUiVolume: number;
+  audioEffectiveSfxGain: number;
+  audioEffectiveUiGain: number;
+  audioEffectiveMusicGain: number;
+  audioRecentCueIds: string[];
   autoWeaponId: WeaponId | null;
   primaryWeaponId: WeaponId | null;
   secondaryWeaponId: WeaponId | null;

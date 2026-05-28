@@ -5,9 +5,11 @@ export interface GameSceneVisualHarnessAdapter {
   showShipSelect: () => void;
   showShopFromMainMenu: () => void;
   showSettings: () => void;
+  showSoundSettings: () => void;
   showStartScreen: () => void;
   showResultsPanel: (tab: ResultsPanelTab) => void;
   openPauseSettings: () => void;
+  openPauseSoundSettings: () => void;
   stageDebrief: () => void;
 }
 
@@ -24,6 +26,9 @@ export function runVisualModuleHarness(adapter: GameSceneVisualHarnessAdapter, m
       break;
     case 'settings':
       adapter.showSettings();
+      break;
+    case 'settingsSound':
+      adapter.showSoundSettings();
       break;
     case 'debrief':
       adapter.stageDebrief();
@@ -51,6 +56,9 @@ export function runVisualModuleHarness(adapter: GameSceneVisualHarnessAdapter, m
       break;
     case 'pauseSettings':
       adapter.openPauseSettings();
+      break;
+    case 'pauseSoundSettings':
+      adapter.openPauseSoundSettings();
       break;
     case 'start':
     default:

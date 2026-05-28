@@ -28,6 +28,16 @@ describe('visual module harness routing', () => {
     expect(adapter.openPauseSettings).toHaveBeenCalledTimes(1);
   });
 
+  it('routes sound settings modules to the sound tab hooks', () => {
+    const adapter = createAdapter();
+
+    runVisualModuleHarness(adapter, 'settingsSound');
+    runVisualModuleHarness(adapter, 'pauseSoundSettings');
+
+    expect(adapter.showSoundSettings).toHaveBeenCalledTimes(1);
+    expect(adapter.openPauseSoundSettings).toHaveBeenCalledTimes(1);
+  });
+
   it('falls back to the start screen for unknown modules', () => {
     const adapter = createAdapter();
 
@@ -43,9 +53,11 @@ function createAdapter(): GameSceneVisualHarnessAdapter {
     showShipSelect: vi.fn(),
     showShopFromMainMenu: vi.fn(),
     showSettings: vi.fn(),
+    showSoundSettings: vi.fn(),
     showStartScreen: vi.fn(),
     showResultsPanel: vi.fn(),
     openPauseSettings: vi.fn(),
+    openPauseSoundSettings: vi.fn(),
     stageDebrief: vi.fn()
   };
 }

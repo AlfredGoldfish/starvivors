@@ -38,6 +38,7 @@ export interface GameSceneHarnessAdapter {
   runHarnessEnemyScaling: HarnessRunner;
   runHarnessDirectCombatNumbers: HarnessRunner;
   runHarnessHudMissionLog: HarnessRunner;
+  runHarnessAudio: HarnessRunner;
   runHarnessDebugMenuHangar: HarnessRunner;
   runHarnessShopTerminal: HarnessRunner;
   runHarnessStartupNavigation: HarnessRunner;
@@ -77,6 +78,7 @@ type HarnessId =
   | 'enemyScaling'
   | 'directCombatNumbers'
   | 'hudMissionLog'
+  | 'audio'
   | 'debugMenuHangar'
   | 'shopTerminal'
   | 'startupNavigation'
@@ -127,6 +129,7 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
     adapter.startRun();
     adapter.runHarnessHudMissionLog();
   },
+  audio: (adapter) => adapter.runHarnessAudio(),
   debugMenuHangar: (adapter) => adapter.runHarnessDebugMenuHangar(),
   shopTerminal: (adapter) => adapter.runHarnessShopTerminal(),
   startupNavigation: (adapter) => adapter.runHarnessStartupNavigation(),
