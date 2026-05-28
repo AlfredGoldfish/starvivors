@@ -246,6 +246,12 @@ function resetTemporaryBuffs(enemies: EnemyLabInstance[], time: number): void {
       enemy.fireRateMultiplier = 1;
       enemy.damageMultiplier = 1;
     }
+
+    const reflectingUntil = getEnemyStateNumber(enemy, 'reflectingUntil');
+    if (reflectingUntil > 0 && time > reflectingUntil) {
+      enemy.stateData.reflecting = false;
+      enemy.stateData.reflectingUntil = 0;
+    }
   }
 }
 
@@ -365,6 +371,10 @@ function getEnemyDeconflictionMultiplier(enemy: EnemyLabInstance): number {
 function applySupportFields(input: UpdateEnemyLabAiInput): void {
   for (const source of input.enemies) {
     if (source.hp <= 0) {
+      continue;
+    }
+
+    if (hasModularAttacks(source)) {
       continue;
     }
 
@@ -589,6 +599,7 @@ function updateStatusShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstan
 }
 
 function updateSummonerShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): void {
+  const runtimeAttacks = hasModularAttacks(enemy);
   const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
   const distance = offset.length();
   const summonEveryMs = getParam(enemy.definition, 'summonEveryMs', 5200);
@@ -599,7 +610,7 @@ function updateSummonerShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInst
   const retreatRange = getParam(enemy.definition, 'retreatRange', 340);
   const elapsed = input.time - enemy.stateStartedAt;
 
-  if (enemy.state !== 'channel' && input.time >= getEnemyStateNumber(enemy, 'nextSummonAt')) {
+  if (!runtimeAttacks && enemy.state !== 'channel' && input.time >= getEnemyStateNumber(enemy, 'nextSummonAt')) {
     enemy.state = 'channel';
     enemy.stateStartedAt = input.time;
     enemy.stateData.summonsReleased = 0;
@@ -636,7 +647,9 @@ function updateSummonerShooter(input: UpdateEnemyLabAiInput, enemy: EnemyLabInst
     enemy.body.rotation = Math.atan2(direction.x, -direction.y);
     enemy.state = 'range';
     steerVelocity(input, enemy, desired);
-    maybeFireAtPlayer(input, enemy, direction);
+    if (!runtimeAttacks) {
+      maybeFireAtPlayer(input, enemy, direction);
+    }
   }
 }
 
@@ -656,7 +669,7 @@ function updateScrapThief(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance)
     const scrapOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, nearestScrap.x, nearestScrap.y);
     enemy.state = 'steal';
     steerToward(input, enemy, scrapOffset, getEnemySpeed(input, enemy));
-    if (scrapOffset.length() <= pickupRange) {
+    if (!hasModularAttacks(enemy) && scrapOffset.length() <= pickupRange) {
       const stolenValue = input.stealScrap?.(nearestScrap, enemy) ?? Math.max(1, nearestScrap.value ?? 1);
       nearestScrap.collected = true;
       enemy.carriedScrap += stolenValue;
@@ -765,6 +778,12 @@ function updateProximityDetonate(input: UpdateEnemyLabAiInput, enemy: EnemyLabIn
   const blastDamage = getParam(enemy.definition, 'blastDamage', 35);
   const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
 
+  if (hasModularAttacks(enemy)) {
+    enemy.state = 'approach';
+    steerToward(input, enemy, offset, getEnemySpeed(input, enemy));
+    return;
+  }
+
   if (enemy.state !== 'detonating' && offset.length() <= triggerRange) {
     enemy.state = 'detonating';
     enemy.stateStartedAt = input.time;
@@ -799,6 +818,19 @@ function updateSniper(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance): vo
   const lockMs = getParam(enemy.definition, 'lockMs', 380);
   const cooldownMs = getParam(enemy.definition, 'cooldownMs', 1800);
   const elapsed = input.time - enemy.stateStartedAt;
+
+  if (hasModularAttacks(enemy)) {
+    enemy.state = 'hold-range';
+    const direction = distance > 0 ? offset.clone().scale(1 / distance) : new Phaser.Math.Vector2(0, 0);
+    const desired = distance < preferredRange * 0.72
+      ? direction.scale(-getEnemySpeed(input, enemy) * 0.55)
+      : new Phaser.Math.Vector2(0, 0);
+    steerVelocity(input, enemy, desired);
+    if (distance > 0) {
+      enemy.body.rotation = Math.atan2(offset.x, -offset.y);
+    }
+    return;
+  }
 
   if (enemy.state === 'idle' || enemy.state === 'cooldown') {
     enemy.state = input.time >= enemy.nextFireAt ? 'aiming' : 'cooldown';
@@ -851,6 +883,10 @@ function updateCarrierSpawner(input: UpdateEnemyLabAiInput, enemy: EnemyLabInsta
   enemy.state = 'foundry';
   steerToward(input, enemy, offset, getEnemySpeed(input, enemy) * 0.45);
 
+  if (hasModularAttacks(enemy)) {
+    return;
+  }
+
   if (input.time >= enemy.nextFireAt && enemy.childrenSpawned < maxChildren) {
     const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
     const distance = enemy.definition.visual.size * 0.75;
@@ -865,7 +901,7 @@ function updateSupportShip(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance
   const ally = findNearestAlly(input, enemy, true);
   enemy.state = enemy.definition.behavior.id === 'repairSupport' ? 'repair' : 'support';
 
-  if (enemy.definition.behavior.id === 'repairSupport' && ally) {
+  if (enemy.definition.behavior.id === 'repairSupport' && ally && !hasModularAttacks(enemy)) {
     const healRange = getParam(enemy.definition, 'healRange', 260);
     const healPerSecond = getParam(enemy.definition, 'healPerSecond', 13);
     const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, ally.body.x, ally.body.y);
@@ -906,7 +942,7 @@ function updateScrapScavenger(input: UpdateEnemyLabAiInput, enemy: EnemyLabInsta
     enemy.state = 'scavenge';
     const scrapOffset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, nearestScrap.x, nearestScrap.y);
     steerToward(input, enemy, scrapOffset, getEnemySpeed(input, enemy));
-    if (scrapOffset.length() <= pickupRange) {
+    if (!hasModularAttacks(enemy) && scrapOffset.length() <= pickupRange) {
       const stolenValue = input.stealScrap?.(nearestScrap, enemy) ?? Math.max(1, nearestScrap.value ?? 1);
       nearestScrap.collected = true;
       enemy.carriedScrap += stolenValue;
@@ -948,6 +984,14 @@ function updateReflector(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance):
   const cooldownMs = getParam(enemy.definition, 'cooldownMs', 2800);
   const elapsed = input.time - enemy.stateStartedAt;
   const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+
+  if (hasModularAttacks(enemy)) {
+    updateChase(input, enemy, 0.7);
+    if (offset.lengthSq() > 0) {
+      enemy.body.rotation = Math.atan2(offset.x, -offset.y);
+    }
+    return;
+  }
 
   if (enemy.state !== 'shield' && input.time >= enemy.nextFireAt) {
     enemy.state = 'shield';
@@ -1005,7 +1049,7 @@ function maybeFireAtPlayer(
   direction: Phaser.Math.Vector2,
   statuses?: EnemyStatusEffect[]
 ): void {
-  if (!enemy.definition.weapon || input.time < enemy.nextFireAt) {
+  if (hasModularAttacks(enemy) || !enemy.definition.weapon || input.time < enemy.nextFireAt) {
     return;
   }
 
@@ -1136,6 +1180,10 @@ function findNearestAlly(
       getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, a.body.x, a.body.y).lengthSq() -
       getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, b.body.x, b.body.y).lengthSq()
   )[0];
+}
+
+function hasModularAttacks(enemy: EnemyLabInstance): boolean {
+  return Boolean(enemy.attackRuntime && enemy.attackRuntime.attacks.some((slot) => slot.slot.enabled !== false));
 }
 
 function updatePatrolPath(input: UpdateEnemyLabAiInput, enemy: EnemyLabInstance, waypoints: Phaser.Math.Vector2[]): void {

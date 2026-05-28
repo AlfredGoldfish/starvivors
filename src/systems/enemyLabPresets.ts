@@ -3,6 +3,7 @@ import {
   type EnemyLabDefinition,
   type EnemyLabSquadDefinition
 } from '../data/enemyLabDefinitions';
+import { normalizeAttackLoadoutSlots, type AttackLoadoutSlot } from '../data/enemyAttackDefinitions';
 import { createObjectSizeProfileFromCollisionRadius, resolveObjectSizeProfile } from '../data/objectSizeProfile';
 import {
   FORGE_STYLE_GUIDE_VERSION,
@@ -44,7 +45,7 @@ export interface EnemyLabStatOverrides {
 
 export interface EnemyLabVariantPreset {
   type: 'starvivors-enemy-lab-variant';
-  version: 1;
+  version: 2;
   id: string;
   baseDefinitionId: string;
   displayName: string;
@@ -55,6 +56,7 @@ export interface EnemyLabVariantPreset {
   visualOverrides: EnemyLabVisualOverrides;
   statOverrides: EnemyLabStatOverrides;
   behaviorParamOverrides: Record<string, number | string | boolean>;
+  attackLoadoutOverride?: AttackLoadoutSlot[];
 }
 
 export interface EnemyLabSquadPresetEntry {
@@ -64,11 +66,12 @@ export interface EnemyLabSquadPresetEntry {
   y: number;
   spawnDelayMs?: number;
   notes?: string;
+  attackLoadoutOverride?: AttackLoadoutSlot[];
 }
 
 export interface EnemyLabSquadPreset {
   type: 'starvivors-enemy-lab-squad';
-  version: 1;
+  version: 2;
   id: string;
   displayName: string;
   status: EnemyLabAssetStatus;
@@ -146,8 +149,16 @@ export function loadEnemyLabStorageState(): EnemyLabStorageState {
 
     const parsed = JSON.parse(raw) as Partial<EnemyLabStorageState>;
     return {
-      variants: Array.isArray(parsed.variants) ? parsed.variants.filter(isEnemyLabVariantPreset) : [],
-      squads: Array.isArray(parsed.squads) ? parsed.squads.filter(isEnemyLabSquadPreset) : [],
+      variants: Array.isArray(parsed.variants)
+        ? parsed.variants
+            .map(normalizeEnemyLabVariantPreset)
+            .filter((variant): variant is EnemyLabVariantPreset => Boolean(variant))
+        : [],
+      squads: Array.isArray(parsed.squads)
+        ? parsed.squads
+            .map(normalizeEnemyLabSquadPreset)
+            .filter((squad): squad is EnemyLabSquadPreset => Boolean(squad))
+        : [],
       forgeAssets: Array.isArray(parsed.forgeAssets)
         ? parsed.forgeAssets
             .map((candidate) => parseForgeAssetImport(JSON.stringify(candidate)))
@@ -172,7 +183,7 @@ export function createVariantFromDefinition(definition: EnemyLabDefinition): Ene
 
   return {
     type: 'starvivors-enemy-lab-variant',
-    version: 1,
+    version: 2,
     id: `${slugify(definition.displayName)}-${Date.now()}`,
     baseDefinitionId: definition.id,
     displayName: `${definition.displayName} Variant`,
@@ -284,7 +295,7 @@ export function convertBuiltInSquadToPreset(squad: EnemyLabSquadDefinition): Ene
 
   return {
     type: 'starvivors-enemy-lab-squad',
-    version: 1,
+    version: 2,
     id: `${slugify(squad.displayName)}-${Date.now()}`,
     displayName: `${squad.displayName} Custom`,
     status: 'Idea',
@@ -298,7 +309,7 @@ export function convertBuiltInSquadToPreset(squad: EnemyLabSquadDefinition): Ene
 export function createEmptySquadPreset(): EnemyLabSquadPreset {
   return {
     type: 'starvivors-enemy-lab-squad',
-    version: 1,
+    version: 2,
     id: `custom-squad-${Date.now()}`,
     displayName: 'Custom Squad',
     status: 'Idea',
@@ -427,14 +438,22 @@ export function parseEnemyLabPresetMarkdown(markdown: string): EnemyLabVariantPr
 
   try {
     const parsed = JSON.parse(raw) as unknown;
-    if (isEnemyLabVariantPreset(parsed) || isEnemyLabSquadPreset(parsed)) {
-      return parsed;
-    }
+    return normalizeEnemyLabVariantPreset(parsed) ?? normalizeEnemyLabSquadPreset(parsed);
   } catch {
     return undefined;
   }
+}
 
-  return undefined;
+export function parseEnemyVariantPresetMarkdown(markdown: string): EnemyLabVariantPreset | undefined {
+  const preset = parseEnemyLabPresetMarkdown(markdown);
+
+  return preset?.type === 'starvivors-enemy-lab-variant' ? preset : undefined;
+}
+
+export function parseEnemySquadPresetMarkdown(markdown: string): EnemyLabSquadPreset | undefined {
+  const preset = parseEnemyLabPresetMarkdown(markdown);
+
+  return preset?.type === 'starvivors-enemy-lab-squad' ? preset : undefined;
 }
 
 export function slugify(value: string): string {
@@ -458,31 +477,179 @@ function createMarkdownWithJson(title: string, rows: Array<[string, string]>, da
   ].join('\n');
 }
 
-function isEnemyLabVariantPreset(value: unknown): value is EnemyLabVariantPreset {
-  const candidate = value as Partial<EnemyLabVariantPreset>;
-  return (
-    candidate?.type === 'starvivors-enemy-lab-variant' &&
-    candidate.version === 1 &&
-    typeof candidate.id === 'string' &&
-    typeof candidate.baseDefinitionId === 'string' &&
-    typeof candidate.displayName === 'string'
-  );
+function normalizeEnemyLabVariantPreset(value: unknown): EnemyLabVariantPreset | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.type !== 'starvivors-enemy-lab-variant' ||
+    !isSupportedPresetVersion(candidate.version) ||
+    typeof candidate.id !== 'string' ||
+    typeof candidate.baseDefinitionId !== 'string' ||
+    typeof candidate.displayName !== 'string'
+  ) {
+    return undefined;
+  }
+
+  const attackLoadoutOverride = normalizeOptionalAttackLoadout(candidate.attackLoadoutOverride);
+
+  return {
+    type: 'starvivors-enemy-lab-variant',
+    version: 2,
+    id: candidate.id,
+    baseDefinitionId: candidate.baseDefinitionId,
+    displayName: candidate.displayName,
+    status: normalizeAssetStatus(candidate.status),
+    tags: normalizeStringList(candidate.tags),
+    notes: typeof candidate.notes === 'string' ? candidate.notes : '',
+    savedAt: typeof candidate.savedAt === 'string' ? candidate.savedAt : new Date().toISOString(),
+    visualOverrides: normalizeVisualOverrides(candidate.visualOverrides),
+    statOverrides: normalizeStatOverrides(candidate.statOverrides),
+    behaviorParamOverrides: normalizePrimitiveRecord(candidate.behaviorParamOverrides),
+    ...(attackLoadoutOverride ? { attackLoadoutOverride } : {})
+  };
 }
 
-function isEnemyLabSquadPreset(value: unknown): value is EnemyLabSquadPreset {
-  const candidate = value as Partial<EnemyLabSquadPreset>;
-  return (
-    candidate?.type === 'starvivors-enemy-lab-squad' &&
-    candidate.version === 1 &&
-    typeof candidate.id === 'string' &&
-    typeof candidate.displayName === 'string' &&
-    Array.isArray(candidate.entries)
-  );
+function normalizeEnemyLabSquadPreset(value: unknown): EnemyLabSquadPreset | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (
+    candidate.type !== 'starvivors-enemy-lab-squad' ||
+    !isSupportedPresetVersion(candidate.version) ||
+    typeof candidate.id !== 'string' ||
+    typeof candidate.displayName !== 'string' ||
+    !Array.isArray(candidate.entries)
+  ) {
+    return undefined;
+  }
+
+  return {
+    type: 'starvivors-enemy-lab-squad',
+    version: 2,
+    id: candidate.id,
+    displayName: candidate.displayName,
+    status: normalizeAssetStatus(candidate.status),
+    tags: normalizeStringList(candidate.tags),
+    notes: typeof candidate.notes === 'string' ? candidate.notes : '',
+    savedAt: typeof candidate.savedAt === 'string' ? candidate.savedAt : new Date().toISOString(),
+    entries: candidate.entries
+      .map(normalizeEnemyLabSquadPresetEntry)
+      .filter((entry): entry is EnemyLabSquadPresetEntry => Boolean(entry))
+  };
+}
+
+function normalizeEnemyLabSquadPresetEntry(value: unknown): EnemyLabSquadPresetEntry | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  if (typeof candidate.definitionId !== 'string') {
+    return undefined;
+  }
+
+  const spawnDelayMs = sanitizeOptionalNonNegativeNumber(candidate.spawnDelayMs);
+  const attackLoadoutOverride = normalizeOptionalAttackLoadout(candidate.attackLoadoutOverride);
+
+  return {
+    definitionId: candidate.definitionId,
+    ...(typeof candidate.variantId === 'string' && candidate.variantId.trim() ? { variantId: candidate.variantId } : {}),
+    x: sanitizeNumber(candidate.x, 0),
+    y: sanitizeNumber(candidate.y, 0),
+    ...(spawnDelayMs !== undefined ? { spawnDelayMs } : {}),
+    ...(typeof candidate.notes === 'string' ? { notes: candidate.notes } : {}),
+    ...(attackLoadoutOverride ? { attackLoadoutOverride } : {})
+  };
+}
+
+function isSupportedPresetVersion(value: unknown): boolean {
+  return value === 1 || value === 2;
+}
+
+function normalizeAssetStatus(value: unknown): EnemyLabAssetStatus {
+  return typeof value === 'string' && ENEMY_LAB_ASSET_STATUSES.includes(value as EnemyLabAssetStatus)
+    ? value as EnemyLabAssetStatus
+    : 'Idea';
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string')
+    : [];
+}
+
+function normalizeVisualOverrides(value: unknown): EnemyLabVisualOverrides {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+  return {
+    visualScale: sanitizePositiveNumber(raw.visualScale, 1),
+    scaleX: sanitizePositiveNumber(raw.scaleX, 1),
+    scaleY: sanitizePositiveNumber(raw.scaleY, 1),
+    rotationOffsetDegrees: sanitizeNumber(raw.rotationOffsetDegrees, 0),
+    glowScale: sanitizeNonNegativeNumber(raw.glowScale, 1)
+  };
+}
+
+function normalizeStatOverrides(value: unknown): EnemyLabStatOverrides {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+  return {
+    hp: sanitizePositiveNumber(raw.hp, 1),
+    speed: sanitizePositiveNumber(raw.speed, 1),
+    contactDamage: sanitizeNonNegativeNumber(raw.contactDamage, 0),
+    radius: sanitizePositiveNumber(raw.radius, 1)
+  };
+}
+
+function normalizePrimitiveRecord(value: unknown): Record<string, number | string | boolean> {
+  const raw = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const normalized: Record<string, number | string | boolean> = {};
+
+  for (const [key, entry] of Object.entries(raw)) {
+    if (
+      typeof entry === 'string' ||
+      typeof entry === 'boolean' ||
+      (typeof entry === 'number' && Number.isFinite(entry))
+    ) {
+      normalized[key] = entry;
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeOptionalAttackLoadout(value: unknown): AttackLoadoutSlot[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+
+  return normalizeAttackLoadoutSlots(value);
 }
 
 function sanitizePositiveNumber(value: unknown, fallback: number): number {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) && numberValue > 0 ? numberValue : fallback;
+}
+
+function sanitizeNonNegativeNumber(value: unknown, fallback: number): number {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : fallback;
+}
+
+function sanitizeOptionalNonNegativeNumber(value: unknown): number | undefined {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : undefined;
 }
 
 function sanitizeNumber(value: unknown, fallback: number): number {

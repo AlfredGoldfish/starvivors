@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 1 complete; Phase 2 started with a non-destructive Enemy Lab UI/data seed. Implementation target is Enemy Lab first. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 4 complete in Enemy Lab. Phase 5 attack batch polish is next. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -556,6 +556,26 @@ Acceptance:
 - Attack loadout presets round-trip with slots and params intact.
 
 ### Phase 4: Modular Attack Runtime
+
+Status: completed 2026-05-28.
+
+Progress:
+
+- Added `src/systems/enemyAttackRuntime.ts` with host/slot runtimes, queued/manual slots, cooldowns, windup/channel/active/recovery phases, target snapshots, runtime recipe normalization, and typed callbacks for projectiles, area damage, status, summons, heal/buff/shield/scrap, telegraphs, and lab effects.
+- Initialized spawned Enemy Lab enemies with attack runtimes from their cloned `attackLoadoutSnapshot`.
+- Wired Basic and Squad spawned enemies so persisted/default loadouts execute through the runtime while live `GameScene` remains untouched.
+- Gated legacy lab attack firing/spawning/support/detonation paths when a modular runtime is present, so movement behavior stays in `enemyLabAi.ts` without double-firing default loadouts.
+- Enabled Attack Tester `Fire Once`, `Auto-Cycle`, dummy/enemy/ally target spawning, and `Clear Tests` through a player-test runtime using the lab player body, velocity, facing, readability mode, and reduced-FX settings.
+- Added `enemyLabAttacks` harness coverage for `rail-line`, `simple-bolt`, `emp-nova`, and `summon-glyphs`.
+
+Verification:
+
+- `npm.cmd run test` passed with 19 files and 78 tests.
+- `npm.cmd run build` passed.
+- `npm.cmd run electron:build` passed.
+- Headless `/enemy-lab.html` Basic smoke showed the Basic tab active and enabled Attack Tester controls.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` reported `data-starvivors-enemy-lab-attack-harness="ready"` with slots `rail-line`, `simple-bolt`, `emp-nova`, and `summon-glyphs`.
+- Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
 
 Files to read:
 

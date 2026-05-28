@@ -11,10 +11,17 @@ import {
   type EnemyLabDefinition
 } from '../data/enemyLabDefinitions';
 import {
+  cloneAttackLoadoutSlots,
+  createDefaultAttackLoadoutSlot,
   getDefaultEnemyAttackLoadout,
   getEnemyAttackDefinition,
   getEnemyAttackDefinitions,
+  isEnemyAttackId,
+  normalizeAttackLoadoutSlots,
   resolveAttackLoadoutSlotParams,
+  type AttackLoadoutSlot,
+  type AttackTargetKind,
+  type EnemyAttackParamValue,
   type EnemyAttackId
 } from '../data/enemyAttackDefinitions';
 import {
@@ -72,6 +79,24 @@ import {
   type EnemyLabScrapTarget
 } from '../systems/enemyLabAi';
 import {
+  createAttackHostRuntime,
+  getEnabledAttackSlotIndices,
+  queueAttackSlot,
+  replaceAttackHostRuntimeLoadout,
+  updateAttackHostRuntime,
+  type AttackAreaDamageRequest,
+  type AttackBuffRequest,
+  type AttackHealRequest,
+  type AttackHostRuntime,
+  type AttackProjectileRequest,
+  type AttackScrapStealRequest,
+  type AttackShieldRequest,
+  type AttackStatusRequest,
+  type AttackSummonRequest,
+  type AttackTargetSnapshot,
+  type AttackVisualRequest
+} from '../systems/enemyAttackRuntime';
+import {
   applyPlayerStatusEffects,
   createPlayerStatusEffectRuntime,
   getActivePlayerStatusKinds,
@@ -89,7 +114,8 @@ import {
   spawnEnemyLabEnemy,
   type EnemyLabInstance
 } from '../systems/enemyLabSpawner';
-import { downloadTextFile, getTimestampSlug, loadMarkdownFile } from '../systems/debug/debugPersistence';
+import { downloadTextFile, getTimestampSlug, loadMarkdownFile, openDesktopDataFolder } from '../systems/debug/debugPersistence';
+import { isDesktopRuntime } from '../systems/desktopBridge';
 import {
   ENEMY_LAB_ASSET_STATUSES,
   ENEMY_LAB_QUICK_TAGS,
@@ -105,6 +131,8 @@ import {
   duplicateVariant,
   loadEnemyLabStorageState,
   parseEnemyLabPresetMarkdown,
+  parseEnemySquadPresetMarkdown,
+  parseEnemyVariantPresetMarkdown,
   saveEnemyLabStorageState,
   slugify,
   type EnemyLabAssetStatus,
@@ -113,6 +141,14 @@ import {
   type EnemyLabStorageState,
   type EnemyLabVariantPreset
 } from '../systems/enemyLabPresets';
+import {
+  createEnemyLabAttackLoadoutMarkdown,
+  createEnemyLabAttackLoadoutPreset,
+  createEnemyLabAttackTestMarkdown,
+  createEnemyLabAttackTestPreset,
+  parseEnemyLabAttackLoadoutMarkdown,
+  parseEnemyLabAttackTestMarkdown
+} from '../systems/enemyLabAttackPresets';
 import {
   FORGE_ASSET_STATUSES,
   FORGE_STYLE_GUIDE_VERSION,
@@ -162,6 +198,16 @@ interface EnemyLabProjectile {
 interface EnemyLabScrapProp extends EnemyLabScrapTarget {
   body: Phaser.GameObjects.Arc;
   value: number;
+}
+
+interface EnemyLabAttackTestTarget {
+  id: string;
+  kind: 'dummy' | 'enemy' | 'ally';
+  body: Phaser.GameObjects.Container;
+  label: Phaser.GameObjects.Text;
+  radius: number;
+  hp: number;
+  maxHp: number;
 }
 
 interface EnemyLabDiagnosticsContext {
@@ -309,6 +355,8 @@ const PROTOTYPE_ENEMY_SAMPLE_IDS = [
 ];
 type ForgePreviewMode = 'combat' | 'projectile-motion' | 'weapon-icon' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
 type EnemyLabMode = 'basic' | 'squads' | 'attack-tester' | 'stress' | 'presets';
+type AttackLoadoutEditorScope = 'basic' | 'attackTester' | 'squad';
+type EnemyLabPresetFolderCategory = 'variants' | 'squads' | 'loadouts' | 'attack-tests';
 type EnemyLabPreviewState = 'idle' | 'pursue' | 'telegraph' | 'attack' | 'hit' | 'death';
 type EnemyLabClutterTest = 'single' | 'squad' | 'swarm' | 'bullets' | 'asteroids' | 'asteroidGallery' | 'debris' | 'stress';
 
@@ -326,6 +374,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private projectiles: EnemyLabProjectile[] = [];
   private previewBodies: Phaser.GameObjects.Container[] = [];
   private testProps: Phaser.GameObjects.GameObject[] = [];
+  private attackTestTargets: EnemyLabAttackTestTarget[] = [];
   private labScrapProps: EnemyLabScrapProp[] = [];
   private overlay?: EnemyLabOverlayRefs;
   private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
@@ -337,6 +386,15 @@ export class EnemyLabScene extends Phaser.Scene {
   private selectedForgeAssetId = '';
   private selectedForgeLayerIndex = 0;
   private selectedAttackTestId: EnemyAttackId = 'rail-line';
+  private basicLoadoutDraftsByEnemyId: Record<string, AttackLoadoutSlot[]> = {};
+  private selectedBasicLoadoutSlotIndex = 0;
+  private attackTesterSlots: AttackLoadoutSlot[] = [createDefaultAttackLoadoutSlot('rail-line')];
+  private attackTesterRuntime?: AttackHostRuntime;
+  private attackTesterRuntimeSignature = '';
+  private attackTesterAutoCycleEnabled = false;
+  private nextAttackTesterAutoCycleAt = 0;
+  private selectedAttackTesterSlotIndex = 0;
+  private selectedSquadLoadoutSlotIndex = 0;
   private forgePreviewMode: ForgePreviewMode = 'combat';
   private forgeBatchCount = 8;
   private forgeAiTaskType: ForgeAiTaskType = 'batch';
@@ -365,6 +423,7 @@ export class EnemyLabScene extends Phaser.Scene {
   private isSimulationPaused = false;
   private playerHull = PLAYER_LAB_HULL;
   private nextPlayerFireAt = 0;
+  private nextAttackTestTargetId = 1;
   private nextForwardThrusterAt = 0;
   private nextReverseThrusterAt = 0;
   private nextLeftStrafeThrusterAt = 0;
@@ -430,7 +489,7 @@ export class EnemyLabScene extends Phaser.Scene {
       }
       this.delayedSquadSpawns = [];
       this.clearPreviewBodies();
-      this.clearTestProps();
+      this.clearAttackTests();
       this.clearEnemyCollisionDebug();
       this.overlay?.root.remove();
       this.overlay = undefined;
@@ -456,6 +515,7 @@ export class EnemyLabScene extends Phaser.Scene {
       this.measureDiagnosticsPhase(diagnostics, 'camera-lead', () => this.updateCameraLead());
       this.measureDiagnosticsPhase(diagnostics, 'player-firing', () => this.updatePlayerFiring(time));
       this.measureDiagnosticsPhase(diagnostics, 'projectiles', () => this.updateProjectiles(time, deltaSeconds));
+      this.measureDiagnosticsPhase(diagnostics, 'attack-tester', () => this.updateAttackTesterRuntime(time, deltaSeconds));
 
       this.measureDiagnosticsPhase(diagnostics, 'enemy-ai', () =>
         updateEnemyLabAi({
@@ -483,6 +543,7 @@ export class EnemyLabScene extends Phaser.Scene {
           emitLabBurst: (x, y, color, count) => this.emitLabBurst(x, y, color, count)
         })
       );
+      this.measureDiagnosticsPhase(diagnostics, 'enemy-attacks', () => this.updateEnemyAttackRuntimes(time, deltaSeconds));
 
       this.measureDiagnosticsPhase(diagnostics, 'enemy-contacts', () => this.updateEnemyContacts(time));
       this.measureDiagnosticsPhase(diagnostics, 'enemy-cleanup', () => this.removeDeadEnemies());
@@ -537,7 +598,18 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     const harness = new URLSearchParams(window.location.search).get('testHarness');
-    if (harness !== 'enemyLabMonochrome' && harness !== 'enemyLabVector' && harness !== 'enemyLabPrototype' && harness !== 'smoke') {
+    if (
+      harness !== 'enemyLabMonochrome' &&
+      harness !== 'enemyLabVector' &&
+      harness !== 'enemyLabPrototype' &&
+      harness !== 'enemyLabAttacks' &&
+      harness !== 'smoke'
+    ) {
+      return;
+    }
+
+    if (harness === 'enemyLabAttacks') {
+      this.runEnemyLabAttackSmokeHarness();
       return;
     }
 
@@ -565,6 +637,56 @@ export class EnemyLabScene extends Phaser.Scene {
       asteroidFamilies: harness === 'enemyLabPrototype' ? ASTEROID_VISUAL_FAMILIES.length : undefined
     }));
     document.body.setAttribute('data-starvivors-enemy-lab-harness', scalePass ? 'monochrome-ready' : 'fail');
+  }
+
+  private runEnemyLabAttackSmokeHarness(): void {
+    this.labMode = 'attack-tester';
+    const center = this.getPreviewPosition();
+    this.spawnAttackTestTarget('dummy', center.x, center.y);
+    this.spawnAttackTestTarget('enemy', wrapCoordinate(center.x + 130, this.arena.width), center.y);
+    this.spawnAttackTestTarget('ally', wrapCoordinate(center.x - 130, this.arena.width), center.y);
+    this.attackTesterSlots = [
+      this.createHarnessAttackSlot('rail-line', { initialDelayMs: 0, windupMs: 60, activeMs: 120 }),
+      this.createHarnessAttackSlot('simple-bolt', { initialDelayMs: 0, windupMs: 40, activeMs: 100 }),
+      this.createHarnessAttackSlot('emp-nova', { initialDelayMs: 0, windupMs: 40, activeMs: 120 }),
+      this.createHarnessAttackSlot('summon-glyphs', { initialDelayMs: 0, windupMs: 40, channelMs: 60, activeMs: 120, count: 2 })
+    ];
+    this.attackTesterRuntime = undefined;
+    this.attackTesterRuntimeSignature = '';
+    this.selectedAttackTesterSlotIndex = 0;
+    this.selectedAttackTestId = 'rail-line';
+    this.syncOverlayFromState();
+    const runtime = this.ensureAttackTesterRuntime(this.time.now);
+    const baseTime = this.time.now;
+
+    this.attackTesterSlots.forEach((slot, index) => {
+      const queuedAt = baseTime + index * 260;
+      this.selectedAttackTesterSlotIndex = index;
+      this.selectedAttackTestId = slot.attackId;
+      if (runtime) {
+        queueAttackSlot(runtime, index, queuedAt);
+      }
+      this.updateAttackTesterRuntime(queuedAt, 0.016);
+      this.updateAttackTesterRuntime(queuedAt + 180, 0.016);
+      this.updateAttackTesterRuntime(queuedAt + 320, 0.016);
+    });
+
+    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', 'ready');
+    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness-details', JSON.stringify({
+      targets: this.attackTestTargets.length,
+      projectiles: this.projectiles.length,
+      transientProps: this.testProps.length,
+      slots: this.attackTesterSlots.map((slot) => slot.attackId)
+    }));
+  }
+
+  private createHarnessAttackSlot(attackId: EnemyAttackId, params: Record<string, EnemyAttackParamValue>): AttackLoadoutSlot {
+    const slot = createDefaultAttackLoadoutSlot(attackId);
+    slot.params = {
+      ...(slot.params ?? {}),
+      ...params
+    };
+    return slot;
   }
 
   private spawnPrototypeHarnessSamples(): void {
@@ -819,6 +941,667 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
+  private updateAttackTesterRuntime(time: number, deltaSeconds: number): void {
+    const runtime = this.ensureAttackTesterRuntime(time);
+    if (!runtime) {
+      return;
+    }
+
+    if (this.attackTesterAutoCycleEnabled && time >= this.nextAttackTesterAutoCycleAt && this.isAttackRuntimeIdle(runtime)) {
+      const enabledSlots = getEnabledAttackSlotIndices(runtime);
+      if (enabledSlots.length > 0) {
+        const selected = enabledSlots.includes(this.selectedAttackTesterSlotIndex)
+          ? this.selectedAttackTesterSlotIndex
+          : enabledSlots[0];
+        queueAttackSlot(runtime, selected, time);
+        const nextEnabled = enabledSlots[(enabledSlots.indexOf(selected) + 1) % enabledSlots.length];
+        this.selectedAttackTesterSlotIndex = nextEnabled;
+        this.selectedAttackTestId = runtime.attacks[nextEnabled]?.slot.attackId ?? this.selectedAttackTestId;
+        this.nextAttackTesterAutoCycleAt = time + 850;
+        this.renderAttackTesterControls();
+      }
+    }
+
+    updateAttackHostRuntime({
+      host: runtime,
+      time,
+      deltaSeconds,
+      targets: this.createAttackTesterTargetSnapshots(),
+      pointTarget: this.createAttackTesterPointTarget(),
+      targetKindMap: (targetKind, host, definition) => this.mapAttackRuntimeTargetKind(targetKind, host, definition.targeting.targetKind),
+      getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY),
+      cooldownScale: 1,
+      damageScale: 1,
+      telegraphsEnabled: this.showTelegraphs,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode,
+      callbacks: this.createAttackRuntimeCallbacks()
+    });
+  }
+
+  private updateEnemyAttackRuntimes(time: number, deltaSeconds: number): void {
+    for (const enemy of this.enemies) {
+      if (enemy.hp <= 0 || !enemy.attackRuntime) {
+        continue;
+      }
+
+      updateAttackHostRuntime({
+        host: enemy.attackRuntime,
+        time,
+        deltaSeconds,
+        targets: this.createEnemyAttackTargetSnapshots(enemy),
+        pointTarget: this.createEnemyAttackPointTarget(),
+        targetKindMap: (targetKind, host, definition) => this.mapAttackRuntimeTargetKind(targetKind, host, definition.targeting.targetKind),
+        getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY),
+        cooldownScale: this.enemyFireRateMultiplier * enemy.fireRateMultiplier,
+        damageScale: enemy.damageMultiplier,
+        telegraphsEnabled: this.showTelegraphs,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode,
+        callbacks: this.createAttackRuntimeCallbacks()
+      });
+    }
+  }
+
+  private ensureAttackTesterRuntime(time: number): AttackHostRuntime | undefined {
+    const signature = JSON.stringify(normalizeAttackLoadoutSlots(this.attackTesterSlots));
+    if (!this.attackTesterRuntime) {
+      this.attackTesterRuntime = createAttackHostRuntime({
+        hostKind: 'player-test',
+        hostId: 'enemy-lab-player-test',
+        definitionId: DEFAULT_SHIP_ID,
+        body: this.player,
+        velocity: this.playerVelocity,
+        loadout: this.attackTesterSlots,
+        time,
+        manualTriggerOnly: true
+      });
+      this.attackTesterRuntimeSignature = signature;
+      return this.attackTesterRuntime;
+    }
+
+    this.attackTesterRuntime.body = this.player;
+    this.attackTesterRuntime.velocity = this.playerVelocity;
+    if (signature !== this.attackTesterRuntimeSignature) {
+      replaceAttackHostRuntimeLoadout(this.attackTesterRuntime, this.attackTesterSlots, time);
+      this.attackTesterRuntimeSignature = signature;
+    }
+
+    return this.attackTesterRuntime;
+  }
+
+  private isAttackRuntimeIdle(runtime: AttackHostRuntime): boolean {
+    return runtime.attacks.every((slot) => slot.phase === 'idle');
+  }
+
+  private createAttackRuntimeCallbacks(): Parameters<typeof updateAttackHostRuntime>[0]['callbacks'] {
+    return {
+      spawnProjectile: (request) => this.fireAttackRuntimeProjectile(request),
+      areaDamage: (request) => this.applyAttackRuntimeAreaDamage(request),
+      applyStatus: (target, statuses) => this.applyAttackRuntimeStatus(target, statuses),
+      summon: (request) => this.summonFromAttackRuntime(request),
+      heal: (request) => this.applyAttackRuntimeHeal(request),
+      buff: (request) => this.applyAttackRuntimeBuff(request),
+      shield: (request) => this.applyAttackRuntimeShield(request),
+      stealScrap: (request) => this.applyAttackRuntimeScrapSteal(request),
+      telegraph: (request) => this.renderAttackRuntimeTelegraph(request),
+      effect: (request) => this.renderAttackRuntimeEffect(request),
+      labEffect: (request) => this.renderAttackRuntimeLabEffect(request)
+    };
+  }
+
+  private createEnemyAttackTargetSnapshots(source: EnemyLabInstance): AttackTargetSnapshot[] {
+    return [
+      {
+        id: 'player',
+        kind: 'player',
+        x: this.player.x,
+        y: this.player.y,
+        radius: PLAYER_LAB_HIT_RADIUS,
+        velocity: this.playerVelocity,
+        hp: this.playerHull,
+        maxHp: PLAYER_LAB_HULL,
+        label: 'Player'
+      },
+      ...this.enemies
+        .filter((enemy) => enemy.id !== source.id && enemy.hp > 0)
+        .map((enemy) => ({
+          id: enemy.id,
+          kind: 'ally' as const,
+          x: enemy.body.x,
+          y: enemy.body.y,
+          radius: enemy.definition.stats.radius,
+          velocity: enemy.velocity,
+          hp: enemy.hp,
+          maxHp: enemy.maxHp,
+          label: enemy.definition.displayName
+        }))
+    ];
+  }
+
+  private createEnemyAttackPointTarget(): AttackTargetSnapshot {
+    return {
+      id: 'player-point',
+      kind: 'point',
+      x: this.player.x,
+      y: this.player.y,
+      radius: PLAYER_LAB_HIT_RADIUS,
+      velocity: this.playerVelocity,
+      label: 'Player point'
+    };
+  }
+
+  private createAttackTesterTargetSnapshots(): AttackTargetSnapshot[] {
+    return this.attackTestTargets.map((target) => ({
+      id: target.id,
+      kind: target.kind === 'ally' ? 'ally' : 'enemy',
+      x: target.body.x,
+      y: target.body.y,
+      radius: target.radius,
+      velocity: { x: 0, y: 0 },
+      hp: target.hp,
+      maxHp: target.maxHp,
+      label: target.kind
+    }));
+  }
+
+  private createAttackTesterPointTarget(): AttackTargetSnapshot {
+    const pointer = this.input.activePointer;
+    const world = this.cameras.main.getWorldPoint(pointer.x, pointer.y);
+    const fallbackDirection = this.getForwardDirection(this.player.rotation);
+    const hasPointer = !this.isPointerOverControlPanel && Number.isFinite(world.x) && Number.isFinite(world.y);
+    return {
+      id: 'attack-test-point',
+      kind: 'point',
+      x: hasPointer ? wrapCoordinate(world.x, this.arena.width) : wrapCoordinate(this.player.x + fallbackDirection.x * 360, this.arena.width),
+      y: hasPointer ? wrapCoordinate(world.y, this.arena.height) : wrapCoordinate(this.player.y + fallbackDirection.y * 360, this.arena.height),
+      radius: 18,
+      label: 'Aim point'
+    };
+  }
+
+  private mapAttackRuntimeTargetKind(
+    targetKind: AttackTargetKind,
+    host: AttackHostRuntime,
+    _definitionTargetKind: AttackTargetKind
+  ): AttackTargetKind[] {
+    if (host.hostKind === 'player-test') {
+      if (targetKind === 'ally') return ['ally'];
+      if (targetKind === 'self') return ['self'];
+      if (targetKind === 'point') return ['point', 'enemy'];
+      return ['enemy', 'point'];
+    }
+
+    if (targetKind === 'enemy') {
+      return ['player'];
+    }
+    return [targetKind];
+  }
+
+  private fireAttackRuntimeProjectile(request: AttackProjectileRequest): void {
+    const direction = new Phaser.Math.Vector2(request.direction.x, request.direction.y);
+    const statuses = this.convertAttackStatuses(request.statuses);
+    const owner = request.ownerKind === 'enemy' ? 'enemy' : 'player';
+    const color = resolveEnemyLabEffectColor(request.color, this.readabilityMode);
+    emitEffectMuzzleFlash(this, request.x, request.y, direction, {
+      kind: 'muzzle-flash',
+      color,
+      radius: request.radius * 2.2,
+      durationMs: 130,
+      intensity: 0.75,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+    this.createProjectile({
+      owner,
+      x: request.x,
+      y: request.y,
+      direction,
+      speed: request.speed,
+      damage: request.damage,
+      range: request.range,
+      radius: request.radius,
+      color,
+      statuses
+    });
+  }
+
+  private applyAttackRuntimeAreaDamage(request: AttackAreaDamageRequest): void {
+    const statuses = this.convertAttackStatuses(request.statuses);
+
+    if (request.ownerKind === 'enemy') {
+      if (this.isPointInAttackArea(this.player.x, this.player.y, PLAYER_LAB_HIT_RADIUS, request)) {
+        this.damagePlayer(request.damage);
+        applyPlayerStatusEffects(this.playerStatusRuntime, statuses, this.time.now);
+        if (statuses?.length) {
+          this.emitLabBurst(this.player.x, this.player.y, statuses.some((status) => status.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 8);
+        }
+      }
+
+      if (request.shape === 'circle' && request.damage > 0) {
+        for (const enemy of this.enemies) {
+          if (enemy.id === request.sourceHostId || enemy.hp <= 0) {
+            continue;
+          }
+          if (this.isPointInAttackArea(enemy.body.x, enemy.body.y, enemy.definition.stats.radius, request)) {
+            enemy.hp -= request.damage * 0.35;
+            this.flashEnemy(enemy);
+          }
+        }
+      }
+      return;
+    }
+
+    for (const target of this.attackTestTargets) {
+      if (target.kind === 'ally' || !this.isPointInAttackArea(target.body.x, target.body.y, target.radius, request)) {
+        continue;
+      }
+      this.damageAttackTestTarget(target, request.damage);
+      if (statuses?.length) {
+        this.emitLabBurst(target.body.x, target.body.y, statuses.some((status) => status.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 8);
+      }
+    }
+
+    for (const enemy of this.enemies) {
+      if (enemy.hp <= 0 || !this.isPointInAttackArea(enemy.body.x, enemy.body.y, enemy.definition.stats.radius, request)) {
+        continue;
+      }
+      enemy.hp -= request.damage;
+      this.flashEnemy(enemy);
+    }
+  }
+
+  private applyAttackRuntimeStatus(target: AttackTargetSnapshot, statuses: AttackStatusRequest[]): void {
+    const effects = this.convertAttackStatuses(statuses);
+    if (!effects || effects.length <= 0) {
+      return;
+    }
+
+    if (target.id === 'player') {
+      applyPlayerStatusEffects(this.playerStatusRuntime, effects, this.time.now);
+      return;
+    }
+
+    const testTarget = this.attackTestTargets.find((candidate) => candidate.id === target.id);
+    if (testTarget) {
+      this.emitLabBurst(testTarget.body.x, testTarget.body.y, effects.some((effect) => effect.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 6);
+    }
+  }
+
+  private summonFromAttackRuntime(request: AttackSummonRequest): void {
+    const count = Math.max(1, Math.min(8, request.count));
+    if (request.ownerKind === 'player-test') {
+      for (let index = 0; index < count; index += 1) {
+        const angle = (Math.PI * 2 * index) / count + this.time.now * 0.0004;
+        this.spawnAttackTestTarget(
+          'ally',
+          wrapCoordinate(request.x + Math.cos(angle) * request.radius * 0.42, this.arena.width),
+          wrapCoordinate(request.y + Math.sin(angle) * request.radius * 0.42, this.arena.height)
+        );
+      }
+      this.emitLabBurst(request.x, request.y, 0x73f2ff, 10);
+      return;
+    }
+
+    const squad = getEnemyLabSquads().find((candidate) => candidate.id === request.definitionId);
+    if (squad) {
+      const preset = convertBuiltInSquadToPreset(squad);
+      this.spawnCustomSquad(preset, request.x, request.y);
+      this.emitLabBurst(request.x, request.y, 0x73f2ff, 10);
+      return;
+    }
+
+    for (let index = 0; index < count; index += 1) {
+      const angle = (Math.PI * 2 * index) / count + this.time.now * 0.0004;
+      this.spawnEnemy(
+        request.definitionId,
+        wrapCoordinate(request.x + Math.cos(angle) * request.radius * 0.36, this.arena.width),
+        wrapCoordinate(request.y + Math.sin(angle) * request.radius * 0.36, this.arena.height)
+      );
+    }
+  }
+
+  private applyAttackRuntimeHeal(request: AttackHealRequest): void {
+    const enemy = this.enemies.find((candidate) => candidate.id === request.targetId);
+    if (enemy) {
+      enemy.hp = Math.min(enemy.maxHp, enemy.hp + request.amount);
+      this.emitLabBurst(enemy.body.x, enemy.body.y, 0x66bb6a, 4);
+      return;
+    }
+
+    const target = this.attackTestTargets.find((candidate) => candidate.id === request.targetId);
+    if (target) {
+      target.hp = Math.min(target.maxHp, target.hp + request.amount);
+      this.updateAttackTestTargetLabel(target);
+      this.emitLabBurst(target.body.x, target.body.y, 0x66bb6a, 4);
+    }
+  }
+
+  private applyAttackRuntimeBuff(request: AttackBuffRequest): void {
+    const source = this.enemies.find((enemy) => enemy.id === request.sourceHostId);
+    if (!source) {
+      this.emitLabBurst(this.player.x, this.player.y, 0xffd166, 6);
+      return;
+    }
+
+    for (const enemy of this.enemies) {
+      if (enemy.id === source.id || enemy.hp <= 0) {
+        continue;
+      }
+      if (this.getWrappedDirection(source.body.x, source.body.y, enemy.body.x, enemy.body.y).length() > request.radius) {
+        continue;
+      }
+      enemy.speedMultiplier = Math.max(enemy.speedMultiplier, request.speedMultiplier ?? 1);
+      enemy.fireRateMultiplier = Math.min(enemy.fireRateMultiplier, request.fireRateMultiplier ?? 1);
+      enemy.damageMultiplier = Math.max(enemy.damageMultiplier, request.damageMultiplier ?? 1);
+      enemy.buffedUntil = this.time.now + request.durationMs;
+    }
+    this.emitLabBurst(source.body.x, source.body.y, 0xffd166, 6);
+  }
+
+  private applyAttackRuntimeShield(request: AttackShieldRequest): void {
+    const enemy = this.enemies.find((candidate) => candidate.id === request.sourceHostId);
+    if (!enemy) {
+      this.emitLabBurst(this.player.x, this.player.y, 0x73f2ff, 6);
+      return;
+    }
+
+    enemy.damageReduction = Math.max(enemy.damageReduction, request.reduction);
+    enemy.shieldedUntil = this.time.now + request.durationMs;
+    enemy.stateData.reflecting = request.reflect;
+    enemy.stateData.reflectingUntil = request.reflect ? this.time.now + request.durationMs : 0;
+    enemy.stateData.reflectArcDegrees = request.arcDegrees;
+    this.emitLabBurst(enemy.body.x, enemy.body.y, request.reflect ? 0xffffff : 0x73f2ff, 6);
+  }
+
+  private applyAttackRuntimeScrapSteal(request: AttackScrapStealRequest): void {
+    const enemy = this.enemies.find((candidate) => candidate.id === request.sourceHostId);
+    if (!enemy) {
+      return;
+    }
+
+    const nearest = this.labScrapProps
+      .filter((scrap) => !scrap.collected)
+      .map((scrap) => ({
+        scrap,
+        distance: this.getWrappedDirection(enemy.body.x, enemy.body.y, scrap.x, scrap.y).length()
+      }))
+      .filter(({ distance }) => distance <= Math.max(request.pickupRange, request.range))
+      .sort((a, b) => a.distance - b.distance)[0];
+
+    if (!nearest || nearest.distance > request.pickupRange) {
+      return;
+    }
+
+    const stolen = this.stealLabScrap(nearest.scrap);
+    enemy.carriedScrap += stolen + request.bonusScrap;
+    this.emitLabBurst(nearest.scrap.x, nearest.scrap.y, enemy.definition.visual.accentColor, 8);
+  }
+
+  private renderAttackRuntimeTelegraph(request: AttackVisualRequest): void {
+    const recipe = request.telegraph;
+    if (!recipe || recipe.kind === 'none') {
+      return;
+    }
+
+    const color = resolveEnemyLabEffectColor(recipe.color, this.readabilityMode);
+    const duration = Math.max(120, request.durationMs || recipe.durationMs || 240);
+    const target = request.target;
+
+    if (recipe.kind === 'line-lock' || recipe.kind === 'detect-beam' || recipe.kind === 'sweep-lane') {
+      const range = recipe.rangePx ?? 720;
+      const line = this.add.line(
+        0,
+        0,
+        request.x,
+        request.y,
+        target?.x ?? request.x + request.direction.x * range,
+        target?.y ?? request.y + request.direction.y * range,
+        color,
+        0.18
+      );
+      line.setOrigin(0, 0);
+      line.setStrokeStyle(recipe.strokeWidthPx ?? 2, color, this.readabilityMode === 'high-contrast' ? 0.9 : 0.56);
+      line.setDepth(14);
+      this.trackTransientLabProp(line, duration, { alpha: 0.04 });
+      return;
+    }
+
+    if (recipe.kind === 'landing-circle' || recipe.kind === 'expanding-ring' || recipe.kind === 'hidden-reveal') {
+      const x = recipe.kind === 'expanding-ring' ? request.x : target?.x ?? request.x;
+      const y = recipe.kind === 'expanding-ring' ? request.y : target?.y ?? request.y;
+      const radius = recipe.radiusPx ?? 120;
+      const circle = this.add.circle(x, y, Math.max(8, radius * 0.22), color, 0.035);
+      circle.setStrokeStyle(recipe.strokeWidthPx ?? 2, color, this.readabilityMode === 'high-contrast' ? 0.86 : 0.62);
+      circle.setDepth(13);
+      this.trackTransientLabProp(circle, duration, { radius, alpha: 0.08 });
+      return;
+    }
+
+    if (recipe.kind === 'glyphs') {
+      this.drawAttackGlyphs(target?.x ?? request.x, target?.y ?? request.y, recipe.radiusPx ?? 180, color, duration);
+      return;
+    }
+
+    if (recipe.kind === 'tether') {
+      const line = this.add.line(0, 0, request.x, request.y, target?.x ?? request.x, target?.y ?? request.y, color, 0.5);
+      line.setOrigin(0, 0);
+      line.setStrokeStyle(recipe.strokeWidthPx ?? 2, color, 0.56);
+      line.setDepth(14);
+      this.trackTransientLabProp(line, duration, { alpha: 0.05 });
+      return;
+    }
+
+    if (recipe.kind === 'shield-arc') {
+      const circle = this.add.circle(request.x, request.y, recipe.radiusPx ?? 90, color, 0.035);
+      circle.setStrokeStyle(recipe.strokeWidthPx ?? 4, color, 0.78);
+      circle.setDepth(14);
+      this.trackTransientLabProp(circle, duration, { alpha: 0.08, scale: 1.08 });
+    }
+  }
+
+  private renderAttackRuntimeEffect(request: AttackVisualRequest): void {
+    const effect = request.effect;
+    if (!effect) {
+      return;
+    }
+
+    const color = resolveEnemyLabEffectColor(effect.color, this.readabilityMode);
+    const direction = new Phaser.Math.Vector2(request.direction.x, request.direction.y);
+    const target = request.target;
+    const duration = Math.max(90, request.durationMs || effect.durationMs || 180);
+
+    if (effect.kind === 'projectile') {
+      emitEffectMuzzleFlash(this, request.x, request.y, direction, {
+        kind: 'muzzle-flash',
+        color,
+        radius: effect.radiusPx ?? 10,
+        durationMs: duration,
+        intensity: 0.8,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode
+      });
+      return;
+    }
+
+    if (effect.kind === 'beam' || effect.kind === 'sweep-beam') {
+      const line = this.add.line(
+        0,
+        0,
+        request.x,
+        request.y,
+        target?.x ?? request.x + request.direction.x * 1100,
+        target?.y ?? request.y + request.direction.y * 1100,
+        color,
+        0.82
+      );
+      line.setOrigin(0, 0);
+      line.setStrokeStyle(effect.widthPx ?? 5, color, 0.86);
+      line.setDepth(16);
+      this.trackTransientLabProp(line, duration, { alpha: 0 });
+      return;
+    }
+
+    if (effect.kind === 'lob-projectile') {
+      const dot = this.add.circle(request.x, request.y, 6, color, 0.85);
+      dot.setStrokeStyle(1, effect.accentColor ?? 0xffffff, 0.88);
+      dot.setDepth(15);
+      this.testProps.push(dot);
+      this.tweens.add({
+        targets: dot,
+        x: target?.x ?? request.x + request.direction.x * 240,
+        y: target?.y ?? request.y + request.direction.y * 240,
+        scale: 1.7,
+        alpha: 0,
+        duration,
+        ease: 'Quad.easeIn',
+        onComplete: () => {
+          dot.destroy();
+          this.testProps = this.testProps.filter((candidate) => candidate !== dot);
+        }
+      });
+      return;
+    }
+
+    if (
+      effect.kind === 'nova-ring' ||
+      effect.kind === 'shockwave' ||
+      effect.kind === 'blast-radius' ||
+      effect.kind === 'puddle-zone' ||
+      effect.kind === 'cluster-split' ||
+      effect.kind === 'alarm-ping' ||
+      effect.kind === 'buff-pulse' ||
+      effect.kind === 'shards'
+    ) {
+      const radius = effect.radiusPx ?? 140;
+      const x = effect.kind === 'puddle-zone' || effect.kind === 'cluster-split' ? target?.x ?? request.x : request.x;
+      const y = effect.kind === 'puddle-zone' || effect.kind === 'cluster-split' ? target?.y ?? request.y : request.y;
+      emitEffectWarningRadius(this, x, y, {
+        kind: 'warning-radius',
+        color,
+        radius,
+        durationMs: duration,
+        intensity: effect.kind === 'puddle-zone' ? 0.72 : 1,
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode
+      });
+      return;
+    }
+
+    if (effect.kind === 'support-tether' || effect.kind === 'scrap-link') {
+      const line = this.add.line(0, 0, request.x, request.y, target?.x ?? request.x, target?.y ?? request.y, color, 0.52);
+      line.setOrigin(0, 0);
+      line.setStrokeStyle(effect.widthPx ?? 2, color, 0.56);
+      line.setDepth(15);
+      this.trackTransientLabProp(line, duration, { alpha: 0.04 });
+      return;
+    }
+
+    if (effect.kind === 'shield-arc') {
+      const circle = this.add.circle(request.x, request.y, effect.radiusPx ?? 95, color, 0.04);
+      circle.setStrokeStyle(effect.widthPx ?? 4, color, 0.82);
+      circle.setDepth(15);
+      this.trackTransientLabProp(circle, duration, { alpha: 0.08, scale: 1.04 });
+      return;
+    }
+
+    emitEffectRingPulse(this, request.x, request.y, {
+      kind: 'blink-ring',
+      color,
+      radius: effect.radiusPx ?? 80,
+      durationMs: duration,
+      intensity: 0.9,
+      reducedEffects: this.reducedEffects,
+      readabilityMode: this.readabilityMode
+    });
+  }
+
+  private renderAttackRuntimeLabEffect(request: AttackVisualRequest): void {
+    if (request.effect?.kind === 'summon-glyphs') {
+      this.drawAttackGlyphs(request.target?.x ?? request.x, request.target?.y ?? request.y, request.effect.radiusPx ?? 180, request.effect.color, request.durationMs);
+    }
+  }
+
+  private drawAttackGlyphs(x: number, y: number, radius: number, color: number, duration: number): void {
+    const glyphCount = this.reducedEffects ? 2 : 4;
+    for (let index = 0; index < glyphCount; index += 1) {
+      const angle = (Math.PI * 2 * index) / glyphCount + this.time.now * 0.0005;
+      const circle = this.add.circle(
+        wrapCoordinate(x + Math.cos(angle) * radius * 0.35, this.arena.width),
+        wrapCoordinate(y + Math.sin(angle) * radius * 0.35, this.arena.height),
+        16,
+        color,
+        0.04
+      );
+      circle.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 3 : 2, color, 0.74);
+      circle.setDepth(14);
+      this.trackTransientLabProp(circle, Math.max(160, duration), { scale: 1.8, alpha: 0.02 });
+    }
+  }
+
+  private trackTransientLabProp(
+    prop: Phaser.GameObjects.GameObject,
+    duration: number,
+    tween: Record<string, number>
+  ): void {
+    this.testProps.push(prop);
+    this.tweens.add({
+      targets: prop,
+      ...tween,
+      duration,
+      ease: 'Quad.easeOut',
+      onComplete: () => {
+        prop.destroy();
+        this.testProps = this.testProps.filter((candidate) => candidate !== prop);
+      }
+    });
+  }
+
+  private convertAttackStatuses(statuses: AttackStatusRequest[] | undefined): EnemyStatusEffect[] | undefined {
+    if (!statuses || statuses.length <= 0) {
+      return undefined;
+    }
+
+    return statuses.map((status) => ({
+      kind: status.kind === 'electric' ? 'electric' : 'frost',
+      durationMs: status.durationMs,
+      intensity: status.intensity,
+      damagePerSecond: status.kind === 'electric' ? status.damagePerSecond : undefined,
+      tickMs: status.kind === 'electric' ? status.tickMs : undefined,
+      accelerationDrag: status.kind === 'electric' ? status.accelerationDrag : undefined
+    }));
+  }
+
+  private isPointInAttackArea(x: number, y: number, radius: number, request: AttackAreaDamageRequest): boolean {
+    if (request.shape === 'circle') {
+      const offset = this.getWrappedDirection(request.x, request.y, x, y);
+      return offset.length() <= (request.radius ?? 0) + radius;
+    }
+
+    const fromX = request.fromX ?? request.x;
+    const fromY = request.fromY ?? request.y;
+    const toX = request.toX ?? request.x;
+    const toY = request.toY ?? request.y;
+    return distanceToSegment(x, y, fromX, fromY, toX, toY) <= (request.width ?? 8) + radius;
+  }
+
+  private damageAttackTestTarget(target: EnemyLabAttackTestTarget, damage: number): void {
+    target.hp = Math.max(0, target.hp - damage);
+    this.updateAttackTestTargetLabel(target);
+    this.emitLabBurst(target.body.x, target.body.y, target.kind === 'ally' ? 0x66bb6a : 0xffd166, 5);
+    if (target.hp <= 0) {
+      target.hp = target.maxHp;
+      this.updateAttackTestTargetLabel(target);
+      target.body.setScale(1.18);
+      this.tweens.add({
+        targets: target.body,
+        scale: 1,
+        duration: 220,
+        ease: 'Quad.easeOut'
+      });
+    }
+  }
+
   private tryProjectileHitEnemy(projectile: EnemyLabProjectile): boolean {
     for (const enemy of this.enemies) {
       if (enemy.hp <= 0) {
@@ -859,11 +1642,11 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private tryReflectProjectile(projectile: EnemyLabProjectile, enemy: EnemyLabInstance): boolean {
-    if (enemy.definition.behavior.id !== 'reflectorPulse' || enemy.stateData.reflecting !== true) {
+    if (enemy.stateData.reflecting !== true) {
       return false;
     }
 
-    const frontArcDegrees = Number(enemy.definition.behavior.params?.frontArcDegrees ?? 92);
+    const frontArcDegrees = Number(enemy.stateData.reflectArcDegrees ?? enemy.definition.behavior.params?.frontArcDegrees ?? 92);
     const toProjectile = this.getWrappedDirection(enemy.body.x, enemy.body.y, projectile.body.x, projectile.body.y);
     if (toProjectile.lengthSq() <= 0) {
       return false;
@@ -1049,9 +1832,12 @@ export class EnemyLabScene extends Phaser.Scene {
       this.dropLabScrap(enemy.body.x, enemy.body.y, Math.min(10, enemy.carriedScrap + bonus));
     }
 
-    if (enemy.definition.behavior.id === 'splitterChase') {
-      const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
-      const childCount = Number(enemy.definition.behavior.params?.childCount ?? 3);
+    const splitSlot = enemy.attackLoadoutSnapshot
+      ?.find((slot) => slot.enabled !== false && slot.attackId === 'split-shards');
+    if (splitSlot || enemy.definition.behavior.id === 'splitterChase') {
+      const params = splitSlot ? resolveAttackLoadoutSlotParams(splitSlot) : undefined;
+      const childId = String(params?.childId ?? enemy.definition.behavior.params?.childId ?? 'shard-drone');
+      const childCount = Number(params?.childCount ?? enemy.definition.behavior.params?.childCount ?? 3);
       for (let i = 0; i < childCount; i += 1) {
         const angle = (Math.PI * 2 * i) / childCount + Phaser.Math.FloatBetween(-0.25, 0.25);
         this.spawnEnemy(childId, enemy.body.x + Math.cos(angle) * 42, enemy.body.y + Math.sin(angle) * 42);
@@ -1059,7 +1845,13 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
-  private spawnEnemy(definitionId: string, x: number, y: number, variantId?: string): void {
+  private spawnEnemy(
+    definitionId: string,
+    x: number,
+    y: number,
+    variantId?: string,
+    attackLoadoutSnapshot?: AttackLoadoutSlot[]
+  ): void {
     const baseDefinition = getEnemyLabDefinitions().find((definition) => definition.id === definitionId);
     if (!baseDefinition) {
       return;
@@ -1077,7 +1869,8 @@ export class EnemyLabScene extends Phaser.Scene {
       y,
       time: this.time.now,
       hpMultiplier: this.enemyHpMultiplier,
-      showDebugLabel: this.showDebugLabels
+      showDebugLabel: this.showDebugLabels,
+      attackLoadoutSnapshot: this.createEnemyLoadoutSnapshot(definitionId, attackLoadoutSnapshot)
     });
     this.enemies.push(enemy);
     this.emitEnemyRecipeEffect(enemy.definition, 'spawn', enemy.body.x, enemy.body.y);
@@ -1091,8 +1884,96 @@ export class EnemyLabScene extends Phaser.Scene {
 
     for (let i = 0; i < this.spawnCount; i += 1) {
       const position = this.getSpawnPositionAroundPlayer(420 + i * 16);
-      this.spawnEnemy(definition.id, position.x, position.y, this.getSelectedVariant()?.id);
+      this.spawnEnemy(definition.id, position.x, position.y, this.getSelectedVariant()?.id, this.getBasicLoadoutDraft(definition.id));
     }
+  }
+
+  private fireSelectedAttackTesterSlot(): void {
+    const runtime = this.ensureAttackTesterRuntime(this.time.now);
+    if (!runtime) {
+      return;
+    }
+
+    const selectedSlot = this.attackTesterSlots[this.selectedAttackTesterSlotIndex];
+    if (!selectedSlot || selectedSlot.enabled === false) {
+      this.setPresetStatus('Attack Tester slot is disabled.', true);
+      return;
+    }
+
+    if (this.attackTestTargets.length === 0 && getEnemyAttackDefinition(selectedSlot.attackId).targeting.targetKind !== 'self') {
+      const position = this.getSpawnPositionAroundPlayer(340);
+      this.spawnAttackTestTarget('dummy', position.x, position.y);
+    }
+
+    queueAttackSlot(runtime, this.selectedAttackTesterSlotIndex, this.time.now);
+    this.setPresetStatus(`Queued Attack Tester slot ${this.selectedAttackTesterSlotIndex + 1}: ${getEnemyAttackDefinition(selectedSlot.attackId).displayName}`);
+  }
+
+  private toggleAttackTesterAutoCycle(): void {
+    this.attackTesterAutoCycleEnabled = !this.attackTesterAutoCycleEnabled;
+    this.nextAttackTesterAutoCycleAt = 0;
+    this.syncOverlayFromState();
+  }
+
+  private spawnAttackTestTarget(
+    kind: EnemyLabAttackTestTarget['kind'],
+    x?: number,
+    y?: number
+  ): EnemyLabAttackTestTarget {
+    const position = x !== undefined && y !== undefined ? new Phaser.Math.Vector2(x, y) : this.getSpawnPositionAroundPlayer(kind === 'ally' ? 250 : 380);
+    const color = kind === 'ally' ? 0x66bb6a : kind === 'enemy' ? 0xff5964 : 0xffd166;
+    const radius = kind === 'dummy' ? 28 : 32;
+    const shell = this.add.circle(0, 0, radius, 0x000000, 1);
+    shell.setStrokeStyle(kind === 'dummy' ? 2 : 2.5, resolveEnemyLabEffectColor(color, this.readabilityMode), 0.92);
+    const cross = this.add.line(0, 0, -radius * 0.55, 0, radius * 0.55, 0, 0xffffff, 0.82);
+    cross.setOrigin(0, 0);
+    cross.setStrokeStyle(1.3, 0xffffff, 0.82);
+    const vertical = this.add.line(0, 0, 0, -radius * 0.55, 0, radius * 0.55, 0xffffff, 0.82);
+    vertical.setOrigin(0, 0);
+    vertical.setStrokeStyle(1.3, 0xffffff, 0.82);
+    const body = this.add.container(wrapCoordinate(position.x, this.arena.width), wrapCoordinate(position.y, this.arena.height), [shell, cross, vertical]);
+    body.setDepth(11);
+    const label = this.add.text(body.x, body.y - radius - 8, '', {
+      fontFamily: 'monospace',
+      fontSize: '11px',
+      color: '#f2fbff',
+      align: 'center',
+      stroke: '#02040a',
+      strokeThickness: 3
+    }).setOrigin(0.5, 1).setDepth(30);
+    const target: EnemyLabAttackTestTarget = {
+      id: `attack-test-target-${this.nextAttackTestTargetId++}`,
+      kind,
+      body,
+      label,
+      radius,
+      hp: kind === 'dummy' ? 80 : 120,
+      maxHp: kind === 'dummy' ? 80 : 120
+    };
+    this.attackTestTargets.push(target);
+    this.updateAttackTestTargetLabel(target);
+    return target;
+  }
+
+  private updateAttackTestTargetLabel(target: EnemyLabAttackTestTarget): void {
+    target.label.setPosition(target.body.x, target.body.y - target.radius - 8);
+    target.label.setText(`${target.kind}\n${Math.ceil(target.hp)}/${target.maxHp}`);
+  }
+
+  private clearAttackTests(): void {
+    for (const target of this.attackTestTargets) {
+      target.body.destroy(true);
+      target.label.destroy();
+    }
+    this.attackTestTargets = [];
+    this.clearTestProps();
+    for (const projectile of this.projectiles) {
+      projectile.body.destroy(true);
+      projectile.wrapMirrorBody.destroy(true);
+    }
+    this.projectiles = [];
+    this.attackTesterRuntime = undefined;
+    this.attackTesterRuntimeSignature = '';
   }
 
   private dropLabScrap(x: number, y: number, value: number): void {
@@ -1134,8 +2015,9 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private spawnCustomSquad(squad: EnemyLabSquadPreset, centerX: number, centerY: number): void {
-    for (const entry of squad.entries) {
-      const spawn = () => this.spawnEnemy(entry.definitionId, centerX + entry.x, centerY + entry.y, entry.variantId);
+    for (const [index, entry] of squad.entries.entries()) {
+      const entryLoadout = this.getSquadEntryLoadoutSnapshot(squad, index);
+      const spawn = () => this.spawnEnemy(entry.definitionId, centerX + entry.x, centerY + entry.y, entry.variantId, entryLoadout);
       const delay = Math.max(0, Number(entry.spawnDelayMs) || 0);
 
       if (delay > 0) {
@@ -1404,12 +2286,17 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="basic">
-        <div class="enemy-lab-panel-title">Default Attack Loadout</div>
+        <div class="enemy-lab-panel-title">Attack Loadout Draft</div>
         <div class="enemy-lab-attack-loadout" data-field="attackLoadout"></div>
         <div class="enemy-lab-row">
-          <button disabled>+ Attack Slot</button>
-          <button disabled>- Attack Slot</button>
-          <button disabled>Reset Defaults</button>
+          <button data-loadout-scope="basic" data-loadout-action="add">+ Attack Slot</button>
+          <button data-loadout-scope="basic" data-loadout-action="remove">- Attack Slot</button>
+          <button data-loadout-scope="basic" data-loadout-action="reset">Reset Defaults</button>
+        </div>
+        <div class="enemy-lab-row">
+          <button data-action="saveAttackLoadout">Save Loadout</button>
+          <button data-action="loadAttackLoadout">Load Loadout</button>
+          <button data-action="openLoadoutFolder">Loadout Folder</button>
         </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="attack-tester">
@@ -1417,17 +2304,26 @@ export class EnemyLabScene extends Phaser.Scene {
         <label>Host <select disabled><option>Default Player Ship</option></select></label>
         <label>Attack <select data-field="attackTesterAttack"></select></label>
         <div class="enemy-lab-attack-loadout" data-field="attackTesterSlotList"></div>
-        <div class="enemy-lab-param-grid" data-field="attackTesterParams"></div>
+        <div class="enemy-lab-row">
+          <button data-loadout-scope="attackTester" data-loadout-action="add">+ Attack Slot</button>
+          <button data-loadout-scope="attackTester" data-loadout-action="remove">- Attack Slot</button>
+          <button data-loadout-scope="attackTester" data-loadout-action="reset">Reset Stack</button>
+        </div>
+        <div class="enemy-lab-empty" data-field="attackTesterParams">Use the player ship as a lab-only attack host. Spawn targets, then fire or auto-cycle the selected slot stack.</div>
         <div class="enemy-lab-row enemy-lab-primary-row">
-          <button disabled>Fire Once</button>
-          <button disabled>Auto-Cycle</button>
+          <button data-action="attackTesterFireOnce">Fire Once</button>
+          <button data-action="attackTesterAutoCycle">Auto-Cycle</button>
         </div>
         <div class="enemy-lab-row">
-          <button disabled>Spawn Dummy</button>
-          <button disabled>Enemy Target</button>
-          <button disabled>Ally Target</button>
-          <button disabled>Clear Tests</button>
-          <button disabled>Save Test</button>
+          <button data-action="attackTesterSpawnDummy">Spawn Dummy</button>
+          <button data-action="attackTesterSpawnEnemy">Enemy Target</button>
+          <button data-action="attackTesterSpawnAlly">Ally Target</button>
+          <button data-action="attackTesterClear">Clear Tests</button>
+        </div>
+        <div class="enemy-lab-row">
+          <button data-action="saveAttackTest">Save Attack Test</button>
+          <button data-action="loadAttackTest">Load Attack Test</button>
+          <button data-action="openAttackTestFolder">Attack Test Folder</button>
         </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="stress">
@@ -1447,6 +2343,13 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-readability-mode="high-contrast">High Contrast</button>
           <button data-action="reducedEffects">Reduced FX</button>
         </div>
+        <div class="enemy-lab-subtitle">Attack Stress</div>
+        <div class="enemy-lab-row">
+          <button disabled>Selected Attack (Phase 4)</button>
+          <button disabled>Mixed Attacks (Phase 4)</button>
+          <button disabled>Reduced FX Compare (Phase 4)</button>
+          <button disabled>High Contrast Compare (Phase 4)</button>
+        </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="presets">
         <div class="enemy-lab-panel-title">Behavior / Variant Editor</div>
@@ -1457,8 +2360,10 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="saveVariant">Save Draft</button>
           <button data-action="resetVariant">Reset</button>
           <button data-action="deleteVariant">Delete Draft</button>
-          <button data-action="exportVariant">Export</button>
-          <button data-action="importPreset">Import</button>
+          <button data-action="exportVariant">Save Variant</button>
+          <button data-action="loadVariant">Load Variant</button>
+          <button data-action="openVariantFolder">Variant Folder</button>
+          <button data-action="importPreset">Load Any</button>
         </div>
         <div class="enemy-lab-grid">
           <label>Visual <input data-field="visualScale" type="number" min="0.25" max="9999" step="0.05"></label>
@@ -1483,6 +2388,19 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportAiBrief">AI Brief</button>
           <button data-action="exportPromotion">Promotion</button>
         </div>
+        <div class="enemy-lab-subtitle">Attack Presets</div>
+        <div class="enemy-lab-row">
+          <button data-action="saveAttackLoadout">Save Loadout</button>
+          <button data-action="loadAttackLoadout">Load Loadout</button>
+          <button data-action="saveAttackTest">Save Attack Test</button>
+          <button data-action="loadAttackTest">Load Attack Test</button>
+        </div>
+        <div class="enemy-lab-subtitle">Squad Presets</div>
+        <div class="enemy-lab-row">
+          <button data-action="exportSquad">Save Squad</button>
+          <button data-action="loadSquad">Load Squad</button>
+          <button data-action="openSquadFolder">Squad Folder</button>
+        </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="squads stress">
         <div class="enemy-lab-panel-title">Squad Builder</div>
@@ -1497,7 +2415,9 @@ export class EnemyLabScene extends Phaser.Scene {
         <div class="enemy-lab-row">
           <button data-action="newSquad">New Squad</button>
           <button data-action="copyBuiltInSquad">Copy Built-in</button>
-          <button data-action="exportSquad">Export Squad</button>
+          <button data-action="exportSquad">Save Squad</button>
+          <button data-action="loadSquad">Load Squad</button>
+          <button data-action="openSquadFolder">Squad Folder</button>
           <button data-action="deleteSquad">Delete Squad</button>
         </div>
         <textarea data-field="squadNotes" rows="3" placeholder="Squad formation notes."></textarea>
@@ -1800,26 +2720,31 @@ export class EnemyLabScene extends Phaser.Scene {
     });
     variantSelect.addEventListener('change', () => {
       this.selectedVariantId = variantSelect.value;
+      this.hydrateBasicLoadoutDraftFromSelectedVariant();
       this.syncVariantControlsFromState();
       this.syncForgeControlsFromState();
+      this.renderAttackWorkflowControls();
     });
     for (const input of [variantName, variantStatus, variantNotes, visualScale, scaleX, scaleY, rotationOffset, glowScale, statHp, statSpeed, statRadius, statContactDamage]) {
       input.addEventListener('input', () => this.persistVariantFromControls(false));
       input.addEventListener('change', () => this.persistVariantFromControls(true));
     }
     attackTesterAttackSelect.addEventListener('change', () => {
-      this.selectedAttackTestId = attackTesterAttackSelect.value as EnemyAttackId;
+      this.selectedAttackTestId = this.normalizeAttackId(attackTesterAttackSelect.value);
+      this.setLoadoutSlotAttack('attackTester', this.selectedAttackTesterSlotIndex, this.selectedAttackTestId);
       this.renderAttackWorkflowControls();
     });
     squadSelect.addEventListener('change', () => {
       this.selectedSquadIndex = Math.max(0, getEnemyLabSquads().findIndex((squad) => squad.id === squadSelect.value));
       this.selectedCustomSquadId = '';
       this.selectedSquadEntryIndex = -1;
+      this.selectedSquadLoadoutSlotIndex = 0;
       this.syncSquadControlsFromState();
     });
     customSquadSelect.addEventListener('change', () => {
       this.selectedCustomSquadId = customSquadSelect.value;
       this.selectedSquadEntryIndex = -1;
+      this.selectedSquadLoadoutSlotIndex = 0;
       this.syncSquadControlsFromState();
     });
     for (const input of [squadName, squadStatus, squadNotes]) {
@@ -1911,6 +2836,12 @@ export class EnemyLabScene extends Phaser.Scene {
         return;
       }
 
+      const loadoutAction = target.dataset.loadoutAction;
+      if (loadoutAction) {
+        this.handleLoadoutAction(target.dataset.loadoutScope as AttackLoadoutEditorScope | undefined, loadoutAction, Number(target.dataset.loadoutIndex));
+        return;
+      }
+
       const action = target.dataset.action;
       if (!action) {
         return;
@@ -1925,7 +2856,22 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'resetVariant') this.resetSelectedVariant();
       if (action === 'deleteVariant') this.deleteSelectedVariant();
       if (action === 'exportVariant') this.exportSelectedVariant();
+      if (action === 'loadVariant') this.loadEnemyVariantPreset();
       if (action === 'importPreset') this.importEnemyLabPreset();
+      if (action === 'saveAttackLoadout') this.saveSelectedAttackLoadoutPreset();
+      if (action === 'loadAttackLoadout') this.loadAttackLoadoutPreset();
+      if (action === 'saveAttackTest') this.saveAttackTestPreset();
+      if (action === 'loadAttackTest') this.loadAttackTestPreset();
+      if (action === 'attackTesterFireOnce') this.fireSelectedAttackTesterSlot();
+      if (action === 'attackTesterAutoCycle') this.toggleAttackTesterAutoCycle();
+      if (action === 'attackTesterSpawnDummy') this.spawnAttackTestTarget('dummy');
+      if (action === 'attackTesterSpawnEnemy') this.spawnAttackTestTarget('enemy');
+      if (action === 'attackTesterSpawnAlly') this.spawnAttackTestTarget('ally');
+      if (action === 'attackTesterClear') this.clearAttackTests();
+      if (action === 'openVariantFolder') this.openEnemyLabPresetFolder('variants');
+      if (action === 'openSquadFolder') this.openEnemyLabPresetFolder('squads');
+      if (action === 'openLoadoutFolder') this.openEnemyLabPresetFolder('loadouts');
+      if (action === 'openAttackTestFolder') this.openEnemyLabPresetFolder('attack-tests');
       if (action === 'exportForgeSvg') this.exportSelectedForgeSvg();
       if (action === 'exportForgeJson') this.exportSelectedForgeJson();
       if (action === 'exportContactSheet') this.exportForgeContactSheet();
@@ -1963,6 +2909,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'addSquadEntry') this.addSelectedEnemyToSquad();
       if (action === 'spawnSquad') this.spawnSelectedSquad();
       if (action === 'exportSquad') this.exportSelectedSquad();
+      if (action === 'loadSquad') this.loadEnemySquadPreset();
       if (action === 'deleteSquad') this.deleteSelectedSquad();
       if (action === 'rotateSquadLeft') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, -15));
       if (action === 'rotateSquadRight') this.transformSelectedSquad((entry) => this.rotateSquadEntry(entry, 15));
@@ -1996,11 +2943,20 @@ export class EnemyLabScene extends Phaser.Scene {
 
     root.addEventListener('input', (event) => {
       const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      if (target.dataset.loadoutField || target.dataset.loadoutParam) {
+        this.updateLoadoutSlotFromInput(target);
+      }
       if (target.dataset.behaviorParam) {
         this.persistVariantFromControls(false);
       }
       if (target.dataset.entryField) {
         this.updateSquadEntryFromInput(target);
+      }
+    });
+    root.addEventListener('change', (event) => {
+      const target = event.target as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
+      if (target.dataset.loadoutField || target.dataset.loadoutParam) {
+        this.updateLoadoutSlotFromInput(target);
       }
     });
 
@@ -2429,6 +3385,7 @@ export class EnemyLabScene extends Phaser.Scene {
       }
       variant.behaviorParamOverrides[key] = input.type === 'number' ? this.readNumberInput(input, 0, clampNumbers) : input.value;
     }
+    variant.attackLoadoutOverride = normalizeAttackLoadoutSlots(this.getBasicLoadoutDraft(definition.id));
     variant.savedAt = new Date().toISOString();
     this.savePresetState();
     this.populateVariantSelect();
@@ -2454,6 +3411,7 @@ export class EnemyLabScene extends Phaser.Scene {
     const variant = current ? duplicateVariant(current) : createVariantFromDefinition(definition);
     this.presetState.variants.push(variant);
     this.selectedVariantId = variant.id;
+    this.hydrateBasicLoadoutDraftFromSelectedVariant();
     this.savePresetState();
     this.populateVariantSelect();
     this.syncVariantControlsFromState();
@@ -2505,11 +3463,31 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    downloadTextFile(
-      `enemy-${slugify(variant.displayName)}-${this.time.now.toFixed(0)}.md`,
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    if (variant.baseDefinitionId === definition.id) {
+      variant.attackLoadoutOverride = normalizeAttackLoadoutSlots(this.getBasicLoadoutDraft(definition.id));
+      variant.savedAt = new Date().toISOString();
+      this.savePresetState();
+    }
+
+    this.saveEnemyLabPresetMarkdown(
+      'variants',
+      this.createPresetFilename('enemy', variant.displayName),
       createEnemyVariantMarkdown(variant),
-      'text/markdown'
+      `Saved variant preset: ${variant.displayName}`
     );
+  }
+
+  private loadEnemyVariantPreset(): void {
+    loadMarkdownFile((contents) => {
+      const preset = parseEnemyVariantPresetMarkdown(contents);
+      if (!preset) {
+        this.setPresetStatus('Load rejected: expected an Enemy Lab variant preset.', true);
+        return;
+      }
+
+      this.importVariantPresetFromFile(preset);
+    });
   }
 
   private exportSelectedForgeSvg(): void {
@@ -2764,24 +3742,40 @@ export class EnemyLabScene extends Phaser.Scene {
       const preset = parseEnemyLabPresetMarkdown(contents);
       if (!preset) {
         console.warn('Unable to import enemy lab preset.');
+        this.setPresetStatus('Load rejected: expected an Enemy Lab, Forge, variant, or squad preset.', true);
         return;
       }
 
       if (preset.type === 'starvivors-enemy-lab-variant') {
-        const id = `${preset.id}-${Date.now()}`;
-        this.upsertVariantPreset({ ...preset, id });
-        this.selectedEnemyIndex = Math.max(0, getEnemyLabDefinitions().findIndex((definition) => definition.id === preset.baseDefinitionId));
-        this.selectedVariantId = id;
+        this.importVariantPresetFromFile(preset);
       } else {
-        const id = `${preset.id}-${Date.now()}`;
-        this.upsertSquadPreset({ ...preset, id });
-        this.selectedCustomSquadId = id;
+        this.importSquadPresetFromFile(preset);
       }
-      this.savePresetState();
-      this.populateVariantSelect();
-      this.populateCustomSquadSelect();
-      this.syncOverlayFromState();
     });
+  }
+
+  private importVariantPresetFromFile(preset: EnemyLabVariantPreset): void {
+    const id = `${preset.id}-${Date.now()}`;
+    this.upsertVariantPreset({ ...preset, id, savedAt: new Date().toISOString() });
+    this.selectedEnemyIndex = Math.max(0, getEnemyLabDefinitions().findIndex((definition) => definition.id === preset.baseDefinitionId));
+    this.selectedVariantId = id;
+    this.hydrateBasicLoadoutDraftFromSelectedVariant();
+    this.savePresetState();
+    this.populateVariantSelect();
+    this.syncOverlayFromState();
+    this.setPresetStatus(`Loaded variant preset: ${preset.displayName}`);
+  }
+
+  private importSquadPresetFromFile(preset: EnemyLabSquadPreset): void {
+    const id = `${preset.id}-${Date.now()}`;
+    this.upsertSquadPreset({ ...preset, id, savedAt: new Date().toISOString() });
+    this.selectedCustomSquadId = id;
+    this.selectedSquadEntryIndex = -1;
+    this.selectedSquadLoadoutSlotIndex = 0;
+    this.savePresetState();
+    this.populateCustomSquadSelect();
+    this.syncOverlayFromState();
+    this.setPresetStatus(`Loaded squad preset: ${preset.displayName}`);
   }
 
   private createNewCustomSquad(): void {
@@ -2852,11 +3846,98 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    downloadTextFile(
-      `squad-${slugify(squad.displayName)}-${this.time.now.toFixed(0)}.md`,
+    this.saveEnemyLabPresetMarkdown(
+      'squads',
+      this.createPresetFilename('squad', squad.displayName),
       createEnemySquadMarkdown(squad),
-      'text/markdown'
+      `Saved squad preset: ${squad.displayName}`
     );
+  }
+
+  private loadEnemySquadPreset(): void {
+    loadMarkdownFile((contents) => {
+      const preset = parseEnemySquadPresetMarkdown(contents);
+      if (!preset) {
+        this.setPresetStatus('Load rejected: expected an Enemy Lab squad preset.', true);
+        return;
+      }
+
+      this.importSquadPresetFromFile(preset);
+    });
+  }
+
+  private saveSelectedAttackLoadoutPreset(): void {
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const preset = createEnemyLabAttackLoadoutPreset({
+      id: `loadout-${slugify(definition.id)}-${Date.now()}`,
+      displayName: `${definition.displayName} Basic Loadout`,
+      hostKind: 'enemy',
+      hostDefinitionId: definition.id,
+      slots: this.getBasicLoadoutDraft(definition.id),
+      notes: this.getSelectedVariant()?.notes
+    });
+
+    this.saveEnemyLabPresetMarkdown(
+      'loadouts',
+      this.createPresetFilename('loadout', definition.displayName),
+      createEnemyLabAttackLoadoutMarkdown(preset),
+      `Saved attack loadout: ${definition.displayName}`
+    );
+  }
+
+  private loadAttackLoadoutPreset(): void {
+    loadMarkdownFile((contents) => {
+      const preset = parseEnemyLabAttackLoadoutMarkdown(contents);
+      if (!preset) {
+        this.setPresetStatus('Load rejected: expected an Enemy Lab attack loadout preset.', true);
+        return;
+      }
+
+      const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+      this.basicLoadoutDraftsByEnemyId[definition.id] = cloneAttackLoadoutSlots(preset.slots);
+      this.selectedBasicLoadoutSlotIndex = 0;
+      this.renderAttackWorkflowControls();
+      this.setPresetStatus(`Loaded attack loadout onto ${definition.displayName}: ${preset.displayName}`);
+    });
+  }
+
+  private saveAttackTestPreset(): void {
+    const selectedAttack = getEnemyAttackDefinition(this.selectedAttackTestId);
+    const preset = createEnemyLabAttackTestPreset({
+      id: `attack-test-${slugify(selectedAttack.id)}-${Date.now()}`,
+      displayName: `${selectedAttack.displayName} Attack Test`,
+      hostShipId: DEFAULT_SHIP_ID,
+      targetSetup: 'dummy',
+      readabilityMode: this.readabilityMode,
+      reducedEffects: this.reducedEffects,
+      slots: this.attackTesterSlots
+    });
+
+    this.saveEnemyLabPresetMarkdown(
+      'attack-tests',
+      this.createPresetFilename('attack-test', selectedAttack.displayName),
+      createEnemyLabAttackTestMarkdown(preset),
+      `Saved attack test: ${selectedAttack.displayName}`
+    );
+  }
+
+  private loadAttackTestPreset(): void {
+    loadMarkdownFile((contents) => {
+      const preset = parseEnemyLabAttackTestMarkdown(contents);
+      if (!preset) {
+        this.setPresetStatus('Load rejected: expected an Enemy Lab attack test preset.', true);
+        return;
+      }
+
+      this.attackTesterSlots = cloneAttackLoadoutSlots(preset.slots);
+      this.selectedAttackTesterSlotIndex = 0;
+      this.selectedAttackTestId = this.attackTesterSlots[0]?.attackId ?? this.selectedAttackTestId;
+      this.readabilityMode = preset.readabilityMode;
+      this.reducedEffects = preset.reducedEffects;
+      this.clearTestProps();
+      this.syncOverlayFromState();
+      this.setPresetStatus(`Loaded attack test: ${preset.displayName}`);
+    });
   }
 
   private clearSelectedSquad(): void {
@@ -2867,6 +3948,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     squad.entries = [];
     this.selectedSquadEntryIndex = -1;
+    this.selectedSquadLoadoutSlotIndex = 0;
     squad.savedAt = new Date().toISOString();
     this.savePresetState();
     this.renderSquadEntries();
@@ -2905,6 +3987,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.presetState.squads = this.presetState.squads.filter((candidate) => candidate.id !== squad.id);
     this.selectedCustomSquadId = '';
     this.selectedSquadEntryIndex = -1;
+    this.selectedSquadLoadoutSlotIndex = 0;
     this.savePresetState();
     this.syncOverlayFromState();
   }
@@ -2988,44 +4071,15 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
-    const loadout = getDefaultEnemyAttackLoadout(definition.id);
+    const loadout = this.getBasicLoadoutDraft(definition.id);
+    this.selectedBasicLoadoutSlotIndex = this.clampLoadoutSlotIndex(this.selectedBasicLoadoutSlotIndex, loadout);
     this.overlay.attackLoadout.replaceChildren();
 
-    if (loadout.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'enemy-lab-empty';
-      empty.textContent = 'No default attack loadout assigned.';
-      this.overlay.attackLoadout.appendChild(empty);
-      return;
-    }
-
-    for (const [index, slot] of loadout.entries()) {
-      const attack = getEnemyAttackDefinition(slot.attackId);
-      const row = document.createElement('div');
-      row.className = 'enemy-lab-attack-slot';
-
-      const title = document.createElement('div');
-      title.className = 'enemy-lab-attack-slot-title';
-      title.textContent = `${index + 1}. ${slot.label ?? attack.displayName}`;
-      row.appendChild(title);
-
-      const meta = document.createElement('div');
-      meta.className = 'enemy-lab-attack-slot-meta';
-      meta.textContent = [
-        attack.id,
-        slot.enabled ? 'enabled' : 'disabled',
-        `batch ${attack.lab.batch}`,
-        attack.tags.join(', ')
-      ].join(' | ');
-      row.appendChild(meta);
-
-      const params = document.createElement('div');
-      params.className = 'enemy-lab-attack-slot-meta';
-      params.textContent = this.formatAttackParams(resolveAttackLoadoutSlotParams(slot));
-      row.appendChild(params);
-
-      this.overlay.attackLoadout.appendChild(row);
-    }
+    const intro = document.createElement('div');
+    intro.className = 'enemy-lab-empty';
+    intro.textContent = 'Draft loadout for this enemy. Spawned lab enemies keep a cloned snapshot for inspection; combat AI is unchanged.';
+    this.overlay.attackLoadout.appendChild(intro);
+    this.renderLoadoutEditor(this.overlay.attackLoadout, 'basic', loadout, this.selectedBasicLoadoutSlotIndex);
   }
 
   private renderAttackTesterControls(): void {
@@ -3033,52 +4087,470 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    const selectedAttack = getEnemyAttackDefinitions().some((attack) => attack.id === this.selectedAttackTestId)
-      ? getEnemyAttackDefinition(this.selectedAttackTestId)
-      : getEnemyAttackDefinitions()[0];
+    this.selectedAttackTesterSlotIndex = this.clampLoadoutSlotIndex(this.selectedAttackTesterSlotIndex, this.attackTesterSlots);
+    const selectedSlot = this.attackTesterSlots[this.selectedAttackTesterSlotIndex];
+    const selectedAttack = selectedSlot
+      ? getEnemyAttackDefinition(selectedSlot.attackId)
+      : getEnemyAttackDefinition(this.selectedAttackTestId);
     this.selectedAttackTestId = selectedAttack.id;
-    this.overlay.attackTesterAttackSelect.value = selectedAttack.id;
+    this.overlay.attackTesterAttackSelect.value = this.selectedAttackTestId;
     this.overlay.attackTesterSlotList.replaceChildren();
-    this.overlay.attackTesterParams.replaceChildren();
 
-    const slot = document.createElement('div');
-    slot.className = 'enemy-lab-attack-slot';
-
-    const title = document.createElement('div');
-    title.className = 'enemy-lab-attack-slot-title';
-    title.textContent = `Player-test slot: ${selectedAttack.displayName}`;
-    slot.appendChild(title);
-
-    const meta = document.createElement('div');
-    meta.className = 'enemy-lab-attack-slot-meta';
-    meta.textContent = [
-      selectedAttack.id,
-      `target ${selectedAttack.targeting.targetKind}`,
+    const intro = document.createElement('div');
+    intro.className = 'enemy-lab-empty';
+    intro.textContent = 'Slot stack for the player-test host. Fire Once queues the selected slot; Auto-Cycle walks enabled slots.';
+    this.overlay.attackTesterSlotList.appendChild(intro);
+    this.renderLoadoutEditor(this.overlay.attackTesterSlotList, 'attackTester', this.attackTesterSlots, this.selectedAttackTesterSlotIndex);
+    this.overlay.attackTesterParams.textContent = [
+      `Selected stack: ${this.attackTesterSlots.length} slot${this.attackTesterSlots.length === 1 ? '' : 's'}`,
+      `current attack target ${selectedAttack.targeting.targetKind}`,
       `range ${selectedAttack.targeting.rangePx}`,
-      `status ${selectedAttack.lab.status}`
+      `test targets ${this.attackTestTargets.length}`,
+      `auto-cycle ${this.attackTesterAutoCycleEnabled ? 'on' : 'off'}`
     ].join(' | ');
-    slot.appendChild(meta);
-    this.overlay.attackTesterSlotList.appendChild(slot);
+  }
 
-    for (const [key, value] of Object.entries(selectedAttack.defaultParams)) {
-      const label = document.createElement('label');
-      label.textContent = key;
-      const input = document.createElement('input');
-      input.type = typeof value === 'number' ? 'number' : 'text';
-      input.value = String(value);
-      input.disabled = true;
-      label.appendChild(input);
-      this.overlay.attackTesterParams.appendChild(label);
+  private renderLoadoutEditor(
+    container: HTMLElement,
+    scope: AttackLoadoutEditorScope,
+    loadout: AttackLoadoutSlot[],
+    selectedIndex: number
+  ): void {
+    if (loadout.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'enemy-lab-empty';
+      empty.textContent = 'No attack slots. Use + Attack Slot to start a draft.';
+      container.appendChild(empty);
+      return;
+    }
+
+    for (const [index, slot] of loadout.entries()) {
+      if (!isEnemyAttackId(slot.attackId)) {
+        continue;
+      }
+
+      const attack = getEnemyAttackDefinition(slot.attackId);
+      const row = document.createElement('div');
+      row.className = index === selectedIndex ? 'enemy-lab-attack-slot is-active' : 'enemy-lab-attack-slot';
+
+      const header = document.createElement('div');
+      header.className = 'enemy-lab-attack-slot-header';
+      const selectButton = document.createElement('button');
+      selectButton.type = 'button';
+      selectButton.dataset.loadoutScope = scope;
+      selectButton.dataset.loadoutAction = 'select';
+      selectButton.dataset.loadoutIndex = String(index);
+      selectButton.textContent = `Slot ${index + 1}`;
+      const title = document.createElement('div');
+      title.className = 'enemy-lab-attack-slot-title';
+      title.textContent = slot.label?.trim() || attack.displayName;
+      header.append(selectButton, title);
+      row.appendChild(header);
+
+      const meta = document.createElement('div');
+      meta.className = 'enemy-lab-attack-slot-meta';
+      meta.textContent = [
+        attack.id,
+        slot.enabled ? 'enabled' : 'disabled',
+        `batch ${attack.lab.batch}`,
+        `target ${attack.targeting.targetKind}`,
+        `range ${attack.targeting.rangePx}`,
+        attack.tags.join(', ')
+      ].join(' | ');
+      row.appendChild(meta);
+
+      const fieldGrid = document.createElement('div');
+      fieldGrid.className = 'enemy-lab-loadout-grid';
+      fieldGrid.appendChild(this.createLoadoutEnabledControl(scope, index, slot.enabled));
+      fieldGrid.appendChild(this.createLoadoutAttackControl(scope, index, slot.attackId));
+      fieldGrid.appendChild(this.createLoadoutTextControl(scope, index, 'label', 'Label', slot.label ?? ''));
+      fieldGrid.appendChild(this.createLoadoutNumberControl(scope, index, 'cooldownOffsetMs', 'Offset', slot.cooldownOffsetMs ?? 0, 50, undefined));
+      fieldGrid.appendChild(this.createLoadoutNumberControl(scope, index, 'weight', 'Weight', slot.weight ?? 1, 0.1, 0));
+      row.appendChild(fieldGrid);
+
+      const params = resolveAttackLoadoutSlotParams(slot);
+      const paramsGrid = document.createElement('div');
+      paramsGrid.className = 'enemy-lab-param-grid enemy-lab-slot-param-grid';
+      for (const [key, value] of Object.entries(params)) {
+        paramsGrid.appendChild(this.createLoadoutParamControl(scope, index, key, value));
+      }
+      row.appendChild(paramsGrid);
+
+      const paramSummary = document.createElement('div');
+      paramSummary.className = 'enemy-lab-attack-slot-meta';
+      paramSummary.textContent = this.formatAttackParams(params);
+      row.appendChild(paramSummary);
+
+      container.appendChild(row);
     }
   }
 
-  private formatAttackParams(params: Record<string, number | string | boolean>): string {
+  private createLoadoutEnabledControl(scope: AttackLoadoutEditorScope, index: number, enabled: boolean): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = 'Enabled';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = enabled;
+    this.assignLoadoutFieldDataset(input, scope, index, 'enabled');
+    label.appendChild(input);
+    return label;
+  }
+
+  private createLoadoutAttackControl(scope: AttackLoadoutEditorScope, index: number, attackId: EnemyAttackId): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = 'Attack';
+    const select = document.createElement('select');
+    for (const attack of getEnemyAttackDefinitions()) {
+      select.add(new Option(attack.displayName, attack.id));
+    }
+    select.value = attackId;
+    this.assignLoadoutFieldDataset(select, scope, index, 'attackId');
+    label.appendChild(select);
+    return label;
+  }
+
+  private createLoadoutTextControl(
+    scope: AttackLoadoutEditorScope,
+    index: number,
+    field: keyof Pick<AttackLoadoutSlot, 'label'>,
+    labelText: string,
+    value: string
+  ): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 48;
+    input.value = value;
+    this.assignLoadoutFieldDataset(input, scope, index, field);
+    label.appendChild(input);
+    return label;
+  }
+
+  private createLoadoutNumberControl(
+    scope: AttackLoadoutEditorScope,
+    index: number,
+    field: keyof Pick<AttackLoadoutSlot, 'cooldownOffsetMs' | 'weight'>,
+    labelText: string,
+    value: number,
+    step: number,
+    min: number | undefined
+  ): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.step = String(step);
+    if (min !== undefined) {
+      input.min = String(min);
+    }
+    input.value = String(value);
+    this.assignLoadoutFieldDataset(input, scope, index, field);
+    label.appendChild(input);
+    return label;
+  }
+
+  private createLoadoutParamControl(
+    scope: AttackLoadoutEditorScope,
+    index: number,
+    key: string,
+    value: EnemyAttackParamValue
+  ): HTMLLabelElement {
+    const label = document.createElement('label');
+    label.textContent = key;
+    const input = typeof value === 'boolean'
+      ? document.createElement('select')
+      : document.createElement('input');
+
+    if (input instanceof HTMLSelectElement) {
+      input.add(new Option('true', 'true'));
+      input.add(new Option('false', 'false'));
+      input.value = String(value);
+    } else {
+      input.type = typeof value === 'number' ? 'number' : 'text';
+      input.step = typeof value === 'number' && Math.abs(value) < 10 ? '0.05' : '1';
+      input.value = String(value);
+    }
+
+    input.dataset.loadoutScope = scope;
+    input.dataset.loadoutIndex = String(index);
+    input.dataset.loadoutParam = key;
+    label.appendChild(input);
+    return label;
+  }
+
+  private assignLoadoutFieldDataset(
+    input: HTMLInputElement | HTMLSelectElement,
+    scope: AttackLoadoutEditorScope,
+    index: number,
+    field: keyof AttackLoadoutSlot
+  ): void {
+    input.dataset.loadoutScope = scope;
+    input.dataset.loadoutIndex = String(index);
+    input.dataset.loadoutField = field;
+  }
+
+  private formatAttackParams(params: Record<string, EnemyAttackParamValue>): string {
     const entries = Object.entries(params);
     if (entries.length === 0) {
       return 'params: none';
     }
 
     return `params: ${entries.map(([key, value]) => `${key}=${String(value)}`).join(', ')}`;
+  }
+
+  private normalizeAttackId(value: string): EnemyAttackId {
+    return isEnemyAttackId(value) ? value : getEnemyAttackDefinitions()[0].id;
+  }
+
+  private clampLoadoutSlotIndex(index: number, loadout: AttackLoadoutSlot[]): number {
+    if (loadout.length === 0) {
+      return 0;
+    }
+
+    return Phaser.Math.Clamp(Math.round(index), 0, loadout.length - 1);
+  }
+
+  private getBasicLoadoutDraft(definitionId: string): AttackLoadoutSlot[] {
+    if (!this.basicLoadoutDraftsByEnemyId[definitionId]) {
+      this.basicLoadoutDraftsByEnemyId[definitionId] = getDefaultEnemyAttackLoadout(definitionId);
+    }
+
+    return this.basicLoadoutDraftsByEnemyId[definitionId];
+  }
+
+  private hydrateBasicLoadoutDraftFromSelectedVariant(): void {
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const variant = this.getSelectedVariant();
+    if (!definition || !variant?.attackLoadoutOverride) {
+      return;
+    }
+
+    this.basicLoadoutDraftsByEnemyId[definition.id] = cloneAttackLoadoutSlots(variant.attackLoadoutOverride);
+    this.selectedBasicLoadoutSlotIndex = 0;
+  }
+
+  private createEnemyLoadoutSnapshot(definitionId: string, source?: AttackLoadoutSlot[]): AttackLoadoutSlot[] {
+    return normalizeAttackLoadoutSlots(source ?? getDefaultEnemyAttackLoadout(definitionId));
+  }
+
+  private getDefaultAttackIdForEnemy(definitionId: string): EnemyAttackId {
+    return getDefaultEnemyAttackLoadout(definitionId)[0]?.attackId ?? 'contact-ram';
+  }
+
+  private getLoadoutForScope(scope: AttackLoadoutEditorScope | undefined, createSquadDraft = false): AttackLoadoutSlot[] | undefined {
+    if (scope === 'basic') {
+      return this.getBasicLoadoutDraft(getEnemyLabDefinitions()[this.selectedEnemyIndex].id);
+    }
+    if (scope === 'attackTester') {
+      return this.attackTesterSlots;
+    }
+    if (scope === 'squad') {
+      const context = this.getSelectedSquadEntryContext();
+      if (!context) {
+        return undefined;
+      }
+      if (!context.entry.attackLoadoutOverride && createSquadDraft) {
+        context.entry.attackLoadoutOverride = getDefaultEnemyAttackLoadout(context.entry.definitionId);
+      }
+      return context.entry.attackLoadoutOverride;
+    }
+
+    return undefined;
+  }
+
+  private setSelectedLoadoutSlotIndex(scope: AttackLoadoutEditorScope, index: number): void {
+    const loadout = this.getLoadoutForScope(scope);
+    const clampedIndex = this.clampLoadoutSlotIndex(index, loadout ?? []);
+    if (scope === 'basic') {
+      this.selectedBasicLoadoutSlotIndex = clampedIndex;
+    } else if (scope === 'attackTester') {
+      this.selectedAttackTesterSlotIndex = clampedIndex;
+      const slot = this.attackTesterSlots[this.selectedAttackTesterSlotIndex];
+      if (slot) {
+        this.selectedAttackTestId = slot.attackId;
+      }
+    } else {
+      this.selectedSquadLoadoutSlotIndex = clampedIndex;
+    }
+  }
+
+  private getSelectedLoadoutSlotIndex(scope: AttackLoadoutEditorScope): number {
+    if (scope === 'basic') {
+      return this.selectedBasicLoadoutSlotIndex;
+    }
+    if (scope === 'attackTester') {
+      return this.selectedAttackTesterSlotIndex;
+    }
+    return this.selectedSquadLoadoutSlotIndex;
+  }
+
+  private getAttackIdForNewSlot(scope: AttackLoadoutEditorScope): EnemyAttackId {
+    if (scope === 'attackTester') {
+      return this.selectedAttackTestId;
+    }
+    if (scope === 'squad') {
+      const context = this.getSelectedSquadEntryContext();
+      return context ? this.getDefaultAttackIdForEnemy(context.entry.definitionId) : 'contact-ram';
+    }
+
+    return this.getDefaultAttackIdForEnemy(getEnemyLabDefinitions()[this.selectedEnemyIndex].id);
+  }
+
+  private handleLoadoutAction(scope: AttackLoadoutEditorScope | undefined, action: string, index: number): void {
+    const normalizedScope = scope === 'basic' || scope === 'attackTester' || scope === 'squad' ? scope : undefined;
+    if (!normalizedScope) {
+      return;
+    }
+
+    if (action === 'reset') {
+      this.resetLoadoutScope(normalizedScope);
+      this.renderAfterLoadoutChange(normalizedScope);
+      return;
+    }
+
+    const loadout = this.getLoadoutForScope(normalizedScope, true);
+    if (!loadout) {
+      return;
+    }
+
+    if (action === 'select') {
+      this.setSelectedLoadoutSlotIndex(normalizedScope, index);
+    } else if (action === 'add') {
+      const slot = createDefaultAttackLoadoutSlot(this.getAttackIdForNewSlot(normalizedScope));
+      loadout.push(slot);
+      this.setSelectedLoadoutSlotIndex(normalizedScope, loadout.length - 1);
+      if (normalizedScope === 'attackTester') {
+        this.selectedAttackTestId = slot.attackId;
+      }
+    } else if (action === 'remove') {
+      const removeIndex = this.clampLoadoutSlotIndex(Number.isFinite(index) ? index : this.getSelectedLoadoutSlotIndex(normalizedScope), loadout);
+      if (loadout.length > 0) {
+        loadout.splice(removeIndex, 1);
+      }
+      this.setSelectedLoadoutSlotIndex(normalizedScope, removeIndex);
+    }
+
+    this.renderAfterLoadoutChange(normalizedScope);
+  }
+
+  private resetLoadoutScope(scope: AttackLoadoutEditorScope): void {
+    if (scope === 'basic') {
+      const definitionId = getEnemyLabDefinitions()[this.selectedEnemyIndex].id;
+      this.basicLoadoutDraftsByEnemyId[definitionId] = getDefaultEnemyAttackLoadout(definitionId);
+      this.selectedBasicLoadoutSlotIndex = 0;
+      return;
+    }
+
+    if (scope === 'attackTester') {
+      this.attackTesterSlots = [createDefaultAttackLoadoutSlot(this.selectedAttackTestId)];
+      this.selectedAttackTesterSlotIndex = 0;
+      return;
+    }
+
+    const context = this.getSelectedSquadEntryContext();
+    if (!context) {
+      return;
+    }
+
+    context.entry.attackLoadoutOverride = getDefaultEnemyAttackLoadout(context.entry.definitionId);
+    this.selectedSquadLoadoutSlotIndex = 0;
+  }
+
+  private renderAfterLoadoutChange(scope: AttackLoadoutEditorScope): void {
+    this.renderAttackWorkflowControls();
+    if (scope === 'squad') {
+      const squad = this.getSelectedCustomSquad();
+      if (squad) {
+        squad.savedAt = new Date().toISOString();
+        this.savePresetState();
+      }
+      this.renderSquadEntries();
+    }
+  }
+
+  private setLoadoutSlotAttack(scope: AttackLoadoutEditorScope, index: number, attackId: EnemyAttackId): void {
+    const loadout = this.getLoadoutForScope(scope, true);
+    if (!loadout) {
+      return;
+    }
+
+    if (loadout.length === 0) {
+      loadout.push(createDefaultAttackLoadoutSlot(attackId));
+    }
+
+    const clampedIndex = this.clampLoadoutSlotIndex(index, loadout);
+    const previous = loadout[clampedIndex];
+    const next = createDefaultAttackLoadoutSlot(attackId);
+    next.enabled = previous?.enabled ?? true;
+    next.cooldownOffsetMs = previous?.cooldownOffsetMs ?? next.cooldownOffsetMs;
+    next.weight = previous?.weight ?? next.weight;
+    loadout[clampedIndex] = next;
+    this.setSelectedLoadoutSlotIndex(scope, clampedIndex);
+  }
+
+  private updateLoadoutSlotFromInput(input: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement): void {
+    const scope = input.dataset.loadoutScope as AttackLoadoutEditorScope | undefined;
+    const loadout = this.getLoadoutForScope(scope);
+    const index = Number(input.dataset.loadoutIndex);
+    if (!scope || !loadout || !Number.isInteger(index) || !loadout[index]) {
+      return;
+    }
+
+    const slot = loadout[index];
+    const field = input.dataset.loadoutField as keyof AttackLoadoutSlot | undefined;
+    if (field === 'attackId') {
+      this.setLoadoutSlotAttack(scope, index, this.normalizeAttackId(input.value));
+      this.renderAfterLoadoutChange(scope);
+      return;
+    }
+    if (field === 'enabled' && input instanceof HTMLInputElement) {
+      slot.enabled = input.checked;
+    }
+    if (field === 'label') {
+      slot.label = input.value.trim() || undefined;
+    }
+    if (field === 'cooldownOffsetMs' && input instanceof HTMLInputElement) {
+      const value = Number(input.value);
+      slot.cooldownOffsetMs = Number.isFinite(value) ? Math.round(value) : undefined;
+    }
+    if (field === 'weight' && input instanceof HTMLInputElement) {
+      const value = Number(input.value);
+      slot.weight = Number.isFinite(value) ? Math.max(0, value) : undefined;
+    }
+
+    const paramKey = input.dataset.loadoutParam;
+    if (paramKey) {
+      const resolvedParams = resolveAttackLoadoutSlotParams(slot);
+      const currentValue = resolvedParams[paramKey];
+      slot.params = { ...(slot.params ?? {}) };
+      if (typeof currentValue === 'number') {
+        const value = Number(input.value);
+        slot.params[paramKey] = Number.isFinite(value) ? value : currentValue;
+      } else if (typeof currentValue === 'boolean') {
+        slot.params[paramKey] = input.value === 'true';
+      } else {
+        slot.params[paramKey] = input.value;
+      }
+    }
+
+    this.setSelectedLoadoutSlotIndex(scope, index);
+    if (scope === 'squad') {
+      const context = this.getSelectedSquadEntryContext();
+      if (context) {
+        context.squad.savedAt = new Date().toISOString();
+        this.savePresetState();
+      }
+    }
+    if (scope === 'attackTester') {
+      const selectedSlot = this.attackTesterSlots[this.selectedAttackTesterSlotIndex];
+      if (selectedSlot) {
+        this.selectedAttackTestId = selectedSlot.attackId;
+        if (this.overlay) {
+          this.overlay.attackTesterAttackSelect.value = selectedSlot.attackId;
+        }
+      }
+    }
   }
 
   private renderSquadEntries(): void {
@@ -3114,8 +4586,11 @@ export class EnemyLabScene extends Phaser.Scene {
       remove.dataset.entryIndex = String(index);
       remove.textContent = 'Remove';
       row.appendChild(remove);
+      row.appendChild(this.createSquadEntryLoadoutControls(squad, index));
       this.overlay.squadEntries.appendChild(row);
     }
+
+    this.renderSelectedSquadEntryLoadoutEditor(squad);
   }
 
   private createSquadEntryInput(index: number, field: 'x' | 'y' | 'spawnDelayMs', value: number): HTMLLabelElement {
@@ -3131,6 +4606,72 @@ export class EnemyLabScene extends Phaser.Scene {
     return label;
   }
 
+  private createSquadEntryLoadoutControls(squad: EnemyLabSquadPreset, index: number): HTMLDivElement {
+    const controls = document.createElement('div');
+    controls.className = 'enemy-lab-entry-loadout';
+    const hasCustomLoadout = Boolean(squad.entries[index]?.attackLoadoutOverride);
+    const label = document.createElement('span');
+    label.textContent = `Attack override: ${hasCustomLoadout ? 'Saved custom' : 'Default loadout'}`;
+    controls.appendChild(label);
+
+    for (const [action, text] of [
+      ['loadoutDefault', 'Default'],
+      ['loadoutCustom', 'Custom'],
+      ['loadoutReset', 'Reset']
+    ] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.entryAction = action;
+      button.dataset.entryIndex = String(index);
+      button.textContent = text;
+      button.className = action === 'loadoutCustom' && hasCustomLoadout ? 'is-active' : '';
+      button.disabled = action === 'loadoutReset' && !hasCustomLoadout;
+      controls.appendChild(button);
+    }
+
+    return controls;
+  }
+
+  private renderSelectedSquadEntryLoadoutEditor(squad: EnemyLabSquadPreset): void {
+    if (!this.overlay || this.selectedSquadEntryIndex < 0 || !squad.entries[this.selectedSquadEntryIndex]) {
+      return;
+    }
+
+    const loadout = squad.entries[this.selectedSquadEntryIndex].attackLoadoutOverride;
+    if (!loadout) {
+      return;
+    }
+
+    this.selectedSquadLoadoutSlotIndex = this.clampLoadoutSlotIndex(this.selectedSquadLoadoutSlotIndex, loadout);
+    const editor = document.createElement('div');
+    editor.className = 'enemy-lab-squad-loadout-editor';
+    const title = document.createElement('div');
+    title.className = 'enemy-lab-subtitle';
+    title.textContent = `Session Attack Override: ${this.getEntryLabel(squad.entries[this.selectedSquadEntryIndex])}`;
+    editor.appendChild(title);
+    const note = document.createElement('div');
+    note.className = 'enemy-lab-empty';
+    note.textContent = 'Saved with the squad preset. Spawned lab enemies keep a cloned snapshot for inspection.';
+    editor.appendChild(note);
+    this.renderLoadoutEditor(editor, 'squad', loadout, this.selectedSquadLoadoutSlotIndex);
+    const actions = document.createElement('div');
+    actions.className = 'enemy-lab-row';
+    for (const [action, text] of [
+      ['add', '+ Attack Slot'],
+      ['remove', '- Attack Slot'],
+      ['reset', 'Reset Defaults']
+    ] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.dataset.loadoutScope = 'squad';
+      button.dataset.loadoutAction = action;
+      button.textContent = text;
+      actions.appendChild(button);
+    }
+    editor.appendChild(actions);
+    this.overlay.squadEntries.appendChild(editor);
+  }
+
   private handleSquadEntryAction(action: string, index: number): void {
     const squad = this.getSelectedCustomSquad();
     if (!squad || !Number.isInteger(index) || !squad.entries[index]) {
@@ -3139,10 +4680,32 @@ export class EnemyLabScene extends Phaser.Scene {
 
     if (action === 'select') {
       this.selectedSquadEntryIndex = index;
+      this.selectedSquadLoadoutSlotIndex = 0;
     }
     if (action === 'remove') {
       squad.entries.splice(index, 1);
       this.selectedSquadEntryIndex = Math.min(this.selectedSquadEntryIndex, squad.entries.length - 1);
+      squad.savedAt = new Date().toISOString();
+      this.savePresetState();
+    }
+    if (action === 'loadoutDefault') {
+      delete squad.entries[index].attackLoadoutOverride;
+      this.selectedSquadEntryIndex = index;
+      this.selectedSquadLoadoutSlotIndex = 0;
+      squad.savedAt = new Date().toISOString();
+      this.savePresetState();
+    }
+    if (action === 'loadoutCustom') {
+      squad.entries[index].attackLoadoutOverride = squad.entries[index].attackLoadoutOverride ?? getDefaultEnemyAttackLoadout(squad.entries[index].definitionId);
+      this.selectedSquadEntryIndex = index;
+      this.selectedSquadLoadoutSlotIndex = this.clampLoadoutSlotIndex(this.selectedSquadLoadoutSlotIndex, squad.entries[index].attackLoadoutOverride ?? []);
+      squad.savedAt = new Date().toISOString();
+      this.savePresetState();
+    }
+    if (action === 'loadoutReset') {
+      squad.entries[index].attackLoadoutOverride = getDefaultEnemyAttackLoadout(squad.entries[index].definitionId);
+      this.selectedSquadEntryIndex = index;
+      this.selectedSquadLoadoutSlotIndex = 0;
       squad.savedAt = new Date().toISOString();
       this.savePresetState();
     }
@@ -3187,6 +4750,33 @@ export class EnemyLabScene extends Phaser.Scene {
     return this.selectedCustomSquadId ? this.presetState.squads.find((squad) => squad.id === this.selectedCustomSquadId) : undefined;
   }
 
+  private getSelectedSquadEntryContext(): {
+    squad: EnemyLabSquadPreset;
+    entry: EnemyLabSquadPresetEntry;
+    index: number;
+  } | undefined {
+    const squad = this.getSelectedCustomSquad();
+    const entry = squad?.entries[this.selectedSquadEntryIndex];
+    if (!squad || !entry) {
+      return undefined;
+    }
+
+    return {
+      squad,
+      entry,
+      index: this.selectedSquadEntryIndex
+    };
+  }
+
+  private getSquadEntryLoadoutSnapshot(squad: EnemyLabSquadPreset, index: number): AttackLoadoutSlot[] {
+    const entry = squad.entries[index];
+    if (!entry) {
+      return [];
+    }
+
+    return cloneAttackLoadoutSlots(entry.attackLoadoutOverride ?? getDefaultEnemyAttackLoadout(entry.definitionId));
+  }
+
   private upsertVariantPreset(variant: EnemyLabVariantPreset): void {
     this.presetState.variants = this.presetState.variants.filter((candidate) => candidate.id !== variant.id);
     this.presetState.variants.push(variant);
@@ -3222,6 +4812,58 @@ export class EnemyLabScene extends Phaser.Scene {
   private savePresetState(): void {
     saveEnemyLabStorageState(this.presetState);
     saveAssetForgeStorageState({ assets: this.presetState.forgeAssets });
+  }
+
+  private saveEnemyLabPresetMarkdown(
+    folder: EnemyLabPresetFolderCategory,
+    filename: string,
+    contents: string,
+    statusMessage: string
+  ): void {
+    const safeFilename = this.sanitizePresetFilename(filename);
+    const outputFilename = isDesktopRuntime()
+      ? `enemy-lab/${folder}/${safeFilename}`
+      : safeFilename;
+
+    downloadTextFile(outputFilename, contents, 'text/markdown', 'debug-presets');
+    this.setPresetStatus(statusMessage);
+  }
+
+  private openEnemyLabPresetFolder(folder: EnemyLabPresetFolderCategory): void {
+    if (!isDesktopRuntime()) {
+      this.setPresetStatus('Preset folders are available in the desktop build only.', true);
+      return;
+    }
+
+    openDesktopDataFolder('debug-presets', `enemy-lab/${folder}`);
+    this.setPresetStatus(`Opened enemy-lab/${folder}.`);
+  }
+
+  private createPresetFilename(prefix: string, label: string): string {
+    return `${prefix}-${slugify(label)}-${getTimestampSlug()}.md`;
+  }
+
+  private sanitizePresetFilename(filename: string): string {
+    const safeName = filename
+      .replace(/[<>:"/\\|?*\x00-\x1F]/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .trim();
+
+    return safeName.toLowerCase().endsWith('.md') ? safeName : `${safeName || 'enemy-lab-preset'}.md`;
+  }
+
+  private setPresetStatus(message: string, warn = false): void {
+    if (warn) {
+      console.warn(message);
+    }
+
+    if (!this.overlay) {
+      return;
+    }
+
+    this.overlay.status.textContent = message;
+    this.lastOverlayStatusText = message;
+    this.nextOverlayStatusUpdateAt = this.time.now + 1750;
   }
 
   private setForgeImportReport(report: string): void {
@@ -3314,6 +4956,27 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
+  private syncDesktopPresetButtons(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const desktop = isDesktopRuntime();
+    const folderActions: Array<[string, string]> = [
+      ['openVariantFolder', 'Variant Folder'],
+      ['openSquadFolder', 'Squad Folder'],
+      ['openLoadoutFolder', 'Loadout Folder'],
+      ['openAttackTestFolder', 'Attack Test Folder']
+    ];
+
+    for (const [action, label] of folderActions) {
+      for (const button of this.overlay.root.querySelectorAll<HTMLButtonElement>(`[data-action="${action}"]`)) {
+        button.disabled = !desktop;
+        button.textContent = desktop ? label : `${label} (Desktop)`;
+      }
+    }
+  }
+
   private syncActionButtonStates(): void {
     this.setActionState('ai', this.isAiEnabled, 'AI On', 'AI Off');
     this.setActionState('invuln', this.isPlayerInvulnerable, 'Invuln On', 'Invuln Off');
@@ -3323,6 +4986,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.setActionState('collisionDebug', this.enemyCollisionDebugEnabled, 'Hit Circles On', 'Hit Circles Off');
     this.setActionState('reducedEffects', this.reducedEffects, 'Reduced FX On', 'Reduced FX Off');
     this.setActionState('pause', this.isSimulationPaused, 'Paused', 'Pause');
+    this.setActionState('attackTesterAutoCycle', this.attackTesterAutoCycleEnabled, 'Auto-Cycle On', 'Auto-Cycle');
 
     if (!this.overlay) {
       return;
@@ -3335,6 +4999,8 @@ export class EnemyLabScene extends Phaser.Scene {
     for (const button of this.overlay.root.querySelectorAll<HTMLButtonElement>('[data-readability-mode]')) {
       button.classList.toggle('is-active', button.dataset.readabilityMode === this.readabilityMode);
     }
+
+    this.syncDesktopPresetButtons();
   }
 
   private setLabMode(mode: EnemyLabMode): void {
@@ -4500,6 +6166,20 @@ function sampleEnemyLabDiagnostics(frames: EnemyLabDiagnosticsFrame[], limit: nu
     sampled.push(frames[Math.round(index * step)]);
   }
   return sampled;
+}
+
+function distanceToSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const abX = bx - ax;
+  const abY = by - ay;
+  const lengthSq = abX * abX + abY * abY;
+  if (lengthSq <= 0.0001) {
+    return Math.hypot(px - ax, py - ay);
+  }
+
+  const t = Math.max(0, Math.min(1, ((px - ax) * abX + (py - ay) * abY) / lengthSq));
+  const closestX = ax + abX * t;
+  const closestY = ay + abY * t;
+  return Math.hypot(px - closestX, py - closestY);
 }
 
 function averageDiagnosticsValue(values: number[]): number {

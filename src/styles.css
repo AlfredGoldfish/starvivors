@@ -396,11 +396,29 @@ canvas {
   background: rgba(5, 9, 18, 0.78);
 }
 
+.enemy-lab-attack-slot.is-active {
+  border-color: rgba(115, 242, 255, 0.58);
+  background: rgba(8, 18, 28, 0.86);
+}
+
+.enemy-lab-attack-slot-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.enemy-lab-attack-slot-header button {
+  padding: 4px 6px;
+  font-size: 11px;
+}
+
 .enemy-lab-attack-slot-title {
-  margin-bottom: 4px;
   color: rgba(242, 251, 255, 0.9);
   font-size: 12px;
   font-weight: 700;
+  overflow-wrap: anywhere;
 }
 
 .enemy-lab-attack-slot-meta {
@@ -422,6 +440,45 @@ canvas {
   grid-template-columns: 28px minmax(0, 1fr);
   gap: 4px;
   font-size: 10px;
+}
+
+.enemy-lab-loadout-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  margin: 7px 0;
+}
+
+.enemy-lab-loadout-grid label,
+.enemy-lab-slot-param-grid label {
+  grid-template-columns: 58px minmax(0, 1fr);
+  gap: 5px;
+  margin: 0;
+}
+
+.enemy-lab-entry-loadout {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  align-items: center;
+  color: rgba(242, 251, 255, 0.64);
+  font-size: 10px;
+}
+
+.enemy-lab-entry-loadout span {
+  margin-right: auto;
+}
+
+.enemy-lab-entry-loadout button {
+  padding: 4px 6px;
+  font-size: 10px;
+}
+
+.enemy-lab-squad-loadout-editor {
+  margin-top: 9px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(168, 199, 255, 0.16);
 }
 
 .enemy-lab-empty {

@@ -7,6 +7,8 @@ import {
   type EnemyLabDefinition,
   type EnemyLabSquadDefinition
 } from '../data/enemyLabDefinitions';
+import { cloneAttackLoadoutSlots, type AttackLoadoutSlot } from '../data/enemyAttackDefinitions';
+import { createAttackHostRuntime, type AttackHostRuntime } from './enemyAttackRuntime';
 import { createEnemyLabVisualContainer } from './enemyVisuals';
 import { resolveEnemyDefinitionSize } from './enemyVectorRecipes';
 
@@ -48,6 +50,8 @@ export interface EnemyLabInstance {
   shieldedUntil: number;
   buffedUntil: number;
   nextBlackHoleDamageAt: number;
+  attackLoadoutSnapshot?: AttackLoadoutSlot[];
+  attackRuntime?: AttackHostRuntime;
 }
 
 export interface SpawnEnemyLabEnemyInput {
@@ -61,6 +65,7 @@ export interface SpawnEnemyLabEnemyInput {
   time: number;
   hpMultiplier: number;
   showDebugLabel: boolean;
+  attackLoadoutSnapshot?: AttackLoadoutSlot[];
 }
 
 let nextEnemyLabRuntimeId = 1;
@@ -82,6 +87,7 @@ export function spawnEnemyLabEnemy(input: SpawnEnemyLabEnemyInput): EnemyLabInst
   const wrapMirrorBody = createEnemyLabVisualContainer(input.scene, x, y, definition);
   wrapMirrorBody.setVisible(false);
 
+  const attackLoadoutSnapshot = input.attackLoadoutSnapshot ? cloneAttackLoadoutSlots(input.attackLoadoutSnapshot) : undefined;
   const instance: EnemyLabInstance = {
     id: `enemy-lab-${nextEnemyLabRuntimeId++}`,
     definitionId: definition.id,
@@ -108,8 +114,21 @@ export function spawnEnemyLabEnemy(input: SpawnEnemyLabEnemyInput): EnemyLabInst
     damageMultiplier: 1,
     shieldedUntil: 0,
     buffedUntil: 0,
-    nextBlackHoleDamageAt: 0
+    nextBlackHoleDamageAt: 0,
+    attackLoadoutSnapshot
   };
+
+  if (attackLoadoutSnapshot && attackLoadoutSnapshot.length > 0) {
+    instance.attackRuntime = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: instance.id,
+      definitionId: definition.id,
+      body,
+      velocity: instance.velocity,
+      loadout: attackLoadoutSnapshot,
+      time: input.time
+    });
+  }
 
   if (input.showDebugLabel) {
     instance.debugLabel = createEnemyLabel(input.scene, instance);

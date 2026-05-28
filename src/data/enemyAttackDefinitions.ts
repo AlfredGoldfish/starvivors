@@ -446,12 +446,105 @@ export function getEnemyAttackDefinitions(): EnemyAttackDefinition[] {
   return ENEMY_ATTACK_DEFINITIONS;
 }
 
-export function getDefaultEnemyAttackLoadout(definitionId: string): AttackLoadoutSlot[] {
-  const loadout = DEFAULT_ENEMY_ATTACK_LOADOUTS[definitionId] ?? [];
+export function isEnemyAttackId(value: string): value is EnemyAttackId {
+  return ENEMY_ATTACK_DEFINITIONS.some((definition) => definition.id === value);
+}
+
+export function cloneAttackLoadoutSlots(loadout: AttackLoadoutSlot[]): AttackLoadoutSlot[] {
   return loadout.map((slot) => ({
     ...slot,
     params: slot.params ? { ...slot.params } : undefined
   }));
+}
+
+export function createDefaultAttackLoadoutSlot(attackId: EnemyAttackId): AttackLoadoutSlot {
+  const definition = getEnemyAttackDefinition(attackId);
+
+  return {
+    attackId,
+    enabled: true,
+    label: definition.displayName,
+    cooldownOffsetMs: 0,
+    weight: 1,
+    params: { ...definition.defaultParams }
+  };
+}
+
+export function normalizeAttackLoadoutSlots(loadout: unknown): AttackLoadoutSlot[] {
+  if (!Array.isArray(loadout)) {
+    return [];
+  }
+
+  const normalized: AttackLoadoutSlot[] = [];
+
+  for (const rawSlot of loadout) {
+    if (!rawSlot || typeof rawSlot !== 'object' || Array.isArray(rawSlot)) {
+      continue;
+    }
+
+    const slot = rawSlot as Record<string, unknown>;
+    const attackId = typeof slot.attackId === 'string' && isEnemyAttackId(slot.attackId)
+      ? slot.attackId
+      : undefined;
+    if (!attackId) {
+      continue;
+    }
+
+    const definition = getEnemyAttackDefinition(attackId);
+    const cooldownOffsetMs = typeof slot.cooldownOffsetMs === 'number' && Number.isFinite(slot.cooldownOffsetMs)
+      ? slot.cooldownOffsetMs
+      : undefined;
+    const weight = typeof slot.weight === 'number' && Number.isFinite(slot.weight)
+      ? Math.max(0, slot.weight)
+      : undefined;
+    const label = typeof slot.label === 'string' && slot.label.trim().length > 0
+      ? slot.label.trim()
+      : undefined;
+    const params = slot.params && typeof slot.params === 'object' && !Array.isArray(slot.params)
+      ? sanitizeAttackParams(slot.params as Record<string, unknown>, definition.defaultParams)
+      : {};
+
+    normalized.push({
+      attackId,
+      enabled: slot.enabled !== false,
+      ...(label ? { label } : {}),
+      ...(cooldownOffsetMs !== undefined ? { cooldownOffsetMs } : {}),
+      ...(weight !== undefined ? { weight } : {}),
+      params: {
+        ...definition.defaultParams,
+        ...params
+      }
+    });
+  }
+
+  return normalized;
+}
+
+export function validateAttackLoadoutSlots(loadout: unknown, label = 'Attack loadout'): string[] {
+  const errors: string[] = [];
+
+  if (!Array.isArray(loadout)) {
+    return [`${label} must be an array.`];
+  }
+
+  loadout.forEach((slot, index) => {
+    if (!slot || typeof slot !== 'object' || Array.isArray(slot)) {
+      errors.push(`${label} slot ${index + 1} must be an object.`);
+      return;
+    }
+
+    const attackId = (slot as Record<string, unknown>).attackId;
+    if (typeof attackId !== 'string' || !isEnemyAttackId(attackId)) {
+      errors.push(`${label} slot ${index + 1} references unknown attack ${String(attackId)}.`);
+    }
+  });
+
+  return errors;
+}
+
+export function getDefaultEnemyAttackLoadout(definitionId: string): AttackLoadoutSlot[] {
+  const loadout = DEFAULT_ENEMY_ATTACK_LOADOUTS[definitionId] ?? [];
+  return cloneAttackLoadoutSlots(loadout);
 }
 
 export function resolveAttackLoadoutSlotParams(slot: AttackLoadoutSlot): Record<string, EnemyAttackParamValue> {
@@ -490,4 +583,28 @@ export function validateEnemyAttackRegistry(enemyDefinitionIds: string[]): strin
   }
 
   return errors;
+}
+
+function sanitizeAttackParams(
+  params: Record<string, unknown>,
+  defaults: Record<string, EnemyAttackParamValue>
+): Record<string, EnemyAttackParamValue> {
+  const sanitized: Record<string, EnemyAttackParamValue> = {};
+
+  for (const [key, value] of Object.entries(params)) {
+    const defaultValue = defaults[key];
+    if (defaultValue !== undefined && typeof value !== typeof defaultValue) {
+      continue;
+    }
+
+    if (
+      typeof value === 'string' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    ) {
+      sanitized[key] = value;
+    }
+  }
+
+  return sanitized;
 }
