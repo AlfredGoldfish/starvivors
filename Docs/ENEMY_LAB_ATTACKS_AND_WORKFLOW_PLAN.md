@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 5 Batch A, Batch B, and Batch C complete in Enemy Lab. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 6 verification and polish complete in Enemy Lab. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -670,7 +670,7 @@ Acceptance per attack:
 
 ### Future Attack Audio Pairing Reminder
 
-Status: planned for later; no audio implementation in Phase 5.
+Status: planned for later; no audio implementation in Phase 6.
 
 Tasks:
 
@@ -679,6 +679,30 @@ Tasks:
 - Use the saved Sound settings and existing procedural SFX hooks instead of adding one-off playback paths.
 
 ### Phase 6: Verification And Polish
+
+Status: completed 2026-05-28. Scope stayed Enemy Lab-only: no live `GameScene` combat wiring, no attack audio, and no new enabled manual stress UI.
+
+Progress:
+
+- Added focused unit coverage for exact non-empty default loadout resolution across all Enemy Lab enemies, attack loadout preset labels/enabled state/params/host metadata, Attack Tester preset stack/readability/reduced-FX round-trip, v1 variant/squad migration, non-native attack execution, player-test target coverage, and all ready Batch A/B/C reduced-FX/high-contrast recipes.
+- Extended `/enemy-lab.html?testHarness=enemyLabAttacks` to report deterministic Phase 6 JSON details: `defaultLoadoutPass`, `mixedSquadPass`, `attackTesterTargetCoverage`, `reducedFxPass`, and `highContrastPass`.
+- Kept `data-starvivors-enemy-lab-harness="monochrome-ready"` intact for `/enemy-lab.html?testHarness=enemyLabPrototype`.
+- Added screenshot-only Phase 6 harness URLs with `data-starvivors-enemy-lab-phase6-harness="ready"` for Basic, Squads, Attack Tester, and reduced-FX/high-contrast stress views.
+
+Verification:
+
+- `npm.cmd run test` passed with 19 files and 99 tests.
+- `npm.cmd run build` passed.
+- `npm.cmd run electron:build` passed.
+- Headless `/enemy-lab.html` smoke on local dev port 5176 showed `enemy-lab-overlay is-mode-basic` and Attack Tester target controls `attackTesterSpawnDummy`, `attackTesterSpawnEnemy`, and `attackTesterSpawnAlly`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` on local dev port 5176 reported `data-starvivors-enemy-lab-attack-harness="ready"` with all ready Batch A/B/C slots: `rail-line`, `mortar-lob`, `emp-nova`, `summon-glyphs`, `sweep-laser`, `healing-beam`, `shield-wall`, `plasma-puddle`, `cluster-bomb`, `alarm-ping`, `berserker-shockwave`, and `mine-reveal`.
+- The same attack harness reported `defaultLoadoutPass=true`, `mixedSquadPass=true`, `reducedFxPass=true`, `highContrastPass=true`, `missingReadyBatchSlots=[]`, and `attackTesterTargetCoverage.pass=true` across point, enemy, ally, self, and summon paths.
+- Headless `/enemy-lab.html?testHarness=enemyLabPrototype` on local dev port 5176 still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
+- Screenshot command shape: `node scripts/captureHarnessScreenshot.mjs <url> <path> data-starvivors-enemy-lab-phase6-harness ready 700 1280x720`.
+- Captured `artifacts/visual-smoke/enemy-lab-attacks-basic-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabPhase6Basic`.
+- Captured `artifacts/visual-smoke/enemy-lab-attacks-squads-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabPhase6Squads`.
+- Captured `artifacts/visual-smoke/enemy-lab-attacks-player-test-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabPhase6PlayerTest`.
+- Captured `artifacts/visual-smoke/enemy-lab-attacks-stress-high-contrast-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabPhase6StressHighContrast`.
 
 Unit tests:
 

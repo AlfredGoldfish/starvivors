@@ -11,16 +11,21 @@ import {
 } from './enemyLabAttackPresets';
 
 describe('enemy lab attack presets', () => {
-  it('round-trips attack loadout preset slots, params, host kind, and host definition id', () => {
+  it('round-trips attack loadout preset slots, labels, params, enabled state, host kind, and host definition id', () => {
     const slot = createDefaultAttackLoadoutSlot('summon-glyphs');
+    slot.label = 'Custom Summon Stack';
+    slot.cooldownOffsetMs = 450;
     slot.params = { count: 5, spawnId: 'shard-drone' };
+    const disabledRail = createDefaultAttackLoadoutSlot('rail-line');
+    disabledRail.enabled = false;
+    disabledRail.label = 'Disabled Rail Check';
 
     const preset = createEnemyLabAttackLoadoutPreset({
       id: 'loadout-test',
       displayName: 'Summoner Loadout',
       hostKind: 'enemy',
       hostDefinitionId: 'combat-summoner',
-      slots: [slot]
+      slots: [slot, disabledRail]
     });
     const parsed = parseEnemyLabAttackLoadoutMarkdown(createEnemyLabAttackLoadoutMarkdown(preset));
 
@@ -34,11 +39,24 @@ describe('enemy lab attack presets', () => {
     expect(parsed?.slots[0]).toMatchObject({
       attackId: 'summon-glyphs',
       enabled: true,
+      label: 'Custom Summon Stack',
+      cooldownOffsetMs: 450,
       params: {
         channelMs: 900,
         count: 5,
         spawnId: 'shard-drone',
         glyphRadiusPx: 220
+      }
+    });
+    expect(parsed?.slots[1]).toMatchObject({
+      attackId: 'rail-line',
+      enabled: false,
+      label: 'Disabled Rail Check',
+      params: {
+        aimMs: 900,
+        lockMs: 320,
+        damage: 30,
+        rangePx: 1550
       }
     });
   });
@@ -69,6 +87,7 @@ describe('enemy lab attack presets', () => {
       reducedEffects: true
     });
     expect(parsed?.slots.map((slot) => slot.attackId)).toEqual(['rail-line', 'emp-nova']);
+    expect(parsed?.slots[0].params).toMatchObject({ aimMs: 900, lockMs: 320 });
     expect(parsed?.slots[1].enabled).toBe(false);
   });
 

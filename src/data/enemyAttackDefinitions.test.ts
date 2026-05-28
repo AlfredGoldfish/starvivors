@@ -4,6 +4,7 @@ import {
   ENEMY_ATTACK_DEFINITIONS,
   createDefaultAttackLoadoutSlot,
   getDefaultEnemyAttackLoadout,
+  isEnemyAttackId,
   normalizeAttackLoadoutSlots,
   resolveAttackLoadoutSlotParams,
   validateAttackLoadoutSlots,
@@ -15,6 +16,23 @@ describe('enemy attack definitions', () => {
     const errors = validateEnemyAttackRegistry(ENEMY_LAB_DEFINITIONS.map((definition) => definition.id));
 
     expect(errors).toEqual([]);
+  });
+
+  it('resolves exactly one non-empty normalized default loadout per enemy definition', () => {
+    const loadoutsByEnemyId = new Map(
+      ENEMY_LAB_DEFINITIONS.map((definition) => [definition.id, getDefaultEnemyAttackLoadout(definition.id)])
+    );
+
+    expect(loadoutsByEnemyId.size).toBe(ENEMY_LAB_DEFINITIONS.length);
+    for (const definition of ENEMY_LAB_DEFINITIONS) {
+      const loadout = loadoutsByEnemyId.get(definition.id) ?? [];
+      const normalized = normalizeAttackLoadoutSlots(loadout);
+
+      expect(loadout.length).toBeGreaterThan(0);
+      expect(validateAttackLoadoutSlots(loadout, `${definition.id} default loadout`)).toEqual([]);
+      expect(loadout.every((slot) => isEnemyAttackId(slot.attackId))).toBe(true);
+      expect(normalized.map((slot) => slot.attackId)).toEqual(loadout.map((slot) => slot.attackId));
+    }
   });
 
   it('keeps attack ids unique', () => {

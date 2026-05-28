@@ -83,6 +83,8 @@ import {
   getEnabledAttackSlotIndices,
   queueAttackSlot,
   replaceAttackHostRuntimeLoadout,
+  resolveRuntimeEffectRecipe,
+  resolveRuntimeTelegraphRecipe,
   updateAttackHostRuntime,
   type AttackAreaDamageRequest,
   type AttackBuffRequest,
@@ -359,6 +361,29 @@ type AttackLoadoutEditorScope = 'basic' | 'attackTester' | 'squad';
 type EnemyLabPresetFolderCategory = 'variants' | 'squads' | 'loadouts' | 'attack-tests';
 type EnemyLabPreviewState = 'idle' | 'pursue' | 'telegraph' | 'attack' | 'hit' | 'death';
 type EnemyLabClutterTest = 'single' | 'squad' | 'swarm' | 'bullets' | 'asteroids' | 'asteroidGallery' | 'debris' | 'stress';
+type EnemyLabPhase6HarnessView = 'basic' | 'squads' | 'player-test' | 'stress-high-contrast';
+
+const PHASE6_READY_ATTACK_BATCHES = new Set(['A', 'B', 'C']);
+const PHASE6_DEFAULT_LOADOUT_HOSTS: Array<{
+  definitionId: string;
+  expectedAttackId: EnemyAttackId;
+  batch: 'A' | 'B' | 'C';
+}> = [
+  { definitionId: 'needle-sniper', expectedAttackId: 'rail-line', batch: 'A' },
+  { definitionId: 'carrier', expectedAttackId: 'summon-glyphs', batch: 'A' },
+  { definitionId: 'shield-frigate', expectedAttackId: 'shield-wall', batch: 'B' },
+  { definitionId: 'repair-skiff', expectedAttackId: 'healing-beam', batch: 'B' },
+  { definitionId: 'ambusher-mine', expectedAttackId: 'mine-reveal', batch: 'C' },
+  { definitionId: 'patrol-guard', expectedAttackId: 'alarm-ping', batch: 'C' },
+  { definitionId: 'berserker', expectedAttackId: 'berserker-shockwave', batch: 'C' }
+];
+
+const PHASE6_HARNESS_QUERY_TO_VIEW: Record<string, EnemyLabPhase6HarnessView> = {
+  enemyLabPhase6Basic: 'basic',
+  enemyLabPhase6Squads: 'squads',
+  enemyLabPhase6PlayerTest: 'player-test',
+  enemyLabPhase6StressHighContrast: 'stress-high-contrast'
+};
 
 export class EnemyLabScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -598,13 +623,20 @@ export class EnemyLabScene extends Phaser.Scene {
     }
 
     const harness = new URLSearchParams(window.location.search).get('testHarness');
+    const phase6HarnessView = harness ? PHASE6_HARNESS_QUERY_TO_VIEW[harness] : undefined;
     if (
       harness !== 'enemyLabMonochrome' &&
       harness !== 'enemyLabVector' &&
       harness !== 'enemyLabPrototype' &&
       harness !== 'enemyLabAttacks' &&
-      harness !== 'smoke'
+      harness !== 'smoke' &&
+      !phase6HarnessView
     ) {
+      return;
+    }
+
+    if (phase6HarnessView) {
+      this.runEnemyLabPhase6ScreenshotHarness(phase6HarnessView);
       return;
     }
 
@@ -613,7 +645,7 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    this.labMode = 'stress';
+    this.setLabMode('stress');
     this.spawnClutterTest('asteroidGallery');
     this.spawnProjectileClutter(8);
     if (harness === 'enemyLabPrototype') {
@@ -640,7 +672,120 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private runEnemyLabAttackSmokeHarness(): void {
-    this.labMode = 'attack-tester';
+    const details = this.runPhase6AttackHarnessScenario({
+      labMode: 'attack-tester',
+      includeMixedSquad: true,
+      clearExistingAttackTests: true
+    });
+
+    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', details.pass ? 'ready' : 'fail');
+    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness-details', JSON.stringify(details));
+  }
+
+  private runEnemyLabPhase6ScreenshotHarness(view: EnemyLabPhase6HarnessView): void {
+    const details =
+      view === 'basic'
+        ? this.runPhase6BasicHarnessView()
+        : view === 'squads'
+          ? this.runPhase6SquadsHarnessView()
+          : view === 'player-test'
+            ? { view, ...this.runPhase6AttackHarnessScenario({ labMode: 'attack-tester', includeMixedSquad: false, clearExistingAttackTests: true }) }
+            : this.runPhase6StressHighContrastHarnessView();
+
+    document.body.setAttribute('data-starvivors-enemy-lab-phase6-harness', details.pass ? 'ready' : 'fail');
+    document.body.setAttribute('data-starvivors-enemy-lab-phase6-harness-details', JSON.stringify(details));
+  }
+
+  private runPhase6BasicHarnessView() {
+    this.clearEnemies();
+    const selectedIndex = getEnemyLabDefinitions().findIndex((definition) => definition.id === 'needle-sniper');
+    this.selectedEnemyIndex = Math.max(0, selectedIndex);
+    this.selectedVariantId = '';
+    this.selectedBasicLoadoutSlotIndex = 0;
+    this.setLabMode('basic');
+
+    const center = this.getPreviewPosition();
+    PHASE6_DEFAULT_LOADOUT_HOSTS.forEach((host, index) => {
+      const angle = (Math.PI * 2 * index) / PHASE6_DEFAULT_LOADOUT_HOSTS.length;
+      this.spawnEnemy(
+        host.definitionId,
+        wrapCoordinate(center.x + Math.cos(angle) * 330, this.arena.width),
+        wrapCoordinate(center.y + Math.sin(angle) * 250, this.arena.height)
+      );
+    });
+
+    this.syncOverlayFromState();
+    const defaultLoadout = this.verifyPhase6DefaultLoadouts();
+
+    return {
+      view: 'basic' as const,
+      pass: defaultLoadout.pass,
+      defaultLoadoutPass: defaultLoadout.pass,
+      defaultLoadout,
+      spawnedRepresentativeHosts: this.enemies.map((enemy) => ({
+        definitionId: enemy.definitionId,
+        slots: enemy.attackLoadoutSnapshot?.map((slot) => slot.attackId) ?? []
+      }))
+    };
+  }
+
+  private runPhase6SquadsHarnessView() {
+    this.clearEnemies();
+    const squad = this.createPhase6MixedSquadPreset();
+    this.upsertSquadPreset(squad);
+    this.selectedCustomSquadId = squad.id;
+    this.selectedSquadEntryIndex = 1;
+    this.selectedSquadLoadoutSlotIndex = 0;
+    this.setLabMode('squads');
+    const mixedSquad = this.runPhase6MixedSquadHarness(squad);
+    this.syncOverlayFromState();
+
+    return {
+      view: 'squads' as const,
+      pass: mixedSquad.pass,
+      mixedSquadPass: mixedSquad.pass,
+      mixedSquad
+    };
+  }
+
+  private runPhase6StressHighContrastHarnessView() {
+    this.clearEnemies();
+    this.readabilityMode = 'high-contrast';
+    this.reducedEffects = true;
+    this.setLabMode('stress');
+    this.spawnClutterTest('stress');
+    const details = this.runPhase6AttackHarnessScenario({
+      labMode: 'stress',
+      includeMixedSquad: false,
+      clearExistingAttackTests: false
+    });
+    this.readabilityMode = 'high-contrast';
+    this.reducedEffects = true;
+    this.setLabMode('stress');
+    this.syncOverlayFromState();
+
+    return {
+      view: 'stress-high-contrast' as const,
+      ...details,
+      pass: details.pass && details.reducedFxPass && details.highContrastPass,
+      clutter: {
+        enemies: this.enemies.length,
+        projectiles: this.projectiles.length,
+        transientProps: this.testProps.length
+      }
+    };
+  }
+
+  private runPhase6AttackHarnessScenario(options: {
+    labMode: EnemyLabMode;
+    includeMixedSquad: boolean;
+    clearExistingAttackTests: boolean;
+  }) {
+    if (options.clearExistingAttackTests) {
+      this.clearAttackTests();
+    }
+
+    this.setLabMode(options.labMode);
     const center = this.getPreviewPosition();
     this.spawnAttackTestTarget('dummy', center.x, center.y);
     const enemyTarget = this.spawnAttackTestTarget('enemy', wrapCoordinate(center.x + 130, this.arena.width), center.y);
@@ -649,54 +794,69 @@ export class EnemyLabScene extends Phaser.Scene {
     allyTarget.hp = 45;
     this.updateAttackTestTargetLabel(enemyTarget);
     this.updateAttackTestTargetLabel(allyTarget);
-    this.attackTesterSlots = [
-      this.createHarnessAttackSlot('rail-line', { initialDelayMs: 0, windupMs: 60, activeMs: 120 }),
-      this.createHarnessAttackSlot('mortar-lob', { initialDelayMs: 0, windupMs: 40, travelMs: 120, activeMs: 120 }),
-      this.createHarnessAttackSlot('emp-nova', { initialDelayMs: 0, windupMs: 40, activeMs: 120 }),
-      this.createHarnessAttackSlot('summon-glyphs', { initialDelayMs: 0, windupMs: 40, channelMs: 60, activeMs: 120, count: 2 }),
-      this.createHarnessAttackSlot('sweep-laser', { initialDelayMs: 0, windupMs: 40, sweepMs: 260, tickMs: 80, activeMs: 260 }),
-      this.createHarnessAttackSlot('healing-beam', { initialDelayMs: 0, windupMs: 30, activeMs: 260, tickMs: 80, retargetMs: 80 }),
-      this.createHarnessAttackSlot('shield-wall', { initialDelayMs: 0, windupMs: 30, activeMs: 220, arcDegrees: 105, reflect: true }),
-      this.createHarnessAttackSlot('plasma-puddle', { initialDelayMs: 0, landingMs: 50, durationMs: 260, tickMs: 80 }),
-      this.createHarnessAttackSlot('cluster-bomb', { initialDelayMs: 0, windupMs: 40, travelMs: 90, delayMs: 110, splitCount: 4, activeMs: 200 }),
-      this.createHarnessAttackSlot('alarm-ping', { initialDelayMs: 0, detectMs: 40, callDelayMs: 70, channelMs: 70, activeMs: 120, squadId: 'scout-pack' }),
-      this.createHarnessAttackSlot('berserker-shockwave', { initialDelayMs: 0, windupMs: 40, activeMs: 120, radiusPx: 170, slowMs: 500, knockback: 220 }),
-      this.createHarnessAttackSlot('mine-reveal', { initialDelayMs: 0, chargeMs: 50, activeMs: 120, blastRadiusPx: 125 })
-    ];
+    const targetCountBeforeQueue = this.attackTestTargets.length;
+    const transientPropsBeforeQueue = this.testProps.length;
+    const projectilesBeforeQueue = this.projectiles.length;
+    const enemyHpBeforeQueue = enemyTarget.hp;
+    const allyHpBeforeQueue = allyTarget.hp;
+
+    this.attackTesterSlots = this.createPhase6AttackHarnessSlots();
     this.attackTesterRuntime = undefined;
     this.attackTesterRuntimeSignature = '';
     this.selectedAttackTesterSlotIndex = 0;
     this.selectedAttackTestId = 'rail-line';
     this.syncOverlayFromState();
     const runtime = this.ensureAttackTesterRuntime(this.time.now);
-    const baseTime = this.time.now;
 
-    this.attackTesterSlots.forEach((slot, index) => {
-      const queuedAt = baseTime + index * 260;
-      this.selectedAttackTesterSlotIndex = index;
-      this.selectedAttackTestId = slot.attackId;
-      if (runtime) {
-        queueAttackSlot(runtime, index, queuedAt);
-      }
-      this.updateAttackTesterRuntime(queuedAt, 0.016);
-      this.updateAttackTesterRuntime(queuedAt + 180, 0.016);
-      this.updateAttackTesterRuntime(queuedAt + 320, 0.016);
-      this.updateAttackTesterRuntime(queuedAt + 440, 0.016);
+    if (runtime) {
+      this.runPhase6AttackTesterQueue(runtime, this.time.now);
+    }
+
+    const slots = this.attackTesterSlots.map((slot) => slot.attackId);
+    const readyBatchSlots = this.getPhase6ReadyAttackIds();
+    const missingReadyBatchSlots = readyBatchSlots.filter((attackId) => !slots.includes(attackId));
+    const targetCoverage = this.verifyPhase6AttackTesterTargetCoverage({
+      targetCountBeforeQueue,
+      transientPropsBeforeQueue,
+      projectilesBeforeQueue,
+      enemyHpBeforeQueue,
+      allyHpBeforeQueue,
+      enemyTarget,
+      allyTarget
     });
+    const defaultLoadout = this.verifyPhase6DefaultLoadouts();
+    const mixedSquad = options.includeMixedSquad
+      ? this.runPhase6MixedSquadHarness()
+      : { pass: true, skipped: true, entries: [] };
+    const recipeCoverage = this.verifyPhase6RecipeCoverage();
+    const pass =
+      missingReadyBatchSlots.length === 0 &&
+      targetCoverage.pass &&
+      defaultLoadout.pass &&
+      mixedSquad.pass &&
+      recipeCoverage.reducedFxPass &&
+      recipeCoverage.highContrastPass;
 
-    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', 'ready');
-    document.body.setAttribute('data-starvivors-enemy-lab-attack-harness-details', JSON.stringify({
+    return {
+      pass,
       targets: this.attackTestTargets.length,
       projectiles: this.projectiles.length,
       transientProps: this.testProps.length,
-      slots: this.attackTesterSlots.map((slot) => slot.attackId),
-      batchBSlots: this.attackTesterSlots
-        .map((slot) => slot.attackId)
-        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'B'),
-      batchCSlots: this.attackTesterSlots
-        .map((slot) => slot.attackId)
-        .filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'C')
-    }));
+      slots,
+      readyBatchSlots,
+      missingReadyBatchSlots,
+      batchASlots: slots.filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'A'),
+      batchBSlots: slots.filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'B'),
+      batchCSlots: slots.filter((attackId) => getEnemyAttackDefinition(attackId).lab.batch === 'C'),
+      defaultLoadoutPass: defaultLoadout.pass,
+      mixedSquadPass: mixedSquad.pass,
+      reducedFxPass: recipeCoverage.reducedFxPass,
+      highContrastPass: recipeCoverage.highContrastPass,
+      attackTesterTargetCoverage: targetCoverage,
+      defaultLoadout,
+      mixedSquad,
+      recipeCoverage
+    };
   }
 
   private createHarnessAttackSlot(attackId: EnemyAttackId, params: Record<string, EnemyAttackParamValue>): AttackLoadoutSlot {
@@ -706,6 +866,245 @@ export class EnemyLabScene extends Phaser.Scene {
       ...params
     };
     return slot;
+  }
+
+  private createPhase6AttackHarnessSlots(): AttackLoadoutSlot[] {
+    const harnessParams: Partial<Record<EnemyAttackId, Record<string, EnemyAttackParamValue>>> = {
+      'rail-line': { initialDelayMs: 0, aimMs: 30, lockMs: 30, windupMs: 60, activeMs: 120 },
+      'mortar-lob': { initialDelayMs: 0, windupMs: 40, travelMs: 120, activeMs: 120 },
+      'emp-nova': { initialDelayMs: 0, windupMs: 40, activeMs: 120 },
+      'summon-glyphs': { initialDelayMs: 0, windupMs: 40, channelMs: 60, activeMs: 120, count: 2 },
+      'sweep-laser': { initialDelayMs: 0, windupMs: 40, sweepMs: 260, tickMs: 80, activeMs: 260 },
+      'healing-beam': { initialDelayMs: 0, windupMs: 30, activeMs: 260, tickMs: 80, retargetMs: 80 },
+      'shield-wall': { initialDelayMs: 0, windupMs: 30, activeMs: 220, arcDegrees: 105, reflect: true },
+      'plasma-puddle': { initialDelayMs: 0, landingMs: 50, durationMs: 260, tickMs: 80 },
+      'cluster-bomb': { initialDelayMs: 0, windupMs: 40, travelMs: 90, delayMs: 110, splitCount: 4, activeMs: 200 },
+      'alarm-ping': { initialDelayMs: 0, detectMs: 40, callDelayMs: 70, channelMs: 70, activeMs: 120, squadId: 'scout-pack' },
+      'berserker-shockwave': { initialDelayMs: 0, windupMs: 40, activeMs: 120, radiusPx: 170, slowMs: 500, knockback: 220 },
+      'mine-reveal': { initialDelayMs: 0, chargeMs: 50, activeMs: 120, blastRadiusPx: 125 }
+    };
+
+    return this.getPhase6ReadyAttackIds().map((attackId) => this.createHarnessAttackSlot(attackId, harnessParams[attackId] ?? { initialDelayMs: 0 }));
+  }
+
+  private runPhase6AttackTesterQueue(runtime: AttackHostRuntime, baseTime: number): void {
+    this.attackTesterSlots.forEach((slot, index) => {
+      const queuedAt = baseTime + index * 260;
+      this.selectedAttackTesterSlotIndex = index;
+      this.selectedAttackTestId = slot.attackId;
+      queueAttackSlot(runtime, index, queuedAt);
+      for (const offset of [0, 80, 180, 320, 500]) {
+        this.updateAttackTesterRuntime(queuedAt + offset, 0.016);
+      }
+    });
+  }
+
+  private getPhase6ReadyAttackIds(): EnemyAttackId[] {
+    return getEnemyAttackDefinitions()
+      .filter((definition) => PHASE6_READY_ATTACK_BATCHES.has(definition.lab.batch) && definition.lab.status === 'ready')
+      .map((definition) => definition.id);
+  }
+
+  private verifyPhase6AttackTesterTargetCoverage(input: {
+    targetCountBeforeQueue: number;
+    transientPropsBeforeQueue: number;
+    projectilesBeforeQueue: number;
+    enemyHpBeforeQueue: number;
+    allyHpBeforeQueue: number;
+    enemyTarget: EnemyLabAttackTestTarget;
+    allyTarget: EnemyLabAttackTestTarget;
+  }) {
+    const targetKinds = Array.from(new Set(this.attackTesterSlots.map((slot) => getEnemyAttackDefinition(slot.attackId).targeting.targetKind)));
+    const hasSummonSlot = this.attackTesterSlots.some((slot) => getEnemyAttackDefinition(slot.attackId).tags.includes('summon'));
+    const enemyExecuted = targetKinds.includes('player') && input.enemyTarget.hp < input.enemyHpBeforeQueue;
+    const allyExecuted = targetKinds.includes('ally') && input.allyTarget.hp > input.allyHpBeforeQueue;
+    const pointExecuted = targetKinds.includes('point') && this.testProps.length > input.transientPropsBeforeQueue;
+    const selfExecuted = targetKinds.includes('self') && this.testProps.length > input.transientPropsBeforeQueue;
+    const summonExecuted = hasSummonSlot && this.attackTestTargets.length > input.targetCountBeforeQueue;
+    const pass = pointExecuted && enemyExecuted && allyExecuted && selfExecuted && summonExecuted;
+
+    return {
+      pass,
+      targetKinds,
+      point: pointExecuted ? 'pass' : 'fail',
+      enemy: enemyExecuted ? 'pass' : 'fail',
+      ally: allyExecuted ? 'pass' : 'fail',
+      self: selfExecuted ? 'pass' : 'fail',
+      summon: summonExecuted ? 'pass' : 'fail',
+      enemyHpBefore: input.enemyHpBeforeQueue,
+      enemyHpAfter: input.enemyTarget.hp,
+      allyHpBefore: input.allyHpBeforeQueue,
+      allyHpAfter: input.allyTarget.hp,
+      targetsAdded: this.attackTestTargets.length - input.targetCountBeforeQueue,
+      transientPropsAdded: this.testProps.length - input.transientPropsBeforeQueue,
+      projectilesAdded: this.projectiles.length - input.projectilesBeforeQueue
+    };
+  }
+
+  private verifyPhase6DefaultLoadouts() {
+    const allEnemyLoadouts = getEnemyLabDefinitions().map((definition) => ({
+      definitionId: definition.id,
+      slotCount: getDefaultEnemyAttackLoadout(definition.id).length
+    }));
+    const hosts = PHASE6_DEFAULT_LOADOUT_HOSTS.map((host) => {
+      const loadout = getDefaultEnemyAttackLoadout(host.definitionId);
+      const enabledAttackIds = loadout.filter((slot) => slot.enabled !== false).map((slot) => slot.attackId);
+      return {
+        ...host,
+        slotCount: loadout.length,
+        enabledAttackIds,
+        pass: loadout.length > 0 && enabledAttackIds.includes(host.expectedAttackId)
+      };
+    });
+
+    return {
+      pass: allEnemyLoadouts.every((entry) => entry.slotCount > 0) && hosts.every((host) => host.pass),
+      enemyCount: allEnemyLoadouts.length,
+      emptyDefaultLoadouts: allEnemyLoadouts.filter((entry) => entry.slotCount <= 0).map((entry) => entry.definitionId),
+      hosts
+    };
+  }
+
+  private createPhase6MixedSquadPreset(): EnemyLabSquadPreset {
+    const overrideRail = this.createHarnessAttackSlot('rail-line', {
+      initialDelayMs: 0,
+      aimMs: 120,
+      lockMs: 60,
+      windupMs: 180,
+      activeMs: 120,
+      rangePx: 900
+    });
+    overrideRail.label = 'Phase 6 Override Rail';
+    const disabledShield = this.createHarnessAttackSlot('shield-wall', {
+      activeMs: 450,
+      arcDegrees: 115,
+      reflect: true
+    });
+    disabledShield.enabled = false;
+    disabledShield.label = 'Disabled Reflect Check';
+
+    return {
+      type: 'starvivors-enemy-lab-squad',
+      version: 2,
+      id: 'phase6-mixed-loadout-squad',
+      displayName: 'Phase 6 Mixed Loadouts',
+      status: 'Candidate',
+      tags: ['phase6', 'harness'],
+      notes: 'Harness-only squad with one default entry and one non-native overridden attack stack.',
+      savedAt: '2026-05-28T00:00:00.000Z',
+      entries: [
+        { definitionId: 'scout', x: -150, y: 0 },
+        {
+          definitionId: 'reflector',
+          x: 20,
+          y: 0,
+          attackLoadoutOverride: [overrideRail, disabledShield]
+        },
+        { definitionId: 'repair-skiff', x: 170, y: 0 }
+      ]
+    };
+  }
+
+  private runPhase6MixedSquadHarness(squad = this.createPhase6MixedSquadPreset()) {
+    const beforeCount = this.enemies.length;
+    const center = this.getPreviewPosition();
+    this.spawnCustomSquad(squad, center.x, wrapCoordinate(center.y + 320, this.arena.height));
+    const spawned = this.enemies.slice(beforeCount);
+    const entries = squad.entries.map((entry, index) => {
+      const enemy = spawned[index];
+      const snapshot = enemy?.attackLoadoutSnapshot ?? [];
+      const expected = normalizeAttackLoadoutSlots(entry.attackLoadoutOverride ?? getDefaultEnemyAttackLoadout(entry.definitionId));
+      const exactSnapshotPass =
+        snapshot.length === expected.length &&
+        expected.every((slot, slotIndex) => {
+          const actual = snapshot[slotIndex];
+          return Boolean(actual) && actual.attackId === slot.attackId && actual.enabled === slot.enabled && actual.label === slot.label;
+        });
+
+      return {
+        definitionId: entry.definitionId,
+        hasOverride: Boolean(entry.attackLoadoutOverride),
+        expectedSlots: expected.map((slot) => ({
+          attackId: slot.attackId,
+          enabled: slot.enabled,
+          label: slot.label
+        })),
+        spawnedSlots: snapshot.map((slot) => ({
+          attackId: slot.attackId,
+          enabled: slot.enabled,
+          label: slot.label
+        })),
+        pass: exactSnapshotPass
+      };
+    });
+    const defaultEntryPass = entries.some((entry) => !entry.hasOverride && entry.definitionId === 'scout' && entry.spawnedSlots[0]?.attackId === 'contact-ram');
+    const overrideEntryPass = entries.some((entry) =>
+      entry.hasOverride &&
+      entry.definitionId === 'reflector' &&
+      entry.spawnedSlots[0]?.attackId === 'rail-line' &&
+      entry.spawnedSlots[0]?.label === 'Phase 6 Override Rail' &&
+      entry.spawnedSlots.some((slot) => slot.attackId === 'shield-wall' && slot.enabled === false)
+    );
+
+    return {
+      pass: spawned.length === squad.entries.length && entries.every((entry) => entry.pass) && defaultEntryPass && overrideEntryPass,
+      spawnedCount: spawned.length,
+      entries,
+      defaultEntryPass,
+      overrideEntryPass
+    };
+  }
+
+  private verifyPhase6RecipeCoverage() {
+    const attacks = this.getPhase6ReadyAttackIds().map((attackId) => {
+      const definition = getEnemyAttackDefinition(attackId);
+      const slot = createDefaultAttackLoadoutSlot(attackId);
+      const reducedTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
+      const reducedEffect = resolveRuntimeEffectRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
+      const highTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'high-contrast' });
+      const highEffect = resolveRuntimeEffectRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'high-contrast' });
+      const reducedPass =
+        Number.isFinite(reducedTelegraph.strokeWidthPx ?? 0) &&
+        Number.isFinite(reducedEffect.widthPx ?? 0) &&
+        Number.isFinite(reducedTelegraph.durationMs ?? definition.timing.windupMs) &&
+        Number.isFinite(reducedEffect.durationMs ?? definition.timing.activeMs ?? definition.timing.channelMs ?? 0);
+      const highContrastPass =
+        this.isPhase6HighContrastColor(highTelegraph.color) &&
+        this.isPhase6HighContrastColor(highTelegraph.accentColor) &&
+        this.isPhase6HighContrastColor(highEffect.color) &&
+        this.isPhase6HighContrastColor(highEffect.accentColor) &&
+        (highTelegraph.strokeWidthPx ?? 0) >= 3 &&
+        (highEffect.widthPx ?? 0) >= 5;
+
+      return {
+        attackId,
+        batch: definition.lab.batch,
+        reducedPass,
+        highContrastPass,
+        telegraph: {
+          kind: highTelegraph.kind,
+          strokeWidthPx: highTelegraph.strokeWidthPx,
+          color: highTelegraph.color,
+          accentColor: highTelegraph.accentColor
+        },
+        effect: {
+          kind: highEffect.kind,
+          widthPx: highEffect.widthPx,
+          color: highEffect.color,
+          accentColor: highEffect.accentColor
+        }
+      };
+    });
+
+    return {
+      reducedFxPass: attacks.every((attack) => attack.reducedPass),
+      highContrastPass: attacks.every((attack) => attack.highContrastPass),
+      attacks
+    };
+  }
+
+  private isPhase6HighContrastColor(color: number | undefined): boolean {
+    return color === undefined || color === 0xffffff || color === 0xffd166;
   }
 
   private spawnPrototypeHarnessSamples(): void {

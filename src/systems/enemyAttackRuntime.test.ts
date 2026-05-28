@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultAttackLoadoutSlot, getEnemyAttackDefinition, type AttackLoadoutSlot } from '../data/enemyAttackDefinitions';
+import { ENEMY_ATTACK_DEFINITIONS, createDefaultAttackLoadoutSlot, getEnemyAttackDefinition, type AttackLoadoutSlot } from '../data/enemyAttackDefinitions';
 import {
   createAttackHostRuntime,
   queueAttackSlot,
@@ -216,6 +216,55 @@ describe('enemy attack runtime', () => {
     expect(heals).toEqual(['ally']);
     expect(areas.some((request) => request.attackId === 'mortar-lob' && request.x === pointTarget.x && request.y === pointTarget.y)).toBe(true);
     expect(areas.some((request) => request.attackId === 'emp-nova' && request.x === 0 && request.y === 0)).toBe(true);
+  });
+
+  it('executes a player-test host stack across point, enemy, ally, self, and summon paths', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'point', kind: 'point', x: 160, y: 40, radius: 12 };
+    const runtime = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [
+        createImmediateSlot('simple-bolt'),
+        createImmediateSlot('mortar-lob', { travelMs: 0 }),
+        createImmediateSlot('healing-beam', { activeMs: 200, tickMs: 50, retargetMs: 50, healPerSecond: 10 }),
+        createImmediateSlot('emp-nova'),
+        createImmediateSlot('summon-glyphs', { count: 2, channelMs: 0 })
+      ]
+    });
+    const projectiles: AttackProjectileRequest[] = [];
+    const areas: AttackAreaDamageRequest[] = [];
+    const heals: AttackHealRequest[] = [];
+    const summons: AttackSummonRequest[] = [];
+
+    runtime.attacks.forEach((_slot, index) => queueAttackSlot(runtime, index, 0));
+    for (const time of [0, 1]) {
+      updateAttackHostRuntime({
+        host: runtime,
+        time,
+        deltaSeconds: 0.016,
+        targets: [enemyTarget, allyTarget],
+        pointTarget,
+        targetKindMap: (targetKind) => targetKind === 'player' ? ['enemy'] : [targetKind],
+        getWrappedDirection: createDirection,
+        callbacks: {
+          spawnProjectile: (request) => projectiles.push(request),
+          areaDamage: (request) => areas.push(request),
+          heal: (request) => heals.push(request),
+          summon: (request) => summons.push(request)
+        }
+      });
+    }
+
+    expect(projectiles.some((request) => request.attackId === 'simple-bolt' && request.target?.kind === 'enemy')).toBe(true);
+    expect(areas.some((request) => request.attackId === 'mortar-lob' && request.x === pointTarget.x && request.y === pointTarget.y)).toBe(true);
+    expect(heals.some((request) => request.targetId === 'ally')).toBe(true);
+    expect(areas.some((request) => request.attackId === 'emp-nova' && request.targetKind === 'self' && request.x === 0 && request.y === 0)).toBe(true);
+    expect(summons).toMatchObject([{ attackId: 'summon-glyphs', definitionId: 'scout', count: 2 }]);
   });
 
   it('runs a non-native attack on an enemy host without movement state', () => {
@@ -785,7 +834,75 @@ describe('enemy attack runtime', () => {
     expect(mineTelegraph.radiusPx).toBe(150);
     expect(mineTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(4);
   });
+
+  it('normalizes reduced-FX and high-contrast recipes for every ready Batch A, B, and C attack', () => {
+    const readyBatchAttacks = ENEMY_ATTACK_DEFINITIONS.filter(
+      (definition) => definition.lab.status === 'ready' && ['A', 'B', 'C'].includes(definition.lab.batch)
+    );
+    const results = readyBatchAttacks.map((definition) => {
+      const slot = createDefaultAttackLoadoutSlot(definition.id);
+      const reducedTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
+      const reducedEffect = resolveRuntimeEffectRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
+      const highTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'high-contrast' });
+      const highEffect = resolveRuntimeEffectRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'high-contrast' });
+      const reducedPass =
+        Number.isFinite(reducedTelegraph.strokeWidthPx ?? 0) &&
+        Number.isFinite(reducedEffect.widthPx ?? 0) &&
+        Number.isFinite(reducedTelegraph.durationMs ?? definition.timing.windupMs) &&
+        Number.isFinite(reducedEffect.durationMs ?? definition.timing.activeMs ?? definition.timing.channelMs ?? 0);
+      const highContrastPass =
+        isHighContrastColor(highTelegraph.color) &&
+        isHighContrastColor(highTelegraph.accentColor) &&
+        isHighContrastColor(highEffect.color) &&
+        isHighContrastColor(highEffect.accentColor) &&
+        (highTelegraph.strokeWidthPx ?? 0) >= 3 &&
+        (highEffect.widthPx ?? 0) >= 5;
+
+      return {
+        attackId: definition.id,
+        reducedPass,
+        highContrastPass
+      };
+    });
+
+    expect(readyBatchAttacks.map((definition) => definition.id)).toEqual([
+      'rail-line',
+      'mortar-lob',
+      'emp-nova',
+      'summon-glyphs',
+      'sweep-laser',
+      'healing-beam',
+      'shield-wall',
+      'plasma-puddle',
+      'cluster-bomb',
+      'alarm-ping',
+      'berserker-shockwave',
+      'mine-reveal'
+    ]);
+    expect(results.filter((result) => !result.reducedPass)).toEqual([]);
+    expect(results.filter((result) => !result.highContrastPass)).toEqual([]);
+  });
 });
+
+function createImmediateSlot(
+  attackId: Parameters<typeof createDefaultAttackLoadoutSlot>[0],
+  params: AttackLoadoutSlot['params'] = {}
+): AttackLoadoutSlot {
+  const slot = createDefaultAttackLoadoutSlot(attackId);
+  slot.cooldownOffsetMs = 0;
+  slot.params = {
+    ...(slot.params ?? {}),
+    initialDelayMs: 0,
+    windupMs: 0,
+    activeMs: 100,
+    ...params
+  };
+  return slot;
+}
+
+function isHighContrastColor(color: number | undefined): boolean {
+  return color === undefined || color === 0xffffff || color === 0xffd166;
+}
 
 function createDirection(fromX: number, fromY: number, toX: number, toY: number) {
   return {
