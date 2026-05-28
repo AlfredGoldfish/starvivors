@@ -109,6 +109,12 @@ canvas {
   margin: 8px 0;
 }
 
+.enemy-lab-mode-row button {
+  min-height: 34px;
+  padding: 5px 4px;
+  line-height: 1.15;
+}
+
 .enemy-lab-advanced-panel summary {
   cursor: pointer;
   color: rgba(242, 251, 255, 0.78);
@@ -121,10 +127,10 @@ canvas {
   display: none;
 }
 
-.enemy-lab-overlay.is-mode-shape [data-lab-panel~='shape'],
-.enemy-lab-overlay.is-mode-effects [data-lab-panel~='effects'],
-.enemy-lab-overlay.is-mode-behavior [data-lab-panel~='behavior'],
-.enemy-lab-overlay.is-mode-squad [data-lab-panel~='squad'],
+.enemy-lab-overlay.is-mode-basic [data-lab-panel~='basic'],
+.enemy-lab-overlay.is-mode-squads [data-lab-panel~='squads'],
+.enemy-lab-overlay.is-mode-attack-tester [data-lab-panel~='attack-tester'],
+.enemy-lab-overlay.is-mode-presets [data-lab-panel~='presets'],
 .enemy-lab-overlay.is-mode-stress [data-lab-panel~='stress'] {
   display: block;
 }
@@ -375,6 +381,34 @@ canvas {
   display: grid;
   gap: 6px;
   margin-top: 8px;
+}
+
+.enemy-lab-attack-loadout {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.enemy-lab-attack-slot {
+  padding: 7px;
+  border: 1px solid rgba(168, 199, 255, 0.16);
+  border-radius: 4px;
+  background: rgba(5, 9, 18, 0.78);
+}
+
+.enemy-lab-attack-slot-title {
+  margin-bottom: 4px;
+  color: rgba(242, 251, 255, 0.9);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.enemy-lab-attack-slot-meta {
+  overflow-wrap: anywhere;
+  color: rgba(242, 251, 255, 0.66);
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.35;
 }
 
 .enemy-lab-entry {

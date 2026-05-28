@@ -103,7 +103,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-28 Enemy Lab pass added vector-outline effect recipes, state preview buttons for idle/pursue/telegraph/attack/hit/death, readability modes, reduced-effects previews, and clutter/stress tests.
   - Evidence: 2026-05-28 prototype completion pass added lab-first ambusher, berserker, orbiter, patrol, frost/electric status shooters, combat summoner, scrap thief, instant bomber, and stationary spawner mechanics while keeping live encounter tables unchanged.
   - Evidence: 2026-05-28 modular attack planning pass added `Docs/ENEMY_LAB_ATTACKS_AND_WORKFLOW_PLAN.md` with Enemy Lab-first attack registry, tabbed workflow, preset hierarchy, default loadout assignments, and reference notes from the Enemy Prototype previews.
-  - Next: implement the Enemy Lab Basic and Attack Tester tabs with non-destructive default attack loadout controls.
+  - Evidence: 2026-05-28 attack workflow seed added `src/data/enemyAttackDefinitions.ts`, validation coverage, Basic/Squads/Attack Tester/Stress/Presets tabs, read-only default attack loadout display, and non-executing player-host Attack Tester selection.
+  - Next: make `+/-` loadout controls, reset defaults, and player-host Attack Tester execution functional without changing live `GameScene` combat.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
   - Next: add tier-distinct asteroid marks, debris hazard language, and black-hole warning cues.
@@ -259,3 +260,4 @@ Current focus: Pass A.
 - 2026-05-28: Replaced active enemy, player ship, and asteroid visuals with a monochrome Asteroids-style source-scale system using shared 320px object size profiles; full Vitest, build, Enemy Lab monochrome smoke, live smoke, and `enemy-lab-monochrome-1280x720.png` passed.
 - 2026-05-28: Completed the lab-first enemy prototype roster with portable AI/status/scrap hooks, expanded shared asteroid visuals to 12 deterministic families, added the Enemy Lab prototype harness/gallery screenshot, and reverified full Vitest, build, Enemy Lab smoke, and live smoke.
 - 2026-05-28: Added the Enemy Lab modular attacks and workflow plan, covering attack registry shape, tabbed lab UI, desktop-first preset hierarchy, default enemy attack loadouts, attack batches, and reference notes from the Enemy Prototype preview files.
+- 2026-05-28: Started the Enemy Lab modular attack workflow implementation with a typed attack registry/default loadouts, registry validation tests, workflow tabs, Basic loadout preview, and Attack Tester attack selection; Vitest, build, basic UI smoke, and `enemyLabPrototype` harness passed.

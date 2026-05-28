@@ -11,6 +11,13 @@ import {
   type EnemyLabDefinition
 } from '../data/enemyLabDefinitions';
 import {
+  getDefaultEnemyAttackLoadout,
+  getEnemyAttackDefinition,
+  getEnemyAttackDefinitions,
+  resolveAttackLoadoutSlotParams,
+  type EnemyAttackId
+} from '../data/enemyAttackDefinitions';
+import {
   ASTEROID_TIERS,
   CAMERA_LEAD_LERP,
   CAMERA_LEAD_MAX_DISTANCE,
@@ -249,6 +256,10 @@ interface EnemyLabOverlayRefs {
   statRadius: HTMLInputElement;
   statContactDamage: HTMLInputElement;
   behaviorParams: HTMLDivElement;
+  attackLoadout: HTMLDivElement;
+  attackTesterAttackSelect: HTMLSelectElement;
+  attackTesterSlotList: HTMLDivElement;
+  attackTesterParams: HTMLDivElement;
   squadSelect: HTMLSelectElement;
   customSquadSelect: HTMLSelectElement;
   squadName: HTMLInputElement;
@@ -297,7 +308,7 @@ const PROTOTYPE_ENEMY_SAMPLE_IDS = [
   'spawner-nest'
 ];
 type ForgePreviewMode = 'combat' | 'projectile-motion' | 'weapon-icon' | 'minimap' | 'silhouette' | 'starfield' | 'hit-radius';
-type EnemyLabMode = 'shape' | 'effects' | 'behavior' | 'squad' | 'stress';
+type EnemyLabMode = 'basic' | 'squads' | 'attack-tester' | 'stress' | 'presets';
 type EnemyLabPreviewState = 'idle' | 'pursue' | 'telegraph' | 'attack' | 'hit' | 'death';
 type EnemyLabClutterTest = 'single' | 'squad' | 'swarm' | 'bullets' | 'asteroids' | 'asteroidGallery' | 'debris' | 'stress';
 
@@ -318,13 +329,14 @@ export class EnemyLabScene extends Phaser.Scene {
   private labScrapProps: EnemyLabScrapProp[] = [];
   private overlay?: EnemyLabOverlayRefs;
   private presetState: EnemyLabStorageState = createInitialEnemyLabStorageState();
-  private labMode: EnemyLabMode = 'effects';
+  private labMode: EnemyLabMode = 'basic';
   private readabilityMode: EnemyLabReadabilityMode = 'normal';
   private reducedEffects = false;
   private selectedEnemyIndex = 0;
   private selectedVariantId = '';
   private selectedForgeAssetId = '';
   private selectedForgeLayerIndex = 0;
+  private selectedAttackTestId: EnemyAttackId = 'rail-line';
   private forgePreviewMode: ForgePreviewMode = 'combat';
   private forgeBatchCount = 8;
   private forgeAiTaskType: ForgeAiTaskType = 'batch';
@@ -529,7 +541,7 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    this.labMode = harness === 'enemyLabPrototype' ? 'behavior' : 'effects';
+    this.labMode = 'stress';
     this.spawnClutterTest('asteroidGallery');
     this.spawnProjectileClutter(8);
     if (harness === 'enemyLabPrototype') {
@@ -1272,13 +1284,13 @@ export class EnemyLabScene extends Phaser.Scene {
         <button data-action="toggleOverlay">Hide UI</button>
       </div>
       <section class="enemy-lab-panel">
-        <div class="enemy-lab-panel-title">Lab Mode</div>
+        <div class="enemy-lab-panel-title">Workflow</div>
         <div class="enemy-lab-mode-row">
-          <button data-lab-mode="shape">Shape</button>
-          <button data-lab-mode="effects">Effects</button>
-          <button data-lab-mode="behavior">Behavior</button>
-          <button data-lab-mode="squad">Squad</button>
-          <button data-lab-mode="stress">Stress</button>
+          <button data-lab-mode="basic">Basic</button>
+          <button data-lab-mode="squads">Squads</button>
+          <button data-lab-mode="attack-tester">Attack Tester</button>
+          <button data-lab-mode="stress">Stress/Readability</button>
+          <button data-lab-mode="presets">Presets</button>
         </div>
         <div class="enemy-lab-style-guide">
           Black field, white enclosed silhouettes, shape-matched fills, and restrained internal marks. Active enemy, ship, and asteroid art uses the shared 320px source scale.
@@ -1372,8 +1384,8 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="forgeDeleteLayer" class="enemy-lab-danger-button">Delete Layer</button>
         </div>
       </details>
-      <section class="enemy-lab-panel" data-lab-panel="shape effects behavior stress">
-        <div class="enemy-lab-panel-title">Enemy Shape</div>
+      <section class="enemy-lab-panel" data-lab-panel="basic presets stress">
+        <div class="enemy-lab-panel-title">Enemy Basic</div>
         <label>Enemy <select data-field="enemy"></select></label>
         <label>Variant <select data-field="variant"></select></label>
         <label>Spawn count <input data-field="spawnCount" type="number" min="1" max="9999" step="1" value="1"></label>
@@ -1391,7 +1403,34 @@ export class EnemyLabScene extends Phaser.Scene {
           <button class="enemy-lab-danger-button" data-action="deleteVariant">Delete Variant</button>
         </div>
       </section>
-      <section class="enemy-lab-panel" data-lab-panel="effects stress">
+      <section class="enemy-lab-panel" data-lab-panel="basic">
+        <div class="enemy-lab-panel-title">Default Attack Loadout</div>
+        <div class="enemy-lab-attack-loadout" data-field="attackLoadout"></div>
+        <div class="enemy-lab-row">
+          <button disabled>+ Attack Slot</button>
+          <button disabled>- Attack Slot</button>
+          <button disabled>Reset Defaults</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel" data-lab-panel="attack-tester">
+        <div class="enemy-lab-panel-title">Attack Tester</div>
+        <label>Host <select disabled><option>Default Player Ship</option></select></label>
+        <label>Attack <select data-field="attackTesterAttack"></select></label>
+        <div class="enemy-lab-attack-loadout" data-field="attackTesterSlotList"></div>
+        <div class="enemy-lab-param-grid" data-field="attackTesterParams"></div>
+        <div class="enemy-lab-row enemy-lab-primary-row">
+          <button disabled>Fire Once</button>
+          <button disabled>Auto-Cycle</button>
+        </div>
+        <div class="enemy-lab-row">
+          <button disabled>Spawn Dummy</button>
+          <button disabled>Enemy Target</button>
+          <button disabled>Ally Target</button>
+          <button disabled>Clear Tests</button>
+          <button disabled>Save Test</button>
+        </div>
+      </section>
+      <section class="enemy-lab-panel" data-lab-panel="stress">
         <div class="enemy-lab-panel-title">Special Effects</div>
         <div class="enemy-lab-row enemy-lab-preview-row">
           <button data-preview-state="idle">Idle</button>
@@ -1409,7 +1448,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="reducedEffects">Reduced FX</button>
         </div>
       </section>
-      <section class="enemy-lab-panel" data-lab-panel="behavior">
+      <section class="enemy-lab-panel" data-lab-panel="presets">
         <div class="enemy-lab-panel-title">Behavior / Variant Editor</div>
         <label>Name <input data-field="variantName" type="text" maxlength="48"></label>
         <label>Status <select data-field="variantStatus"></select></label>
@@ -1445,7 +1484,7 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="exportPromotion">Promotion</button>
         </div>
       </section>
-      <section class="enemy-lab-panel" data-lab-panel="squad stress">
+      <section class="enemy-lab-panel" data-lab-panel="squads stress">
         <div class="enemy-lab-panel-title">Squad Builder</div>
         <label>Built-in <select data-field="squad"></select></label>
         <label>Custom <select data-field="customSquad"></select></label>
@@ -1472,7 +1511,7 @@ export class EnemyLabScene extends Phaser.Scene {
         </div>
         <div class="enemy-lab-squad-entries" data-field="squadEntries"></div>
       </section>
-      <section class="enemy-lab-panel" data-lab-panel="effects behavior squad stress">
+      <section class="enemy-lab-panel" data-lab-panel="basic squads attack-tester stress">
         <div class="enemy-lab-panel-title">Test Conditions</div>
         <label>Lab speed <input data-field="speed" type="range" min="0.2" max="3" step="0.1" value="1"></label>
         <label>Lab HP <input data-field="hp" type="range" min="0.2" max="5" step="0.1" value="1"></label>
@@ -1538,6 +1577,10 @@ export class EnemyLabScene extends Phaser.Scene {
     const statRadius = root.querySelector<HTMLInputElement>('[data-field="statRadius"]');
     const statContactDamage = root.querySelector<HTMLInputElement>('[data-field="statContactDamage"]');
     const behaviorParams = root.querySelector<HTMLDivElement>('[data-field="behaviorParams"]');
+    const attackLoadout = root.querySelector<HTMLDivElement>('[data-field="attackLoadout"]');
+    const attackTesterAttackSelect = root.querySelector<HTMLSelectElement>('[data-field="attackTesterAttack"]');
+    const attackTesterSlotList = root.querySelector<HTMLDivElement>('[data-field="attackTesterSlotList"]');
+    const attackTesterParams = root.querySelector<HTMLDivElement>('[data-field="attackTesterParams"]');
     const squadSelect = root.querySelector<HTMLSelectElement>('[data-field="squad"]');
     const customSquadSelect = root.querySelector<HTMLSelectElement>('[data-field="customSquad"]');
     const squadName = root.querySelector<HTMLInputElement>('[data-field="squadName"]');
@@ -1587,6 +1630,10 @@ export class EnemyLabScene extends Phaser.Scene {
       !statRadius ||
       !statContactDamage ||
       !behaviorParams ||
+      !attackLoadout ||
+      !attackTesterAttackSelect ||
+      !attackTesterSlotList ||
+      !attackTesterParams ||
       !squadSelect ||
       !customSquadSelect ||
       !squadName ||
@@ -1613,6 +1660,9 @@ export class EnemyLabScene extends Phaser.Scene {
     for (const status of ENEMY_LAB_ASSET_STATUSES) {
       variantStatus.add(new Option(status, status));
       squadStatus.add(new Option(status, status));
+    }
+    for (const attack of getEnemyAttackDefinitions()) {
+      attackTesterAttackSelect.add(new Option(`${attack.displayName} (${attack.id})`, attack.id));
     }
     this.populateForgeColorSelect(forgeLayerColor);
     this.populateForgeColorSelect(forgeLayerStrokeColor);
@@ -1663,6 +1713,10 @@ export class EnemyLabScene extends Phaser.Scene {
       statRadius,
       statContactDamage,
       behaviorParams,
+      attackLoadout,
+      attackTesterAttackSelect,
+      attackTesterSlotList,
+      attackTesterParams,
       squadSelect,
       customSquadSelect,
       squadName,
@@ -1686,6 +1740,7 @@ export class EnemyLabScene extends Phaser.Scene {
       this.populateVariantSelect();
       this.syncVariantControlsFromState();
       this.syncForgeControlsFromState();
+      this.renderAttackWorkflowControls();
     });
     forgeAssetSelect.addEventListener('change', () => {
       this.selectedForgeAssetId = forgeAssetSelect.value;
@@ -1752,6 +1807,10 @@ export class EnemyLabScene extends Phaser.Scene {
       input.addEventListener('input', () => this.persistVariantFromControls(false));
       input.addEventListener('change', () => this.persistVariantFromControls(true));
     }
+    attackTesterAttackSelect.addEventListener('change', () => {
+      this.selectedAttackTestId = attackTesterAttackSelect.value as EnemyAttackId;
+      this.renderAttackWorkflowControls();
+    });
     squadSelect.addEventListener('change', () => {
       this.selectedSquadIndex = Math.max(0, getEnemyLabSquads().findIndex((squad) => squad.id === squadSelect.value));
       this.selectedCustomSquadId = '';
@@ -2914,6 +2973,114 @@ export class EnemyLabScene extends Phaser.Scene {
     }
   }
 
+  private renderAttackWorkflowControls(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    this.renderDefaultAttackLoadout();
+    this.renderAttackTesterControls();
+  }
+
+  private renderDefaultAttackLoadout(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const definition = getEnemyLabDefinitions()[this.selectedEnemyIndex];
+    const loadout = getDefaultEnemyAttackLoadout(definition.id);
+    this.overlay.attackLoadout.replaceChildren();
+
+    if (loadout.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'enemy-lab-empty';
+      empty.textContent = 'No default attack loadout assigned.';
+      this.overlay.attackLoadout.appendChild(empty);
+      return;
+    }
+
+    for (const [index, slot] of loadout.entries()) {
+      const attack = getEnemyAttackDefinition(slot.attackId);
+      const row = document.createElement('div');
+      row.className = 'enemy-lab-attack-slot';
+
+      const title = document.createElement('div');
+      title.className = 'enemy-lab-attack-slot-title';
+      title.textContent = `${index + 1}. ${slot.label ?? attack.displayName}`;
+      row.appendChild(title);
+
+      const meta = document.createElement('div');
+      meta.className = 'enemy-lab-attack-slot-meta';
+      meta.textContent = [
+        attack.id,
+        slot.enabled ? 'enabled' : 'disabled',
+        `batch ${attack.lab.batch}`,
+        attack.tags.join(', ')
+      ].join(' | ');
+      row.appendChild(meta);
+
+      const params = document.createElement('div');
+      params.className = 'enemy-lab-attack-slot-meta';
+      params.textContent = this.formatAttackParams(resolveAttackLoadoutSlotParams(slot));
+      row.appendChild(params);
+
+      this.overlay.attackLoadout.appendChild(row);
+    }
+  }
+
+  private renderAttackTesterControls(): void {
+    if (!this.overlay) {
+      return;
+    }
+
+    const selectedAttack = getEnemyAttackDefinitions().some((attack) => attack.id === this.selectedAttackTestId)
+      ? getEnemyAttackDefinition(this.selectedAttackTestId)
+      : getEnemyAttackDefinitions()[0];
+    this.selectedAttackTestId = selectedAttack.id;
+    this.overlay.attackTesterAttackSelect.value = selectedAttack.id;
+    this.overlay.attackTesterSlotList.replaceChildren();
+    this.overlay.attackTesterParams.replaceChildren();
+
+    const slot = document.createElement('div');
+    slot.className = 'enemy-lab-attack-slot';
+
+    const title = document.createElement('div');
+    title.className = 'enemy-lab-attack-slot-title';
+    title.textContent = `Player-test slot: ${selectedAttack.displayName}`;
+    slot.appendChild(title);
+
+    const meta = document.createElement('div');
+    meta.className = 'enemy-lab-attack-slot-meta';
+    meta.textContent = [
+      selectedAttack.id,
+      `target ${selectedAttack.targeting.targetKind}`,
+      `range ${selectedAttack.targeting.rangePx}`,
+      `status ${selectedAttack.lab.status}`
+    ].join(' | ');
+    slot.appendChild(meta);
+    this.overlay.attackTesterSlotList.appendChild(slot);
+
+    for (const [key, value] of Object.entries(selectedAttack.defaultParams)) {
+      const label = document.createElement('label');
+      label.textContent = key;
+      const input = document.createElement('input');
+      input.type = typeof value === 'number' ? 'number' : 'text';
+      input.value = String(value);
+      input.disabled = true;
+      label.appendChild(input);
+      this.overlay.attackTesterParams.appendChild(label);
+    }
+  }
+
+  private formatAttackParams(params: Record<string, number | string | boolean>): string {
+    const entries = Object.entries(params);
+    if (entries.length === 0) {
+      return 'params: none';
+    }
+
+    return `params: ${entries.map(([key, value]) => `${key}=${String(value)}`).join(', ')}`;
+  }
+
   private renderSquadEntries(): void {
     if (!this.overlay) {
       return;
@@ -3171,13 +3338,13 @@ export class EnemyLabScene extends Phaser.Scene {
   }
 
   private setLabMode(mode: EnemyLabMode): void {
-    if (!['shape', 'effects', 'behavior', 'squad', 'stress'].includes(mode)) {
+    if (!['basic', 'squads', 'attack-tester', 'stress', 'presets'].includes(mode)) {
       return;
     }
 
     this.labMode = mode;
     if (this.overlay) {
-      this.overlay.root.classList.remove('is-mode-shape', 'is-mode-effects', 'is-mode-behavior', 'is-mode-squad', 'is-mode-stress');
+      this.overlay.root.classList.remove('is-mode-basic', 'is-mode-squads', 'is-mode-attack-tester', 'is-mode-stress', 'is-mode-presets');
       this.overlay.root.classList.add(`is-mode-${mode}`);
     }
     this.syncOverlayFromState();
@@ -3628,6 +3795,7 @@ export class EnemyLabScene extends Phaser.Scene {
     this.syncAiWorkbenchControlsFromState();
     this.syncVariantControlsFromState();
     this.syncSquadControlsFromState();
+    this.renderAttackWorkflowControls();
     this.syncForgeControlsFromState();
     this.syncActionButtonStates();
   }

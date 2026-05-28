@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 1 design document and UI blueprint. Implementation target is Enemy Lab first. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 1 complete; Phase 2 started with a non-destructive Enemy Lab UI/data seed. Implementation target is Enemy Lab first. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -493,6 +493,17 @@ Acceptance:
 - Reference notes from `Docs/references/Enemy_Prototype/Preview Files` are captured.
 
 ### Phase 2: UI First
+
+Status: started 2026-05-28.
+
+Progress:
+
+- Added `src/data/enemyAttackDefinitions.ts` with typed attack definitions, default enemy attack loadouts, and validation helpers.
+- Added registry validation coverage in `src/data/enemyAttackDefinitions.test.ts`.
+- Replaced the primary overlay mode row with Basic, Squads, Attack Tester, Stress/Readability, and Presets tabs.
+- Basic shows the selected enemy's resolved default attack loadout.
+- Attack Tester can select the default player test host and any registered attack, while execution buttons remain disabled until the runtime phase.
+- Existing spawn, squad, stress, readability, variant/preset, Forge, hotkey, and harness paths remain reachable.
 
 Files to read:
 

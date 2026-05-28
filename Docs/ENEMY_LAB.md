@@ -18,12 +18,15 @@ Controls:
 - `T` toggles telegraphs.
 - `P` pauses or resumes the simulation.
 
-The HTML overlay is now centered on the Monochrome Combat Lab workflow:
+The HTML overlay is now centered on the modular Enemy Lab workflow:
 
-- `Shape`, `Effects`, `Behavior`, `Squad`, and `Stress` modes keep the main panel focused.
-- The default `Effects` mode previews Idle, Pursue, Telegraph, Attack, Hit, and Death states without requiring a full combat spawn.
+- `Basic`, `Squads`, `Attack Tester`, `Stress/Readability`, and `Presets` tabs keep the main panel focused.
+- The default `Basic` tab exposes the selected enemy, spawn controls, testing toggles, and a read-only default attack loadout generated from `src/data/enemyAttackDefinitions.ts`.
+- `Attack Tester` can select the default player test host and any registered enemy attack. Attack execution controls are intentionally disabled until the modular attack runtime is implemented.
+- `Stress/Readability` previews Idle, Pursue, Telegraph, Attack, Hit, and Death states without requiring a full combat spawn.
 - Readability controls switch between normal, color-safe, high-contrast, and reduced-effects previews.
 - Clutter tests can spawn a single enemy, a squad, a 50-enemy swarm, projectile clutter, monochrome asteroids, debris, or the full stress mix.
+- `Presets` keeps the existing behavior/variant editor, import/export, AI brief, and promotion report tools available while attack presets are added later.
 - Active enemy, player ship, and asteroid visuals use a shared 320px source-diameter size profile. Runtime scale controls display diameter, and collision radius is derived from that profile.
 - Advanced Forge/import/export controls are still available in collapsed Advanced panels as legacy/reference workflows; they are not the default active art direction.
 
