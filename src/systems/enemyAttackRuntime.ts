@@ -746,7 +746,6 @@ function executeAttack(
 
   switch (slot.definition.execution.kind) {
     case 'simple-bolt':
-    case 'phase-blink-strike':
       input.callbacks.spawnProjectile?.({
         sourceHostId: input.host.hostId,
         ownerKind: input.host.hostKind,
@@ -763,6 +762,57 @@ function executeAttack(
         statuses
       });
       break;
+    case 'charge-strike':
+    case 'contact-ram': {
+      const range = getNumberParam(params, 'rangePx', slot.definition.targeting.rangePx);
+      const dashMs = getNumberParam(params, 'dashMs', slot.definition.timing.activeMs ?? 250);
+      const dashSpeed = getNumberParam(params, 'dashSpeed', range * 2.2);
+      const distance = slot.definition.id === 'contact-ram'
+        ? Math.max(36, range)
+        : Math.min(range, Math.max(96, dashSpeed * (dashMs / 1000)));
+      const width = getNumberParam(
+        params,
+        'widthPx',
+        getNumberParam(params, 'dashWidthPx', slot.definition.id === 'contact-ram' ? 20 : 42)
+      );
+      const resolvedDamage = slot.definition.id === 'contact-ram' && input.host.manualTriggerOnly && damage <= 0 ? 8 : damage;
+      input.callbacks.areaDamage?.({
+        sourceHostId: input.host.hostId,
+        ownerKind: input.host.hostKind,
+        attackId: slot.definition.id,
+        beat: options.beat ?? 'resolve',
+        targetKind: slot.definition.targeting.targetKind,
+        shape: 'line',
+        x: origin.x,
+        y: origin.y,
+        fromX: origin.x,
+        fromY: origin.y,
+        toX: origin.x + direction.x * distance,
+        toY: origin.y + direction.y * distance,
+        width,
+        damage: Math.max(0, resolvedDamage),
+        statuses
+      });
+      break;
+    }
+    case 'phase-blink-strike': {
+      const range = getNumberParam(params, 'rangePx', slot.definition.targeting.rangePx);
+      const strikeRadius = getNumberParam(params, 'strikeRangePx', slot.definition.activeEffect.radiusPx ?? 90);
+      input.callbacks.areaDamage?.({
+        sourceHostId: input.host.hostId,
+        ownerKind: input.host.hostKind,
+        attackId: slot.definition.id,
+        beat: options.beat ?? 'resolve',
+        targetKind: slot.definition.targeting.targetKind,
+        shape: 'circle',
+        x: target ? target.x : origin.x + direction.x * range,
+        y: target ? target.y : origin.y + direction.y * range,
+        radius: strikeRadius,
+        damage: Math.max(0, damage),
+        statuses
+      });
+      break;
+    }
     case 'rail-line':
     case 'sweep-laser':
       input.callbacks.areaDamage?.({
@@ -790,8 +840,6 @@ function executeAttack(
     case 'berserker-shockwave':
     case 'mine-reveal':
     case 'self-destruct-radius':
-    case 'contact-ram':
-    case 'charge-strike':
       input.callbacks.areaDamage?.({
         sourceHostId: input.host.hostId,
         ownerKind: input.host.hostKind,
@@ -1119,7 +1167,7 @@ function selectAttackTarget(
   const definition = slot.definition;
   const targetKind = definition.targeting.targetKind;
   if (targetKind === 'self') {
-    if (definition.id === 'self-destruct-radius') {
+    if (definition.id === 'self-destruct-radius' && !input.host.manualTriggerOnly) {
       const params = resolveAttackLoadoutSlotParams(slot.slot);
       const triggerRange = getNumberParam(params, 'triggerRangePx', definition.targeting.rangePx);
       const targetKinds = input.targetKindMap?.('player', input.host, definition) ?? ['player'];

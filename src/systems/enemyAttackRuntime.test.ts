@@ -299,6 +299,144 @@ describe('enemy attack runtime', () => {
     expect(areas[0].toY).toBeGreaterThan(0);
   });
 
+  it('resolves charge-strike as a forward dash lane', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 10, y: 20, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [createImmediateSlot('charge-strike', { rangePx: 420, dashMs: 500, dashSpeed: 600, widthPx: 48 })]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    queueAttackSlot(runtime, 0, 0);
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [enemyTarget],
+      pointTarget: { id: 'cursor', kind: 'point', x: 310, y: 20, radius: 12 },
+      targetKindMap: (targetKind) => targetKind === 'player' ? ['point', 'enemy'] : [targetKind],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(1);
+    expect(areas[0]).toMatchObject({ attackId: 'charge-strike', shape: 'line', fromX: 10, fromY: 20, width: 48, damage: 18 });
+    expect(areas[0].toX).toBeGreaterThan(areas[0].fromX ?? 0);
+    expect(areas[0].toY).toBeCloseTo(20);
+  });
+
+  it('gives manual contact-ram a short test hit without changing its passive enemy role', () => {
+    const manual = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [createImmediateSlot('contact-ram')]
+    });
+    const enemy = createAttackHostRuntime({
+      hostKind: 'enemy',
+      hostId: 'scout',
+      definitionId: 'scout',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      loadout: [createImmediateSlot('contact-ram')]
+    });
+    const manualAreas: AttackAreaDamageRequest[] = [];
+    const enemyAreas: AttackAreaDamageRequest[] = [];
+
+    queueAttackSlot(manual, 0, 0);
+    updateAttackHostRuntime({
+      host: manual,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [enemyTarget],
+      pointTarget: { id: 'cursor', kind: 'point', x: 42, y: 0, radius: 12 },
+      targetKindMap: (targetKind) => targetKind === 'player' ? ['point', 'enemy'] : [targetKind],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => manualAreas.push(request) }
+    });
+    updateAttackHostRuntime({
+      host: enemy,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [{ ...playerTarget, x: 42 }],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => enemyAreas.push(request) }
+    });
+
+    expect(manualAreas).toMatchObject([{ attackId: 'contact-ram', shape: 'line', damage: 8 }]);
+    expect(enemyAreas).toMatchObject([{ attackId: 'contact-ram', shape: 'line', damage: 0 }]);
+  });
+
+  it('resolves phase-blink-strike as a blink impact instead of a projectile', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'cursor', kind: 'point', x: 180, y: 70, radius: 12 };
+    const runtime = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [createImmediateSlot('phase-blink-strike', { strikeRangePx: 88 })]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+    const projectiles: AttackProjectileRequest[] = [];
+
+    queueAttackSlot(runtime, 0, 0);
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [enemyTarget],
+      pointTarget,
+      targetKindMap: (targetKind) => targetKind === 'player' ? ['point', 'enemy'] : [targetKind],
+      getWrappedDirection: createDirection,
+      callbacks: {
+        areaDamage: (request) => areas.push(request),
+        spawnProjectile: (request) => projectiles.push(request)
+      }
+    });
+
+    expect(projectiles).toHaveLength(0);
+    expect(areas).toMatchObject([{ attackId: 'phase-blink-strike', shape: 'circle', x: 180, y: 70, radius: 88, damage: 14 }]);
+  });
+
+  it('allows manual player-test self-destruct without a proximity trigger target', () => {
+    const runtime = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 24, y: 36, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [createImmediateSlot('self-destruct-radius', { blastRadiusPx: 150 })]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    queueAttackSlot(runtime, 0, 0);
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toMatchObject([{ attackId: 'self-destruct-radius', targetKind: 'self', shape: 'circle', x: 24, y: 36, radius: 150 }]);
+  });
+
   it('runs a non-native attack on an enemy host without movement state', () => {
     const runtime = createAttackHostRuntime({
       hostKind: 'enemy',
