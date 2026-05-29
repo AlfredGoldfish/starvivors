@@ -33,9 +33,13 @@ export interface GameSceneHarnessAdapter {
   runHarnessDebriefFlow: HarnessRunner;
   runHarnessAsteroidStaleDestroy: HarnessRunner;
   runHarnessEnemyContactBalance: HarnessRunner;
+  runHarnessPlayerDeathShockwave: HarnessRunner;
   runHarnessWorldImpactCleanup: HarnessRunner;
   runHarnessVelocityLimiter: HarnessRunner;
   runHarnessEnemyScaling: HarnessRunner;
+  runHarnessScoutPhase: HarnessRunner;
+  runHarnessWedgeStrikerPhase: HarnessRunner;
+  runHarnessTankPhase: HarnessRunner;
   runHarnessDirectCombatNumbers: HarnessRunner;
   runHarnessHudMissionLog: HarnessRunner;
   runHarnessAudio: HarnessRunner;
@@ -73,9 +77,13 @@ type HarnessId =
   | 'debriefFlow'
   | 'asteroidStaleDestroy'
   | 'enemyContactBalance'
+  | 'playerDeathShockwave'
   | 'worldImpactCleanup'
   | 'velocityLimiter'
   | 'enemyScaling'
+  | 'scoutPhase'
+  | 'wedgeStrikerPhase'
+  | 'tankPhase'
   | 'directCombatNumbers'
   | 'hudMissionLog'
   | 'audio'
@@ -115,12 +123,16 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
   debriefFlow: (adapter) => adapter.runHarnessDebriefFlow(),
   asteroidStaleDestroy: (adapter) => adapter.runHarnessAsteroidStaleDestroy(),
   enemyContactBalance: (adapter) => adapter.runHarnessEnemyContactBalance(),
+  playerDeathShockwave: (adapter) => adapter.runHarnessPlayerDeathShockwave(),
   worldImpactCleanup: (adapter) => adapter.runHarnessWorldImpactCleanup(),
   velocityLimiter: (adapter) => adapter.runHarnessVelocityLimiter(),
   enemyScaling: (adapter) => {
     adapter.startRun();
     adapter.runHarnessEnemyScaling();
   },
+  scoutPhase: (adapter) => adapter.runHarnessScoutPhase(),
+  wedgeStrikerPhase: (adapter) => adapter.runHarnessWedgeStrikerPhase(),
+  tankPhase: (adapter) => adapter.runHarnessTankPhase(),
   directCombatNumbers: (adapter) => {
     adapter.startRun();
     adapter.runHarnessDirectCombatNumbers();

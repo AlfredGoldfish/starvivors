@@ -26,8 +26,6 @@ try {
   function New-DevShortcut {
     param(
       [string]$Name,
-      [ValidateSet('main', 'enemy-lab')]
-      [string]$Window,
       [string]$Description
     )
 
@@ -36,7 +34,7 @@ try {
 
     try {
       $shortcut.TargetPath = $powerShellPath
-      $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`" -Window $Window"
+      $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`""
       $shortcut.WorkingDirectory = $repoRoot
       $shortcut.Description = $Description
       $shortcut.WindowStyle = 7
@@ -54,13 +52,7 @@ try {
 
   New-DevShortcut `
     -Name 'Starvivors Dev' `
-    -Window 'main' `
     -Description 'Launch only the main Starvivors Electron dev window.'
-
-  New-DevShortcut `
-    -Name 'Starvivors Enemy Lab Dev' `
-    -Window 'enemy-lab' `
-    -Description 'Launch only the Starvivors Enemy Lab Electron dev window.'
 } finally {
   [System.Runtime.InteropServices.Marshal]::FinalReleaseComObject($wshShell) | Out-Null
 }

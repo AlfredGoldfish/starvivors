@@ -7,7 +7,7 @@ import type { UpgradeDefinition } from '../data/upgrades';
 import type { WeaponId, WeaponSlotType } from '../data/weapons';
 import type { EnemyStatProfile } from '../data/enemies';
 import type { ObjectSizeProfile } from '../data/objectSizeProfile';
-import type { EnemyLabInstance } from '../systems/enemyLabSpawner';
+import type { EnemyInstance } from '../systems/enemySpawner';
 import type { RuntimeProjectile, ProjectileSplashPayload, ProjectileStatusPayload } from '../systems/projectiles';
 import type { ResolvedProjectileEffectStats } from '../systems/weaponStats';
 
@@ -404,7 +404,7 @@ export interface AsteroidBreakupProfile {
 }
 
 export interface PlayerEnemyContact {
-  enemy: BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
+  enemy: BasicEnemy | ShooterEnemy | TankEnemy | EnemyInstance;
   normal: Phaser.Math.Vector2;
   penetration: number;
   damage: number;

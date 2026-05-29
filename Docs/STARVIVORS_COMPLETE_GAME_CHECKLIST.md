@@ -1,6 +1,6 @@
 # Starvivors Complete Game Checklist
 
-Last reviewed: 2026-05-28
+Last reviewed: 2026-05-29
 
 This file tracks the gap between the current playable Starvivors prototype and a complete, polished game. It is intentionally practical: every item should be something a future session can read, update, and verify.
 
@@ -100,33 +100,25 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: add heat meter and audio ramp.
 - [~] Enemy telegraphs are readable.
   - Done when: sniper, charger, exploder, shield/support, carrier, and high-damage projectiles each have clear visual and audio warnings.
-  - Evidence: 2026-05-28 Enemy Lab pass added vector-outline effect recipes, state preview buttons for idle/pursue/telegraph/attack/hit/death, readability modes, reduced-effects previews, and clutter/stress tests.
-  - Evidence: 2026-05-28 prototype completion pass added lab-first ambusher, berserker, orbiter, patrol, frost/electric status shooters, combat summoner, scrap thief, instant bomber, and stationary spawner mechanics while keeping live encounter tables unchanged.
-  - Evidence: 2026-05-28 modular attack planning pass added `Docs/ENEMY_LAB_ATTACKS_AND_WORKFLOW_PLAN.md` with Enemy Lab-first attack registry, tabbed workflow, preset hierarchy, default loadout assignments, and reference notes from the Enemy Prototype previews.
-  - Evidence: 2026-05-28 attack workflow seed added `src/data/enemyAttackDefinitions.ts`, validation coverage, Basic/Squads/Attack Tester/Stress/Presets tabs, read-only default attack loadout display, and non-executing player-host Attack Tester selection.
-  - Evidence: 2026-05-28 Phase 2 Enemy Lab UI pass made Basic loadout drafts, Attack Tester slot stacks, and session-local squad entry attack overrides editable in memory; spawned lab enemies receive cloned attack loadout snapshots for inspection only, while live `GameScene` combat and `enemyLabAi.ts` remain unchanged.
-  - Evidence: 2026-05-28 Phase 3 Enemy Lab preset pass added Markdown save/load for variants, squads, Basic attack loadouts, and Attack Tester stacks; desktop saves route to nested `debug-presets/enemy-lab/...` folders, browser fallback downloads safe files, v1 variant/squad imports normalize to v2, and live `GameScene` combat remains unchanged.
-  - Evidence: 2026-05-28 Phase 4 Enemy Lab runtime pass added `src/systems/enemyAttackRuntime.ts`, initialized spawned enemies from cloned attack loadout snapshots, enabled player-host Attack Tester Fire Once/Auto-Cycle/target controls, gated legacy lab attack firing/spawning/support/detonation paths to avoid double-firing, and kept live `GameScene` combat untouched.
-  - Evidence: 2026-05-28 Phase 4 verification passed full Vitest, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke with enabled Attack Tester controls, `enemyLabAttacks` harness for `rail-line`, `simple-bolt`, `emp-nova`, and `summon-glyphs`, and the existing `enemyLabPrototype` monochrome harness.
-  - Evidence: 2026-05-28 Phase 5 Batch A attack polish marked `rail-line`, `mortar-lob`, `emp-nova`, and `summon-glyphs` ready in the Enemy Lab registry; added rail aim/lock beats, delayed mortar travel/impact, EMP status burst feedback, summon ownership links, repeated Batch A telegraph refresh, and harness coverage for all four Batch A attacks while keeping live `GameScene` combat untouched.
-  - Evidence: 2026-05-28 Phase 5 verification passed full Vitest, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke, `enemyLabAttacks` Batch A harness, and the existing `enemyLabPrototype` monochrome harness.
-  - Evidence: 2026-05-28 Phase 5 Batch B attack polish marked `sweep-laser`, `healing-beam`, `shield-wall`, and `plasma-puddle` ready in the Enemy Lab registry; added sustained sweep/heal/puddle ticks, damaged-ally retargeting, reflect shield params, Batch B readability visuals, and harness coverage for all four Batch B attacks while keeping live `GameScene` combat untouched.
-  - Evidence: 2026-05-28 Batch B verification passed full Vitest, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke, `enemyLabAttacks` Batch A+B harness, and the existing `enemyLabPrototype` monochrome harness.
-  - Evidence: 2026-05-28 Phase 5 Batch C attack polish marked `cluster-bomb`, `alarm-ping`, `berserker-shockwave`, and `mine-reveal` ready in the Enemy Lab registry; added delayed cluster secondary impacts, alarm `squadId` summon calls, shockwave slow/knockback status params, mine charge/blast timing, Batch C readability visuals, and harness coverage for all four Batch C attacks while keeping live `GameScene` combat untouched.
-  - Evidence: 2026-05-28 Batch C verification passed full Vitest with 19 files and 96 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke with Attack Tester target controls, `enemyLabAttacks` Batch A+B+C harness with `batchCSlots`, and the existing `enemyLabPrototype` monochrome harness.
-  - Evidence: 2026-05-28 Phase 6 Enemy Lab verification added default-loadout, mixed-squad, player-host target coverage, reduced-FX, and high-contrast harness details; `enemyLabAttacks` reported all ready Batch A/B/C slots with every Phase 6 pass flag true, `enemyLabPrototype` still reported `monochrome-ready`, and screenshots were captured at `artifacts/visual-smoke/enemy-lab-attacks-basic-1280x720.png`, `artifacts/visual-smoke/enemy-lab-attacks-squads-1280x720.png`, `artifacts/visual-smoke/enemy-lab-attacks-player-test-1280x720.png`, and `artifacts/visual-smoke/enemy-lab-attacks-stress-high-contrast-1280x720.png`.
-  - Evidence: 2026-05-28 Phase 6 verification passed full Vitest with 19 files and 99 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke on port 5176, `enemyLabAttacks` Phase 6 smoke, and `enemyLabPrototype` monochrome smoke.
-  - Evidence: 2026-05-28 Phase 7 Enemy Lab audio pass added procedural attack cues for every registry attack, lab-only audio playback for telegraph/channel/resolve/impact/tick runtime callbacks, a player-fire mode toggle that lets the player host the selected Attack Tester slot, and `enemyLabAttackAudio` harness coverage for all 20 registry attacks while keeping live `GameScene` combat unchanged.
-  - Evidence: 2026-05-28 Phase 7 verification passed full Vitest with 20 files and 104 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab smoke with visible `Player Fire: Pulse`, `enemyLabAttackAudio` ready with all attack IDs covered and `missingRequiredResolveCues=[]`, existing `enemyLabAttacks` ready, existing `enemyLabPrototype` `monochrome-ready`, and screenshot `artifacts/visual-smoke/enemy-lab-attack-audio-player-mode-1280x720.png`.
-  - Evidence: 2026-05-29 Phase 8 Enemy Lab visual profile pass added `src/data/enemyAttackVisualProfiles.ts`, per-attack visual profiles for all 20 registry attacks, shared line/landing/radial/support/summon grammar, anticipation/resolve/impact/recovery audit data, reduced-FX/high-contrast fallback validation, and `enemyLabAttackVisuals` harness coverage while keeping live `GameScene` combat unchanged.
-  - Evidence: 2026-05-29 Phase 8 verification passed full Vitest with 21 files and 114 tests, `npm.cmd run build`, `npm.cmd run electron:build`, `enemyLabAttackVisuals` ready with `attackCount=20`, `missingRenderedAttackIds=[]`, `visualProfileErrors=[]`, `reducedFxPass=true`, `highContrastPass=true`, `beatsPass=true`, existing `enemyLabAttacks` ready, existing `enemyLabAttackAudio` ready, and existing `enemyLabPrototype` `monochrome-ready`.
-  - Evidence: 2026-05-29 Phase 8 screenshots captured `artifacts/visual-smoke/enemy-lab-attack-visuals-normal-1280x720.png`, `artifacts/visual-smoke/enemy-lab-attack-visuals-reduced-1280x720.png`, and `artifacts/visual-smoke/enemy-lab-attack-visuals-high-contrast-1280x720.png`.
-  - Next: plan live gameplay adoption once attack visuals/audio are stable enough for encounter tuning.
+  - Evidence: 2026-05-29 cleanup removed the standalone enemy sandbox and migrated shared enemy definitions, spawning, visuals, and AI to neutral live-game module names.
+  - Evidence: 2026-05-29 cleanup deleted lab-only modular attack/audit/runtime/audio prototype code and artifacts; live-game enemy behavior remains on the shared enemy runtime.
+  - Evidence: 2026-05-29 Scout phase made live enemy validation Scout-only, added a 10-second elapsed-time ramp, enforced a 500 live-enemy cap, and added `testHarness=scoutPhase` evidence for the ramp/cap path.
+  - Evidence: 2026-05-29 Wedge Striker charger phase added a committed aim, windup, charge, and recovery loop with generated lane/recovery warning textures; default live validation spawns now resolve to Wedge Striker while `testHarness=scoutPhase` pins Scout regression spawning, and `testHarness=wedgeStrikerPhase` verifies solo Wedge-only spawning, Scout+Wedge mix setup, state sequence, standardized red telegraph tint with resolve brightening, randomized Wedge charge windup timing, randomized normal projectile shot telegraphs, telegraph-before-damage timing, full-lane charge endpoint completion, charge hit collision, dodge outside the committed path, and reward gating through the normal death path.
+  - Evidence: 2026-05-29 Wedge charge-hit fix keeps committed chargers in the `charging` state after player contact, skips enemy-side contact recoil/displacement during the dash, and verifies the striker still reaches the lane endpoint and recovery state in `testHarness=wedgeStrikerPhase`.
+  - Evidence: 2026-05-29 Hex Tank validation promoted `hex-tank` as the active live validation enemy while keeping `testHarness=scoutPhase` and `testHarness=wedgeStrikerPhase` pinned for regressions; `testHarness=tankPhase` verifies solo Hex Tank spawning, the controlled Scout+Wedge+Tank mix, and the tank v1 identity as a slow, high-HP `heavyChase` pursuer.
+  - Next: validate sniper, exploder, support, carrier, and status enemy readability directly in live gameplay and add main-game harness evidence before marking this complete.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
   - Next: add tier-distinct asteroid marks, debris hazard language, and black-hole warning cues.
 - [~] Combat feedback hierarchy is controlled.
   - Done when: critical feedback beats decorative effects, density scales under load, and accessibility options reduce clutter.
+  - Evidence: 2026-05-29 player enemy/debris body contact now uses fixed touch damage instead of closing-speed damage; `testHarness=enemyContactBalance` verifies a stationary Scout overlap deals 8 hull damage while still applying separation/recoil.
+  - Evidence: 2026-05-29 enemy contact recoil was simplified to knockback plus a brief scale response, without steering/turning the enemy ship away from the player.
+  - Evidence: 2026-05-29 committed Wedge Striker charges bypass generic contact recoil on player hit so the player takes touch damage without freezing the charger before its committed endpoint.
+  - Evidence: 2026-05-29 player death now triggers an invisible screen-visible enemy cleanup shockwave using player-style death feedback without rewards, child spawns, or extra death audio; `testHarness=playerDeathShockwave` verifies the five-second center-to-far-width wave timing, on-screen/off-screen behavior, distance ordering, and unchanged reward counters.
+  - Evidence: 2026-05-29 player-style death feedback now uses a one-second expanding/fading blast ring and a denser, larger, faster, longer-traveling shard burst shared by the player and death-shockwave enemies.
+  - Evidence: 2026-05-29 seam-prone animated and large gameplay rings moved from Phaser stroked circle primitives to generated canvas texture sprites for player death, asteroid impacts/breakups, enemy telegraphs/phase pulses, mission/sector beacons, and world/rare event range rings.
+  - Evidence: 2026-05-29 Hex Tank contact now pushes the player harder with a 4.0 player knockback multiplier and takes reduced enemy-side recoil with a 0.45 self-impulse multiplier; `testHarness=enemyContactBalance` verifies stronger tank player shove, reduced tank self-knockback, and no player-body collision damage to tank HP.
   - Next: classify effects as critical, combat, reward, or ambient.
 
 ## D. Content Depth
@@ -182,9 +174,10 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: verify ship silhouettes at gameplay scale with shield/beam/firing feedback and remove or relabel tint-only skin expectations.
 - [~] Enemy assets are cohesive.
   - Done when: all 15 live enemy roles have active final-direction art or an intentional fallback label.
-  - Evidence: 2026-05-28 Enemy Lab pass migrated Scout, Diamond Gunner, Hex Tank, Wedge Striker, Needle Sniper, and Reactor Drone to `visualStyle: vector-outline` recipes while leaving Forge texture support as fallback.
-  - Evidence: 2026-05-28 monochrome object pass converted all 15 live Enemy Lab roles to active `visualStyle: monochrome-outline` recipes with black fills, white outlines, and shared 320px source-size profiles; legacy Forge/vector data remains available as reference.
-  - Evidence: 2026-05-28 prototype completion pass expanded monochrome Enemy Lab coverage to all local prototype concepts from `Docs/references/Enemy_Prototype/Preview Files` and added validation for every active definition.
+  - Evidence: 2026-05-28 visual passes migrated the shared live enemy roster to active `visualStyle: monochrome-outline` recipes with black fills, white outlines, and shared 320px source-size profiles; legacy Forge/vector data remains available as reference.
+  - Evidence: 2026-05-29 cleanup moved shared enemy definitions to `src/data/enemyDefinitions.ts` and kept live-game texture generation through `src/systems/enemyVisuals.ts`.
+  - Evidence: 2026-05-29 Scout active phase target added a clearer monochrome directional nose/rear-thruster silhouette, capped sampled movement trail hints, and contact recoil scale feedback for live-game validation.
+  - Evidence: 2026-05-29 Scout, Wedge Striker, and Hex Tank monochrome outline strokes were thinned to 1px as a visual-only pass; collision radius, HP, contact damage, speed, and visual footprint remain unchanged.
   - Next: pair the monochrome silhouettes with final telegraph/audio cues for sniper, charger, exploder, support, and carrier roles.
 - [~] Pickup/resource assets are cohesive.
   - Done when: scrap tiers, upgrade crates, future fuel cells, and future rare parts are distinct at gameplay scale.
@@ -195,7 +188,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - [~] Asteroid/debris/black-hole art matches final direction.
   - Done when: world hazards read clearly and do not feel visually detached from the final object style.
   - Evidence: 2026-05-28 monochrome object pass replaced active asteroid PNG selection with deterministic procedural black-fill/white-outline chunks, seeded by tier/family and sized through shared 320px source profiles.
-  - Evidence: 2026-05-28 prototype completion pass expanded deterministic asteroid families from 4 to 12 and replaced Enemy Lab asteroid clutter with the shared asteroid visual generator plus a source-scale gallery.
+  - Evidence: 2026-05-28 prototype completion pass expanded deterministic asteroid families from 4 to 12 and promoted the shared asteroid visual generator.
   - Next: validate asteroid readability in dense live runs, then apply the same final-direction treatment to debris and black-hole warnings.
 
 ## G. Audio, Accessibility, And Settings
@@ -208,8 +201,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: add actual music/ambience sources, then promote this from partial to complete once the music slider controls an active source.
 - [~] Enemy and hazard audio cues exist.
   - Done when: dangerous enemy actions and major hazards have recognizable cues that improve readability.
-  - Evidence: 2026-05-28 Phase 7 Enemy Lab pass added procedural attack cue coverage for every `ENEMY_ATTACK_DEFINITIONS` entry and wired those cues to lab-only runtime beats through existing Sound settings.
-  - Next: hazards remain future work; add asteroid/debris/black-hole warning and impact cues before marking this complete.
+  - Evidence: 2026-05-29 cleanup removed lab-only attack-audio prototype code; current first-pass audio remains focused on live gameplay cues.
+  - Next: add live enemy telegraph cues plus asteroid/debris/black-hole warning and impact cues before marking this complete.
 - [ ] Music/ambience direction exists in game.
   - Done when: menu, run, danger/event, and results ambience have at least placeholder implementation with volume control.
   - Next: defer until SFX categories are in place.
@@ -228,14 +221,14 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Done when: `npm.cmd run build` passes and focused tests/harnesses cover changed systems.
   - Evidence: 2026-05-28 monochrome object pass added shared size-profile and monochrome recipe unit coverage; full Vitest suite and `npm.cmd run build` passed.
   - Evidence: 2026-05-28 prototype completion pass added player status, enemy roster/behavior, and asteroid visual family unit coverage; full Vitest suite and `npm.cmd run build` passed.
+  - Evidence: 2026-05-29 Scout phase pass added `src/systems/scoutPhaseSpawning.test.ts`; focused Vitest, full Vitest, `npm.cmd run build`, `testHarness=scoutPhase`, and baseline `testHarness=smoke` passed.
+  - Evidence: 2026-05-29 Hex Tank validation pass added `src/systems/tankPhaseSpawning.test.ts`; focused Vitest, `npm.cmd run build`, `testHarness=tankPhase`, `testHarness=scoutPhase`, `testHarness=wedgeStrikerPhase`, `testHarness=enemyContactBalance`, and `testHarness=smoke` passed.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
   - Evidence: 2026-05-28 pass added a `pauseSettings` visual module harness path and captured desktop/narrow settings screenshots for pre-run and pause settings.
-  - Evidence: 2026-05-28 Enemy Lab vector harness loads `/enemy-lab.html?testHarness=enemyLabVector`, marks `data-starvivors-enemy-lab-harness="vector-ready"`, and captures `artifacts/visual-smoke/enemy-lab-vector-harness-1280x720.png`.
-  - Evidence: 2026-05-28 monochrome object pass added `/enemy-lab.html?testHarness=enemyLabMonochrome`, verified `data-starvivors-enemy-lab-harness="monochrome-ready"`, verified live `?testHarness=smoke` pass, and captured `artifacts/visual-smoke/enemy-lab-monochrome-1280x720.png`.
-  - Evidence: 2026-05-28 prototype completion pass added `/enemy-lab.html?testHarness=enemyLabPrototype`, captured `artifacts/visual-smoke/enemy-lab-prototype-gallery-1280x720.png`, and reverified live smoke with `artifacts/visual-smoke/live-smoke-after-prototype-enemies-1280x720.png`.
-  - Next: add screenshot smoke set for command, hangar, shop, upgrade overlay, HUD, minimap/radar levels, results, and Enemy Lab Forge.
+  - Evidence: 2026-05-29 cleanup removed standalone enemy sandbox harnesses and artifacts; live `?testHarness=smoke` remains the required baseline.
+  - Next: add screenshot smoke set for command, hangar, shop, upgrade overlay, HUD, minimap/radar levels, results, and live enemy readability.
 - [~] Performance profiling exists.
   - Done when: repeatable stress scenarios exist for asteroid burst, swarm, mothership, rare event, high-upgrade Pulse, beam, and black hole.
   - Next: create canned 2-minute stress runs.
@@ -287,3 +280,15 @@ Current focus: Pass A.
 - 2026-05-28: Completed Enemy Lab Phase 6 verification and polish with Phase 6 harness JSON details, Basic/Squads/Attack Tester/stress-high-contrast screenshots, full Vitest with 99 tests, build, electron build, Basic-tab smoke, `enemyLabAttacks` Phase 6 smoke, and `enemyLabPrototype` recheck.
 - 2026-05-28: Completed Enemy Lab Phase 7 attack audio and player-host attack mode with generated procedural attack cue coverage for all 20 registry attacks, lab-only runtime audio callbacks, a session-local Player Fire toggle, `enemyLabAttackAudio` harness coverage, full Vitest with 104 tests, build, electron build, existing harness rechecks, and `enemy-lab-attack-audio-player-mode-1280x720.png`.
 - 2026-05-29: Completed Enemy Lab Phase 8 attack visual profiles and audit harness with all 20 registry attacks covered by visual grammar/profile data, all core compatibility attacks promoted to Enemy Lab-ready visual coverage, full Vitest with 114 tests, build, electron build, existing harness rechecks, and normal/reduced/high-contrast visual audit screenshots.
+- 2026-05-29: Removed the standalone enemy sandbox as a runnable/debug surface, deleted lab-only attack/preset/harness/docs/artifacts, renamed shared enemy modules to neutral live-game names, and moved enemy readability follow-up to direct live-game validation.
+- 2026-05-29: Started the Scout-only enemy polish phase with no starting enemy batch, a 10-second elapsed-time Scout ramp, a 500 live-enemy cap, Scout-only spawn enforcement across directed/squad/event/debug/AI child paths, focused unit coverage, build pass, Scout phase harness pass, smoke harness pass, and updated enemy/asteroid checklist evidence.
+- 2026-05-29: Changed player enemy/debris body contact to fixed touch damage, kept contact separation/recoil active, and verified the zero-velocity Scout overlap path with `testHarness=enemyContactBalance`.
+- 2026-05-29: Simplified enemy contact recoil so Scouts and other live enemy ships keep their facing during knockback instead of rotating to face the recoil direction.
+- 2026-05-29: Added a player-death invisible cleanup shockwave that removes on-screen enemies with player-style death feedback, freezes gameplay systems during the death sequence, slowed the wave to five seconds from center to far screen width, and verified build, `enemyContactBalance`, `scoutPhase`, `smoke`, and `playerDeathShockwave` harnesses.
+- 2026-05-29: Tuned player-style death feedback with a one-second expanding/fading ring, higher shard cap, and larger/faster/longer-lived player-style ship fragments shared by player death and shockwave enemy cleanup.
+- 2026-05-29: Replaced seam-prone stroked circle gameplay rings with reusable generated canvas texture sprites across player death, asteroid impact/breakup, enemy telegraphs/phase pulses, mission/sector beacons, and world/rare event range rings.
+- 2026-05-29: Added the Wedge Striker charger validation phase with committed aim/windup/charge/recovery behavior, generated charge-lane and recovery telegraph textures, moving-enemy swept contact coverage, Scout+Wedge controlled mix setup, focused unit coverage, build pass, and `wedgeStrikerPhase`, `scoutPhase`, `enemyContactBalance`, and `smoke` harness passes.
+- 2026-05-29: Switched the active live validation enemy from Scout to Wedge Striker, kept `testHarness=scoutPhase` pinned to Scout-only regression coverage, and enlarged the Wedge Striker into a broader triangular charger silhouette.
+- 2026-05-29: Made the Wedge Striker charge travel to the end of its displayed lane and standardized live enemy telegraphs to shared red warning tint/alpha across enemy AI lanes, rings, beams, paths, and support shapes.
+- 2026-05-29: Added randomized shared telegraph timing and near-complete brightening for Wedge windups plus normal projectile shot telegraphs, and removed regular player-body collision damage against enemies while keeping enemy touch damage/knockback active.
+- 2026-05-29: Promoted Hex Tank as the active live validation enemy with solo and Scout+Wedge+Tank harness coverage, tank-specific player/self knockback multipliers, visual-only 1px outline thinning for Scout/Wedge/Tank, focused unit coverage, build pass, and `tankPhase`, `scoutPhase`, `wedgeStrikerPhase`, `enemyContactBalance`, and `smoke` harness passes.

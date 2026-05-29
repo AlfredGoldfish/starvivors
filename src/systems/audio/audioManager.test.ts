@@ -11,13 +11,9 @@ import {
   AUDIO_CUE_IDS,
   AUDIO_CUE_REGISTRY,
   REQUIRED_FIRST_PASS_AUDIO_CUES,
+  type AudioCueDefinition,
   type AudioCueId
 } from './cueRegistry';
-import {
-  ATTACK_AUDIO_BEAT_MAP,
-  getRequiredAttackAudioCoverage
-} from './attackAudio';
-import { ENEMY_ATTACK_DEFINITIONS } from '../../data/enemyAttackDefinitions';
 
 describe('audio manager', () => {
   it('normalizes volumes and computes effective gains from master and category volume', () => {
@@ -105,33 +101,6 @@ describe('audio manager', () => {
     }
   });
 
-  it('covers every attack audio map cue with procedural SFX registry entries', () => {
-    for (const [attackId, beatMap] of Object.entries(ATTACK_AUDIO_BEAT_MAP)) {
-      const cueIds = Object.values(beatMap).filter(Boolean) as AudioCueId[];
-      for (const cueId of cueIds) {
-        const definition = AUDIO_CUE_REGISTRY[cueId];
-        expect(definition, `${attackId} ${cueId}`).toBeDefined();
-        expect(definition.id).toBe(cueId);
-        expect(definition.category).toBe('sfx');
-        expect(definition.cooldownMs).toBeGreaterThanOrEqual(0);
-        expect(definition.layers.length).toBeGreaterThan(0);
-        expect(definition.layers.every((layer) => layer.durationMs > 0 && layer.gain > 0)).toBe(true);
-      }
-    }
-  });
-
-  it('requires resolve cues, telegraph cues, and sustained tick coverage for registry attacks', () => {
-    const coverage = getRequiredAttackAudioCoverage();
-    const attackIds = ENEMY_ATTACK_DEFINITIONS.map((definition) => definition.id);
-
-    expect(coverage.attackIds).toEqual(attackIds);
-    expect(coverage.missingAttackIds).toEqual([]);
-    expect(coverage.missingRequiredResolveCueAttackIds).toEqual([]);
-    expect(coverage.missingTelegraphCueAttackIds).toEqual([]);
-    expect(coverage.missingSustainedTickCueAttackIds).toEqual([]);
-    expect(coverage.coveredBeats).toEqual(['channel', 'impact', 'resolve', 'telegraph', 'tick']);
-  });
-
   it('keeps player shooting cues present with softened high-frequency content', () => {
     const playerFire = AUDIO_CUE_REGISTRY['player-fire'];
     const playerBurstFire = AUDIO_CUE_REGISTRY['player-burst-fire'];
@@ -147,7 +116,7 @@ describe('audio manager', () => {
   });
 });
 
-function getCuePeakFrequency(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): number {
+function getCuePeakFrequency(definition: AudioCueDefinition): number {
   return Math.max(
     ...definition.layers.flatMap((layer) => {
       if (layer.type === 'oscillator') {
@@ -159,10 +128,10 @@ function getCuePeakFrequency(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]
   );
 }
 
-function getCueTotalGain(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): number {
+function getCueTotalGain(definition: AudioCueDefinition): number {
   return definition.layers.reduce((total, layer) => total + layer.gain, 0);
 }
 
-function getCueOscillatorWaveforms(definition: (typeof AUDIO_CUE_REGISTRY)[AudioCueId]): OscillatorType[] {
+function getCueOscillatorWaveforms(definition: AudioCueDefinition): OscillatorType[] {
   return definition.layers.flatMap((layer) => (layer.type === 'oscillator' ? [layer.waveform] : []));
 }

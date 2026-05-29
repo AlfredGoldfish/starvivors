@@ -15,7 +15,7 @@ import type {
   ShooterEnemy,
   TankEnemy
 } from '../scenes/gameTypes';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 import type { DebugImpactSourceType } from './debug/debugSharedTypes';
 import {
   createCircleCollisionShape,
@@ -33,7 +33,7 @@ import {
 } from './physics';
 import { buildSpatialHash, querySpatialHash, type SpatialHashGrid } from './spatialHash';
 
-type WorldEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
+type WorldEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyInstance;
 type BodyImpactCollisionRequest = Pick<
   ResolveBodyImpactCollisionInput,
   | 'firstBody'
@@ -419,7 +419,7 @@ function getEnemyCircleCollision(
   );
 }
 
-function isLiveEnemy(enemy: WorldEnemy): enemy is EnemyLabInstance {
+function isLiveEnemy(enemy: WorldEnemy): enemy is EnemyInstance {
   return 'definition' in enemy;
 }
 

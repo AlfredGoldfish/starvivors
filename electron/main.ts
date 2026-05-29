@@ -4,7 +4,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 type DesktopFileCategory = 'reports' | 'debug-presets' | 'logs' | 'runs';
-type WindowLaunchMode = 'both' | 'main' | 'enemy-lab';
 interface SaveTextFileInput {
   category: DesktopFileCategory;
   filename: string;
@@ -25,7 +24,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const isDev = process.argv.includes('--dev') || process.env.STARVIVORS_DESKTOP_DEV === '1';
 const devServerUrl = getDevServerUrl();
-const windowLaunchMode = getWindowLaunchMode();
 const MAX_TEXT_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_FILENAME_LENGTH = 160;
 const MAX_RELATIVE_PATH_LENGTH = 260;
@@ -37,7 +35,6 @@ const categoryFolders: Record<DesktopFileCategory, string> = {
 };
 
 let mainWindow: BrowserWindow | undefined;
-let enemyLabWindow: BrowserWindow | undefined;
 const pendingMainProcessErrors: string[] = [];
 
 installMainProcessDiagnostics();
@@ -93,39 +90,8 @@ async function createMainWindow(): Promise<void> {
   await mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
 }
 
-async function createEnemyLabWindow(): Promise<void> {
-  enemyLabWindow = createDesktopWindow({
-    title: 'Starvivors Enemy Lab',
-    width: 1280,
-    height: 720,
-    minWidth: 960,
-    minHeight: 540,
-    x: 80,
-    y: 80
-  });
-  enemyLabWindow.on('closed', () => {
-    enemyLabWindow = undefined;
-  });
-
-  if (isDev) {
-    await enemyLabWindow.loadURL(new URL('/enemy-lab.html', devServerUrl).toString());
-    if (process.env.STARVIVORS_OPEN_DEVTOOLS === '1') {
-      enemyLabWindow.webContents.openDevTools({ mode: 'detach' });
-    }
-    return;
-  }
-
-  await enemyLabWindow.loadFile(path.join(__dirname, '../dist/enemy-lab.html'));
-}
-
 async function createWindows(): Promise<void> {
-  if (windowLaunchMode === 'main' || windowLaunchMode === 'both') {
-    await createMainWindow();
-  }
-
-  if (windowLaunchMode === 'enemy-lab' || windowLaunchMode === 'both') {
-    await createEnemyLabWindow();
-  }
+  await createMainWindow();
 }
 
 app.whenReady().then(async () => {
@@ -159,17 +125,6 @@ function getDevServerUrl(): string {
   } catch {
     return 'http://127.0.0.1:5174';
   }
-}
-
-function getWindowLaunchMode(): WindowLaunchMode {
-  const argPrefix = '--window=';
-  const argValue = process.argv.find((arg) => arg.startsWith(argPrefix))?.slice(argPrefix.length);
-
-  if (argValue === 'main' || argValue === 'enemy-lab' || argValue === 'both') {
-    return argValue;
-  }
-
-  return 'both';
 }
 
 async function appendMainProcessError(source: string, error: unknown): Promise<void> {

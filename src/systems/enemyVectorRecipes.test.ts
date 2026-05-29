@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_ENEMY_VISUAL_SCALE,
-  ENEMY_LAB_DEFINITIONS,
-  ENEMY_LAB_BEHAVIOR_IDS,
+  ENEMY_DEFINITIONS,
+  ENEMY_BEHAVIOR_IDS,
+  resolveEnemyContactKnockbackMultiplier,
+  resolveEnemyContactSelfImpulseMultiplier,
   resolveEnemyVisualScale,
-  type EnemyLabDefinition
-} from '../data/enemyLabDefinitions';
+  type EnemyDefinition
+} from '../data/enemyDefinitions';
 import {
   MONOCHROME_OUTLINE_ACTIVE_IDS,
   VECTOR_OUTLINE_MIGRATION_IDS,
@@ -20,12 +22,12 @@ describe('enemy vector recipes', () => {
   it('validates every active enemy role as monochrome-outline', () => {
     const definitionsById = getDefinitionsById();
 
-    expect(MONOCHROME_OUTLINE_ACTIVE_IDS).toHaveLength(ENEMY_LAB_DEFINITIONS.length);
+    expect(MONOCHROME_OUTLINE_ACTIVE_IDS).toHaveLength(ENEMY_DEFINITIONS.length);
 
     for (const id of MONOCHROME_OUTLINE_ACTIVE_IDS) {
       const definition = definitionsById.get(id);
       expect(definition, id).toBeDefined();
-      expect(validateMonochromeEnemyDefinition(definition as EnemyLabDefinition), id).toMatchObject({
+      expect(validateMonochromeEnemyDefinition(definition as EnemyDefinition), id).toMatchObject({
         valid: true,
         issues: []
       });
@@ -36,7 +38,7 @@ describe('enemy vector recipes', () => {
     const definitionsById = getDefinitionsById();
 
     for (const id of MONOCHROME_OUTLINE_ACTIVE_IDS) {
-      const definition = definitionsById.get(id) as EnemyLabDefinition;
+      const definition = definitionsById.get(id) as EnemyDefinition;
       const size = resolveEnemyDefinitionSize(definition);
       const visualScale = resolveEnemyVisualScale(definition.visual);
       expect(definition.behavior.id.length, id).toBeGreaterThan(0);
@@ -49,8 +51,37 @@ describe('enemy vector recipes', () => {
       expect(size.collisionRadiusPx, id).toBeCloseTo(definition.stats.radius, 4);
     }
 
-    expect(definitionsById.get('diamond-gunner')?.weapon?.id).toBe('lab-bolt');
-    expect(definitionsById.get('needle-sniper')?.weapon?.id).toBe('lab-rail');
+    expect(definitionsById.get('diamond-gunner')?.weapon?.id).toBe('enemy-bolt');
+    expect(definitionsById.get('needle-sniper')?.weapon?.id).toBe('enemy-rail');
+  });
+
+  it('keeps live validation enemies on thin outlines without changing their collision radii', () => {
+    const definitionsById = getDefinitionsById();
+
+    for (const id of ['scout', 'wedge-striker', 'hex-tank']) {
+      const definition = definitionsById.get(id) as EnemyDefinition;
+      const size = resolveEnemyDefinitionSize(definition);
+
+      expect(definition.sizeProfile?.strokeWidthPx, id).toBe(1);
+      expect(definition.shapeRecipe?.strokeWidth, id).toBe(1);
+      expect(size.collisionRadiusPx, id).toBeCloseTo(definition.stats.radius, 4);
+    }
+  });
+
+  it('gives Hex Tank stronger player knockback and reduced self impulse while preserving contact damage rules', () => {
+    const definitionsById = getDefinitionsById();
+    const scout = definitionsById.get('scout') as EnemyDefinition;
+    const tank = definitionsById.get('hex-tank') as EnemyDefinition;
+
+    expect(resolveEnemyContactKnockbackMultiplier(scout)).toBe(1);
+    expect(resolveEnemyContactSelfImpulseMultiplier(scout)).toBe(1);
+    expect(resolveEnemyContactKnockbackMultiplier(tank)).toBeGreaterThan(resolveEnemyContactKnockbackMultiplier(scout));
+    expect(resolveEnemyContactKnockbackMultiplier(tank)).toBe(4);
+    expect(resolveEnemyContactSelfImpulseMultiplier(tank)).toBeLessThan(resolveEnemyContactSelfImpulseMultiplier(scout));
+    expect(resolveEnemyContactSelfImpulseMultiplier(tank)).toBe(0.45);
+    expect(tank.stats.hp).toBe(150);
+    expect(tank.stats.contactDamage).toBe(26);
+    expect(tank.behavior.id).toBe('heavyChase');
   });
 
   it('covers every prototype enemy concept with handled portable behavior IDs', () => {
@@ -79,12 +110,12 @@ describe('enemy vector recipes', () => {
       'combat-summoner',
       'scrap-thief'
     ];
-    const handledBehaviorIds = new Set(ENEMY_LAB_BEHAVIOR_IDS);
+    const handledBehaviorIds = new Set(ENEMY_BEHAVIOR_IDS);
 
     for (const id of expectedPrototypeIds) {
       const definition = definitionsById.get(id);
       expect(definition, id).toBeDefined();
-      expect(handledBehaviorIds.has((definition as EnemyLabDefinition).behavior.id), id).toBe(true);
+      expect(handledBehaviorIds.has((definition as EnemyDefinition).behavior.id), id).toBe(true);
     }
 
     expect(definitionsById.get('frost-gunner')?.behavior.params?.statusKind).toBe('frost');
@@ -122,9 +153,9 @@ describe('enemy vector recipes', () => {
   });
 
   it('parks legacy Forge and vector data without making it active by default', () => {
-    const activeForgeDefinitions = ENEMY_LAB_DEFINITIONS.filter((definition) => getEnemyVisualStyle(definition) === 'forge-texture');
-    const scout = getDefinitionsById().get('scout') as EnemyLabDefinition;
-    const legacyVectorDefinition: EnemyLabDefinition = {
+    const activeForgeDefinitions = ENEMY_DEFINITIONS.filter((definition) => getEnemyVisualStyle(definition) === 'forge-texture');
+    const scout = getDefinitionsById().get('scout') as EnemyDefinition;
+    const legacyVectorDefinition: EnemyDefinition = {
       ...scout,
       visualStyle: 'vector-outline',
       shapeRecipe: {
@@ -145,6 +176,6 @@ describe('enemy vector recipes', () => {
   });
 });
 
-function getDefinitionsById(): Map<string, EnemyLabDefinition> {
-  return new Map(ENEMY_LAB_DEFINITIONS.map((definition) => [definition.id, definition]));
+function getDefinitionsById(): Map<string, EnemyDefinition> {
+  return new Map(ENEMY_DEFINITIONS.map((definition) => [definition.id, definition]));
 }

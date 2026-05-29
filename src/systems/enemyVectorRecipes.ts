@@ -1,10 +1,10 @@
 import type {
   EnemyEffectRecipe,
   EnemyEffectRecipeEntry,
-  EnemyLabDefinition,
+  EnemyDefinition,
   EnemyVisualStyle,
   VectorShapeRecipe
-} from '../data/enemyLabDefinitions';
+} from '../data/enemyDefinitions';
 import {
   OBJECT_SOURCE_DIAMETER_PX,
   SHIP_ENEMY_COLLISION_RADIUS_RATIO,
@@ -82,7 +82,7 @@ export function isVectorOutlineMigrationId(id: string): id is VectorOutlineMigra
   return VECTOR_OUTLINE_MIGRATION_IDS.includes(id as VectorOutlineMigrationId);
 }
 
-export function getEnemyVisualStyle(definition: EnemyLabDefinition): EnemyVisualStyle {
+export function getEnemyVisualStyle(definition: EnemyDefinition): EnemyVisualStyle {
   return definition.visualStyle ?? 'forge-texture';
 }
 
@@ -90,7 +90,7 @@ export function isMonochromeOutlineActiveId(id: string): id is MonochromeOutline
   return MONOCHROME_OUTLINE_ACTIVE_IDS.includes(id as MonochromeOutlineActiveId);
 }
 
-export function resolveEnemyDefinitionSize(definition: EnemyLabDefinition): ResolvedObjectSizeProfile {
+export function resolveEnemyDefinitionSize(definition: EnemyDefinition): ResolvedObjectSizeProfile {
   return resolveObjectSizeProfile(
     definition.sizeProfile ??
       createObjectSizeProfileFromVisualDiameter({
@@ -102,7 +102,7 @@ export function resolveEnemyDefinitionSize(definition: EnemyLabDefinition): Reso
   );
 }
 
-export function validateVectorEnemyDefinition(definition: EnemyLabDefinition): VectorEnemyValidationResult {
+export function validateVectorEnemyDefinition(definition: EnemyDefinition): VectorEnemyValidationResult {
   const issues: string[] = [];
 
   if (getEnemyVisualStyle(definition) !== 'vector-outline') {
@@ -118,7 +118,7 @@ export function validateVectorEnemyDefinition(definition: EnemyLabDefinition): V
   };
 }
 
-export function validateMonochromeEnemyDefinition(definition: EnemyLabDefinition): VectorEnemyValidationResult {
+export function validateMonochromeEnemyDefinition(definition: EnemyDefinition): VectorEnemyValidationResult {
   const issues: string[] = [];
 
   if (getEnemyVisualStyle(definition) !== 'monochrome-outline') {
@@ -238,7 +238,7 @@ function validateMonochromeShapeRecipe(recipe: VectorShapeRecipe | undefined, is
   }
 }
 
-function validateEnemySizeProfile(definition: EnemyLabDefinition, issues: string[]): void {
+function validateEnemySizeProfile(definition: EnemyDefinition, issues: string[]): void {
   if (!definition.sizeProfile) {
     issues.push('sizeProfile is required');
     return;

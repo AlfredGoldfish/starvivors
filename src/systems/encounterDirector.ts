@@ -1,5 +1,5 @@
 import { ENCOUNTER_DEFINITIONS, type EncounterDefinition } from '../data/encounters';
-import { ENEMY_LAB_SQUADS } from '../data/enemyLabDefinitions';
+import { ENEMY_SQUADS } from '../data/enemyDefinitions';
 
 const ENCOUNTER_DIRECTOR_BASE_INTERVAL_MS = 18000;
 const ENCOUNTER_DIRECTOR_MIN_INTERVAL_MS = 7600;
@@ -73,7 +73,7 @@ export function updateEncounterDirector(state: EncounterDirectorState, input: En
 }
 
 export function getEncounterEnemyCount(encounter: EncounterDefinition): number {
-  const squad = ENEMY_LAB_SQUADS.find((candidate) => candidate.id === encounter.squadId);
+  const squad = ENEMY_SQUADS.find((candidate) => candidate.id === encounter.squadId);
   return squad?.entries.reduce((sum, entry) => sum + entry.count, 0) ?? 0;
 }
 

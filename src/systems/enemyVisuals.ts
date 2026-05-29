@@ -1,33 +1,33 @@
 import Phaser from 'phaser';
 import {
   resolveEnemyVisualScale,
-  type EnemyLabDefinition,
+  type EnemyDefinition,
   type EnemyVisualDefinition,
   type VectorShapeAttachment,
   type VectorShapeBase,
   type VectorShapeRecipe
-} from '../data/enemyLabDefinitions';
+} from '../data/enemyDefinitions';
 import { convertEnemyVisualDefinitionToForgeAsset, createForgeAssetTexture } from './assetForge';
 import { getForgeAssetDefinition } from '../data/forgeAssetRegistry';
 import { getEnemyVisualStyle, normalizeVectorShapeRecipe, resolveEnemyDefinitionSize } from './enemyVectorRecipes';
 
-export const ENEMY_LAB_TEXTURE_PREFIX = 'enemy-lab-visual';
+export const ENEMY_TEXTURE_PREFIX = 'enemy-visual';
 
-export function getEnemyLabTextureKey(definitionId: string): string {
-  return `${ENEMY_LAB_TEXTURE_PREFIX}-${definitionId}`;
+export function getEnemyTextureKey(definitionId: string): string {
+  return `${ENEMY_TEXTURE_PREFIX}-${definitionId}`;
 }
 
-export function createEnemyLabVisualTextures(scene: Phaser.Scene, definitions: EnemyLabDefinition[]): void {
+export function createEnemyVisualTextures(scene: Phaser.Scene, definitions: EnemyDefinition[]): void {
   for (const definition of definitions) {
-    createEnemyLabVisualTexture(scene, definition);
+    createEnemyVisualTexture(scene, definition);
   }
 }
 
-export function createEnemyLabVisualContainer(
+export function createEnemyVisualContainer(
   scene: Phaser.Scene,
   x: number,
   y: number,
-  definition: EnemyLabDefinition
+  definition: EnemyDefinition
 ): Phaser.GameObjects.Container {
   if (getEnemyVisualStyle(definition) === 'monochrome-outline' && definition.shapeRecipe) {
     return createMonochromeOutlineVisualContainer(scene, x, y, definition);
@@ -51,7 +51,7 @@ export function createEnemyLabVisualContainer(
   );
   glow.setBlendMode(Phaser.BlendModes.ADD);
 
-  const image = scene.add.image(0, 0, getEnemyLabTextureKey(definition.id));
+  const image = scene.add.image(0, 0, getEnemyTextureKey(definition.id));
   image.setOrigin(0.5);
   image.setDisplaySize(visualWidth, visualHeight);
   image.setRotation(definition.visual.rotationOffset ?? 0);
@@ -73,10 +73,10 @@ export function createEnemyLabVisualContainer(
   return container;
 }
 
-function createEnemyLabVisualTexture(scene: Phaser.Scene, definition: EnemyLabDefinition): void {
+function createEnemyVisualTexture(scene: Phaser.Scene, definition: EnemyDefinition): void {
   const definitionId = definition.id;
   const visual = definition.visual;
-  const textureKey = getEnemyLabTextureKey(definitionId);
+  const textureKey = getEnemyTextureKey(definitionId);
   if (scene.textures.exists(textureKey)) {
     return;
   }
@@ -125,7 +125,7 @@ function createMonochromeOutlineVisualContainer(
   scene: Phaser.Scene,
   x: number,
   y: number,
-  definition: EnemyLabDefinition
+  definition: EnemyDefinition
 ): Phaser.GameObjects.Container {
   const recipe = normalizeVectorShapeRecipe(definition.shapeRecipe);
   const size = resolveEnemyDefinitionSize(definition);
@@ -133,7 +133,7 @@ function createMonochromeOutlineVisualContainer(
   const visualWidth = size.visualDiameterPx * scaleX;
   const visualHeight = size.visualDiameterPx * scaleY;
 
-  const image = scene.add.image(0, 0, getEnemyLabTextureKey(definition.id));
+  const image = scene.add.image(0, 0, getEnemyTextureKey(definition.id));
   image.setOrigin(0.5);
   image.setDisplaySize(visualWidth, visualHeight);
   image.setRotation(definition.visual.rotationOffset ?? 0);
@@ -152,7 +152,7 @@ function createVectorOutlineVisualContainer(
   scene: Phaser.Scene,
   x: number,
   y: number,
-  definition: EnemyLabDefinition
+  definition: EnemyDefinition
 ): Phaser.GameObjects.Container {
   const recipe = normalizeVectorShapeRecipe(definition.shapeRecipe);
   const { scaleX, scaleY } = resolveEnemyVisualScale(definition.visual);
@@ -163,7 +163,7 @@ function createVectorOutlineVisualContainer(
   const glow = scene.add.ellipse(0, 0, visualWidth * 1.18, visualHeight * 1.18, accentColor, 0.045);
   glow.setBlendMode(Phaser.BlendModes.ADD);
 
-  const image = scene.add.image(0, 0, getEnemyLabTextureKey(definition.id));
+  const image = scene.add.image(0, 0, getEnemyTextureKey(definition.id));
   image.setOrigin(0.5);
   image.setDisplaySize(visualWidth, visualHeight);
   image.setRotation(definition.visual.rotationOffset ?? 0);
@@ -190,7 +190,7 @@ function createVectorOutlineVisualContainer(
   return container;
 }
 
-function createVectorOutlineTexture(scene: Phaser.Scene, definition: EnemyLabDefinition, textureKey: string, monochrome: boolean): void {
+function createVectorOutlineTexture(scene: Phaser.Scene, definition: EnemyDefinition, textureKey: string, monochrome: boolean): void {
   const recipe = normalizeVectorShapeRecipe(definition.shapeRecipe);
   if (!recipe) {
     return;
@@ -256,7 +256,7 @@ function drawVectorBaseShape(
       drawPolygon(context, createRegularPolygon(6, radius * 0.92, -Math.PI / 6), fill);
       break;
     case 'wedge':
-      drawPolygon(context, [[0, -radius * 1.18], [radius * 0.52, radius * 0.86], [0, radius * 0.52], [-radius * 0.52, radius * 0.86]], fill);
+      drawPolygon(context, [[0, -radius * 1.42], [radius * 0.78, radius * 0.96], [-radius * 0.78, radius * 0.96]], fill);
       break;
     case 'needle':
       drawPolygon(context, [
@@ -385,7 +385,7 @@ function drawHull(context: CanvasRenderingContext2D, visual: EnemyVisualDefiniti
       drawPolygon(context, [[0, -radius], [radius * 0.62, radius * 0.34], [0, radius * 0.78], [-radius * 0.62, radius * 0.34]], true);
       break;
     case 'wedge':
-      drawPolygon(context, [[0, -radius * 1.2], [radius * 0.58, radius * 0.82], [0, radius * 0.5], [-radius * 0.58, radius * 0.82]], true);
+      drawPolygon(context, [[0, -radius * 1.42], [radius * 0.78, radius * 0.96], [-radius * 0.78, radius * 0.96]], true);
       break;
     case 'diamond':
       drawPolygon(context, [[0, -radius], [radius * 0.86, 0], [0, radius * 0.88], [-radius * 0.86, 0]], true);

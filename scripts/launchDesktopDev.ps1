@@ -1,6 +1,4 @@
 param(
-  [ValidateSet('both', 'main', 'enemy-lab')]
-  [string]$Window = 'both',
   [string]$DevServerUrl = 'http://127.0.0.1:5174'
 )
 
@@ -26,7 +24,7 @@ if (-not $devServerUri.IsAbsoluteUri) {
 $DevServerUrl = $devServerUri.AbsoluteUri.TrimEnd('/')
 $viteHost = $devServerUri.Host
 $vitePort = if ($devServerUri.Port -gt 0) { $devServerUri.Port } else { 5174 }
-$sessionLog = Join-Path $logDir "$stamp-desktop-dev-$Window.log"
+$sessionLog = Join-Path $logDir "$stamp-desktop-dev-main.log"
 
 function Write-SessionLog {
   param([string]$Message)
@@ -124,12 +122,12 @@ function Start-ElectronWindow {
     throw "Electron executable was not found at $electronPath. Run npm install first."
   }
 
-  $outLog = Join-Path $logDir "$stamp-electron-$Window.out.log"
-  $errLog = Join-Path $logDir "$stamp-electron-$Window.err.log"
-  $pidPath = Join-Path $logDir ".electron-$Window.pid"
-  $arguments = @('.', '--dev', "--dev-server-url=$DevServerUrl", "--window=$Window")
+  $outLog = Join-Path $logDir "$stamp-electron-main.out.log"
+  $errLog = Join-Path $logDir "$stamp-electron-main.err.log"
+  $pidPath = Join-Path $logDir '.electron-main.pid'
+  $arguments = @('.', '--dev', "--dev-server-url=$DevServerUrl")
 
-  Write-SessionLog "Launching Electron window mode: $Window"
+  Write-SessionLog 'Launching Electron main window'
   $process = Start-Process `
     -FilePath $electronPath `
     -ArgumentList $arguments `
@@ -142,7 +140,7 @@ function Start-ElectronWindow {
   Write-SessionLog "Electron PID: $($process.Id)"
 }
 
-Write-SessionLog "Requested Starvivors desktop dev launch for window mode: $Window"
+Write-SessionLog 'Requested Starvivors desktop dev launch'
 
 if (Test-DevServer -Url $DevServerUrl) {
   Write-SessionLog "Reusing existing Vite dev server at $DevServerUrl"
@@ -158,4 +156,4 @@ Invoke-NpmScript -ScriptName 'electron:build'
 Start-ElectronWindow
 
 Write-SessionLog "Launch complete."
-Write-Host "Started Starvivors desktop dev window '$Window'. Logs: $logDir"
+Write-Host "Started Starvivors desktop dev window. Logs: $logDir"

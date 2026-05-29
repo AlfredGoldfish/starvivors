@@ -69,6 +69,7 @@ interface DeathShardStyleConfig {
   depth: number;
   tintChoices: number[];
   dissolveStart: number;
+  angleJitter: number;
 }
 
 export const DEATH_SHARD_STYLES: DeathShardStyle[] = ['ship', 'player', 'asteroid', 'blackHoleShip', 'blackHoleAsteroid'];
@@ -84,13 +85,13 @@ export const DEFAULT_DEATH_SHARD_TUNING: DeathShardTuningMap = {
     dissolveStart: 0.56
   },
   player: {
-    countScale: 1.18,
-    lifetimeScale: 1.65,
-    sizeScale: 1.85,
-    inheritedVelocityScale: 1,
-    burstSpeedScale: 0.9,
+    countScale: 1.35,
+    lifetimeScale: 1.42,
+    sizeScale: 2.35,
+    inheritedVelocityScale: 1.15,
+    burstSpeedScale: 1.45,
     alphaScale: 1,
-    dissolveStart: 0.6
+    dissolveStart: 0.68
   },
   asteroid: {
     countScale: 1.1,
@@ -135,22 +136,24 @@ const DEATH_SHARD_STYLE_CONFIGS: Record<DeathShardStyle, DeathShardStyleConfig> 
     alpha: 0.94,
     depth: 13,
     tintChoices: [0xf2fbff, 0xffc857, 0xff8f4f, 0x9fb7c8],
-    dissolveStart: 0.42
+    dissolveStart: 0.42,
+    angleJitter: 0.58
   },
   player: {
-    countMin: 10,
-    countMax: 16,
-    lifetimeMin: 1080,
-    lifetimeMax: 1420,
-    inheritedVelocityScale: 0.92,
-    burstMin: 88,
-    burstMax: 245,
-    displayScaleMin: 0.9,
-    displayScaleMax: 1.26,
-    alpha: 0.98,
+    countMin: 18,
+    countMax: 28,
+    lifetimeMin: 1450,
+    lifetimeMax: 2150,
+    inheritedVelocityScale: 1.08,
+    burstMin: 145,
+    burstMax: 430,
+    displayScaleMin: 1.02,
+    displayScaleMax: 1.58,
+    alpha: 1,
     depth: 14,
     tintChoices: [0xf2fbff, 0xff5964, 0xffc857, 0x73f2ff],
-    dissolveStart: 0.48
+    dissolveStart: 0.56,
+    angleJitter: 1.08
   },
   asteroid: {
     countMin: 3,
@@ -165,7 +168,8 @@ const DEATH_SHARD_STYLE_CONFIGS: Record<DeathShardStyle, DeathShardStyleConfig> 
     alpha: 0.74,
     depth: 6,
     tintChoices: [0x9b8b75, 0xc2ad8f, 0xe4d6bd, 0x8fb6c8],
-    dissolveStart: 0.34
+    dissolveStart: 0.34,
+    angleJitter: 0.58
   },
   blackHoleShip: {
     countMin: 5,
@@ -180,7 +184,8 @@ const DEATH_SHARD_STYLE_CONFIGS: Record<DeathShardStyle, DeathShardStyleConfig> 
     alpha: 0.88,
     depth: 13,
     tintChoices: [0xb88cff, 0x73f2ff, 0xf2fbff, 0x6f89b7],
-    dissolveStart: 0.28
+    dissolveStart: 0.28,
+    angleJitter: 0.58
   },
   blackHoleAsteroid: {
     countMin: 2,
@@ -195,7 +200,8 @@ const DEATH_SHARD_STYLE_CONFIGS: Record<DeathShardStyle, DeathShardStyleConfig> 
     alpha: 0.62,
     depth: 6,
     tintChoices: [0xb88cff, 0x8fb6c8, 0xc2ad8f],
-    dissolveStart: 0.24
+    dissolveStart: 0.24,
+    angleJitter: 0.58
   }
 };
 
@@ -233,7 +239,7 @@ export function emitDeathShards(input: DeathShardEmitterInput): void {
     const localX = ((cropX + cropWidth * 0.5) / sourceWidth - 0.5) * input.displaySize;
     const localY = ((cropY + cropHeight * 0.5) / sourceHeight - 0.5) * input.displaySize;
     const rotatedOffset = new Phaser.Math.Vector2(localX, localY).rotate(input.rotation);
-    const angle = Math.atan2(rotatedOffset.y, rotatedOffset.x) + Phaser.Math.FloatBetween(-0.58, 0.58);
+    const angle = Math.atan2(rotatedOffset.y, rotatedOffset.x) + Phaser.Math.FloatBetween(-config.angleJitter, config.angleJitter);
     const burstSpeed = Phaser.Math.FloatBetween(config.burstMin, config.burstMax) * tuning.burstSpeedScale;
     const displayScale = Phaser.Math.FloatBetween(config.displayScaleMin, config.displayScaleMax) * tuning.sizeScale;
     const image = input.scene.add.image(origin.x + rotatedOffset.x, origin.y + rotatedOffset.y, input.textureKey);

@@ -231,12 +231,14 @@ import {
   type EncounterDirectorState
 } from '../systems/encounterDirector';
 import {
-  ENEMY_LAB_DEFINITIONS,
-  ENEMY_LAB_SQUADS,
-  type EnemyLabDefinition,
-  type EnemyLabSquadDefinition
-} from '../data/enemyLabDefinitions';
-import { createEnemyLabVisualTextures, getEnemyLabTextureKey } from '../systems/enemyVisuals';
+  ENEMY_DEFINITIONS,
+  ENEMY_SQUADS,
+  resolveEnemyContactKnockbackMultiplier,
+  resolveEnemyContactSelfImpulseMultiplier,
+  type EnemyDefinition,
+  type EnemySquadDefinition
+} from '../data/enemyDefinitions';
+import { createEnemyVisualTextures, getEnemyTextureKey } from '../systems/enemyVisuals';
 import {
   createAsteroidSizeProfile,
   createMonochromeAsteroidTexture,
@@ -251,10 +253,15 @@ import {
   resolveShipObjectSizeProfile
 } from '../systems/playerShipVisuals';
 import {
-  updateEnemyLabAi as updateLiveEnemyAiSystem,
-  type EnemyLabProjectileRequest,
-  type EnemyLabScrapTarget
-} from '../systems/enemyLabAi';
+  ENEMY_TELEGRAPH_WARNING_ALPHA,
+  ENEMY_TELEGRAPH_WARNING_COLOR,
+  ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER,
+  ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER,
+  ENEMY_TELEGRAPH_WARNING_READY_ALPHA,
+  updateEnemyAi as updateLiveEnemyAiSystem,
+  type EnemyProjectileRequest,
+  type EnemyScrapTarget
+} from '../systems/enemyAi';
 import {
   applyPlayerStatusEffects,
   createPlayerStatusEffectRuntime,
@@ -265,12 +272,36 @@ import {
   type PlayerStatusEffectRuntime
 } from '../systems/playerStatusEffects';
 import {
-  clearEnemyLabEnemies as clearLiveEnemiesSystem,
-  destroyEnemyLabEnemy as destroyLiveEnemySystem,
-  spawnEnemyLabEnemy as spawnLiveEnemySystem,
-  spawnEnemyLabSquad as spawnLiveEnemySquadSystem,
-  type EnemyLabInstance
-} from '../systems/enemyLabSpawner';
+  clearEnemyInstances as clearLiveEnemiesSystem,
+  destroyEnemyInstance as destroyLiveEnemySystem,
+  spawnEnemy as spawnLiveEnemySystem,
+  type EnemyInstance
+} from '../systems/enemySpawner';
+import {
+  SCOUT_PHASE_MAX_ACTIVE_ENEMIES,
+  SCOUT_PHASE_MODE_LABEL,
+  SCOUT_PHASE_SPAWN_INTERVAL_MS,
+  getNextScoutPhaseSpawnAt,
+  getScoutPhaseSpawnRamp,
+  getScoutPhaseWaveIndex,
+  resolveScoutPhaseEnemyDefinitionId
+} from '../systems/scoutPhaseSpawning';
+import {
+  WEDGE_STRIKER_PHASE_MODE_LABEL,
+  getWedgeStrikerPhaseMixCounts,
+  getWedgeStrikerPhaseMixedSpawnPlan,
+  getWedgeStrikerPhaseSoloSpawnPlan,
+  isWedgeStrikerPhaseSolo,
+  resolveWedgeStrikerPhaseEnemyDefinitionId
+} from '../systems/wedgeStrikerPhaseSpawning';
+import {
+  TANK_PHASE_MODE_LABEL,
+  getTankPhaseMixCounts,
+  getTankPhaseMixedSpawnPlan,
+  getTankPhaseSoloSpawnPlan,
+  isTankPhaseSolo,
+  resolveTankPhaseEnemyDefinitionId
+} from '../systems/tankPhaseSpawning';
 import {
   clearEnemyWreckageDebris as clearEnemyWreckageDebrisSystem,
   destroyEnemyWreckageDebris as destroyEnemyWreckageDebrisSystem,
@@ -283,6 +314,10 @@ import {
   type DeathShard,
   type DeathShardStyle
 } from '../systems/deathEffects';
+import {
+  createEffectRingImage,
+  createEffectTextures
+} from '../systems/effectTextures';
 import {
   clearScrapPickups as clearScrapPickupsSystem,
   destroyScrapPickup as destroyScrapPickupSystem,
@@ -643,12 +678,33 @@ import {
   XP_THRESHOLD_GROWTH
 } from './gameConstants';
 
-type LiveGameEnemy = EnemyLabInstance;
+type LiveGameEnemy = EnemyInstance;
 type AnyGameEnemy = BasicEnemy | ShooterEnemy | TankEnemy | LiveGameEnemy;
+type PlayerDeathShockwaveTargetKind = 'live' | 'legacy';
+
+interface PlayerDeathShockwaveTarget {
+  kind: PlayerDeathShockwaveTargetKind;
+  enemy: AnyGameEnemy;
+  enemyId: string;
+  enemyType: EnemySpawnType;
+  triggerAt: number;
+  distance: number;
+  sequence: number;
+}
+
+interface PlayerDeathShockwaveTriggerLog {
+  kind: PlayerDeathShockwaveTargetKind;
+  enemyId: string;
+  enemyType: EnemySpawnType;
+  triggeredAt: number;
+  triggerAt: number;
+  distance: number;
+  sequence: number;
+}
 
 const REROLL_BASE_COST = 5;
 const REROLL_DEBUG_BASE_COST = 10;
-const DEATH_SHARD_MAX_ACTIVE = 180;
+const DEATH_SHARD_MAX_ACTIVE = 360;
 const ASTEROID_DEATH_SHARD_BURST_LIMIT = 24;
 const NORMAL_UPGRADE_DROP_CHANCE = 0.08;
 const SPECIAL_UPGRADE_DROP_CHANCE = 0.025;
@@ -685,6 +741,8 @@ const BEAM_IGNITION_MS = 140;
 const BEAM_SPARK_INTERVAL_MS = 55;
 const BEAM_CONTACT_SPARK_MAX_PER_TICK = 4;
 const BEAM_RENDER_DEPTH = 9.5;
+const SCOUT_MOTION_HINT_INTERVAL_MS = 130;
+const SCOUT_MOTION_HINT_MAX_PER_TICK = 12;
 interface EnemyTimeScaling {
   elapsedMinutes: number;
   difficultyMinute: number;
@@ -697,8 +755,8 @@ interface SectorSignalBeacon {
   region: SectorRegion;
   body: Phaser.GameObjects.Container;
   wrapMirrorBody: Phaser.GameObjects.Container;
-  ring: Phaser.GameObjects.Arc;
-  wrapMirrorRing: Phaser.GameObjects.Arc;
+  ring: Phaser.GameObjects.Image;
+  wrapMirrorRing: Phaser.GameObjects.Image;
 }
 
 type DebugFuelDrainMode = 'thrust-only';
@@ -727,7 +785,10 @@ interface WorldEventInstance {
 
 type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
 
-const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 2200;
+const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 7600;
+const PLAYER_DEATH_FLASH_MS = 900;
+const PLAYER_DEATH_RING_MS = 1000;
+const PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS = 5000;
 
 interface WorldSquadInstance {
   id: string;
@@ -767,7 +828,7 @@ export class GameScene extends Phaser.Scene {
   private selectedMissionId: MissionDefinitionId = DEFAULT_MISSION_ID;
   private missionRuntime?: MissionRuntimeState;
   private missionObjectiveBeacon?: Phaser.GameObjects.Container;
-  private missionObjectiveBeaconRing?: Phaser.GameObjects.Arc;
+  private missionObjectiveBeaconRing?: Phaser.GameObjects.Image;
   private missionObjectiveBeaconCore?: Phaser.GameObjects.Arc;
   private worldEvents: WorldEventInstance[] = [];
   private rareEvents: RareEventInstance[] = [];
@@ -778,6 +839,7 @@ export class GameScene extends Phaser.Scene {
   private playerSprite!: Phaser.GameObjects.Image;
   private rammingShieldImage?: Phaser.GameObjects.Image;
   private playerVelocity = new Phaser.Math.Vector2(0, 0);
+  private previousPlayerContactPosition = new Phaser.Math.Vector2(0, 0);
   private playerStatusRuntime: PlayerStatusEffectRuntime = createPlayerStatusEffectRuntime();
   private playerStatusOverlay?: Phaser.GameObjects.Graphics;
   private cameraLead = new Phaser.Math.Vector2(0, 0);
@@ -837,6 +899,9 @@ export class GameScene extends Phaser.Scene {
   private basicAsteroids: BasicAsteroid[] = [];
   private enemyWreckageDebris: EnemyWreckageDebris[] = [];
   private deathShards: DeathShard[] = [];
+  private playerDeathShockwaveTargets: PlayerDeathShockwaveTarget[] = [];
+  private playerDeathShockwaveTriggeredTargets: PlayerDeathShockwaveTriggerLog[] = [];
+  private playerDeathShockwaveOrigin = new Phaser.Math.Vector2(0, 0);
   private scrapPickups: ScrapPickup[] = [];
   private blackHole?: BlackHoleSystem;
   private gameFlowState: GameFlowState = 'results';
@@ -901,6 +966,10 @@ export class GameScene extends Phaser.Scene {
   private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
+  private activeValidationEnemyDefinitionId: string = resolveTankPhaseEnemyDefinitionId();
+  private activeValidationEnemyModeLabel: string = TANK_PHASE_MODE_LABEL;
+  private nextScoutMotionHintAt = 0;
+  private scoutMotionHintCursor = 0;
   private encounterDirectorState: EncounterDirectorState = createEncounterDirectorState();
   private runStartedAt = 0;
   private readonly debugState = new DebugState();
@@ -968,7 +1037,7 @@ export class GameScene extends Phaser.Scene {
       scene: this,
       getWrappedDirection: (fromX, fromY, toX, toY) => this.getWrappedDirection(fromX, fromY, toX, toY)
     });
-    createEnemyLabVisualTextures(this, ENEMY_LAB_DEFINITIONS);
+    createEnemyVisualTextures(this, ENEMY_DEFINITIONS);
     this.minimap = new MinimapSystem(this);
     this.gameplayHud = new GameplayHudSystem(
       this,
@@ -1065,9 +1134,15 @@ export class GameScene extends Phaser.Scene {
 
     if (this.debugState.debugGamePaused) {
       this.profileStep('black-hole', () => this.updateBlackHole(time, deltaSeconds, false));
+    } else if (this.isPlayerDead) {
+      this.profileStep('player-death-shockwave', () => this.updatePlayerDeathShockwave(time));
+      this.profileStep('death-shards', () => this.updateDeathShards(delta));
+      this.profileStep('player-damage-visuals', () => this.updatePlayerDamageVisuals(time));
+      this.profileStep('player-status-vfx', () => this.updatePlayerStatusOverlay(time));
     } else {
       this.profileStep('player-status', () => this.updatePlayerStatuses(time));
-      this.profileStep('player-movement', () => this.updatePlayerMovement(time, this.isPlayerDead ? 0 : deltaSeconds));
+      this.capturePreviousPlayerContactPosition();
+      this.profileStep('player-movement', () => this.updatePlayerMovement(time, deltaSeconds));
       this.profileStep('enemy-spawn-director', () => this.updateEnemySpawnDirector(time));
       this.profileStep('world-squads', () => this.updateWorldSquads(time, deltaSeconds));
       this.profileStep('world-events', () => this.updateWorldEvents(time));
@@ -1081,18 +1156,14 @@ export class GameScene extends Phaser.Scene {
       this.profileStep('debris', () => this.updateEnemyWreckageDebris(time, deltaSeconds));
       this.profileStep('death-shards', () => this.updateDeathShards(delta));
       this.profileStep('world-impacts', () => this.resolveWorldImpactCollisions(time));
-      if (!this.isPlayerDead) {
-        this.profileStep('player-wrap', () => this.wrapPlayer());
-        this.profileStep('camera-lead', () => this.updateCameraLead());
-        this.profileStep('mission', () => this.updateMission(time));
-      }
+      this.profileStep('player-wrap', () => this.wrapPlayer());
+      this.profileStep('camera-lead', () => this.updateCameraLead());
+      this.profileStep('mission', () => this.updateMission(time));
       this.profileStep('scrap-pickups', () => this.updateScrapPickups(time, deltaSeconds));
-      if (!this.isPlayerDead) {
-        this.profileStep('black-hole-player-collision', () => this.updateBlackHolePlayerCollision());
-        this.profileStep('player-contact', () => this.updatePlayerContactDamage(time));
-        this.profileStep('ramming-shield', () => this.updateRammingShield(time, deltaSeconds));
-        this.profileStep('active-main-weapon', () => this.updateActiveMainWeapon(time, deltaSeconds));
-      }
+      this.profileStep('black-hole-player-collision', () => this.updateBlackHolePlayerCollision());
+      this.profileStep('player-contact', () => this.updatePlayerContactDamage(time));
+      this.profileStep('ramming-shield', () => this.updateRammingShield(time, deltaSeconds));
+      this.profileStep('active-main-weapon', () => this.updateActiveMainWeapon(time, deltaSeconds));
       this.profileStep('player-projectiles', () => this.updatePlayerProjectiles(time, deltaSeconds));
       this.profileStep('enemy-projectiles', () => this.updateEnemyProjectiles(time, deltaSeconds));
       this.profileStep('player-damage-visuals', () => this.updatePlayerDamageVisuals(time));
@@ -1707,7 +1778,7 @@ export class GameScene extends Phaser.Scene {
         'ramming-shield': this.debugState.getWeaponTuningSummary(getWeaponDefinition('ramming-shield')),
         'salvage-beam': this.debugState.getWeaponTuningSummary(getWeaponDefinition('salvage-beam'))
       },
-      nextEnemySpawnSeconds: Math.max(0, Math.min(this.nextEnemySpawnAt, this.encounterDirectorState.nextEncounterAt) - time) / 1000,
+      nextEnemySpawnSeconds: Math.max(0, this.nextEnemySpawnAt - time) / 1000,
       hudButtonVariant: hudVariant.id,
       hudButtonVariantTitle: hudVariant.title,
       hudButtonVariantDesignTarget: hudVariant.designTarget,
@@ -1749,9 +1820,13 @@ export class GameScene extends Phaser.Scene {
       runHarnessDebriefFlow: () => this.runTestHarnessDebriefFlow(),
       runHarnessAsteroidStaleDestroy: () => this.runTestHarnessAsteroidStaleDestroy(),
       runHarnessEnemyContactBalance: () => this.runTestHarnessEnemyContactBalance(),
+      runHarnessPlayerDeathShockwave: () => this.runTestHarnessPlayerDeathShockwave(),
       runHarnessWorldImpactCleanup: () => this.runTestHarnessWorldImpactCleanup(),
       runHarnessVelocityLimiter: () => this.runTestHarnessVelocityLimiter(),
       runHarnessEnemyScaling: () => this.runTestHarnessEnemyScaling(),
+      runHarnessScoutPhase: () => this.runTestHarnessScoutPhase(),
+      runHarnessWedgeStrikerPhase: () => this.runTestHarnessWedgeStrikerPhase(),
+      runHarnessTankPhase: () => this.runTestHarnessTankPhase(),
       runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
       runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog(),
       runHarnessAudio: () => this.runTestHarnessAudio(),
@@ -2515,7 +2590,7 @@ export class GameScene extends Phaser.Scene {
       initial.enemyProjectiles === 0 &&
       primaryShot.projectiles === primaryShotsBefore + 1 &&
       enemyRewardXp > 0 &&
-      enemyXp.activeEnemies === initial.activeEnemies - 1 &&
+      enemyXp.activeEnemies === Math.max(0, initial.activeEnemies - 1) &&
       rollover.playerXp === 5 &&
       rollover.nextXpThreshold === 120 &&
       rollover.bankedUpgrades === 1 &&
@@ -2955,6 +3030,745 @@ export class GameScene extends Phaser.Scene {
         flatRewards
       })
     );
+  }
+
+  private runTestHarnessScoutPhase(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-scout-phase-harness', 'fail');
+      document.body.setAttribute('data-starvivors-scout-phase-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    const previousValidationDefinitionId = this.activeValidationEnemyDefinitionId;
+    const previousValidationModeLabel = this.activeValidationEnemyModeLabel;
+    this.setActiveValidationEnemyMode(resolveScoutPhaseEnemyDefinitionId(), SCOUT_PHASE_MODE_LABEL);
+    this.startRun();
+    const initial = harness.getState();
+    this.updateEnemySpawnDirector(this.runStartedAt + SCOUT_PHASE_SPAWN_INTERVAL_MS - 1);
+    const beforeFirstWave = harness.getState();
+    const waveResults: Array<{ seconds: number; spawned: number; total: number }> = [];
+
+    for (let seconds = 10; seconds <= 60; seconds += 10) {
+      const time = this.runStartedAt + seconds * 1000;
+      this.nextEnemySpawnAt = time;
+      const before = this.liveEnemies.length;
+      this.updateEnemySpawnDirector(time);
+      waveResults.push({
+        seconds,
+        spawned: this.liveEnemies.length - before,
+        total: this.liveEnemies.length
+      });
+    }
+
+    let capTime = this.runStartedAt + 70000;
+    let maxObservedLiveEnemies = this.liveEnemies.length;
+    let capIterations = 0;
+
+    while (this.liveEnemies.length < SCOUT_PHASE_MAX_ACTIVE_ENEMIES && capIterations < 200) {
+      this.nextEnemySpawnAt = capTime;
+      this.updateEnemySpawnDirector(capTime);
+      maxObservedLiveEnemies = Math.max(maxObservedLiveEnemies, this.liveEnemies.length);
+      capTime += SCOUT_PHASE_SPAWN_INTERVAL_MS;
+      capIterations += 1;
+    }
+
+    const atCapBeforeSkip = this.liveEnemies.length;
+    this.nextEnemySpawnAt = capTime;
+    this.updateEnemySpawnDirector(capTime);
+    const afterCapSkip = this.liveEnemies.length;
+    const liveDefinitionIds = [...new Set(this.liveEnemies.map((enemy) => enemy.definitionId))];
+    const performanceCounts = this.getPerformanceProfilerCounts();
+    const expectedWaveCounts = [1, 2, 3, 4, 5, 6];
+    const waveRampPass = waveResults.every((result, index) => result.spawned === expectedWaveCounts[index]);
+    const scoutOnlyPass = liveDefinitionIds.length === 1 && liveDefinitionIds[0] === resolveScoutPhaseEnemyDefinitionId();
+    const capPass =
+      atCapBeforeSkip === SCOUT_PHASE_MAX_ACTIVE_ENEMIES &&
+      afterCapSkip === SCOUT_PHASE_MAX_ACTIVE_ENEMIES &&
+      maxObservedLiveEnemies <= SCOUT_PHASE_MAX_ACTIVE_ENEMIES;
+    const pass =
+      initial.liveEnemies === 0 &&
+      beforeFirstWave.liveEnemies === 0 &&
+      waveRampPass &&
+      scoutOnlyPass &&
+      capPass;
+
+    document.body.setAttribute('data-starvivors-scout-phase-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-scout-phase-harness-details',
+      JSON.stringify({
+        mode: SCOUT_PHASE_MODE_LABEL,
+        initialLiveEnemies: initial.liveEnemies,
+        beforeFirstWaveLiveEnemies: beforeFirstWave.liveEnemies,
+        waveResults,
+        atCapBeforeSkip,
+        afterCapSkip,
+        maxObservedLiveEnemies,
+        capIterations,
+        liveDefinitionIds,
+        performanceCounts,
+        profilerSummary: this.performanceProfiler.getMenuSummary(),
+        pass
+      })
+    );
+    this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
+  }
+
+  private runTestHarnessWedgeStrikerPhase(): void {
+    const harness = window.starvivorsTestHarness;
+    const resultAttribute = 'data-starvivors-wedge-striker-phase-harness';
+    const detailsAttribute = 'data-starvivors-wedge-striker-phase-harness-details';
+
+    if (!harness) {
+      document.body.setAttribute(resultAttribute, 'fail');
+      document.body.setAttribute(detailsAttribute, 'Harness was not installed.');
+      return;
+    }
+
+    const previousValidationDefinitionId = this.activeValidationEnemyDefinitionId;
+    const previousValidationModeLabel = this.activeValidationEnemyModeLabel;
+    const restoreValidationMode = (): void => {
+      this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
+    };
+    const setFailure = (message: string): void => {
+      document.body.setAttribute(resultAttribute, 'fail');
+      document.body.setAttribute(detailsAttribute, message);
+      restoreValidationMode();
+    };
+    const syncEnemyPosition = (enemy: LiveGameEnemy): void => {
+      enemy.previousX = enemy.body.x;
+      enemy.previousY = enemy.body.y;
+      enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+    };
+    const spawnValidationEnemy = (
+      definitionId: string,
+      x: number,
+      y: number,
+      time: number,
+      spawnMode = WEDGE_STRIKER_PHASE_MODE_LABEL
+    ): LiveGameEnemy | undefined => {
+      const enemy = this.spawnValidationLiveEnemy(definitionId, x, y, time, spawnMode);
+      if (enemy) {
+        syncEnemyPosition(enemy);
+      }
+      return enemy;
+    };
+    const isStandardTelegraphImage = (image?: Phaser.GameObjects.Image): boolean =>
+      Boolean(image?.scene) &&
+      (image?.alpha ?? 0) >= ENEMY_TELEGRAPH_WARNING_ALPHA - 0.001 &&
+      (image?.alpha ?? 0) <= ENEMY_TELEGRAPH_WARNING_READY_ALPHA + 0.001 &&
+      image?.tintTopLeft === ENEMY_TELEGRAPH_WARNING_COLOR;
+    this.setActiveValidationEnemyMode(resolveWedgeStrikerPhaseEnemyDefinitionId(), WEDGE_STRIKER_PHASE_MODE_LABEL);
+    const activeValidationDefinitionId = this.getActiveValidationEnemyDefinitionId();
+    const activeValidationModeLabel = this.getActiveValidationEnemyModeLabel();
+    const activeValidationPass =
+      activeValidationDefinitionId === resolveWedgeStrikerPhaseEnemyDefinitionId() &&
+      activeValidationModeLabel === WEDGE_STRIKER_PHASE_MODE_LABEL;
+
+    this.startRun();
+    this.clearEnemies();
+    this.clearScrapPickups();
+    this.clearPlayerProjectiles();
+    this.clearEnemyProjectiles();
+
+    const center = getArenaCenter(this.arena);
+    const baseTime = this.time.now + 1000;
+    this.player.setPosition(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.playerInvulnerableUntil = 0;
+
+    const soloPlan = getWedgeStrikerPhaseSoloSpawnPlan();
+    for (let index = 0; index < soloPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, soloPlan.length);
+      spawnValidationEnemy(
+        soloPlan[index],
+        center.x + Math.cos(angle) * 420,
+        center.y + Math.sin(angle) * 420,
+        baseTime
+      );
+    }
+
+    const soloDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const soloSpawnModes = [...new Set(this.liveEnemies.map((enemy) => enemy.stateData.spawnMode))];
+    const soloOnlyPass = isWedgeStrikerPhaseSolo(soloDefinitionIds);
+    const soloModePass = soloSpawnModes.length === 1 && soloSpawnModes[0] === WEDGE_STRIKER_PHASE_MODE_LABEL;
+
+    this.clearEnemies();
+    const behaviorEnemy = spawnValidationEnemy(
+      resolveWedgeStrikerPhaseEnemyDefinitionId(),
+      center.x + 520,
+      center.y,
+      baseTime
+    );
+
+    if (!behaviorEnemy) {
+      setFailure('No Wedge Striker spawned for behavior validation.');
+      return;
+    }
+
+    behaviorEnemy.state = 'chase';
+    behaviorEnemy.stateStartedAt = baseTime - 1000;
+    behaviorEnemy.velocity.set(0, 0);
+    syncEnemyPosition(behaviorEnemy);
+    this.updateLiveEnemies(baseTime, 1 / 60);
+    this.updateLiveEnemies(baseTime + 16, 1 / 60);
+    const aimState = behaviorEnemy.state;
+    const aimTelegraphVisible = Boolean(behaviorEnemy.telegraphs.chargeLane?.scene);
+    const aimTelegraphStandard = isStandardTelegraphImage(behaviorEnemy.telegraphs.chargeLane);
+    const aimTelegraphAlpha = behaviorEnemy.telegraphs.chargeLane?.alpha ?? 0;
+
+    const aimMs = Number(behaviorEnemy.definition.behavior.params?.aimMs ?? 220);
+    const windupMs = Number(behaviorEnemy.definition.behavior.params?.windupMs ?? 760);
+    const dashMs = Number(behaviorEnemy.definition.behavior.params?.dashMs ?? 560);
+    const windupStartTime = baseTime + aimMs + 16;
+    this.updateLiveEnemies(windupStartTime, 1 / 60);
+    const windupState = behaviorEnemy.state;
+    const windupTelegraphVisible = Boolean(behaviorEnemy.telegraphs.chargeLane?.scene);
+    const windupTelegraphStandard = isStandardTelegraphImage(behaviorEnemy.telegraphs.chargeLane);
+    const windupTelegraphAlpha = behaviorEnemy.telegraphs.chargeLane?.alpha ?? 0;
+    const randomizedWindupMs = Number(behaviorEnemy.stateData.chargeWindupMs ?? Number.NaN);
+    const randomizedWindupPass =
+      Number.isFinite(randomizedWindupMs) &&
+      randomizedWindupMs >= windupMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER &&
+      randomizedWindupMs <= windupMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER;
+    const effectiveRandomizedWindupMs = Number.isFinite(randomizedWindupMs) ? randomizedWindupMs : windupMs;
+    const telegraphStartedAt = Number(behaviorEnemy.stateData.chargeTelegraphStartedAt ?? 0);
+    const lockedTargetYBeforeDodge = Number(behaviorEnemy.stateData.chargeLockedTargetY ?? Number.NaN);
+
+    this.player.setPosition(center.x, center.y + 190);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.updateLiveEnemies(windupStartTime + Math.min(240, effectiveRandomizedWindupMs * 0.5), 1 / 60);
+    const midWindupTelegraphAlpha = behaviorEnemy.telegraphs.chargeLane?.alpha ?? 0;
+    const playerYAfterDodgeMove = this.player.y;
+    const lockedTargetYAfterDodge = Number(behaviorEnemy.stateData.chargeLockedTargetY ?? Number.NaN);
+
+    this.updateLiveEnemies(windupStartTime + Math.max(1, effectiveRandomizedWindupMs - 16), 1 / 60);
+    const nearCompleteTelegraphAlpha = behaviorEnemy.telegraphs.chargeLane?.alpha ?? 0;
+    const telegraphBrightensPass =
+      nearCompleteTelegraphAlpha > windupTelegraphAlpha + 0.25 &&
+      nearCompleteTelegraphAlpha > midWindupTelegraphAlpha;
+
+    const chargeTime = windupStartTime + effectiveRandomizedWindupMs + 20;
+    this.updateLiveEnemies(chargeTime, 1 / 60);
+    const chargeState = behaviorEnemy.state;
+    const chargeDamageWindowStartedAt = Number(behaviorEnemy.stateData.chargeDamageWindowStartedAt ?? 0);
+    const committedDirectionX = Number(behaviorEnemy.stateData.chargeCommittedDirectionX ?? 0);
+    const committedDirectionY = Number(behaviorEnemy.stateData.chargeCommittedDirectionY ?? 0);
+    const chargeLaneLength = Number(behaviorEnemy.stateData.chargeLaneLength ?? Number.NaN);
+    const chargeStartedX = Number(behaviorEnemy.stateData.chargeStartedX ?? Number.NaN);
+    const chargeStartedY = Number(behaviorEnemy.stateData.chargeStartedY ?? Number.NaN);
+    const chargeEndX = Number(behaviorEnemy.stateData.chargeEndX ?? Number.NaN);
+    const chargeEndY = Number(behaviorEnemy.stateData.chargeEndY ?? Number.NaN);
+
+    const recoverTime = chargeTime + dashMs + 20;
+    this.updateLiveEnemies(recoverTime, 1 / 60);
+    const recoverState = behaviorEnemy.state;
+    const recoveryTelegraphVisible = Boolean(behaviorEnemy.telegraphs.warningCircle?.scene);
+    const recoveryTelegraphStandard = isStandardTelegraphImage(behaviorEnemy.telegraphs.warningCircle);
+    const chargeEndpointDistance = Number.isFinite(chargeEndX) && Number.isFinite(chargeEndY)
+      ? this.getWrappedDirection(behaviorEnemy.body.x, behaviorEnemy.body.y, chargeEndX, chargeEndY).length()
+      : Number.POSITIVE_INFINITY;
+    const chargeLaneDistance = Number.isFinite(chargeStartedX) &&
+      Number.isFinite(chargeStartedY) &&
+      Number.isFinite(chargeEndX) &&
+      Number.isFinite(chargeEndY)
+      ? this.getWrappedDirection(chargeStartedX, chargeStartedY, chargeEndX, chargeEndY).length()
+      : Number.NaN;
+    const stateSequencePass = aimState === 'aim' && windupState === 'windup' && chargeState === 'charging' && recoverState === 'recover';
+    const telegraphBeforeDamagePass =
+      aimTelegraphVisible &&
+      windupTelegraphVisible &&
+      telegraphStartedAt > 0 &&
+      chargeDamageWindowStartedAt > telegraphStartedAt;
+    const telegraphStandardPass =
+      aimTelegraphStandard &&
+      windupTelegraphStandard &&
+      recoveryTelegraphStandard &&
+      randomizedWindupPass &&
+      telegraphBrightensPass;
+    const chargeEndpointPass =
+      Number.isFinite(chargeLaneLength) &&
+      Number.isFinite(chargeLaneDistance) &&
+      Math.abs(chargeLaneDistance - chargeLaneLength) < 2 &&
+      chargeEndpointDistance < 2;
+    const committedPathPass =
+      Number.isFinite(lockedTargetYBeforeDodge) &&
+      lockedTargetYBeforeDodge === lockedTargetYAfterDodge &&
+      Math.abs(lockedTargetYAfterDodge - center.y) < 1 &&
+      Math.abs(this.player.y - lockedTargetYAfterDodge) > 120 &&
+      Math.hypot(committedDirectionX, committedDirectionY) > 0.98;
+
+    this.clearEnemies();
+    this.player.setPosition(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.playerHull = this.getPlayerMaxHull();
+    this.playerInvulnerableUntil = 0;
+    const hitEnemy = spawnValidationEnemy(
+      resolveWedgeStrikerPhaseEnemyDefinitionId(),
+      center.x,
+      center.y,
+      baseTime + 3000
+    );
+
+    if (!hitEnemy) {
+      setFailure('No Wedge Striker spawned for charge collision validation.');
+      return;
+    }
+
+    const sweptGap = this.getPlayerCollisionRadius() + hitEnemy.definition.stats.radius + 72;
+    hitEnemy.previousX = center.x - sweptGap;
+    hitEnemy.previousY = center.y;
+    hitEnemy.body.setPosition(center.x + sweptGap, center.y);
+    hitEnemy.wrapMirrorBody.setPosition(hitEnemy.body.x, hitEnemy.body.y);
+    hitEnemy.state = 'charging';
+    hitEnemy.stateStartedAt = baseTime + 3000;
+    hitEnemy.velocity.set(520, 0);
+    const hitChargeEndX = wrapCoordinate(center.x + sweptGap + 240, this.arena.width);
+    const hitChargeEndY = center.y;
+    hitEnemy.stateData.chargeStartedX = hitEnemy.body.x;
+    hitEnemy.stateData.chargeStartedY = hitEnemy.body.y;
+    hitEnemy.stateData.chargeEndX = hitChargeEndX;
+    hitEnemy.stateData.chargeEndY = hitChargeEndY;
+    hitEnemy.stateData.chargeDashSpeed = 520;
+    const hitScrapBefore = this.scrapPickups.length;
+    const hitLiveEnemiesBefore = this.liveEnemies.length;
+    const hitHullBefore = this.playerHull;
+    const hitContact = this.getEnemyContact();
+    if (hitContact) {
+      this.resolvePlayerEnemyContact(hitContact, baseTime + 3016);
+    }
+    const hitHullAfter = this.playerHull;
+    const hitScrapAfter = this.scrapPickups.length;
+    const hitStateAfterContact = hitEnemy.state;
+    const hitRecoilUntilAfterContact = Number(hitEnemy.stateData.contactRecoilUntil ?? 0);
+    const hitEnemyXAfterContact = hitEnemy.body.x;
+    this.updateLiveEnemies(baseTime + 3216, 0.2);
+    const hitMovedAfterContact = hitEnemy.body.x > hitEnemyXAfterContact + 40;
+    this.updateLiveEnemies(baseTime + 3000 + dashMs + 40, 1 / 60);
+    const hitEndpointDistanceAfterContact = this.getWrappedDirection(hitEnemy.body.x, hitEnemy.body.y, hitChargeEndX, hitChargeEndY).length();
+    const hitRecoveredAfterContact = hitEnemy.state === 'recover';
+    const chargeCollisionPass =
+      Boolean(hitContact) &&
+      hitHullAfter < hitHullBefore &&
+      this.liveEnemies.length === hitLiveEnemiesBefore &&
+      hitScrapAfter === hitScrapBefore &&
+      hitEnemy.hp > 0 &&
+      hitStateAfterContact === 'charging' &&
+      hitRecoilUntilAfterContact === 0 &&
+      hitMovedAfterContact &&
+      hitRecoveredAfterContact &&
+      hitEndpointDistanceAfterContact < 2;
+
+    this.clearEnemies();
+    this.player.setPosition(center.x, center.y + sweptGap + 80);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.playerHull = this.getPlayerMaxHull();
+    this.playerInvulnerableUntil = 0;
+    const avoidEnemy = spawnValidationEnemy(
+      resolveWedgeStrikerPhaseEnemyDefinitionId(),
+      center.x,
+      center.y,
+      baseTime + 5000
+    );
+
+    if (!avoidEnemy) {
+      setFailure('No Wedge Striker spawned for dodge validation.');
+      return;
+    }
+
+    avoidEnemy.previousX = center.x - sweptGap;
+    avoidEnemy.previousY = center.y;
+    avoidEnemy.body.setPosition(center.x + sweptGap, center.y);
+    avoidEnemy.wrapMirrorBody.setPosition(avoidEnemy.body.x, avoidEnemy.body.y);
+    avoidEnemy.state = 'charging';
+    avoidEnemy.velocity.set(520, 0);
+    const avoidHullBefore = this.playerHull;
+    const avoidContact = this.getEnemyContact();
+    if (avoidContact) {
+      this.resolvePlayerEnemyContact(avoidContact, baseTime + 5016);
+    }
+    const avoidHullAfter = this.playerHull;
+    const dodgePass = !avoidContact && avoidHullAfter === avoidHullBefore;
+
+    this.clearEnemies();
+    this.clearScrapPickups();
+    this.player.setPosition(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerHull = this.getPlayerMaxHull();
+    const rewardEnemy = spawnValidationEnemy(
+      resolveWedgeStrikerPhaseEnemyDefinitionId(),
+      center.x + 260,
+      center.y,
+      baseTime + 7000
+    );
+
+    if (!rewardEnemy) {
+      setFailure('No Wedge Striker spawned for reward validation.');
+      return;
+    }
+
+    const rewardLiveEnemiesBefore = this.liveEnemies.length;
+    const rewardScrapBefore = this.scrapPickups.length;
+    const rewardXpBefore = this.playerXp;
+    const rewardRunScrapBefore = this.runScrapTotal;
+    const aliveRewardPass =
+      rewardEnemy.hp > 0 &&
+      this.liveEnemies.length === rewardLiveEnemiesBefore &&
+      this.scrapPickups.length === rewardScrapBefore &&
+      this.playerXp === rewardXpBefore &&
+      this.runScrapTotal === rewardRunScrapBefore;
+
+    rewardEnemy.hp = 0;
+    this.removeDeadLiveEnemies();
+    const rewardScrapAfterDeath = this.scrapPickups.length;
+    const rewardLiveEnemiesAfterDeath = this.liveEnemies.length;
+    const collectedRewards = harness.collectAllScrap();
+    const rewardDeathPathPass =
+      rewardLiveEnemiesAfterDeath === rewardLiveEnemiesBefore - 1 &&
+      rewardScrapAfterDeath > rewardScrapBefore &&
+      collectedRewards.runScrapTotal > rewardRunScrapBefore &&
+      collectedRewards.playerXp > rewardXpBefore;
+
+    this.clearEnemies();
+    this.clearEnemyProjectiles();
+    this.player.setPosition(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    const projectileTelegraphTime = baseTime + 8200;
+    const projectileEnemy = spawnValidationEnemy(
+      'diamond-gunner',
+      center.x + 520,
+      center.y,
+      projectileTelegraphTime,
+      `${WEDGE_STRIKER_PHASE_MODE_LABEL}-projectile-telegraph`
+    );
+
+    if (!projectileEnemy) {
+      setFailure('No Diamond Gunner spawned for projectile telegraph validation.');
+      return;
+    }
+
+    projectileEnemy.nextFireAt = projectileTelegraphTime;
+    projectileEnemy.velocity.set(0, 0);
+    syncEnemyPosition(projectileEnemy);
+    const enemyProjectilesBeforeTelegraph = this.enemyProjectiles.length;
+    this.updateLiveEnemies(projectileTelegraphTime, 1 / 60);
+    const projectileTelegraphVisible = Boolean(projectileEnemy.telegraphs.beamLine?.scene);
+    const projectileTelegraphStartAlpha = projectileEnemy.telegraphs.beamLine?.alpha ?? 0;
+    const projectileTelegraphMs = Number(projectileEnemy.stateData.shotTelegraphMs ?? Number.NaN);
+    const projectileTelegraphBaseMs = Number(projectileEnemy.definition.effectRecipe?.telegraph.durationMs ?? 360);
+    const projectileTelegraphRandomizedPass =
+      Number.isFinite(projectileTelegraphMs) &&
+      projectileTelegraphMs >= projectileTelegraphBaseMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER &&
+      projectileTelegraphMs <= projectileTelegraphBaseMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER;
+    const effectiveProjectileTelegraphMs = Number.isFinite(projectileTelegraphMs)
+      ? projectileTelegraphMs
+      : projectileTelegraphBaseMs;
+    this.updateLiveEnemies(projectileTelegraphTime + Math.max(1, effectiveProjectileTelegraphMs - 16), 1 / 60);
+    const projectileTelegraphNearCompleteAlpha = projectileEnemy.telegraphs.beamLine?.alpha ?? 0;
+    const enemyProjectilesBeforeResolve = this.enemyProjectiles.length;
+    this.updateLiveEnemies(projectileTelegraphTime + effectiveProjectileTelegraphMs + 20, 1 / 60);
+    const projectileTelegraphResolved = !projectileEnemy.telegraphs.beamLine?.scene;
+    const projectileTelegraphPass =
+      projectileTelegraphVisible &&
+      projectileTelegraphStartAlpha >= ENEMY_TELEGRAPH_WARNING_ALPHA - 0.001 &&
+      projectileTelegraphNearCompleteAlpha > projectileTelegraphStartAlpha + 0.25 &&
+      projectileTelegraphNearCompleteAlpha <= ENEMY_TELEGRAPH_WARNING_READY_ALPHA + 0.001 &&
+      projectileTelegraphRandomizedPass &&
+      enemyProjectilesBeforeResolve === enemyProjectilesBeforeTelegraph &&
+      this.enemyProjectiles.length > enemyProjectilesBeforeResolve &&
+      projectileTelegraphResolved;
+
+    this.clearEnemies();
+    const mixedPlan = getWedgeStrikerPhaseMixedSpawnPlan();
+    for (let index = 0; index < mixedPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, mixedPlan.length);
+      spawnValidationEnemy(
+        mixedPlan[index],
+        center.x + Math.cos(angle) * 450,
+        center.y + Math.sin(angle) * 450,
+        baseTime + 9000,
+        `${WEDGE_STRIKER_PHASE_MODE_LABEL}-mixed`
+      );
+    }
+
+    const mixedDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const mixedCounts = getWedgeStrikerPhaseMixCounts(mixedDefinitionIds);
+    const expectedMixedCounts = getWedgeStrikerPhaseMixCounts(mixedPlan);
+    const mixedPass =
+      mixedCounts.scout === expectedMixedCounts.scout &&
+      mixedCounts['wedge-striker'] === expectedMixedCounts['wedge-striker'] &&
+      mixedDefinitionIds.length === mixedPlan.length;
+
+    const pass =
+      activeValidationPass &&
+      soloOnlyPass &&
+      soloModePass &&
+      stateSequencePass &&
+      telegraphBeforeDamagePass &&
+      telegraphStandardPass &&
+      chargeEndpointPass &&
+      committedPathPass &&
+      recoveryTelegraphVisible &&
+      chargeCollisionPass &&
+      dodgePass &&
+      aliveRewardPass &&
+      rewardDeathPathPass &&
+      projectileTelegraphPass &&
+      mixedPass;
+
+    document.body.setAttribute(resultAttribute, pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      detailsAttribute,
+      JSON.stringify({
+        mode: WEDGE_STRIKER_PHASE_MODE_LABEL,
+        activeValidation: {
+          definitionId: activeValidationDefinitionId,
+          modeLabel: activeValidationModeLabel,
+          pass: activeValidationPass
+        },
+        soloDefinitionIds,
+        soloSpawnModes,
+        soloOnlyPass,
+        soloModePass,
+        states: {
+          aimState,
+          windupState,
+          chargeState,
+          recoverState,
+          stateSequencePass
+        },
+        telegraph: {
+          aimTelegraphVisible,
+          windupTelegraphVisible,
+          recoveryTelegraphVisible,
+          telegraphStartedAt,
+          chargeDamageWindowStartedAt,
+          telegraphBeforeDamagePass,
+          warningColor: ENEMY_TELEGRAPH_WARNING_COLOR,
+          warningAlpha: ENEMY_TELEGRAPH_WARNING_ALPHA,
+          warningReadyAlpha: ENEMY_TELEGRAPH_WARNING_READY_ALPHA,
+          aimTelegraphStandard,
+          windupTelegraphStandard,
+          recoveryTelegraphStandard,
+          aimTelegraphAlpha,
+          windupTelegraphAlpha,
+          midWindupTelegraphAlpha,
+          nearCompleteTelegraphAlpha,
+          randomizedWindupMs,
+          randomizedWindupPass,
+          expectedRandomizedWindupMinMs: windupMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER,
+          expectedRandomizedWindupMaxMs: windupMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER,
+          telegraphBrightensPass,
+          telegraphStandardPass
+        },
+        chargeEndpoint: {
+          chargeLaneLength,
+          chargeLaneDistance,
+          chargeEndpointDistance,
+          chargeEndpointPass
+        },
+        committedPath: {
+          lockedTargetYBeforeDodge,
+          lockedTargetYAfterDodge,
+          playerYAfterDodge: playerYAfterDodgeMove,
+          committedDirectionX,
+          committedDirectionY,
+          committedPathPass
+        },
+        chargeCollision: {
+          hitContact: Boolean(hitContact),
+          hitHullBefore,
+          hitHullAfter,
+          hitScrapBefore,
+          hitScrapAfter,
+          hitStateAfterContact,
+          hitRecoilUntilAfterContact,
+          hitMovedAfterContact,
+          hitRecoveredAfterContact,
+          hitEndpointDistanceAfterContact,
+          chargeCollisionPass
+        },
+        dodge: {
+          avoidContact: Boolean(avoidContact),
+          avoidHullBefore,
+          avoidHullAfter,
+          dodgePass
+        },
+        rewards: {
+          aliveRewardPass,
+          rewardDeathPathPass,
+          rewardLiveEnemiesBefore,
+          rewardLiveEnemiesAfterDeath,
+          rewardScrapBefore,
+          rewardScrapAfterDeath,
+          rewardRunScrapBefore,
+          rewardRunScrapAfterCollect: collectedRewards.runScrapTotal,
+          rewardXpBefore,
+          rewardXpAfterCollect: collectedRewards.playerXp
+        },
+        projectileTelegraph: {
+          projectileTelegraphVisible,
+          projectileTelegraphStartAlpha,
+          projectileTelegraphNearCompleteAlpha,
+          projectileTelegraphMs,
+          projectileTelegraphBaseMs,
+          projectileTelegraphRandomizedPass,
+          enemyProjectilesBeforeTelegraph,
+          enemyProjectilesBeforeResolve,
+          enemyProjectilesAfterResolve: this.enemyProjectiles.length,
+          projectileTelegraphResolved,
+          projectileTelegraphPass
+        },
+        mixedDefinitionIds,
+        mixedCounts,
+        expectedMixedCounts,
+        mixedPass,
+        pass
+      })
+    );
+    restoreValidationMode();
+  }
+
+  private runTestHarnessTankPhase(): void {
+    const harness = window.starvivorsTestHarness;
+    const resultAttribute = 'data-starvivors-tank-phase-harness';
+    const detailsAttribute = 'data-starvivors-tank-phase-harness-details';
+
+    if (!harness) {
+      document.body.setAttribute(resultAttribute, 'fail');
+      document.body.setAttribute(detailsAttribute, 'Harness was not installed.');
+      return;
+    }
+
+    const previousValidationDefinitionId = this.activeValidationEnemyDefinitionId;
+    const previousValidationModeLabel = this.activeValidationEnemyModeLabel;
+    this.setActiveValidationEnemyMode(resolveTankPhaseEnemyDefinitionId(), TANK_PHASE_MODE_LABEL);
+
+    this.startRun();
+    this.clearEnemies();
+    this.clearScrapPickups();
+    this.clearPlayerProjectiles();
+    this.clearEnemyProjectiles();
+
+    const center = getArenaCenter(this.arena);
+    const baseTime = this.time.now + 1000;
+    const spawnValidationEnemy = (
+      definitionId: string,
+      x: number,
+      y: number,
+      time: number,
+      spawnMode = TANK_PHASE_MODE_LABEL
+    ): LiveGameEnemy | undefined => {
+      const enemy = this.spawnValidationLiveEnemy(definitionId, x, y, time, spawnMode);
+      if (enemy) {
+        enemy.previousX = enemy.body.x;
+        enemy.previousY = enemy.body.y;
+        enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+      }
+      return enemy;
+    };
+
+    const activeValidationDefinitionId = this.getActiveValidationEnemyDefinitionId();
+    const activeValidationModeLabel = this.getActiveValidationEnemyModeLabel();
+    const activeValidationPass =
+      activeValidationDefinitionId === resolveTankPhaseEnemyDefinitionId() &&
+      activeValidationModeLabel === TANK_PHASE_MODE_LABEL;
+
+    const soloPlan = getTankPhaseSoloSpawnPlan();
+    for (let index = 0; index < soloPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, soloPlan.length);
+      spawnValidationEnemy(
+        soloPlan[index],
+        center.x + Math.cos(angle) * 460,
+        center.y + Math.sin(angle) * 460,
+        baseTime
+      );
+    }
+
+    const soloDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const soloSpawnModes = [...new Set(this.liveEnemies.map((enemy) => enemy.stateData.spawnMode))];
+    const soloOnlyPass = isTankPhaseSolo(soloDefinitionIds);
+    const soloModePass = soloSpawnModes.length === 1 && soloSpawnModes[0] === TANK_PHASE_MODE_LABEL;
+
+    this.clearEnemies();
+    const mixedPlan = getTankPhaseMixedSpawnPlan();
+    for (let index = 0; index < mixedPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, mixedPlan.length);
+      spawnValidationEnemy(
+        mixedPlan[index],
+        center.x + Math.cos(angle) * 500,
+        center.y + Math.sin(angle) * 500,
+        baseTime + 2000,
+        `${TANK_PHASE_MODE_LABEL}-mixed`
+      );
+    }
+
+    const mixedDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const mixedCounts = getTankPhaseMixCounts(mixedDefinitionIds);
+    const expectedMixedCounts = getTankPhaseMixCounts(mixedPlan);
+    const mixedPass =
+      mixedCounts.scout === expectedMixedCounts.scout &&
+      mixedCounts['wedge-striker'] === expectedMixedCounts['wedge-striker'] &&
+      mixedCounts['hex-tank'] === expectedMixedCounts['hex-tank'] &&
+      mixedDefinitionIds.length === mixedPlan.length;
+
+    const tankDefinition = ENEMY_DEFINITIONS.find((definition) => definition.id === resolveTankPhaseEnemyDefinitionId());
+    const tankIdentityPass = Boolean(
+      tankDefinition &&
+      tankDefinition.behavior.id === 'heavyChase' &&
+      tankDefinition.stats.hp === 150 &&
+      tankDefinition.stats.speed === 58 &&
+      tankDefinition.stats.radius === 40 &&
+      resolveEnemyContactKnockbackMultiplier(tankDefinition) === 4 &&
+      resolveEnemyContactSelfImpulseMultiplier(tankDefinition) === 0.45
+    );
+    const pass =
+      activeValidationPass &&
+      soloOnlyPass &&
+      soloModePass &&
+      mixedPass &&
+      tankIdentityPass;
+
+    document.body.setAttribute(resultAttribute, pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      detailsAttribute,
+      JSON.stringify({
+        mode: TANK_PHASE_MODE_LABEL,
+        activeValidation: {
+          definitionId: activeValidationDefinitionId,
+          modeLabel: activeValidationModeLabel,
+          pass: activeValidationPass
+        },
+        soloDefinitionIds,
+        soloSpawnModes,
+        soloOnlyPass,
+        soloModePass,
+        mixedDefinitionIds,
+        mixedCounts,
+        expectedMixedCounts,
+        mixedPass,
+        tankIdentity: tankDefinition
+          ? {
+              behaviorId: tankDefinition.behavior.id,
+              hp: tankDefinition.stats.hp,
+              speed: tankDefinition.stats.speed,
+              radius: tankDefinition.stats.radius,
+              contactDamage: tankDefinition.stats.contactDamage,
+              contactKnockbackMultiplier: resolveEnemyContactKnockbackMultiplier(tankDefinition),
+              contactSelfImpulseMultiplier: resolveEnemyContactSelfImpulseMultiplier(tankDefinition),
+              pass: tankIdentityPass
+            }
+          : null,
+        pass
+      })
+    );
+    this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
   }
 
   private runTestHarnessBulwark(): void {
@@ -3702,9 +4516,11 @@ export class GameScene extends Phaser.Scene {
     this.debugState.setAsteroidFragmentBurstLimit(6);
 
     const enemy = this.spawnLiveEnemy('scout', this.player.x + 180, this.player.y, this.time.now, 'chaser');
-    const enemyIndex = this.liveEnemies.indexOf(enemy);
-    this.destroyLiveEnemyWithRewards(enemy, enemyIndex);
-    const enemyDeathDebrisPass = this.enemyWreckageDebris.length === 0;
+    if (enemy) {
+      const enemyIndex = this.liveEnemies.indexOf(enemy);
+      this.destroyLiveEnemyWithRewards(enemy, enemyIndex);
+    }
+    const enemyDeathDebrisPass = Boolean(enemy) && this.enemyWreckageDebris.length === 0;
 
     const stressAsteroids: BasicAsteroid[] = [];
     for (let i = 0; i < 50; i += 1) {
@@ -4465,6 +5281,11 @@ export class GameScene extends Phaser.Scene {
     const beam = this.getResolvedWeaponStats(beamWeapon, 'primary').beam;
     const runtime = this.beamSlots.primary;
     const target = this.spawnLiveEnemy('scout', this.player.x + 410, this.player.y, this.time.now, 'chaser');
+    if (!target) {
+      document.body.setAttribute('data-starvivors-beam-tip-screenshot-harness', 'fail');
+      document.body.setAttribute('data-starvivors-beam-tip-screenshot-harness-details', 'Unable to spawn Scout target.');
+      return;
+    }
     target.hp = 9999;
     target.body.setDepth(9);
 
@@ -4729,7 +5550,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.startRun();
-    const enemy = this.liveEnemies[0];
+    const enemy = this.liveEnemies[0] ?? this.spawnLiveEnemy('scout', this.player.x + 180, this.player.y, this.time.now, 'chaser');
 
     if (!enemy) {
       document.body.setAttribute('data-starvivors-enemy-contact-harness', 'fail');
@@ -4741,33 +5562,173 @@ export class GameScene extends Phaser.Scene {
     const playerStartX = this.arena.width / 2;
     const playerStartY = this.arena.height / 2;
     this.player.setPosition(playerStartX, playerStartY);
+    this.capturePreviousPlayerContactPosition();
     this.playerVelocity.set(0, 0);
     enemy.body.setPosition(playerStartX + 30, playerStartY);
     enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
     enemy.velocity.set(0, 0);
     enemy.knockbackVelocity.set(0, 0);
     enemy.blackHoleVelocity.set(0, 0);
+    enemy.body.setRotation(0);
+    enemy.wrapMirrorBody.setRotation(0);
     this.nextPlayerContactImpulseAt = 0;
+    this.playerInvulnerableUntil = 0;
 
     const contact = this.getEnemyContact();
     const playerXBefore = this.player.x;
     const enemyXBefore = enemy.body.x;
+    const enemyRotationBefore = enemy.body.rotation;
+    const enemyHpBefore = enemy.hp;
+    const playerHullBefore = this.playerHull;
+    const expectedTouchDamage = contact
+      ? Math.max(1, Math.round(contact.damage - this.getResolvedPlayerStats().defense))
+      : null;
 
     if (contact) {
       this.resolvePlayerEnemyContact(contact, testTime);
+      this.updateLiveEnemies(testTime + 16, 1 / 60);
     }
 
-    const scoutDefinition = ENEMY_LAB_DEFINITIONS.find((definition) => definition.id === 'scout');
+    const playerHullAfter = this.playerHull;
+    const playerXAfter = this.player.x;
+    const enemyXAfter = enemy.body.x;
+    const playerVelocityXAfter = this.playerVelocity.x;
+    const enemyKnockbackVelocityXAfter = enemy.knockbackVelocity.x;
+    const enemyRotationAfter = enemy.body.rotation;
+    const enemyHpAfter = enemy.hp;
+    const scoutDefinition = ENEMY_DEFINITIONS.find((definition) => definition.id === 'scout');
     const recoilUntil = typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0;
+    const sweptContactGap = this.getPlayerCollisionRadius() + enemy.definition.stats.radius + 36;
+    const sweptTestTime = testTime + 2000;
+    this.player.setPosition(playerStartX + sweptContactGap, playerStartY);
+    this.previousPlayerContactPosition.set(playerStartX - sweptContactGap, playerStartY);
+    this.playerVelocity.set(640, 0);
+    enemy.body.setPosition(playerStartX, playerStartY);
+    enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+    enemy.velocity.set(0, 0);
+    enemy.knockbackVelocity.set(0, 0);
+    enemy.blackHoleVelocity.set(0, 0);
+    this.nextPlayerContactImpulseAt = 0;
+    this.playerInvulnerableUntil = 0;
+
+    const sweptFinalOffset = this.getWrappedDirection(enemy.body.x, enemy.body.y, this.player.x, this.player.y);
+    const sweptFinalOverlaps = sweptFinalOffset.length() <= this.getPlayerCollisionRadius() + enemy.definition.stats.radius;
+    const sweptContact = this.getEnemyContact();
+    const sweptPlayerXBefore = this.player.x;
+    const sweptEnemyXBefore = enemy.body.x;
+    const sweptEnemyHpBefore = enemy.hp;
+    const sweptPlayerHullBefore = this.playerHull;
+    const expectedSweptTouchDamage = sweptContact
+      ? Math.max(1, Math.round(sweptContact.damage - this.getResolvedPlayerStats().defense))
+      : null;
+
+    if (sweptContact) {
+      this.resolvePlayerEnemyContact(sweptContact, sweptTestTime);
+    }
+
+    const sweptPlayerHullAfter = this.playerHull;
+    const sweptEnemyHpAfter = enemy.hp;
+    const sweptPlayerXAfter = this.player.x;
+    const sweptEnemyXAfter = enemy.body.x;
+    const sampleStationaryContact = (definitionId: string, sampleTime: number) => {
+      this.clearEnemies();
+      this.player.setPosition(playerStartX, playerStartY);
+      this.capturePreviousPlayerContactPosition();
+      this.playerVelocity.set(0, 0);
+      this.playerHull = this.getPlayerMaxHull();
+      this.playerInvulnerableUntil = 0;
+      this.nextPlayerContactImpulseAt = 0;
+
+      const sampleEnemy = this.spawnLiveEnemy(
+        definitionId,
+        playerStartX + 30,
+        playerStartY,
+        sampleTime,
+        this.getLegacySpawnTypeForLiveDefinition(definitionId)
+      );
+
+      if (!sampleEnemy) {
+        return {
+          definitionId,
+          hasContact: false,
+          playerVelocityX: 0,
+          enemyKnockbackVelocityX: 0,
+          enemyHpBefore: 0,
+          enemyHpAfter: 0,
+          playerHullBefore: this.playerHull,
+          playerHullAfter: this.playerHull,
+          contactKnockbackMultiplier: 1,
+          contactSelfImpulseMultiplier: 1
+        };
+      }
+
+      sampleEnemy.body.setPosition(playerStartX + 30, playerStartY);
+      sampleEnemy.wrapMirrorBody.setPosition(sampleEnemy.body.x, sampleEnemy.body.y);
+      sampleEnemy.velocity.set(0, 0);
+      sampleEnemy.knockbackVelocity.set(0, 0);
+      sampleEnemy.blackHoleVelocity.set(0, 0);
+      sampleEnemy.body.setRotation(0);
+      sampleEnemy.wrapMirrorBody.setRotation(0);
+
+      const sampleContact = this.getEnemyContact();
+      const sampleEnemyHpBefore = sampleEnemy.hp;
+      const samplePlayerHullBefore = this.playerHull;
+
+      if (sampleContact) {
+        this.resolvePlayerEnemyContact(sampleContact, sampleTime);
+      }
+
+      return {
+        definitionId,
+        hasContact: Boolean(sampleContact),
+        playerVelocityX: this.playerVelocity.x,
+        enemyKnockbackVelocityX: sampleEnemy.knockbackVelocity.x,
+        enemyHpBefore: sampleEnemyHpBefore,
+        enemyHpAfter: sampleEnemy.hp,
+        playerHullBefore: samplePlayerHullBefore,
+        playerHullAfter: this.playerHull,
+        contactKnockbackMultiplier: resolveEnemyContactKnockbackMultiplier(sampleEnemy.definition),
+        contactSelfImpulseMultiplier: resolveEnemyContactSelfImpulseMultiplier(sampleEnemy.definition)
+      };
+    };
+    const scoutContactSample = sampleStationaryContact('scout', testTime + 4000);
+    const tankContactSample = sampleStationaryContact('hex-tank', testTime + 5000);
+    const tankPlayerKnockbackPass =
+      scoutContactSample.hasContact &&
+      tankContactSample.hasContact &&
+      Math.abs(tankContactSample.playerVelocityX) > Math.abs(scoutContactSample.playerVelocityX) * 1.5;
+    const tankSelfKnockbackPass =
+      scoutContactSample.hasContact &&
+      tankContactSample.hasContact &&
+      tankContactSample.enemyKnockbackVelocityX > 0 &&
+      tankContactSample.enemyKnockbackVelocityX < scoutContactSample.enemyKnockbackVelocityX * 0.6;
+    const tankNoPlayerBodyDamagePass =
+      tankContactSample.hasContact &&
+      tankContactSample.enemyHpAfter === tankContactSample.enemyHpBefore;
     const pass =
       Boolean(contact) &&
       (contact?.normal.x ?? 0) < -0.9 &&
-      this.player.x < playerXBefore &&
-      enemy.body.x > enemyXBefore &&
-      this.playerVelocity.x < 0 &&
-      enemy.knockbackVelocity.x > 0 &&
+      playerXAfter < playerXBefore &&
+      enemyXAfter > enemyXBefore &&
+      playerVelocityXAfter < 0 &&
+      enemyKnockbackVelocityXAfter > 0 &&
+      enemyHpAfter === enemyHpBefore &&
+      expectedTouchDamage !== null &&
+      playerHullAfter === playerHullBefore - expectedTouchDamage &&
+      Math.abs(Phaser.Math.Angle.Wrap(enemyRotationAfter - enemyRotationBefore)) < 0.001 &&
       recoilUntil > testTime &&
-      scoutDefinition?.stats.speed === 122;
+      !sweptFinalOverlaps &&
+      Boolean(sweptContact) &&
+      (sweptContact?.normal.x ?? 0) > 0.9 &&
+      sweptPlayerXAfter > sweptPlayerXBefore &&
+      sweptEnemyXAfter < sweptEnemyXBefore &&
+      sweptEnemyHpAfter === sweptEnemyHpBefore &&
+      expectedSweptTouchDamage !== null &&
+      sweptPlayerHullAfter === sweptPlayerHullBefore - expectedSweptTouchDamage &&
+      scoutDefinition?.stats.speed === 122 &&
+      tankPlayerKnockbackPass &&
+      tankSelfKnockbackPass &&
+      tankNoPlayerBodyDamagePass;
 
     document.body.setAttribute('data-starvivors-enemy-contact-harness', pass ? 'pass' : 'fail');
     document.body.setAttribute(
@@ -4775,13 +5736,214 @@ export class GameScene extends Phaser.Scene {
       JSON.stringify({
         contactNormalX: contact?.normal.x ?? null,
         playerXBefore,
-        playerXAfter: this.player.x,
+        playerXAfter,
         enemyXBefore,
-        enemyXAfter: enemy.body.x,
-        playerVelocityX: this.playerVelocity.x,
-        enemyKnockbackVelocityX: enemy.knockbackVelocity.x,
+        enemyXAfter,
+        enemyHpBefore,
+        enemyHpAfter,
+        playerVelocityX: playerVelocityXAfter,
+        enemyKnockbackVelocityX: enemyKnockbackVelocityXAfter,
+        enemyRotationBefore,
+        enemyRotationAfter,
+        playerHullBefore,
+        playerHullAfter,
+        expectedTouchDamage,
         recoilUntil,
-        scoutSpeed: scoutDefinition?.stats.speed ?? null
+        sweptContactNormalX: sweptContact?.normal.x ?? null,
+        sweptFinalOverlaps,
+        sweptPlayerXBefore,
+        sweptPlayerXAfter,
+        sweptEnemyXBefore,
+        sweptEnemyXAfter,
+        sweptEnemyHpBefore,
+        sweptEnemyHpAfter,
+        sweptPlayerHullBefore,
+        sweptPlayerHullAfter,
+        expectedSweptTouchDamage,
+        scoutSpeed: scoutDefinition?.stats.speed ?? null,
+        scoutContactSample,
+        tankContactSample,
+        tankPlayerKnockbackPass,
+        tankSelfKnockbackPass,
+        tankNoPlayerBodyDamagePass
+      })
+    );
+  }
+
+  private runTestHarnessPlayerDeathShockwave(): void {
+    const harness = window.starvivorsTestHarness;
+
+    if (!harness) {
+      document.body.setAttribute('data-starvivors-player-death-shockwave-harness', 'fail');
+      document.body.setAttribute('data-starvivors-player-death-shockwave-harness-details', 'Harness was not installed.');
+      return;
+    }
+
+    this.startRun();
+    this.clearEnemies();
+    this.clearScrapPickups();
+    this.clearPlayerProjectiles();
+    this.clearEnemyProjectiles();
+
+    const center = getArenaCenter(this.arena);
+    const camera = this.cameras.main;
+    this.player.setPosition(center.x, center.y);
+    this.playerVelocity.set(0, 0);
+    this.cameraLead.set(0, 0);
+    camera.setFollowOffset(0, 0);
+    camera.centerOn(center.x, center.y);
+
+    const placeScout = (offsetX: number, offsetY: number): LiveGameEnemy | undefined => {
+      const enemy = this.spawnLiveEnemy(
+        'scout',
+        wrapCoordinate(center.x + offsetX, this.arena.width),
+        wrapCoordinate(center.y + offsetY, this.arena.height),
+        this.time.now,
+        'chaser'
+      );
+
+      if (!enemy) {
+        return undefined;
+      }
+
+      enemy.velocity.set(0, 0);
+      enemy.knockbackVelocity.set(0, 0);
+      enemy.blackHoleVelocity.set(0, 0);
+      enemy.body.setRotation(Phaser.Math.Angle.Between(center.x, center.y, enemy.body.x, enemy.body.y) + Math.PI / 2);
+      enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+      enemy.wrapMirrorBody.setRotation(enemy.body.rotation);
+      return enemy;
+    };
+
+    const onScreenEnemies = [
+      placeScout(90, 0),
+      placeScout(0, 170),
+      placeScout(-220, 0)
+    ].filter((enemy): enemy is LiveGameEnemy => Boolean(enemy));
+    const offscreenEnemy = placeScout(camera.width / 2 + 240, 0);
+
+    if (onScreenEnemies.length !== 3 || !offscreenEnemy) {
+      document.body.setAttribute('data-starvivors-player-death-shockwave-harness', 'fail');
+      document.body.setAttribute(
+        'data-starvivors-player-death-shockwave-harness-details',
+        JSON.stringify({
+          error: 'Unable to spawn shockwave harness Scouts.',
+          onScreenSpawned: onScreenEnemies.length,
+          offscreenSpawned: Boolean(offscreenEnemy)
+        })
+      );
+      return;
+    }
+
+    const afterSetup = harness.getState();
+    const dead = harness.killPlayer();
+    const afterKill = harness.getState();
+    const shockwaveSpeedPxPerMs = this.getPlayerDeathShockwaveSpeedPxPerMs();
+    const farWidthDelayMs = (camera.width * 0.5) / shockwaveSpeedPxPerMs;
+    const scheduledTargets = this.playerDeathShockwaveTargets.map((target) => ({
+      enemyId: target.enemyId,
+      kind: target.kind,
+      distance: target.distance,
+      triggerAt: target.triggerAt,
+      sequence: target.sequence
+    }));
+
+    for (const target of [...this.playerDeathShockwaveTargets]) {
+      this.updatePlayerDeathShockwave(target.triggerAt);
+    }
+
+    const afterShockwave = harness.getState();
+    const triggeredTargets = this.playerDeathShockwaveTriggeredTargets.map((target) => ({
+      enemyId: target.enemyId,
+      kind: target.kind,
+      distance: target.distance,
+      triggerAt: target.triggerAt,
+      triggeredAt: target.triggeredAt,
+      sequence: target.sequence
+    }));
+    const expectedOnScreenIds = onScreenEnemies.map((enemy) => enemy.id);
+    const scheduledIds = scheduledTargets.map((target) => target.enemyId);
+    const triggeredIds = triggeredTargets.map((target) => target.enemyId);
+    const playerDeathCueCountAfterKill = afterKill.audioRecentCueIds.filter((id) => id === 'player-death').length;
+    const playerDeathCueCountAfterShockwave = afterShockwave.audioRecentCueIds.filter((id) => id === 'player-death').length;
+    const rewardHooksUnchanged =
+      afterShockwave.unlockedRewardHooks.length === afterKill.unlockedRewardHooks.length &&
+      afterShockwave.unlockedRewardHooks.every((hook, index) => hook === afterKill.unlockedRewardHooks[index]) &&
+      afterShockwave.lastRunUnlockedRewards.length === afterKill.lastRunUnlockedRewards.length &&
+      afterShockwave.lastRunUnlockedRewards.every((hook, index) => hook === afterKill.lastRunUnlockedRewards[index]);
+    const noRewardPass =
+      afterShockwave.playerXp === afterKill.playerXp &&
+      afterShockwave.runScrapTotal === afterKill.runScrapTotal &&
+      afterShockwave.runScrapSpent === afterKill.runScrapSpent &&
+      afterShockwave.totalCredits === afterKill.totalCredits &&
+      afterShockwave.lastRunCreditsEarned === afterKill.lastRunCreditsEarned &&
+      afterShockwave.bankedUpgrades === afterKill.bankedUpgrades &&
+      afterShockwave.pendingRareUpgrades === afterKill.pendingRareUpgrades &&
+      afterShockwave.scrapPickups === afterKill.scrapPickups &&
+      rewardHooksUnchanged;
+    const onScreenPass =
+      scheduledTargets.length === expectedOnScreenIds.length &&
+      expectedOnScreenIds.every((id) => scheduledIds.includes(id) && triggeredIds.includes(id)) &&
+      expectedOnScreenIds.every((id) => !this.liveEnemies.some((enemy) => enemy.id === id));
+    const offscreenPass =
+      !scheduledIds.includes(offscreenEnemy.id) &&
+      !triggeredIds.includes(offscreenEnemy.id) &&
+      this.liveEnemies.includes(offscreenEnemy);
+    const distanceOrderPass = triggeredTargets.every(
+      (target, index) => index === 0 || target.distance >= triggeredTargets[index - 1].distance - 0.001
+    );
+    const timingPass = Math.abs(farWidthDelayMs - PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS) < 0.001 &&
+      scheduledTargets.every((target) => target.triggerAt - this.time.now <= PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS + 0.001);
+    const cleanupPass =
+      afterSetup.liveEnemies === 4 &&
+      dead.isPlayerDead &&
+      afterKill.liveEnemies === 4 &&
+      afterShockwave.liveEnemies === 1 &&
+      this.playerDeathShockwaveTargets.length === 0;
+    const audioPass = playerDeathCueCountAfterShockwave === playerDeathCueCountAfterKill;
+    const pass = onScreenPass && offscreenPass && distanceOrderPass && timingPass && noRewardPass && cleanupPass && audioPass;
+
+    document.body.setAttribute('data-starvivors-player-death-shockwave-harness', pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      'data-starvivors-player-death-shockwave-harness-details',
+      JSON.stringify({
+        expectedOnScreenIds,
+        offscreenEnemyId: offscreenEnemy.id,
+        scheduledTargets,
+        triggeredTargets,
+        afterSetup: {
+          liveEnemies: afterSetup.liveEnemies,
+          playerXp: afterSetup.playerXp,
+          runScrapTotal: afterSetup.runScrapTotal,
+          totalCredits: afterSetup.totalCredits,
+          scrapPickups: afterSetup.scrapPickups
+        },
+        afterKill: {
+          liveEnemies: afterKill.liveEnemies,
+          playerXp: afterKill.playerXp,
+          runScrapTotal: afterKill.runScrapTotal,
+          totalCredits: afterKill.totalCredits,
+          scrapPickups: afterKill.scrapPickups,
+          playerDeathCueCount: playerDeathCueCountAfterKill
+        },
+        afterShockwave: {
+          liveEnemies: afterShockwave.liveEnemies,
+          playerXp: afterShockwave.playerXp,
+          runScrapTotal: afterShockwave.runScrapTotal,
+          totalCredits: afterShockwave.totalCredits,
+          scrapPickups: afterShockwave.scrapPickups,
+          playerDeathCueCount: playerDeathCueCountAfterShockwave
+        },
+        onScreenPass,
+        offscreenPass,
+        distanceOrderPass,
+        timingPass,
+        shockwaveSpeedPxPerMs,
+        farWidthDelayMs,
+        noRewardPass,
+        cleanupPass,
+        audioPass,
+        pass
       })
     );
   }
@@ -4977,6 +6139,8 @@ export class GameScene extends Phaser.Scene {
     });
     this.runStartedAt = timingReset.runStartedAt;
     this.nextEnemySpawnAt = timingReset.nextEnemySpawnAt;
+    this.nextScoutMotionHintAt = 0;
+    this.scoutMotionHintCursor = 0;
     this.encounterDirectorState = timingReset.encounterDirectorState;
     this.runUpgradeLevels = createInitialRunUpgradeLevels();
     this.playerHull = this.getPlayerMaxHull();
@@ -5021,6 +6185,7 @@ export class GameScene extends Phaser.Scene {
 
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
     this.sectorSeed = this.getConfiguredSectorSeed();
     this.sectorLayout = generateSectorLayout({
       arena: this.arena,
@@ -5178,6 +6343,9 @@ export class GameScene extends Phaser.Scene {
     this.debugMenuHost?.destroy();
     this.secretControlOverlay?.destroy();
     this.deathShards = clearDeathShardsSystem(this.deathShards);
+    this.playerDeathShockwaveTargets = [];
+    this.playerDeathShockwaveTriggeredTargets = [];
+    this.playerDeathShockwaveOrigin.set(0, 0);
     this.children.removeAll(true);
     this.brightnessOverlay = undefined;
     this.combatFeedback.clear();
@@ -5213,6 +6381,8 @@ export class GameScene extends Phaser.Scene {
     this.hasAutoOpenedDebrief = false;
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
+    this.nextScoutMotionHintAt = 0;
+    this.scoutMotionHintCursor = 0;
     this.basicEnemies = [];
     this.shooterEnemies = [];
     this.tankEnemies = [];
@@ -5220,6 +6390,9 @@ export class GameScene extends Phaser.Scene {
     this.basicAsteroids = [];
     this.enemyWreckageDebris = [];
     this.deathShards = [];
+    this.playerDeathShockwaveTargets = [];
+    this.playerDeathShockwaveTriggeredTargets = [];
+    this.playerDeathShockwaveOrigin.set(0, 0);
     this.scrapPickups = [];
     this.worldEvents = [];
     this.rareEvents = [];
@@ -5241,6 +6414,7 @@ export class GameScene extends Phaser.Scene {
     this.starfield.resetState();
     this.createStarfield();
     this.player = this.createPlayerShip(center.x, center.y);
+    this.capturePreviousPlayerContactPosition();
     this.sectorSeed = this.getConfiguredSectorSeed();
     this.sectorLayout = generateSectorLayout({
       arena: this.arena,
@@ -6215,6 +7389,7 @@ export class GameScene extends Phaser.Scene {
 
   private createBackgroundTextures(): void {
     this.starfield.createTextures();
+    createEffectTextures(this);
     createForgeRegistryTextures(this);
     createPlayerShipMonochromeTextures(this, shipRegistry);
     createMonochromeAsteroidTextures(this);
@@ -6360,8 +7535,15 @@ export class GameScene extends Phaser.Scene {
     definition: WorldEventDefinition,
     isMirror: boolean
   ): Phaser.GameObjects.Container {
-    const dangerRing = this.add.circle(0, 0, definition.dangerRadius, 0xff5964, isMirror ? 0 : 0.025);
-    dangerRing.setStrokeStyle(2, 0xff5964, isMirror ? 0.18 : 0.22);
+    const dangerRing = createEffectRingImage({
+      scene: this,
+      x: 0,
+      y: 0,
+      radius: definition.dangerRadius,
+      color: 0xff5964,
+      alpha: isMirror ? 0.18 : 0.22,
+      depth: 0
+    });
     const hullGlow = this.add.ellipse(0, 0, definition.hitRadius * 2.6, definition.hitRadius * 1.44, 0xff5964, 0.12);
     const hull = this.add.ellipse(0, 0, definition.hitRadius * 2.1, definition.hitRadius * 1.08, 0x182436, 0.96);
     hull.setStrokeStyle(3, 0xffc857, 0.86);
@@ -6404,10 +7586,24 @@ export class GameScene extends Phaser.Scene {
     }
 
     const objective = this.missionRuntime.objective;
-    const outer = this.add.circle(0, 0, objective.radius, 0xffc857, 0.05);
-    outer.setStrokeStyle(2, 0xffc857, 0.62);
-    const ring = this.add.circle(0, 0, objective.radius * 0.54, 0x000000, 0);
-    ring.setStrokeStyle(2, 0xf2fbff, 0.84);
+    const outer = createEffectRingImage({
+      scene: this,
+      x: 0,
+      y: 0,
+      radius: objective.radius,
+      color: 0xffc857,
+      alpha: 0.62,
+      depth: 0
+    });
+    const ring = createEffectRingImage({
+      scene: this,
+      x: 0,
+      y: 0,
+      radius: objective.radius * 0.54,
+      color: 0xf2fbff,
+      alpha: 0.84,
+      depth: 0
+    });
     const core = this.add.circle(0, 0, 7, 0xffc857, 0.9);
     const label = this.add
       .text(0, -objective.radius - 28, this.missionRuntime.definition.shortName.toUpperCase(), {
@@ -6442,14 +7638,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private createInitialLiveEnemies(center: Phaser.Math.Vector2): void {
-    const spawnDistance = Math.max(this.scale.width, this.scale.height) * 0.78;
-
-    for (let index = 0; index < BASIC_ENEMY_COUNT; index += 1) {
-      const angle = (Math.PI * 2 * index) / BASIC_ENEMY_COUNT + Math.PI / 8;
-      const x = wrapCoordinate(center.x + Math.cos(angle) * spawnDistance, this.arena.width);
-      const y = wrapCoordinate(center.y + Math.sin(angle) * spawnDistance, this.arena.height);
-      this.spawnLiveEnemy('scout', x, y, this.time.now, 'chaser');
-    }
+    void center;
   }
 
   private createWorldSquads(center: Phaser.Math.Vector2): void {
@@ -6603,7 +7792,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnRareEventSquads(event: RareEventInstance, time: number): void {
-    event.squadSpawned = true;
+    let spawnedAny = false;
 
     for (let index = 0; index < event.definition.squadIds.length; index += 1) {
       const angle = (Math.PI * 2 * index) / Math.max(1, event.definition.squadIds.length) + Math.PI / 7;
@@ -6612,7 +7801,10 @@ export class GameScene extends Phaser.Scene {
       const y = wrapCoordinate(event.y + Math.sin(angle) * distance, this.arena.height);
       const spawned = this.spawnLiveEnemySquad(event.definition.squadIds[index], x, y, time, event.id);
       event.activeEnemyIds.push(...spawned.map((enemy) => enemy.id));
+      spawnedAny ||= spawned.length > 0;
     }
+
+    event.squadSpawned = spawnedAny;
   }
 
   private pruneRareEventActiveEnemies(event: RareEventInstance): void {
@@ -6750,7 +7942,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnWorldEventGuards(event: WorldEventInstance, time: number): void {
-    event.guardSquadsSpawned = true;
+    let spawnedAny = false;
 
     for (let index = 0; index < event.definition.guardSquadIds.length; index += 1) {
       const angle = (Math.PI * 2 * index) / Math.max(1, event.definition.guardSquadIds.length) + Math.PI / 5;
@@ -6758,8 +7950,10 @@ export class GameScene extends Phaser.Scene {
       const x = wrapCoordinate(event.x + Math.cos(angle) * distance, this.arena.width);
       const y = wrapCoordinate(event.y + Math.sin(angle) * distance, this.arena.height);
 
-      this.spawnLiveEnemySquad(event.definition.guardSquadIds[index], x, y, time);
+      spawnedAny ||= this.spawnLiveEnemySquad(event.definition.guardSquadIds[index], x, y, time).length > 0;
     }
+
+    event.guardSquadsSpawned = spawnedAny;
   }
 
   private updateInactiveWorldSquad(squad: WorldSquadInstance, deltaSeconds: number): void {
@@ -6795,9 +7989,12 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const beforeIds = new Set(this.liveEnemies.map((enemy) => enemy.id));
-    this.spawnLiveEnemySquad(squad.squadId, squad.x, squad.y, time, squad.id);
-    squad.activeEnemyIds = this.liveEnemies.filter((enemy) => !beforeIds.has(enemy.id)).map((enemy) => enemy.id);
+    const spawned = this.spawnLiveEnemySquad(squad.squadId, squad.x, squad.y, time, squad.id);
+    if (spawned.length <= 0) {
+      return;
+    }
+
+    squad.activeEnemyIds = spawned.map((enemy) => enemy.id);
     squad.state = 'pursue';
     squad.stateUntil = 0;
   }
@@ -7055,29 +8252,24 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    this.updateEnemyEncounterDirector(time);
-
     if (time < this.nextEnemySpawnAt) {
       return;
     }
 
-    const activeEnemyCount = this.getActiveEnemyCount();
-    const maxActiveEnemies = this.getEnemySpawnMaxActiveEnemies(time);
+    const ramp = getScoutPhaseSpawnRamp({
+      elapsedMs: this.getSurvivalElapsedMs(time),
+      activeEnemyCount: this.getActiveEnemyCount()
+    });
 
-    if (activeEnemyCount < maxActiveEnemies) {
-      const spawnCount =
-        this.getEnemySpawnDifficultyStep(time) >= ENEMY_SPAWN_DOUBLE_SPAWN_STEP &&
-        activeEnemyCount + 1 < maxActiveEnemies &&
-        Phaser.Math.FloatBetween(0, 1) < 0.25
-          ? 2
-          : 1;
-
-      for (let i = 0; i < spawnCount && this.getActiveEnemyCount() < maxActiveEnemies; i += 1) {
-        this.spawnDirectedEnemy(this.chooseDirectedEnemyType(time), time);
-      }
+    if (ramp.allowedSpawnCount <= 0) {
+      return;
     }
 
-    this.nextEnemySpawnAt = time + this.getEnemySpawnIntervalMs(time);
+    for (let i = 0; i < ramp.allowedSpawnCount; i += 1) {
+      this.spawnDirectedEnemy('chaser', time);
+    }
+
+    this.nextEnemySpawnAt = getNextScoutPhaseSpawnAt(this.runStartedAt, time);
   }
 
   private updateEnemyEncounterDirector(time: number): void {
@@ -7106,13 +8298,30 @@ export class GameScene extends Phaser.Scene {
     this.spawnLiveEnemy(this.getLiveEnemyDefinitionIdForSpawnType(enemyType), x, y, time, enemyType);
   }
 
+  private getActiveValidationEnemyDefinitionId(): string {
+    return this.activeValidationEnemyDefinitionId;
+  }
+
+  private getActiveValidationEnemyModeLabel(): string {
+    return this.activeValidationEnemyModeLabel;
+  }
+
+  private setActiveValidationEnemyMode(definitionId: string, modeLabel: string): void {
+    this.activeValidationEnemyDefinitionId = definitionId;
+    this.activeValidationEnemyModeLabel = modeLabel;
+  }
+
   private spawnLiveEnemy(
     definitionId: string,
     x: number,
     y: number,
     time: number,
     legacySpawnType: EnemySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId)
-  ): LiveGameEnemy {
+  ): LiveGameEnemy | undefined {
+    if (!this.canSpawnScoutPhaseEnemy()) {
+      return undefined;
+    }
+
     const scaling = this.getEnemyTimeScaling(time);
     const enemy = spawnLiveEnemySystem({
       scene: this,
@@ -7126,7 +8335,40 @@ export class GameScene extends Phaser.Scene {
     });
 
     enemy.damageMultiplier = scaling.damageMultiplier;
-    enemy.stateData.legacySpawnType = legacySpawnType;
+    enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId);
+    enemy.stateData.requestedDefinitionId = definitionId;
+    enemy.stateData.requestedLegacySpawnType = legacySpawnType;
+    enemy.stateData.spawnMode = this.getActiveValidationEnemyModeLabel();
+    this.liveEnemies.push(enemy);
+    return enemy;
+  }
+
+  private spawnValidationLiveEnemy(
+    definitionId: string,
+    x: number,
+    y: number,
+    time: number,
+    spawnMode: string
+  ): LiveGameEnemy | undefined {
+    if (!this.canSpawnScoutPhaseEnemy()) {
+      return undefined;
+    }
+
+    const scaling = this.getEnemyTimeScaling(time);
+    const enemy = spawnLiveEnemySystem({
+      scene: this,
+      arena: this.arena,
+      definitionId,
+      x,
+      y,
+      time,
+      hpMultiplier: scaling.hpMultiplier,
+      showDebugLabel: false
+    });
+
+    enemy.damageMultiplier = scaling.damageMultiplier;
+    enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId);
+    enemy.stateData.spawnMode = spawnMode;
     this.liveEnemies.push(enemy);
     return enemy;
   }
@@ -7138,42 +8380,47 @@ export class GameScene extends Phaser.Scene {
     time: number,
     worldSquadId?: string
   ): LiveGameEnemy[] {
-    const scaling = this.getEnemyTimeScaling(time);
-    const squad = ENEMY_LAB_SQUADS.find((candidate) => candidate.id === squadId);
-    const spawned = spawnLiveEnemySquadSystem({
-      scene: this,
-      arena: this.arena,
-      squadId,
-      centerX,
-      centerY,
-      time,
-      hpMultiplier: scaling.hpMultiplier,
-      showDebugLabel: false
-    });
+    const squad = ENEMY_SQUADS.find((candidate) => candidate.id === squadId);
+    const resolvedSquad = squad ?? ENEMY_SQUADS[0];
+    if (!resolvedSquad) {
+      return [];
+    }
 
-    for (const enemy of spawned) {
-      enemy.damageMultiplier = scaling.damageMultiplier;
-      enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(enemy.definitionId);
-      enemy.stateData.squadId = squad?.id ?? squadId;
+    const requestedCount = resolvedSquad.entries.reduce((sum, entry) => sum + entry.count, 0);
+    const spawnCount = Math.min(requestedCount, this.getScoutPhaseSpawnCapacity());
+    const validationDefinitionId = this.getActiveValidationEnemyDefinitionId();
+    const spawned: LiveGameEnemy[] = [];
+
+    for (let index = 0; index < spawnCount; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, requestedCount);
+      const ring = resolvedSquad.radius * (0.38 + 0.62 * ((index % 3) / 2));
+      const enemy = this.spawnLiveEnemy(
+        validationDefinitionId,
+        centerX + Math.cos(angle) * ring,
+        centerY + Math.sin(angle) * ring,
+        time,
+        this.getLegacySpawnTypeForLiveDefinition(validationDefinitionId)
+      );
+
+      if (!enemy) {
+        break;
+      }
+
+      enemy.stateData.squadId = resolvedSquad.id;
+      enemy.stateData.requestedSquadId = squad?.id ?? squadId;
       if (worldSquadId) {
         enemy.stateData.worldSquadId = worldSquadId;
       }
+
+      spawned.push(enemy);
     }
 
-    this.liveEnemies.push(...spawned);
     return spawned;
   }
 
   private getLiveEnemyDefinitionIdForSpawnType(enemyType: EnemySpawnType): string {
-    if (enemyType === 'shooter') {
-      return 'diamond-gunner';
-    }
-
-    if (enemyType === 'tank') {
-      return 'hex-tank';
-    }
-
-    return 'scout';
+    void enemyType;
+    return this.getActiveValidationEnemyDefinitionId();
   }
 
   private getLegacySpawnTypeForLiveDefinition(definitionId: string): EnemySpawnType {
@@ -7233,37 +8480,38 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemySpawnWeights(time: number): Record<EnemySpawnType, number> {
-    const step = Math.min(this.getEnemySpawnDifficultyStep(time), ENEMY_SPAWN_WEIGHTS_BY_STEP.length - 1);
-
-    return ENEMY_SPAWN_WEIGHTS_BY_STEP[step];
+    void time;
+    return { chaser: 100, shooter: 0, tank: 0 };
   }
 
   private getEnemySpawnDifficultyStep(time: number): number {
-    return Math.floor(this.getSurvivalElapsedMs(time) / ENEMY_SPAWN_ESCALATION_INTERVAL_MS);
+    return getScoutPhaseWaveIndex(this.getSurvivalElapsedMs(time));
   }
 
   private getEnemySpawnIntervalMs(time: number): number {
-    const step = this.getEnemySpawnDifficultyStep(time);
-
-    return Math.max(ENEMY_SPAWN_MIN_INTERVAL_MS, ENEMY_SPAWN_INTERVAL_MS - step * 420);
+    void time;
+    return SCOUT_PHASE_SPAWN_INTERVAL_MS;
   }
 
   private getEnemySpawnMaxActiveEnemies(time: number): number {
-    return Math.min(
-      ENEMY_SPAWN_MAX_ACTIVE_HARD_CAP,
-      ENEMY_SPAWN_MAX_ACTIVE_INITIAL + this.getEnemySpawnDifficultyStep(time) * ENEMY_SPAWN_MAX_ACTIVE_PER_STEP
-    );
+    void time;
+    return SCOUT_PHASE_MAX_ACTIVE_ENEMIES;
   }
 
   private getEnemyEncounterMaxActiveEnemies(time: number): number {
-    return Math.min(
-      ENEMY_SWARM_OVERFLOW_HARD_CAP,
-      Math.max(this.getEnemySpawnMaxActiveEnemies(time), 10 + this.getEnemySpawnDifficultyStep(time) * 2)
-    );
+    return this.getEnemySpawnMaxActiveEnemies(time);
   }
 
   private getActiveEnemyCount(): number {
     return this.liveEnemies.length;
+  }
+
+  private getScoutPhaseSpawnCapacity(): number {
+    return Math.max(0, SCOUT_PHASE_MAX_ACTIVE_ENEMIES - this.getActiveEnemyCount());
+  }
+
+  private canSpawnScoutPhaseEnemy(): boolean {
+    return this.getScoutPhaseSpawnCapacity() > 0;
   }
 
   private spawnDebugEnemy(enemyType: DebugEnemyType): void {
@@ -7561,13 +8809,27 @@ export class GameScene extends Phaser.Scene {
   private createSectorSignalBeaconBody(
     region: SectorRegion,
     isMirror: boolean
-  ): { body: Phaser.GameObjects.Container; ring: Phaser.GameObjects.Arc } {
+  ): { body: Phaser.GameObjects.Container; ring: Phaser.GameObjects.Image } {
     const color = getSectorRegionColor(region.type);
     const range = Phaser.Math.Clamp(region.radius * 0.18, 42, 86);
-    const outer = this.add.circle(0, 0, range, color, isMirror ? 0.035 : 0.055);
-    outer.setStrokeStyle(2, color, isMirror ? 0.36 : 0.58);
-    const ring = this.add.circle(0, 0, range * 0.55, 0x000000, 0);
-    ring.setStrokeStyle(2, region.type === 'enemy-territory' ? 0xff5964 : 0xf2fbff, isMirror ? 0.48 : 0.78);
+    const outer = createEffectRingImage({
+      scene: this,
+      x: 0,
+      y: 0,
+      radius: range,
+      color,
+      alpha: isMirror ? 0.36 : 0.58,
+      depth: 0
+    });
+    const ring = createEffectRingImage({
+      scene: this,
+      x: 0,
+      y: 0,
+      radius: range * 0.55,
+      color: region.type === 'enemy-territory' ? 0xff5964 : 0xf2fbff,
+      alpha: isMirror ? 0.48 : 0.78,
+      depth: 0
+    });
     const core = this.add.circle(0, 0, 6, color, isMirror ? 0.56 : 0.9);
     const body = this.add.container(region.x, region.y, [outer, ring, core]);
     body.setDepth(6);
@@ -8004,7 +9266,7 @@ export class GameScene extends Phaser.Scene {
     style: DeathShardStyle = 'ship'
   ): void {
     this.emitDeathShards(
-      getEnemyLabTextureKey(enemy.definitionId),
+      getEnemyTextureKey(enemy.definitionId),
       enemy.body.x,
       enemy.body.y,
       enemy.definition.visual.size,
@@ -8694,6 +9956,14 @@ export class GameScene extends Phaser.Scene {
     const driftSpeed = Phaser.Math.FloatBetween(tierConfig.minSpeed, tierConfig.maxSpeed);
 
     return new Phaser.Math.Vector2(Math.cos(driftAngle) * driftSpeed, Math.sin(driftAngle) * driftSpeed);
+  }
+
+  private capturePreviousPlayerContactPosition(): void {
+    if (!this.player?.scene) {
+      return;
+    }
+
+    this.previousPlayerContactPosition.set(this.player.x, this.player.y);
   }
 
   private updatePlayerMovement(time: number, deltaSeconds: number): void {
@@ -10842,6 +12112,8 @@ export class GameScene extends Phaser.Scene {
       arena: this.arena,
       player: this.player,
       playerHitRadius: this.getPlayerCollisionRadius(),
+      previousPlayerX: this.previousPlayerContactPosition.x,
+      previousPlayerY: this.previousPlayerContactPosition.y,
       enemies: this.liveEnemies,
       getRammingShieldCircleCollision: (targetX, targetY, targetRadius) =>
         this.getRammingShieldCircleCollision(targetX, targetY, targetRadius)
@@ -10853,6 +12125,8 @@ export class GameScene extends Phaser.Scene {
       arena: this.arena,
       player: this.player,
       playerHitRadius: this.getPlayerCollisionRadius(),
+      previousPlayerX: this.previousPlayerContactPosition.x,
+      previousPlayerY: this.previousPlayerContactPosition.y,
       asteroids: this.basicAsteroids,
       getAsteroidCollisionRadius: (asteroid) => this.getAsteroidCollisionRadius(asteroid),
       getAsteroidContactDamage: (asteroid) => ASTEROID_CONTACT_DAMAGE_BY_TIER[asteroid.tier],
@@ -10866,6 +12140,8 @@ export class GameScene extends Phaser.Scene {
       arena: this.arena,
       player: this.player,
       playerHitRadius: this.getPlayerCollisionRadius(),
+      previousPlayerX: this.previousPlayerContactPosition.x,
+      previousPlayerY: this.previousPlayerContactPosition.y,
       debris: this.enemyWreckageDebris,
       getDebrisCollisionRadius: (debris) => this.getDebrisCollisionRadius(debris),
       getRammingShieldCircleCollision: (targetX, targetY, targetRadius) =>
@@ -10931,20 +12207,18 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const impactDamage = this.getPlayerEnemyImpactDamage(contact);
+    const touchDamage = this.getPlayerEnemyTouchDamage(contact);
     this.applyPlayerEnemyKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.enemy.body, time, () => this.damageRammedEnemy(contact.enemy, time));
-      this.blockDamageWithRammingShield(impactDamage, time, contact.enemy.body.x, contact.enemy.body.y);
+      this.blockDamageWithRammingShield(touchDamage, time, contact.enemy.body.x, contact.enemy.body.y);
       return;
     }
 
-    this.applyPlayerBodyImpactDamageToEnemy(contact.enemy, contact.normal, time);
-
-    if (!this.debugPlayerCollisionDamageImmune && impactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (!this.debugPlayerCollisionDamageImmune && touchDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'enemy' });
+      this.damagePlayer(touchDamage, time, impact.x, impact.y, { source: 'enemy' });
       this.applyLiveEnemyContactStatus(contact.enemy, time);
     }
   }
@@ -11094,20 +12368,20 @@ export class GameScene extends Phaser.Scene {
   }
 
   private resolvePlayerDebrisContact(contact: PlayerDebrisContact, time: number): void {
-    const impactDamage = this.getPlayerDebrisImpactDamage(contact);
+    const touchDamage = this.getPlayerDebrisTouchDamage(contact);
     this.applyPlayerDebrisKnockback(contact, time);
     if (contact.hitRammingShield) {
       this.applyRammingShieldImpact(contact.debris.body, time, () => this.damageRammedDebris(contact.debris, time));
-      this.blockDamageWithRammingShield(impactDamage, time, contact.debris.body.x, contact.debris.body.y);
+      this.blockDamageWithRammingShield(touchDamage, time, contact.debris.body.x, contact.debris.body.y);
       return;
     }
 
     this.applyPlayerBodyImpactDamageToDebris(contact.debris, contact.normal, time);
 
-    if (!this.debugPlayerCollisionDamageImmune && impactDamage > 0 && time >= this.playerInvulnerableUntil) {
+    if (!this.debugPlayerCollisionDamageImmune && touchDamage > 0 && time >= this.playerInvulnerableUntil) {
       const impact = this.getPlayerContactImpactPoint(contact.normal);
       this.emitShipCollisionImpactExplosion(impact.x, impact.y);
-      this.damagePlayer(impactDamage, time, impact.x, impact.y, { source: 'debris' });
+      this.damagePlayer(touchDamage, time, impact.x, impact.y, { source: 'debris' });
     }
   }
 
@@ -11122,31 +12396,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getPlayerEnemyImpactDamage(contact: PlayerEnemyContact): number {
-    return this.getPlayerContactImpactDamage('enemy', this.getEnemyContactVelocity(contact.enemy), contact.normal);
+  private getPlayerEnemyTouchDamage(contact: PlayerEnemyContact): number {
+    return Math.max(0, contact.damage);
   }
 
   private getPlayerAsteroidContactDamage(contact: PlayerAsteroidContact): number {
     return this.rollSourceDamage(contact.damage, ASTEROID_IMPACT_DAMAGE_VARIANCE);
   }
 
-  private getPlayerDebrisImpactDamage(contact: PlayerDebrisContact): number {
-    return this.getPlayerContactImpactDamage('debris', contact.debris.velocity, contact.normal);
-  }
-
-  private getPlayerContactImpactDamage(
-    source: DebugImpactSourceType,
-    targetVelocity: Phaser.Math.Vector2,
-    normal: Phaser.Math.Vector2
-  ): number {
-    const relativeVelocity = getRelativeVelocity(this.playerVelocity, targetVelocity);
-    const closingSpeed = getClosingSpeed(relativeVelocity, normal);
-
-    return this.calculatePhysicalImpactDamage({
-      source,
-      baseDamage: 0,
-      impactSpeed: closingSpeed
-    });
+  private getPlayerDebrisTouchDamage(contact: PlayerDebrisContact): number {
+    return Math.max(0, contact.damage);
   }
 
   private calculatePhysicalImpactDamage(input: {
@@ -11188,22 +12447,6 @@ export class GameScene extends Phaser.Scene {
 
   private markPlayerBodyImpactDamageApplied(target: object, time: number): void {
     markCooldown(this.playerBodyImpactCooldowns, target, time, PLAYER_CONTACT_IMPULSE_COOLDOWN_MS);
-  }
-
-  private applyPlayerBodyImpactDamageToEnemy(enemy: AnyGameEnemy, normal: Phaser.Math.Vector2, time: number): void {
-    if (!this.canApplyPlayerBodyImpactDamage(enemy.body, time)) {
-      return;
-    }
-
-    const damage = this.getPlayerBodyImpactDamage(this.getEnemyTotalVelocity(enemy), normal);
-    this.markPlayerBodyImpactDamageApplied(enemy.body, time);
-    if (damage <= 0) {
-      return;
-    }
-
-    this.damageEnemy(enemy, damage, 'player', true);
-    this.emitShipCollisionImpactExplosion(enemy.body.x, enemy.body.y);
-    this.resolveEnemyDestroyedByPhysicalImpact(enemy);
   }
 
   private applyPlayerBodyImpactDamageToDebris(debris: EnemyWreckageDebris, normal: Phaser.Math.Vector2, time: number): void {
@@ -11666,13 +12909,14 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const forward = this.getForwardDirection(this.player.rotation);
     enemy.stateData.contactRecoilUntil = Math.max(
       typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0,
       time + 1500
     );
-    enemy.stateData.contactRecoilNormalX = forward.x;
-    enemy.stateData.contactRecoilNormalY = forward.y;
+    if (enemy.state !== 'contact-recoil') {
+      enemy.stateData.contactRecoilResumeState = enemy.state;
+      enemy.stateData.contactRecoilResumeStartedAt = enemy.stateStartedAt;
+    }
     enemy.state = 'contact-recoil';
     enemy.stateStartedAt = time;
   }
@@ -11835,10 +13079,15 @@ export class GameScene extends Phaser.Scene {
       contact.penetration * PLAYER_ENEMY_CONTACT_SEPARATION_PERCENT,
       PLAYER_ENEMY_CONTACT_MAX_SEPARATION
     );
+    const preserveCommittedCharge = this.isCommittedLiveEnemyCharge(contact.enemy);
+    const contactKnockbackMultiplier = this.getEnemyContactKnockbackMultiplier(contact.enemy);
+    const contactSelfImpulseMultiplier = this.getEnemyContactSelfImpulseMultiplier(contact.enemy);
 
     this.nudgeWrappedObject(this.player, normal, separation * 0.5);
-    this.nudgeWrappedObject(contact.enemy.body, normal, -separation * 0.5);
-    this.markEnemyContactRecoil(contact.enemy, normal, time);
+    if (!preserveCommittedCharge) {
+      this.nudgeWrappedObject(contact.enemy.body, normal, -separation * 0.5);
+      this.markEnemyContactRecoil(contact.enemy, normal, time);
+    }
 
     if (time < this.nextPlayerContactImpulseAt) {
       return;
@@ -11852,23 +13101,39 @@ export class GameScene extends Phaser.Scene {
       maxImpulse: PLAYER_ENEMY_CONTACT_MAX_IMPULSE,
       relativeSpeedScale: PLAYER_ENEMY_CONTACT_RELATIVE_SPEED_SCALE,
       secondMaxSpeed: this.getGlobalMaxSpeed(),
+      firstImpulseScale: contactKnockbackMultiplier,
+      secondImpulseScale: preserveCommittedCharge ? 0 : contactSelfImpulseMultiplier,
       restitution: ENEMY_CONTACT_RESTITUTION_SHARE,
       relativeVelocity: getRelativeVelocity(this.playerVelocity, this.getEnemyContactVelocity(contact.enemy))
     });
     this.nextPlayerContactImpulseAt = time + PLAYER_ENEMY_CONTACT_IMPULSE_COOLDOWN_MS;
   }
 
-  private markEnemyContactRecoil(enemy: AnyGameEnemy, normal: Phaser.Math.Vector2, time: number): void {
+  private getEnemyContactKnockbackMultiplier(enemy: AnyGameEnemy): number {
+    return this.isLiveEnemy(enemy) ? resolveEnemyContactKnockbackMultiplier(enemy.definition) : 1;
+  }
+
+  private getEnemyContactSelfImpulseMultiplier(enemy: AnyGameEnemy): number {
+    return this.isLiveEnemy(enemy) ? resolveEnemyContactSelfImpulseMultiplier(enemy.definition) : 1;
+  }
+
+  private isCommittedLiveEnemyCharge(enemy: AnyGameEnemy): enemy is LiveGameEnemy {
+    return this.isLiveEnemy(enemy) && enemy.definition.behavior.id === 'chargeDash' && enemy.state === 'charging';
+  }
+
+  private markEnemyContactRecoil(enemy: AnyGameEnemy, _normal: Phaser.Math.Vector2, time: number): void {
     if (!this.isLiveEnemy(enemy)) {
       return;
     }
 
+    if (enemy.state !== 'contact-recoil') {
+      enemy.stateData.contactRecoilResumeState = enemy.state;
+      enemy.stateData.contactRecoilResumeStartedAt = enemy.stateStartedAt;
+    }
     enemy.stateData.contactRecoilUntil = Math.max(
       typeof enemy.stateData.contactRecoilUntil === 'number' ? enemy.stateData.contactRecoilUntil : 0,
       time + ENEMY_CONTACT_RECOIL_MS
     );
-    enemy.stateData.contactRecoilNormalX = normal.x;
-    enemy.stateData.contactRecoilNormalY = normal.y;
     enemy.state = 'contact-recoil';
     enemy.stateStartedAt = time;
   }
@@ -12058,21 +13323,33 @@ export class GameScene extends Phaser.Scene {
     this.player.setVisible(Math.floor(time / 85) % 2 === 0);
   }
 
-  private emitPlayerDeathShards(): void {
-    const ship = this.getSelectedShipDefinition();
-    const position = this.getNearestWrappedRenderPosition(this.player.x, this.player.y);
-    const flash = this.add.circle(position.x, position.y, 34, 0xfff2d2, this.getFlashAlpha(0.54, true));
-    const ring = this.add.circle(position.x, position.y, 42, 0xffc857, 0);
+  private emitPlayerStyleDeathFeedback(
+    textureKey: string,
+    x: number,
+    y: number,
+    displaySize: number,
+    rotation: number,
+    inheritedVelocity: Phaser.Math.Vector2
+  ): void {
+    const position = this.getNearestWrappedRenderPosition(x, y);
+    const flash = this.add.circle(position.x, position.y, 38, 0xfff2d2, this.getFlashAlpha(0.62, true));
+    const ring = createEffectRingImage({
+      scene: this,
+      x: position.x,
+      y: position.y,
+      radius: 46,
+      color: 0xffc857,
+      alpha: 0.96,
+      depth: 13
+    });
 
     flash.setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
-    ring.setStrokeStyle(3, 0xffc857, 0.85);
-    ring.setDepth(13).setBlendMode(Phaser.BlendModes.ADD);
 
     this.tweens.add({
       targets: flash,
       alpha: 0,
-      scale: 2.2,
-      duration: 420,
+      scale: 2.65,
+      duration: PLAYER_DEATH_FLASH_MS,
       ease: 'Quad.easeOut',
       onComplete: () => flash.destroy()
     });
@@ -12080,21 +13357,187 @@ export class GameScene extends Phaser.Scene {
     this.tweens.add({
       targets: ring,
       alpha: 0,
-      scale: 3.2,
-      duration: 760,
-      ease: 'Quad.easeOut',
+      scale: 4.4,
+      duration: PLAYER_DEATH_RING_MS,
+      ease: 'Cubic.easeOut',
       onComplete: () => ring.destroy()
     });
 
     this.emitDeathShards(
+      textureKey,
+      x,
+      y,
+      displaySize,
+      rotation,
+      inheritedVelocity,
+      'player'
+    );
+  }
+
+  private emitPlayerDeathShards(): void {
+    const ship = this.getSelectedShipDefinition();
+    this.emitPlayerStyleDeathFeedback(
       this.getShipTextureKey(ship),
       this.player.x,
       this.player.y,
       resolveShipObjectSizeProfile(ship).visualDiameterPx,
       this.player.rotation + ship.visualRotation,
-      this.playerVelocity,
-      'player'
+      this.playerVelocity
     );
+  }
+
+  private schedulePlayerDeathShockwave(time: number): void {
+    this.playerDeathShockwaveTargets = [];
+    this.playerDeathShockwaveTriggeredTargets = [];
+    this.playerDeathShockwaveOrigin.set(this.player.x, this.player.y);
+    const shockwaveSpeedPxPerMs = this.getPlayerDeathShockwaveSpeedPxPerMs();
+
+    let sequence = 0;
+    const addTarget = (kind: PlayerDeathShockwaveTargetKind, enemy: AnyGameEnemy, enemyType: EnemySpawnType): void => {
+      if (!enemy.body.scene) {
+        return;
+      }
+
+      const renderPosition = this.getNearestWrappedRenderPosition(enemy.body.x, enemy.body.y);
+      if (!this.isCircleInCameraView(renderPosition.x, renderPosition.y, this.getEnemyHitRadius(enemy))) {
+        return;
+      }
+
+      const distance = this.getWrappedDirection(
+        this.playerDeathShockwaveOrigin.x,
+        this.playerDeathShockwaveOrigin.y,
+        enemy.body.x,
+        enemy.body.y
+      ).length();
+      const triggerAt = time + Phaser.Math.Clamp(
+        distance / shockwaveSpeedPxPerMs,
+        0,
+        PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS
+      );
+      const targetSequence = sequence;
+      sequence += 1;
+
+      this.playerDeathShockwaveTargets.push({
+        kind,
+        enemy,
+        enemyId: kind === 'live' ? (enemy as LiveGameEnemy).id : `${enemyType}-${targetSequence}`,
+        enemyType,
+        triggerAt,
+        distance,
+        sequence: targetSequence
+      });
+    };
+
+    for (const enemy of this.liveEnemies) {
+      addTarget('live', enemy, this.getLiveEnemyLegacySpawnType(enemy));
+    }
+
+    for (const enemy of this.basicEnemies) {
+      addTarget('legacy', enemy, 'chaser');
+    }
+
+    for (const enemy of this.shooterEnemies) {
+      addTarget('legacy', enemy, 'shooter');
+    }
+
+    for (const enemy of this.tankEnemies) {
+      addTarget('legacy', enemy, 'tank');
+    }
+
+    this.playerDeathShockwaveTargets.sort((a, b) => a.triggerAt - b.triggerAt || a.sequence - b.sequence);
+  }
+
+  private getPlayerDeathShockwaveSpeedPxPerMs(): number {
+    return Math.max(1, this.cameras.main.width * 0.5) / PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS;
+  }
+
+  private updatePlayerDeathShockwave(time: number): void {
+    while (this.playerDeathShockwaveTargets.length > 0 && this.playerDeathShockwaveTargets[0].triggerAt <= time) {
+      const target = this.playerDeathShockwaveTargets.shift();
+      if (!target || !this.destroyPlayerDeathShockwaveTarget(target)) {
+        continue;
+      }
+
+      this.playerDeathShockwaveTriggeredTargets.push({
+        kind: target.kind,
+        enemyId: target.enemyId,
+        enemyType: target.enemyType,
+        triggeredAt: time,
+        triggerAt: target.triggerAt,
+        distance: target.distance,
+        sequence: target.sequence
+      });
+    }
+  }
+
+  private destroyPlayerDeathShockwaveTarget(target: PlayerDeathShockwaveTarget): boolean {
+    if (target.kind === 'live') {
+      return this.destroyLiveEnemyForPlayerDeathShockwave(target.enemy as LiveGameEnemy);
+    }
+
+    return this.destroyLegacyEnemyForPlayerDeathShockwave(target.enemy as BasicEnemy | ShooterEnemy | TankEnemy);
+  }
+
+  private destroyLiveEnemyForPlayerDeathShockwave(enemy: LiveGameEnemy): boolean {
+    const index = this.liveEnemies.indexOf(enemy);
+    if (index < 0 || !enemy.body.scene) {
+      return false;
+    }
+
+    this.emitPlayerStyleDeathFeedback(
+      getEnemyTextureKey(enemy.definitionId),
+      enemy.body.x,
+      enemy.body.y,
+      enemy.definition.visual.size,
+      enemy.body.rotation,
+      this.getLiveEnemyTotalVelocity(enemy)
+    );
+    destroyLiveEnemySystem(enemy);
+    this.liveEnemies.splice(index, 1);
+    return true;
+  }
+
+  private destroyLegacyEnemyForPlayerDeathShockwave(enemy: BasicEnemy | ShooterEnemy | TankEnemy): boolean {
+    const basicIndex = this.basicEnemies.indexOf(enemy as BasicEnemy);
+    if (basicIndex >= 0) {
+      this.destroyLegacyEnemyForPlayerDeathShockwaveAt(this.basicEnemies, basicIndex, 'chaser');
+      return true;
+    }
+
+    const shooterIndex = this.shooterEnemies.indexOf(enemy as ShooterEnemy);
+    if (shooterIndex >= 0) {
+      this.destroyLegacyEnemyForPlayerDeathShockwaveAt(this.shooterEnemies, shooterIndex, 'shooter');
+      return true;
+    }
+
+    const tankIndex = this.tankEnemies.indexOf(enemy as TankEnemy);
+    if (tankIndex >= 0) {
+      this.destroyLegacyEnemyForPlayerDeathShockwaveAt(this.tankEnemies, tankIndex, 'tank');
+      return true;
+    }
+
+    return false;
+  }
+
+  private destroyLegacyEnemyForPlayerDeathShockwaveAt<T extends BasicEnemy | ShooterEnemy | TankEnemy>(
+    enemies: T[],
+    index: number,
+    enemyType: EnemySpawnType
+  ): void {
+    const enemy = enemies[index];
+    const visual = this.getEnemyDeathShardVisual(enemyType);
+
+    this.emitPlayerStyleDeathFeedback(
+      visual.textureKey,
+      enemy.body.x,
+      enemy.body.y,
+      visual.displaySize,
+      enemy.body.rotation + visual.visualRotation,
+      this.getEnemyTotalVelocity(enemy)
+    );
+    enemy.body.destroy(true);
+    enemy.wrapMirrorBody.destroy(true);
+    enemies.splice(index, 1);
   }
 
   private killPlayer(): void {
@@ -12113,6 +13556,7 @@ export class GameScene extends Phaser.Scene {
     this.payRunCredits();
     this.playSfxCue('player-death', { bypassCooldown: true });
     this.emitPlayerDeathShards();
+    this.schedulePlayerDeathShockwave(this.time.now);
     this.playerVelocity.set(0, 0);
     this.playerStatusRuntime = createPlayerStatusEffectRuntime();
     this.playerStatusOverlay?.clear();
@@ -12243,6 +13687,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.player.setPosition(wrapCoordinate(x, this.arena.width), wrapCoordinate(y, this.arena.height));
+    this.capturePreviousPlayerContactPosition();
     if (stopVelocity) {
       this.debugStopPlayerVelocity();
     }
@@ -12599,6 +14044,7 @@ export class GameScene extends Phaser.Scene {
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
     this.playerVelocity.set(0, 0);
+    this.capturePreviousPlayerContactPosition();
     this.clearRammingShieldDashBurst();
     this.playerInvulnerableUntil = this.time.now + this.getPlayerDamageInvulnerabilityMs();
     this.reactivateFailedMissionForContinue();
@@ -12637,6 +14083,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateLiveEnemies(time: number, deltaSeconds: number): void {
+    for (const enemy of this.liveEnemies) {
+      enemy.previousX = enemy.body.x;
+      enemy.previousY = enemy.body.y;
+    }
+
     updateLiveEnemyAiSystem({
       scene: this,
       arena: this.arena,
@@ -12661,10 +14112,52 @@ export class GameScene extends Phaser.Scene {
       explodeAt: (x, y, radius, damage, sourceId) => this.explodeLiveEnemyAt(x, y, radius, damage, sourceId),
       spawnChild: (definitionId, x, y) => this.spawnLiveEnemy(definitionId, x, y, time),
       stealScrap: (target, enemy) => this.stealLiveEnemyScrap(target, enemy),
-      emitLabBurst: (x, y, color, count) => this.emitLiveEnemyBurst(x, y, color, count)
+      emitEnemyBurst: (x, y, color, count) => this.emitLiveEnemyBurst(x, y, color, count)
     });
 
     this.removeDeadLiveEnemies();
+    this.emitScoutMotionHints(time);
+  }
+
+  private emitScoutMotionHints(time: number): void {
+    if (
+      this.liveEnemies.length <= 0 ||
+      time < this.nextScoutMotionHintAt ||
+      !this.shouldEmitNonCriticalVfx()
+    ) {
+      return;
+    }
+
+    this.nextScoutMotionHintAt = time + SCOUT_MOTION_HINT_INTERVAL_MS;
+    const sampleCount = Math.min(
+      this.liveEnemies.length,
+      this.getNonCriticalParticleCount(SCOUT_MOTION_HINT_MAX_PER_TICK)
+    );
+
+    for (let offset = 0; offset < sampleCount; offset += 1) {
+      const enemy = this.liveEnemies[(this.scoutMotionHintCursor + offset) % this.liveEnemies.length];
+      if (!enemy || enemy.definitionId !== this.getActiveValidationEnemyDefinitionId() || enemy.velocity.lengthSq() < 900) {
+        continue;
+      }
+
+      const forward = this.getForwardDirection(enemy.body.rotation);
+      const position = this.getNearestWrappedRenderPosition(
+        enemy.body.x - forward.x * enemy.definition.stats.radius * 0.82,
+        enemy.body.y - forward.y * enemy.definition.stats.radius * 0.82
+      );
+      const trail = this.add.circle(position.x, position.y, 2, 0xf2fbff, 0.32);
+      trail.setDepth(8.5);
+      this.tweens.add({
+        targets: trail,
+        alpha: 0,
+        scale: 0.18,
+        duration: 150,
+        ease: 'Quad.easeOut',
+        onComplete: () => trail.destroy()
+      });
+    }
+
+    this.scoutMotionHintCursor = (this.scoutMotionHintCursor + sampleCount) % Math.max(1, this.liveEnemies.length);
   }
 
   private removeDeadLiveEnemies(): void {
@@ -12676,7 +14169,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private getLiveEnemyScrapTargets(): EnemyLabScrapTarget[] {
+  private getLiveEnemyScrapTargets(): EnemyScrapTarget[] {
     return this.scrapPickups.map((pickup, index) => ({
       id: `scrap-${index}`,
       x: pickup.body.x,
@@ -12686,7 +14179,7 @@ export class GameScene extends Phaser.Scene {
     }));
   }
 
-  private stealLiveEnemyScrap(target: EnemyLabScrapTarget, _enemy: LiveGameEnemy): number {
+  private stealLiveEnemyScrap(target: EnemyScrapTarget, _enemy: LiveGameEnemy): number {
     const index = Number(target.id.replace('scrap-', ''));
     const pickup = Number.isInteger(index) ? this.scrapPickups[index] : undefined;
     if (!pickup || pickup.kind !== 'scrap') {
@@ -12703,7 +14196,7 @@ export class GameScene extends Phaser.Scene {
     return value;
   }
 
-  private fireLiveEnemyProjectile(request: EnemyLabProjectileRequest): void {
+  private fireLiveEnemyProjectile(request: EnemyProjectileRequest): void {
     const direction = request.direction.clone().normalize();
     const spawnX = wrapCoordinate(request.x, this.arena.width);
     const spawnY = wrapCoordinate(request.y, this.arena.height);
@@ -14150,14 +15643,19 @@ export class GameScene extends Phaser.Scene {
     const particleCount = this.getNonCriticalParticleCount(Math.round(Phaser.Math.Clamp(8 * impactScale, 7, 16)));
     const flashRadius = 14 * impactScale;
     const flash = this.add.circle(x, y, flashRadius, 0xf2fbff, this.getFlashAlpha(0.18));
-    const ring = this.add.circle(x, y, flashRadius * 0.78, 0xf2fbff, 0);
+    const ring = createEffectRingImage({
+      scene: this,
+      x,
+      y,
+      radius: flashRadius * 0.78,
+      color: 0xf2fbff,
+      alpha: this.getFlashAlpha(0.62),
+      depth: 12
+    });
     const dust = this.add.circle(x, y, 16 * impactScale, 0xc2ad8f, 0.34);
 
     flash.setDepth(12);
     flash.setBlendMode(Phaser.BlendModes.ADD);
-    ring.setStrokeStyle(2, 0xf2fbff, this.getFlashAlpha(0.62));
-    ring.setDepth(12);
-    ring.setBlendMode(Phaser.BlendModes.ADD);
     dust.setAlpha(this.getFlashAlpha(0.34));
     dust.setDepth(11);
     this.shakeCamera(80, 0.0035 * impactScale);
@@ -14220,12 +15718,16 @@ export class GameScene extends Phaser.Scene {
     x = effectPosition.x;
     y = effectPosition.y;
     const size = resolveAsteroidObjectSizeProfile(tier);
-    const ring = this.add.circle(x, y, size.collisionRadiusPx * 0.62, 0x9fd8ff, 0);
+    const ring = createEffectRingImage({
+      scene: this,
+      x,
+      y,
+      radius: size.collisionRadiusPx * 0.62,
+      color: 0x73f2ff,
+      alpha: this.getFlashAlpha(0.56),
+      depth: 6
+    });
     const particleCount = this.getNonCriticalParticleCount(Phaser.Math.Clamp(tier * 5, 6, 25));
-
-    ring.setStrokeStyle(2, 0x73f2ff, this.getFlashAlpha(0.56));
-    ring.setDepth(6);
-    ring.setBlendMode(Phaser.BlendModes.ADD);
 
     this.tweens.add({
       targets: ring,
@@ -15666,7 +17168,7 @@ export class GameScene extends Phaser.Scene {
     const viewportHeight = this.scale.height;
     const enemyScaling = this.getEnemyTimeScaling(time);
     const spawnDirectorLine = this.debugState.collisionDebugEnabled
-      ? `Spawn director: minute ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s / encounter ${(Math.max(0, this.encounterDirectorState.nextEncounterAt - time) / 1000).toFixed(1)}s\n` +
+      ? `Spawn director: ${this.getActiveValidationEnemyDefinitionId()} wave ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n` +
         `Enemy scaling: HP x${enemyScaling.hpMultiplier.toFixed(2)} / damage x${enemyScaling.damageMultiplier.toFixed(2)}\n`
       : '';
     const debugWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');

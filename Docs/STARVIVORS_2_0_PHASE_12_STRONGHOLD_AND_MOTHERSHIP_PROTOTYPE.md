@@ -12,7 +12,7 @@ Phase 12 adds the first world-anchor event structure with a prototype mothership
 - The `mothership-contract` mission guarantees a prototype mothership in the generated sector.
 - Mission objectives can now target generated world events through `destroy-world-event`.
 - The prototype mothership is stationary for now, but stored as an event instance so later variants can move, patrol, or behave like larger world events.
-- Entering the mothership danger radius spawns existing Enemy Lab guard squads.
+- Entering the mothership danger radius spawns existing shared enemy guard squads.
 - Player projectiles can damage and destroy the mothership.
 - Destroying the mothership drops a high-value scrap pickup and banked-upgrade crates.
 - The minimap shows world event markers and danger presence.

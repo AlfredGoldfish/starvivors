@@ -3,7 +3,7 @@ import { wrapCoordinate, type ArenaSize } from '../core/arena';
 import { MINIMAP_HEIGHT, MINIMAP_MARGIN, MINIMAP_PADDING, MINIMAP_WIDTH } from '../scenes/gameConstants';
 import type { BasicAsteroid, BasicEnemy, ScrapPickup, ShooterEnemy, TankEnemy } from '../scenes/gameTypes';
 import type { BlackHoleSystem } from './blackHole';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 import type { RadarLevel } from './progressionStorage';
 import type { RareEventMinimapMarker } from './rareEventRuntime';
 import type { SectorScannerSnapshot, SectorScannerTarget } from './sectorScanner';
@@ -96,7 +96,7 @@ export interface MinimapSnapshot {
   basicEnemies: BasicEnemy[];
   shooterEnemies: ShooterEnemy[];
   tankEnemies: TankEnemy[];
-  liveEnemies?: EnemyLabInstance[];
+  liveEnemies?: EnemyInstance[];
   scrapPickups: ScrapPickup[];
   blackHole?: BlackHoleSystem;
   sectorRegions?: SectorRegion[];
@@ -537,7 +537,7 @@ function formatRadarDistance(distance: number): string {
   return `${Math.round(distance)}`;
 }
 
-function getLiveEnemyMinimapColor(enemy: EnemyLabInstance): number {
+function getLiveEnemyMinimapColor(enemy: EnemyInstance): number {
   switch (enemy.definition.role) {
     case 'ranged':
     case 'sniper':

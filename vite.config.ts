@@ -16,15 +16,11 @@ export default defineConfig(({ mode }) => ({
   build: {
     rollupOptions: {
       input: {
-        main: 'index.html',
-        enemyLab: 'enemy-lab.html'
+        main: 'index.html'
       },
       output: {
         manualChunks(id) {
           const normalized = id.replace(/\\/g, '/');
-          if (normalized.includes('/src/scenes/EnemyLabScene') || normalized.includes('/src/systems/enemyLab')) {
-            return 'enemy-lab';
-          }
           if (normalized.includes('/src/systems/debug/') || normalized.includes('/src/ui/debugMenu')) {
             return 'debug-tools';
           }

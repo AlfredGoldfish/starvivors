@@ -8,17 +8,20 @@ import type {
   PlayerEnemyContact,
   RammingShieldCollision
 } from '../scenes/gameTypes';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 import {
   createCircleCollisionShape,
-  getCircleCollision
+  getCircleCollision,
+  getWrappedDirection
 } from './collisionShapes';
 
 export interface FindPlayerEnemyContactInput {
   arena: ArenaSize;
   player: Phaser.GameObjects.Container;
   playerHitRadius: number;
-  enemies: EnemyLabInstance[];
+  previousPlayerX?: number;
+  previousPlayerY?: number;
+  enemies: EnemyInstance[];
   getRammingShieldCircleCollision: (targetX: number, targetY: number, targetRadius: number) => RammingShieldCollision | undefined;
 }
 
@@ -26,6 +29,8 @@ export interface FindPlayerAsteroidContactInput {
   arena: ArenaSize;
   player: Phaser.GameObjects.Container;
   playerHitRadius: number;
+  previousPlayerX?: number;
+  previousPlayerY?: number;
   asteroids: BasicAsteroid[];
   getAsteroidCollisionRadius: (asteroid: BasicAsteroid) => number;
   getAsteroidContactDamage: (asteroid: BasicAsteroid) => number;
@@ -36,9 +41,164 @@ export interface FindPlayerDebrisContactInput {
   arena: ArenaSize;
   player: Phaser.GameObjects.Container;
   playerHitRadius: number;
+  previousPlayerX?: number;
+  previousPlayerY?: number;
   debris: EnemyWreckageDebris[];
   getDebrisCollisionRadius: (debris: EnemyWreckageDebris) => number;
   getRammingShieldCircleCollision: (targetX: number, targetY: number, targetRadius: number) => RammingShieldCollision | undefined;
+}
+
+function getSweptPlayerCircleContact(input: {
+  arena: ArenaSize;
+  playerX: number;
+  playerY: number;
+  previousPlayerX?: number;
+  previousPlayerY?: number;
+  playerHitRadius: number;
+  targetX: number;
+  targetY: number;
+  targetRadius: number;
+}): { normal: Phaser.Math.Vector2; penetration: number } | undefined {
+  if (input.previousPlayerX === undefined || input.previousPlayerY === undefined) {
+    return undefined;
+  }
+
+  const movement = getWrappedDirection(
+    input.arena,
+    input.previousPlayerX,
+    input.previousPlayerY,
+    input.playerX,
+    input.playerY
+  );
+  const movementLengthSq = movement.lengthSq();
+
+  if (movementLengthSq <= 0.0001) {
+    return undefined;
+  }
+
+  const currentOffset = getWrappedDirection(
+    input.arena,
+    input.targetX,
+    input.targetY,
+    input.playerX,
+    input.playerY
+  );
+  const previousOffset = new Phaser.Math.Vector2(
+    currentOffset.x - movement.x,
+    currentOffset.y - movement.y
+  );
+  const closestRatio = Phaser.Math.Clamp(-previousOffset.dot(movement) / movementLengthSq, 0, 1);
+  const closestOffset = new Phaser.Math.Vector2(
+    previousOffset.x + movement.x * closestRatio,
+    previousOffset.y + movement.y * closestRatio
+  );
+  const hitRadius = input.playerHitRadius + input.targetRadius;
+  const closestDistanceSq = closestOffset.lengthSq();
+
+  if (closestDistanceSq > hitRadius * hitRadius) {
+    return undefined;
+  }
+
+  const closestDistance = Math.sqrt(closestDistanceSq);
+  let normal: Phaser.Math.Vector2;
+
+  if (closestDistance > 0) {
+    normal = closestOffset.clone().scale(1 / closestDistance);
+  } else if (currentOffset.lengthSq() > 0) {
+    normal = currentOffset.clone().normalize();
+  } else {
+    normal = movement.clone().normalize();
+  }
+
+  return {
+    normal,
+    penetration: Math.max(1, hitRadius - closestDistance)
+  };
+}
+
+function getSweptMovingCircleContact(input: {
+  arena: ArenaSize;
+  playerX: number;
+  playerY: number;
+  previousPlayerX?: number;
+  previousPlayerY?: number;
+  playerHitRadius: number;
+  targetX: number;
+  targetY: number;
+  previousTargetX?: number;
+  previousTargetY?: number;
+  targetRadius: number;
+}): { normal: Phaser.Math.Vector2; penetration: number } | undefined {
+  if (
+    input.previousPlayerX === undefined ||
+    input.previousPlayerY === undefined ||
+    input.previousTargetX === undefined ||
+    input.previousTargetY === undefined
+  ) {
+    return undefined;
+  }
+
+  const playerMovement = getWrappedDirection(
+    input.arena,
+    input.previousPlayerX,
+    input.previousPlayerY,
+    input.playerX,
+    input.playerY
+  );
+  const targetMovement = getWrappedDirection(
+    input.arena,
+    input.previousTargetX,
+    input.previousTargetY,
+    input.targetX,
+    input.targetY
+  );
+  const relativeMovement = playerMovement.subtract(targetMovement);
+  const movementLengthSq = relativeMovement.lengthSq();
+
+  if (movementLengthSq <= 0.0001) {
+    return undefined;
+  }
+
+  const currentOffset = getWrappedDirection(
+    input.arena,
+    input.targetX,
+    input.targetY,
+    input.playerX,
+    input.playerY
+  );
+  const previousOffset = new Phaser.Math.Vector2(
+    currentOffset.x - relativeMovement.x,
+    currentOffset.y - relativeMovement.y
+  );
+  const closestRatio = Phaser.Math.Clamp(-previousOffset.dot(relativeMovement) / movementLengthSq, 0, 1);
+  const closestOffset = new Phaser.Math.Vector2(
+    previousOffset.x + relativeMovement.x * closestRatio,
+    previousOffset.y + relativeMovement.y * closestRatio
+  );
+  const hitRadius = input.playerHitRadius + input.targetRadius;
+  const closestDistanceSq = closestOffset.lengthSq();
+
+  if (closestDistanceSq > hitRadius * hitRadius) {
+    return undefined;
+  }
+
+  const closestDistance = Math.sqrt(closestDistanceSq);
+  let normal: Phaser.Math.Vector2;
+
+  if (closestDistance > 0) {
+    normal = closestOffset.clone().scale(1 / closestDistance);
+  } else if (currentOffset.lengthSq() > 0) {
+    normal = currentOffset.clone().normalize();
+  } else if (previousOffset.lengthSq() > 0) {
+    normal = previousOffset.clone().normalize();
+  } else {
+    normal = relativeMovement.clone().normalize();
+  }
+
+  return {
+    normal,
+    penetration: Math.max(1, hitRadius - closestDistance)
+  };
 }
 
 export function findPlayerEnemyContact(input: FindPlayerEnemyContactInput): PlayerEnemyContact | undefined {
@@ -65,6 +225,48 @@ export function findPlayerEnemyContact(input: FindPlayerEnemyContactInput): Play
         enemy,
         normal: collision.normal,
         penetration: collision.penetration,
+        damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier
+      };
+    }
+
+    const sweptCollision = getSweptPlayerCircleContact({
+      arena: input.arena,
+      playerX: input.player.x,
+      playerY: input.player.y,
+      previousPlayerX: input.previousPlayerX,
+      previousPlayerY: input.previousPlayerY,
+      playerHitRadius: input.playerHitRadius,
+      targetX: enemy.body.x,
+      targetY: enemy.body.y,
+      targetRadius: enemyRadius
+    });
+    if (sweptCollision) {
+      return {
+        enemy,
+        normal: sweptCollision.normal,
+        penetration: sweptCollision.penetration,
+        damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier
+      };
+    }
+
+    const sweptMovingCollision = getSweptMovingCircleContact({
+      arena: input.arena,
+      playerX: input.player.x,
+      playerY: input.player.y,
+      previousPlayerX: input.previousPlayerX,
+      previousPlayerY: input.previousPlayerY,
+      playerHitRadius: input.playerHitRadius,
+      targetX: enemy.body.x,
+      targetY: enemy.body.y,
+      previousTargetX: enemy.previousX,
+      previousTargetY: enemy.previousY,
+      targetRadius: enemyRadius
+    });
+    if (sweptMovingCollision) {
+      return {
+        enemy,
+        normal: sweptMovingCollision.normal,
+        penetration: sweptMovingCollision.penetration,
         damage: enemy.definition.stats.contactDamage * enemy.damageMultiplier
       };
     }
@@ -100,6 +302,26 @@ export function findPlayerAsteroidContact(input: FindPlayerAsteroidContactInput)
         damage: input.getAsteroidContactDamage(asteroid)
       };
     }
+
+    const sweptCollision = getSweptPlayerCircleContact({
+      arena: input.arena,
+      playerX: input.player.x,
+      playerY: input.player.y,
+      previousPlayerX: input.previousPlayerX,
+      previousPlayerY: input.previousPlayerY,
+      playerHitRadius: input.playerHitRadius,
+      targetX: asteroid.body.x,
+      targetY: asteroid.body.y,
+      targetRadius: asteroidRadius
+    });
+    if (sweptCollision) {
+      return {
+        asteroid,
+        normal: sweptCollision.normal,
+        penetration: sweptCollision.penetration,
+        damage: input.getAsteroidContactDamage(asteroid)
+      };
+    }
   }
 
   return undefined;
@@ -129,6 +351,26 @@ export function findPlayerDebrisContact(input: FindPlayerDebrisContactInput): Pl
         debris,
         normal: collision.normal,
         penetration: collision.penetration,
+        damage: debris.damage
+      };
+    }
+
+    const sweptCollision = getSweptPlayerCircleContact({
+      arena: input.arena,
+      playerX: input.player.x,
+      playerY: input.player.y,
+      previousPlayerX: input.previousPlayerX,
+      previousPlayerY: input.previousPlayerY,
+      playerHitRadius: input.playerHitRadius,
+      targetX: debris.body.x,
+      targetY: debris.body.y,
+      targetRadius: debrisRadius
+    });
+    if (sweptCollision) {
+      return {
+        debris,
+        normal: sweptCollision.normal,
+        penetration: sweptCollision.penetration,
         damage: debris.damage
       };
     }

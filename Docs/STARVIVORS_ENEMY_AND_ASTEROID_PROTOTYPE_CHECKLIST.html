@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Starvivors Enemy And Asteroid Prototype Checklist</title>
+  <style>
+    @page {
+      size: Letter landscape;
+      margin: 0.35in;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: #111;
+      background: #fff;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 9.5pt;
+      line-height: 1.32;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0;
+      line-height: 1.1;
+    }
+
+    h1 {
+      font-size: 21pt;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    h2 {
+      margin-top: 18px;
+      padding-bottom: 5px;
+      border-bottom: 2px solid #111;
+      font-size: 14pt;
+      text-transform: uppercase;
+    }
+
+    h3 {
+      margin: 14px 0 6px;
+      font-size: 11.5pt;
+    }
+
+    p {
+      margin: 6px 0;
+    }
+
+    ul {
+      margin: 6px 0 0 18px;
+      padding: 0;
+    }
+
+    li {
+      margin: 3px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      page-break-inside: auto;
+    }
+
+    tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+
+    th,
+    td {
+      border: 1px solid #222;
+      padding: 4px 5px;
+      vertical-align: top;
+    }
+
+    th {
+      background: #e9e9e9;
+      font-size: 8.2pt;
+      text-align: left;
+      text-transform: uppercase;
+    }
+
+    .meta {
+      margin-top: 8px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px 16px;
+      font-size: 9pt;
+    }
+
+    .source-note {
+      margin-top: 8px;
+      padding: 7px 9px;
+      border: 1.5px solid #111;
+      background: #f5f5f5;
+      font-size: 9pt;
+    }
+
+    .section {
+      page-break-before: always;
+    }
+
+    .section:first-of-type {
+      page-break-before: auto;
+    }
+
+    .check {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 1.8px solid #111;
+      margin-right: 5px;
+      vertical-align: -2px;
+      background: #fff;
+    }
+
+    .mini-check {
+      display: block;
+      width: 13px;
+      height: 13px;
+      margin: 0 auto;
+      border: 1.8px solid #111;
+      background: #fff;
+    }
+
+    .box-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 18px;
+      margin-top: 8px;
+    }
+
+    .box-list div {
+      min-height: 18px;
+    }
+
+    .enemy-table {
+      font-size: 8.2pt;
+    }
+
+    .enemy-table th:nth-child(1),
+    .enemy-table td:nth-child(1) {
+      width: 24px;
+      text-align: center;
+    }
+
+    .enemy-table th:nth-child(2),
+    .enemy-table td:nth-child(2) {
+      width: 92px;
+    }
+
+    .enemy-table th:nth-child(3),
+    .enemy-table td:nth-child(3) {
+      width: 72px;
+    }
+
+    .enemy-table th:nth-child(4),
+    .enemy-table td:nth-child(4) {
+      width: 92px;
+    }
+
+    .enemy-table th:nth-child(6),
+    .enemy-table th:nth-child(7),
+    .enemy-table th:nth-child(8),
+    .enemy-table th:nth-child(9),
+    .enemy-table th:nth-child(10),
+    .enemy-table th:nth-child(11),
+    .enemy-table th:nth-child(12),
+    .enemy-table td:nth-child(6),
+    .enemy-table td:nth-child(7),
+    .enemy-table td:nth-child(8),
+    .enemy-table td:nth-child(9),
+    .enemy-table td:nth-child(10),
+    .enemy-table td:nth-child(11),
+    .enemy-table td:nth-child(12) {
+      width: 34px;
+      text-align: center;
+    }
+
+    .role-label {
+      margin-top: 14px;
+      padding: 5px 7px;
+      border: 1.5px solid #111;
+      background: #f1f1f1;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .active-phase td {
+      background: #f7f7f7;
+    }
+
+    .phase-tag {
+      display: inline-block;
+      margin-top: 3px;
+      padding: 1px 4px;
+      border: 1px solid #111;
+      font-size: 7.2pt;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .short {
+      font-size: 8pt;
+    }
+
+    .small-caps {
+      font-size: 8pt;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .validation-table td:first-child {
+      width: 30px;
+      text-align: center;
+    }
+
+    .asteroid-table th:nth-child(1),
+    .asteroid-table td:nth-child(1) {
+      width: 24px;
+      text-align: center;
+    }
+
+    .asteroid-table th:nth-child(3),
+    .asteroid-table td:nth-child(3),
+    .asteroid-table th:nth-child(4),
+    .asteroid-table td:nth-child(4),
+    .asteroid-table th:nth-child(5),
+    .asteroid-table td:nth-child(5),
+    .asteroid-table th:nth-child(6),
+    .asteroid-table td:nth-child(6),
+    .asteroid-table th:nth-child(7),
+    .asteroid-table td:nth-child(7),
+    .asteroid-table th:nth-child(8),
+    .asteroid-table td:nth-child(8),
+    .asteroid-table th:nth-child(9),
+    .asteroid-table td:nth-child(9) {
+      width: 76px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <section>
+    <h1>Starvivors Enemy And Asteroid Prototype Checklist</h1>
+    <div class="meta">
+      <div><strong>Purpose:</strong> Track the work needed to make live enemies and asteroid hazards match the readability and communication quality of the prototype preview files.</div>
+      <div><strong>Editable source:</strong> Docs/STARVIVORS_ENEMY_AND_ASTEROID_PROTOTYPE_CHECKLIST.html</div>
+      <div><strong>Roster source:</strong> src/data/enemyDefinitions.ts, ENEMY_DEFINITIONS, 26 live entries.</div>
+      <div><strong>Generated:</strong> 2026-05-29</div>
+    </div>
+    <div class="source-note">
+      Prototype references are the files under Docs/references/Enemy_Prototype/Preview Files/ named preview-enemy-*.html. Use them as player-facing clarity references, not as a mandate to copy colors or exact shapes.
+      Current normal validation mode: Wedge Striker spawning is active for charger polish. Scout-only regression spawning remains available through ?testHarness=scoutPhase, and Wedge Striker charger validation remains available through ?testHarness=wedgeStrikerPhase, including a controlled Scout + Wedge Striker mix. Live enemy telegraphs use a shared red warning tint with near-complete brightening, Wedge Striker charge windups and normal projectile shot telegraphs use small randomized timing offsets, and Wedge Striker charges commit to the end of the displayed lane. Committed Wedge charges ignore enemy-side contact recoil and displacement during player hits so the striker still reaches its lane endpoint. Regular player-body collision no longer damages enemies, while enemy touch damage and knockback remain active. Asteroid spawning, activation, breakup, and collision validation remain unchanged.
+    </div>
+
+    <h2>Goal And Success Criteria</h2>
+    <p>
+      Each live enemy should read as a distinct combat role before it damages the player. The player should be able to understand what the enemy is about to do, where the danger will occur, when the action is unsafe, and when the enemy has recovered or died. Asteroids should remain simple world hazards with varied asteroid-like shapes and clear collision feedback.
+    </p>
+    <div class="box-list">
+      <div><span class="check"></span> Every live enemy has a role-specific silhouette at gameplay scale.</div>
+      <div><span class="check"></span> Every dangerous enemy action has a visible telegraph before the damage window.</div>
+      <div><span class="check"></span> Attack VFX show origin, path or area, impact, and recovery state.</div>
+      <div><span class="check"></span> Audio cues reinforce high-risk telegraphs without masking player feedback.</div>
+      <div><span class="check"></span> Hit, death, split, summon, shield, repair, and status feedback are distinct.</div>
+      <div><span class="check"></span> Live gameplay validation passes in dense fights, not only in isolated previews.</div>
+    </div>
+
+    <h2>Prototype Visual Rules</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Rule</th>
+          <th>Acceptance Notes</th>
+          <th>Done</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Readable state changes</strong></td>
+          <td>Windup, active, recovery, shielded, damaged, enraged, summoning, repairing, and fleeing states are visible without reading debug text.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><strong>Clear telegraphs</strong></td>
+          <td>Lines, arcs, rings, pulses, cones, and countdowns use consistent timing and enough contrast against the world.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><strong>Attack trails</strong></td>
+          <td>Projectiles, beams, dashes, shockwaves, mines, and area attacks leave short-lived path information the player can parse.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><strong>Recovery feedback</strong></td>
+          <td>After a high-risk attack, the enemy shows a readable cooldown or vulnerability beat before returning to pressure.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><strong>Role-specific silhouettes</strong></td>
+          <td>Fast, heavy, ranged, support, spawn, status, stealth, and loot enemies are identifiable by shape at HUD/gameplay scale.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><strong>Live-game validation</strong></td>
+          <td>Readability is checked in real runs with HUD, pickups, shots, asteroids, squads, and accessibility settings active.</td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Enemy Checklist</h2>
+    <p class="short">
+      Work tracker columns: Sil = silhouette, Mov = movement read, Tel = telegraph, Atk = attack VFX, Aud = audio cue, Hit = death/hit feedback, Val = live validation.
+    </p>
+
+    <div class="role-label">Pursuit, Collision, And Burst Threats</div>
+    <table class="enemy-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Enemy</th>
+          <th>Role</th>
+          <th>Prototype Ref</th>
+          <th>Design Brief</th>
+          <th>Sil</th>
+          <th>Mov</th>
+          <th>Tel</th>
+          <th>Atk</th>
+          <th>Aud</th>
+          <th>Hit</th>
+          <th>Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td><strong>Scout</strong><br><span class="phase-tag">Regression harness</span></td>
+          <td>chaser</td>
+          <td>Live baseline chaser</td>
+          <td>Fast basic pressure unit; direction, intent, contact danger, and death pop must stay readable in groups. Scout-only regression spawning is pinned through ?testHarness=scoutPhase while asteroids remain unchanged.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Shard Drone</td>
+          <td>chaser</td>
+          <td>splitter child</td>
+          <td>Small fragment pursuer spawned from Splitter; must read as lower-threat debris-like enemy, not as collectible scrap.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr class="active-phase">
+          <td><span class="mini-check"></span></td>
+          <td><strong>Wedge Striker</strong><br><span class="phase-tag">Active phase target</span></td>
+          <td>charger</td>
+          <td>charger</td>
+          <td>Standard red brightening windup line with randomized timing, committed full-lane dash, impact trail, and recovery pause should make the dash fair at speed; player hits must not stop the striker before the displayed lane endpoint.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Hex Tank</td>
+          <td>tank</td>
+          <td>tank</td>
+          <td>Large durable pursuer; heavy mass, slow turn, strong collision threat, and high-value destruction should be obvious.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Reactor Drone</td>
+          <td>exploder</td>
+          <td>exploder</td>
+          <td>Countdown radius and escalating core state must tell the player exactly when and where the blast will hit.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Impact Bomber</td>
+          <td>exploder</td>
+          <td>exploder</td>
+          <td>Contact-trigger bomber; proximity danger, short fuse behavior, blast radius, and impact should read faster than Reactor Drone.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Berserker</td>
+          <td>berserker</td>
+          <td>berserker</td>
+          <td>Damage thresholds must visibly shift speed and aggression so the player notices each enraged phase.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="role-label">Ranged And Status Pressure</div>
+    <table class="enemy-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Enemy</th>
+          <th>Role</th>
+          <th>Prototype Ref</th>
+          <th>Design Brief</th>
+          <th>Sil</th>
+          <th>Mov</th>
+          <th>Tel</th>
+          <th>Atk</th>
+          <th>Aud</th>
+          <th>Hit</th>
+          <th>Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Diamond Gunner</td>
+          <td>ranged</td>
+          <td>shooter</td>
+          <td>Orbit shooter; muzzle flash, bolt path, range preference, and retreat behavior should be visible in squad clutter.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Needle Sniper</td>
+          <td>sniper</td>
+          <td>sniper</td>
+          <td>Long aim beam, lock beat, rail shot path, and cooldown must read as high danger before damage lands.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Frost Gunner</td>
+          <td>freezer</td>
+          <td>poisoner/freezer</td>
+          <td>Status shooter; cold projectile, slowed-player feedback, and status expiration need a distinct frost read.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Electric Leech</td>
+          <td>electric</td>
+          <td>poisoner/freezer</td>
+          <td>Status shooter; arc bolt, damage ticks, acceleration drag, and leech pressure must not be confused with frost.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Enemy Checklist Continued</h2>
+
+    <div class="role-label">Spawn, Swarm, And Split Control</div>
+    <table class="enemy-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Enemy</th>
+          <th>Role</th>
+          <th>Prototype Ref</th>
+          <th>Design Brief</th>
+          <th>Sil</th>
+          <th>Mov</th>
+          <th>Tel</th>
+          <th>Atk</th>
+          <th>Aud</th>
+          <th>Hit</th>
+          <th>Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Splitter</td>
+          <td>splitter</td>
+          <td>splitter</td>
+          <td>Parent death should clearly fracture into Shard Drones with split direction, spawn count, and brief warning.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Carrier Foundry</td>
+          <td>carrier</td>
+          <td>spawner</td>
+          <td>Large mobile spawner; bay animation, child launch, max-child pressure, and foundry death should be unmistakable.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Combat Summoner</td>
+          <td>summoner</td>
+          <td>summoner</td>
+          <td>Channeling summoner with ranged pressure; summon glyph, spawn burst, and interrupted/death feedback must be readable.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Spawner Nest</td>
+          <td>carrier</td>
+          <td>spawner</td>
+          <td>Mostly stationary spawn anchor; nest silhouette, spawn cadence, local danger zone, and priority target value must read.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="role-label">Support, Command, And Defensive Roles</div>
+    <table class="enemy-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Enemy</th>
+          <th>Role</th>
+          <th>Prototype Ref</th>
+          <th>Design Brief</th>
+          <th>Sil</th>
+          <th>Mov</th>
+          <th>Tel</th>
+          <th>Atk</th>
+          <th>Aud</th>
+          <th>Hit</th>
+          <th>Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Shield Frigate</td>
+          <td>shield</td>
+          <td>shield-bearer</td>
+          <td>Shield support; aura ownership, protected allies, shield strength, and shield break need clear feedback.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Repair Skiff</td>
+          <td>repair</td>
+          <td>healer</td>
+          <td>Mobile healer; beam target, healing amount, damaged ally priority, and interruption should be obvious.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Command Relay</td>
+          <td>buffer</td>
+          <td>buffer</td>
+          <td>Buff support; aura radius, boosted allies, speed/fire-rate state, and relay priority must read in packs.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Reflector</td>
+          <td>reflector</td>
+          <td>reflector</td>
+          <td>Front-arc reflector; active shield angle, reflection timing, cooldown, and safe shooting window must be legible.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="role-label">Positioning, Stealth, Patrol, And Loot Roles</div>
+    <table class="enemy-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Enemy</th>
+          <th>Role</th>
+          <th>Prototype Ref</th>
+          <th>Design Brief</th>
+          <th>Sil</th>
+          <th>Mov</th>
+          <th>Tel</th>
+          <th>Atk</th>
+          <th>Aud</th>
+          <th>Hit</th>
+          <th>Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Scrap Jackal</td>
+          <td>scavenger</td>
+          <td>thief</td>
+          <td>Scrap-seeking runner; pickup intent, flee turn, carried scrap value, and death payout should be clear.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Scrap Thief</td>
+          <td>thief</td>
+          <td>thief</td>
+          <td>High-speed loot thief; theft moment, escape route, bonus scrap, and chase priority must be readable without UI text.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Flanker</td>
+          <td>flanker</td>
+          <td>flanker</td>
+          <td>Side-pressure attacker; lateral pathing, attack angle, and commit moment should not look like ordinary chasing.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Phase Skiff</td>
+          <td>teleporter</td>
+          <td>teleporter</td>
+          <td>Phase mover; departure ring, target arrival ring, invulnerable/unsafe timing, and reentry should be unmistakable.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Ambusher Mine</td>
+          <td>ambusher</td>
+          <td>ambusher</td>
+          <td>Hidden strike mine; reveal range, arming beat, strike lane, and post-reveal chase state must feel fair.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Orbiter Cage</td>
+          <td>orbiter</td>
+          <td>orbiter</td>
+          <td>Constraining orbiter; orbit radius, tightening pressure, escape gap, and cage ownership should be readable.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Patrol Guard</td>
+          <td>patrol</td>
+          <td>patrol</td>
+          <td>Territory guard; patrol route, detection state, alert pursuit, and losing aggro should be visible.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="section">
+    <h2>Asteroid Checklist Item</h2>
+    <table class="asteroid-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Asteroid Polish Scope</th>
+          <th>Shape Pool</th>
+          <th>Tier Size</th>
+          <th>Asteroid Read</th>
+          <th>Dense Field</th>
+          <th>Breakup</th>
+          <th>Impact</th>
+          <th>Live Val</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>
+            Random shape from a pooled asteroid-shape set. Size changes by spawn tier. Shape remains asteroid-like, not ship-like or icon-like. Dense-field readability is validated in live gameplay. Breakup, collision, and impact feedback remain clear.
+          </td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+          <td><span class="mini-check"></span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Final Validation Checklist</h2>
+    <table class="validation-table">
+      <thead>
+        <tr>
+          <th></th>
+          <th>Validation Step</th>
+          <th>Evidence To Capture</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Run a live gameplay smoke pass with mixed squads, asteroids, pickups, HUD, player shots, and enemy shots active.</td>
+          <td>Harness output or screenshot path plus notes on any enemy whose role was unclear.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Validate Scout phase timed spawning: no automatic enemy batch at run start, then 1 Scout at 10 seconds, 2 at 20 seconds, 3 at 30 seconds, continuing by elapsed run time.</td>
+          <td>Focused unit test output and Scout phase harness details showing wave counts from 10 through 60 seconds.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Validate the live enemy cap for Scout phase spawning.</td>
+          <td>Scout phase harness detail showing active live enemies reaching 500 and staying at or below 500 after another due wave.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Verify automatic enemy systems, directed spawns, squads, world-event guards, rare-event squads, debug spawns, and AI child spawns resolve to Scout during this phase.</td>
+          <td>Harness or code evidence showing live enemy definition IDs are Scout-only; note any intentionally non-enemy world object, pickup, mission, asteroid, debris, or reward path that remains unchanged.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Capture live performance evidence for the 500-Scout validation mode.</td>
+          <td>Scout phase harness details, profiler counts or summary, build result, and smoke command output.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Check reduced VFX, reduced flash, high contrast, text scale, and color-safe shots against enemy telegraphs.</td>
+          <td>Accessibility setting combination and any telegraph that became too faint or too noisy.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Verify attack timing against visual warning timing for charger, sniper, exploder, support, carrier, and status enemies.</td>
+          <td>Expected warning duration, actual perceived warning duration, and outcome notes.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Verify hit, death, split, summon, shield, repair, reflect, teleport, and loot feedback in dense combat.</td>
+          <td>Short capture notes for each feedback family, especially failures caused by effect overlap.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Confirm all 26 live enemy display names remain represented if ENEMY_DEFINITIONS changes.</td>
+          <td>Roster diff or generated name list checked against this document.</td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
+          <td>Confirm asteroid scope remains one pooled-shape polish item, not separate per-tier checklist rows.</td>
+          <td>Asteroid implementation note or screenshot proving shape variety and tier sizing in live play.</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+</body>
+</html>

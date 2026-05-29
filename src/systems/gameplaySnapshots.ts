@@ -3,7 +3,7 @@ import type { WeaponRegistryEntry } from '../data/weapons';
 import type { AutoRunDiagnosticsRunState } from './autoRunDiagnostics';
 import type { BlackHoleSystem } from './blackHole';
 import type { CollisionDebugOverlaySnapshot } from './collisionDebugOverlay';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 import type { GameplayHudSnapshot, WeaponHotbarSlotSnapshot } from './gameplayHud';
 import type { MinimapCapabilities, MinimapSnapshot } from './minimap';
 import type { PerformanceProfilerCounts, PerformanceProfilerFlags } from './performanceProfiler';
@@ -66,7 +66,7 @@ export interface CollisionDebugOverlaySnapshotInput {
   asteroidCollisionScale: number;
   debrisCollisionScale: number;
   shieldCollider?: RammingShieldCollider;
-  liveEnemies: EnemyLabInstance[];
+  liveEnemies: EnemyInstance[];
   basicAsteroids: BasicAsteroid[];
   enemyWreckageDebris: EnemyWreckageDebris[];
   scrapPickups: ScrapPickup[];
@@ -86,7 +86,7 @@ export interface MinimapSnapshotInput {
   scannerTarget?: SectorScannerTarget;
   isUpgradeOverlayOpen: boolean;
   basicAsteroids: BasicAsteroid[];
-  liveEnemies: EnemyLabInstance[];
+  liveEnemies: EnemyInstance[];
   scrapPickups: ScrapPickup[];
   blackHole?: BlackHoleSystem;
   sectorRegions?: SectorRegion[];

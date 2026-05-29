@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { RareEventDefinition } from '../data/rareEvents';
+import { createEffectRingImage } from './effectTextures';
 
 export function createRareEventBody(
   scene: Phaser.Scene,
@@ -10,12 +11,33 @@ export function createRareEventBody(
 ): Phaser.GameObjects.Container {
   const color = definition.kind === 'black-hole' ? 0xb88cff : 0xff5964;
   const accent = definition.kind === 'black-hole' ? 0x73f2ff : 0xffc857;
-  const signalRing = scene.add.circle(0, 0, definition.signalRadius, color, isMirror ? 0 : 0.018);
-  signalRing.setStrokeStyle(1, color, isMirror ? 0.12 : 0.2);
-  const dangerRing = scene.add.circle(0, 0, definition.dangerRadius, color, isMirror ? 0 : 0.035);
-  dangerRing.setStrokeStyle(2, color, isMirror ? 0.22 : 0.38);
-  const objectiveRing = scene.add.circle(0, 0, definition.objectiveRadius, 0x000000, 0);
-  objectiveRing.setStrokeStyle(2, accent, isMirror ? 0.38 : 0.78);
+  const signalRing = createEffectRingImage({
+    scene,
+    x: 0,
+    y: 0,
+    radius: definition.signalRadius,
+    color,
+    alpha: isMirror ? 0.12 : 0.2,
+    depth: 0
+  });
+  const dangerRing = createEffectRingImage({
+    scene,
+    x: 0,
+    y: 0,
+    radius: definition.dangerRadius,
+    color,
+    alpha: isMirror ? 0.22 : 0.38,
+    depth: 0
+  });
+  const objectiveRing = createEffectRingImage({
+    scene,
+    x: 0,
+    y: 0,
+    radius: definition.objectiveRadius,
+    color: accent,
+    alpha: isMirror ? 0.38 : 0.78,
+    depth: 0
+  });
   const coreGlow = scene.add.circle(0, 0, definition.objectiveRadius * 0.18, color, isMirror ? 0.08 : 0.18);
   const core = definition.kind === 'black-hole'
     ? scene.add.circle(0, 0, 12, 0x02040a, 0.95).setStrokeStyle(2, accent, 0.92)

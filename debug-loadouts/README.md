@@ -7,8 +7,5 @@ Move downloaded files into these folders when you want to keep them for later co
 - `ships/` for individual ship stat presets.
 - `weapons/` for individual weapon stat presets.
 - `kits/` for future full ship + weapon kit presets.
-- `enemies/` for Enemy Lab variant presets.
-- `squads/` for Enemy Lab custom squad formations.
-- `ai-briefs/` for Enemy Lab feedback, AI handoff, and promotion reports.
 
 The browser build cannot write directly into this repository folder, so saves are downloaded first.

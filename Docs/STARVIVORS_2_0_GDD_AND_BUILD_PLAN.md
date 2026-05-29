@@ -15,7 +15,7 @@ The new game should still preserve the strongest current pieces:
 - Survivor-style upgrades and build pressure.
 - Black-hole and debris danger.
 - Polygon/vector enemy silhouettes.
-- Large enemy roster and squad behavior from the Enemy Lab.
+- Large enemy roster and squad behavior from the shared enemy runtime.
 
 The new direction is broader:
 
@@ -69,10 +69,9 @@ As of this document, the project is a Phaser 3, TypeScript, and Vite game.
 Important current systems:
 
 - `GameScene.ts` is still the main orchestration scene.
-- Enemy Lab exists as a separate sandbox.
 - Generated polygon enemy visuals exist.
-- Enemy Lab AI and squad definitions exist.
-- The live game has begun moving toward the lab enemy runtime.
+- Shared enemy AI and squad definitions exist.
+- The live game uses the shared enemy runtime directly.
 - A soft/hard enemy deconfliction system exists.
 - Black-hole, asteroid, debris, pickups, upgrades, weapons, minimap, debug menu, pause/settings, and HUD systems exist in various levels of maturity.
 
@@ -460,7 +459,7 @@ Current implementation note:
 
 ### 9.2 Pulse Cannon
 
-Pulse Cannon should become the baseline direct-fire cannon and should feel like the Enemy Lab weapon. It starts as the Interceptor primary, but can also be acquired as a secondary weapon by ships that start with another compatible primary, such as Bulwark.
+Pulse Cannon should become the baseline direct-fire cannon and should feel fast, direct, and readable. It starts as the Interceptor primary, but can also be acquired as a secondary weapon by ships that start with another compatible primary, such as Bulwark.
 
 Target behavior:
 
@@ -876,7 +875,7 @@ Acceptance:
 
 Goal:
 
-- Make sure current main game and Enemy Lab are both usable before deeper conversion.
+- Make sure the current main game is usable before deeper conversion.
 
 Design dialogue before coding:
 
@@ -888,9 +887,7 @@ Design dialogue before coding:
 Tasks:
 
 - Audit current `GameScene.ts` entry flow.
-- Audit `enemy-lab.html`.
 - Confirm normal game opens.
-- Confirm Enemy Lab opens.
 - Confirm build command passes.
 - Identify old enemy arrays and compatibility bridges still present.
 
@@ -901,7 +898,7 @@ Do not:
 
 Acceptance:
 
-- Normal game and Enemy Lab are buildable.
+- Normal game is buildable.
 - Known risks are listed in a short doc note or task list.
 - Commit and push.
 
@@ -909,7 +906,7 @@ Acceptance:
 
 Goal:
 
-- Make left-click Pulse Cannon behave like the Enemy Lab weapon.
+- Make left-click Pulse Cannon behave like the baseline direct-fire weapon.
 
 Design dialogue before coding:
 
@@ -970,7 +967,7 @@ Acceptance:
 
 - Player and enemy projectiles use shared logic where practical.
 - Existing weapons still work.
-- Enemy Lab still works or intentionally remains isolated with shared helpers.
+- Shared helper behavior remains compatible with the main game.
 - Build passes.
 - Commit and push.
 
@@ -1039,7 +1036,7 @@ Acceptance:
 
 - Main game uses unified enemy list.
 - Old enemy sprites are not required.
-- Enemy Lab definitions can feed live game.
+- Shared enemy definitions feed the live game.
 - Build passes.
 - Commit and push.
 
@@ -1530,7 +1527,7 @@ Tasks:
 
 - Decide storage format: `.svg`, TypeScript vector definitions, or both.
 - Use **Neon-Forward Salvagepunk** as the locked art theme for AI asset generation: neon energy dominates the first read, salvage/steampunk machinery supports silhouette and texture.
-- Start Phase 16 through the Asset Forge inside Enemy Lab so assets can be generated, previewed, exported, reviewed, and promoted from structured vector recipes.
+- Continue the Asset Forge as a main-game asset pipeline so assets can be generated, previewed, exported, reviewed, and promoted from structured vector recipes.
 - Create generated texture registry.
 - Convert scrap to vector/cached texture.
 - Convert player ships to vector/cached texture.
@@ -1709,7 +1706,7 @@ The Starvivors 2.0 prototype is successful when:
 - Enemies live in the world as squads and anchored encounters.
 - The player can find signals, scrap, enemies, events, and objectives.
 - Combat uses readable polygon/vector enemies.
-- The Pulse Cannon feels like the Enemy Lab weapon.
+- The Pulse Cannon feels like the baseline direct-fire weapon.
 - Physics/collision feel consistent and fair.
 - Rare events can appear.
 - At least one stronghold or mothership encounter exists.

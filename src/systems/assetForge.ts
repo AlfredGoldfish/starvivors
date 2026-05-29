@@ -1,5 +1,5 @@
 import Phaser from 'phaser';
-import type { EnemyLabDefinition, EnemyVisualDefinition } from '../data/enemyLabDefinitions';
+import type { EnemyDefinition, EnemyVisualDefinition } from '../data/enemyDefinitions';
 import type { ProjectileVisualDefinition, WeaponRegistryEntry } from '../data/weapons';
 
 export const FORGE_STYLE_GUIDE_VERSION = 'neon-forward-salvagepunk-v1';
@@ -739,7 +739,7 @@ export function createForgeProductionPromotionBundle(
 ): ForgeProductionPromotionBundle {
   const visualAssetId = createForgeVisualAssetId(asset);
   const registryFile = hints.registryFile ?? 'src/data/forgeAssetRegistry.ts';
-  const targetDataFile = hints.targetDataFile ?? 'src/data/enemyLabDefinitions.ts';
+  const targetDataFile = hints.targetDataFile ?? 'src/data/enemyDefinitions.ts';
   const registryEntrySnippet = createForgeRegistryEntrySnippet(visualAssetId, asset, hints.notes);
   const definitionPatchHint = createForgeDefinitionPatchHint(visualAssetId, hints.sourceDefinitionId);
 
@@ -895,7 +895,7 @@ export function createForgeRepairPrompt(report: ForgeAiValidationReport, origina
   ].join('\n');
 }
 
-export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyLabDefinition): ForgeAsset {
+export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyDefinition): ForgeAsset {
   const visual = definition.visual;
   const radius = visual.size * 0.46;
   const palette: ForgePalette = {
@@ -920,8 +920,8 @@ export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyLabDef
     kind: 'enemy',
     displayName: definition.displayName,
     status: definition.id === 'scout' ? 'Visual Pass' : 'Generated',
-    tags: ['enemy-lab', definition.role, `tier-${definition.tier}`, 'neon-forward-salvagepunk'],
-    notes: 'Converted from the existing Enemy Lab visual definition as an Asset Forge compatibility recipe.',
+    tags: ['enemy', definition.role, `tier-${definition.tier}`, 'neon-forward-salvagepunk'],
+    notes: 'Converted from the existing enemy visual definition as an Asset Forge compatibility recipe.',
     styleGuideVersion: FORGE_STYLE_GUIDE_VERSION,
     palette,
     boundsRadius: Math.max(visual.size * 0.58, definition.stats.radius),
@@ -942,7 +942,7 @@ export function convertEnemyVisualDefinitionToForgeAsset(definition: EnemyLabDef
   };
 }
 
-export function applyForgeAssetToEnemyDefinition(definition: EnemyLabDefinition, asset: ForgeAsset): EnemyLabDefinition {
+export function applyForgeAssetToEnemyDefinition(definition: EnemyDefinition, asset: ForgeAsset): EnemyDefinition {
   return {
     ...definition,
     displayName: asset.displayName,

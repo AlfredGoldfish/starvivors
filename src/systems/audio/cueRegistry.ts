@@ -1,10 +1,3 @@
-import {
-  ATTACK_AUDIO_BEAT_MAP,
-  type AttackAudioBeat,
-  type AttackAudioCueId
-} from './attackAudio';
-import type { EnemyAttackId } from '../../data/enemyAttackDefinitions';
-
 export type AudioCategory = 'sfx' | 'ui' | 'music';
 
 export interface OscillatorCueLayer {
@@ -237,95 +230,8 @@ const BASE_AUDIO_CUE_REGISTRY = {
   }
 } satisfies Record<string, AudioCueDefinition>;
 
-const ATTACK_AUDIO_BEAT_COOLDOWNS: Record<AttackAudioBeat, number> = {
-  telegraph: 240,
-  channel: 420,
-  resolve: 120,
-  impact: 105,
-  tick: 260
-};
-
-function createAttackAudioCueRegistry(): Record<AttackAudioCueId, AudioCueDefinition<AttackAudioCueId>> {
-  const registry: Partial<Record<AttackAudioCueId, AudioCueDefinition<AttackAudioCueId>>> = {};
-
-  for (const [attackId, beatMap] of Object.entries(ATTACK_AUDIO_BEAT_MAP) as Array<[
-    EnemyAttackId,
-    Partial<Record<AttackAudioBeat, AttackAudioCueId>>
-  ]>) {
-    for (const [beat, cueId] of Object.entries(beatMap) as Array<[AttackAudioBeat, AttackAudioCueId]>) {
-      registry[cueId] = createAttackCueDefinition(cueId, attackId, beat);
-    }
-  }
-
-  return registry as Record<AttackAudioCueId, AudioCueDefinition<AttackAudioCueId>>;
-}
-
-function createAttackCueDefinition(
-  cueId: AttackAudioCueId,
-  attackId: EnemyAttackId,
-  beat: AttackAudioBeat
-): AudioCueDefinition<AttackAudioCueId> {
-  const seed = hashString(`${attackId}:${beat}`);
-  const baseFrequency = 120 + (seed % 13) * 19;
-  const accentFrequency = baseFrequency * (1.45 + ((seed >> 4) % 5) * 0.12);
-
-  return {
-    id: cueId,
-    category: 'sfx',
-    cooldownMs: ATTACK_AUDIO_BEAT_COOLDOWNS[beat],
-    layers: createAttackCueLayers(beat, baseFrequency, accentFrequency)
-  };
-}
-
-function createAttackCueLayers(
-  beat: AttackAudioBeat,
-  baseFrequency: number,
-  accentFrequency: number
-): ProceduralCueLayer[] {
-  switch (beat) {
-    case 'telegraph':
-      return [
-        { type: 'oscillator', waveform: 'sine', gain: 0.034, frequencyStartHz: clampFrequency(baseFrequency * 1.08), frequencyEndHz: clampFrequency(accentFrequency * 1.18), durationMs: 190, attackMs: 14 },
-        { type: 'noise', gain: 0.014, durationMs: 150, delayMs: 18, filterType: 'bandpass', filterStartHz: clampFrequency(accentFrequency * 3.8), filterEndHz: clampFrequency(accentFrequency * 5.2) }
-      ];
-    case 'channel':
-      return [
-        { type: 'oscillator', waveform: 'triangle', gain: 0.028, frequencyStartHz: clampFrequency(baseFrequency * 0.92), frequencyEndHz: clampFrequency(baseFrequency * 0.66), durationMs: 380, attackMs: 22 },
-        { type: 'oscillator', waveform: 'sine', gain: 0.021, frequencyStartHz: clampFrequency(accentFrequency * 1.35), frequencyEndHz: clampFrequency(accentFrequency * 0.88), durationMs: 270, delayMs: 90, attackMs: 16 }
-      ];
-    case 'resolve':
-      return [
-        { type: 'oscillator', waveform: 'triangle', gain: 0.047, frequencyStartHz: clampFrequency(accentFrequency * 1.35), frequencyEndHz: clampFrequency(baseFrequency * 0.72), durationMs: 135, attackMs: 4 },
-        { type: 'noise', gain: 0.024, durationMs: 92, filterType: 'bandpass', filterStartHz: clampFrequency(accentFrequency * 2.8), filterEndHz: clampFrequency(baseFrequency * 3.4) }
-      ];
-    case 'impact':
-      return [
-        { type: 'oscillator', waveform: 'sawtooth', gain: 0.054, frequencyStartHz: clampFrequency(baseFrequency * 0.82), frequencyEndHz: clampFrequency(baseFrequency * 0.28), durationMs: 168, attackMs: 3 },
-        { type: 'noise', gain: 0.046, durationMs: 138, filterType: 'lowpass', filterStartHz: clampFrequency(accentFrequency * 4.4), filterEndHz: clampFrequency(baseFrequency * 1.15) }
-      ];
-    case 'tick':
-      return [
-        { type: 'oscillator', waveform: 'sine', gain: 0.023, frequencyStartHz: clampFrequency(baseFrequency * 1.62), frequencyEndHz: clampFrequency(accentFrequency * 1.16), durationMs: 72, attackMs: 3 },
-        { type: 'noise', gain: 0.012, durationMs: 54, filterType: 'bandpass', filterStartHz: clampFrequency(accentFrequency * 2.4), filterEndHz: clampFrequency(accentFrequency * 3.5) }
-      ];
-  }
-}
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let index = 0; index < value.length; index += 1) {
-    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
-  }
-  return hash;
-}
-
-function clampFrequency(value: number): number {
-  return Math.max(28, Math.min(7200, Math.round(value)));
-}
-
 export const AUDIO_CUE_REGISTRY = {
-  ...BASE_AUDIO_CUE_REGISTRY,
-  ...createAttackAudioCueRegistry()
+  ...BASE_AUDIO_CUE_REGISTRY
 } satisfies Record<string, AudioCueDefinition>;
 
 export type AudioCueId = keyof typeof AUDIO_CUE_REGISTRY;

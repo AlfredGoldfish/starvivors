@@ -11,9 +11,9 @@ import type {
   TankEnemy
 } from '../scenes/gameTypes';
 import type { DebugState } from './debug/debugState';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 
-type CombatEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyLabInstance;
+type CombatEnemy = BasicEnemy | ShooterEnemy | TankEnemy | EnemyInstance;
 
 export interface CombatFeedbackSnapshot {
   player?: Phaser.GameObjects.Container;

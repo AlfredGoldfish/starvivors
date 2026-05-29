@@ -23,7 +23,7 @@ import type {
 import type { BlackHoleSystem } from './blackHole';
 import type { RammingShieldCollider } from './rammingShield';
 import { createOrientedCapsuleCollisionShape, scaleHalfExtent, scaleRadius } from './collisionShapes';
-import type { EnemyLabInstance } from './enemyLabSpawner';
+import type { EnemyInstance } from './enemySpawner';
 
 export interface CollisionDebugOverlaySnapshot {
   arena: ArenaSize;
@@ -39,7 +39,7 @@ export interface CollisionDebugOverlaySnapshot {
   basicEnemies: BasicEnemy[];
   shooterEnemies: ShooterEnemy[];
   tankEnemies: TankEnemy[];
-  liveEnemies?: EnemyLabInstance[];
+  liveEnemies?: EnemyInstance[];
   basicAsteroids: BasicAsteroid[];
   enemyWreckageDebris: EnemyWreckageDebris[];
   scrapPickups: ScrapPickup[];

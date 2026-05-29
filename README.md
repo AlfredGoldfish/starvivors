@@ -2,7 +2,7 @@
 
 STARVIVORS is a browser-playable top-down space survival roguelite prototype built with Phaser 3, TypeScript, and Vite.
 
-The current 2.0 direction is an open-sector survival game with Asteroids-style thrust and drift, survivor-style upgrade pressure, dangerous space hazards, roaming enemy squads, missions, fuel pressure, persistent rewards, and a standalone Enemy Lab for testing enemy behavior.
+The current 2.0 direction is an open-sector survival game with Asteroids-style thrust and drift, survivor-style upgrade pressure, dangerous space hazards, roaming enemy squads, missions, fuel pressure, and persistent rewards.
 
 ## Stack
 
@@ -29,13 +29,7 @@ npm.cmd run dev
 Open the local URL printed by Vite, usually:
 
 ```text
-http://127.0.0.1:5173
-```
-
-Enemy Lab:
-
-```text
-http://127.0.0.1:5173/enemy-lab.html
+http://127.0.0.1:5174
 ```
 
 Desktop dev build:
@@ -84,14 +78,14 @@ src/                 Main game source
   config/            Phaser game configuration
   core/              Arena and viewport helpers
   data/              Ships, weapons, upgrades, enemies, missions, events, and balance data
-  scenes/            BootScene, GameScene, EnemyLabScene, and scene types/constants
+  scenes/            BootScene, GameScene, and scene types/constants
   systems/           Gameplay, physics, combat, spawning, progression, debug, and runtime systems
   ui/                Menus, HUD screens, shop, pause, ship select, and overlays
 ```
 
 ## Current State
 
-The game currently includes a playable main prototype and a separate Enemy Lab sandbox. Implemented or partially implemented systems include ship selection, loadouts, Pulse Cannon, Ramming Shield, Salvage Beam, black holes, asteroids, debris, scrap pickups, upgrades, shop/results flows, missions, rare events, sector generation, roaming squads, minimap/HUD, persistent progression, debug tooling, and smoke harnesses.
+The game currently includes a playable main prototype. Implemented or partially implemented systems include ship selection, loadouts, Pulse Cannon, Ramming Shield, Salvage Beam, black holes, asteroids, debris, scrap pickups, upgrades, shop/results flows, missions, rare events, sector generation, roaming squads, minimap/HUD, persistent progression, debug tooling, and smoke harnesses.
 
 `GameScene.ts` remains the conductor for Phaser lifecycle, object ownership, run flow, and module wiring. Focused systems under `src/systems`, `src/ui`, `src/data`, and `src/core` own new gameplay, UI, data, harness, tuning, and runtime behavior.
 
@@ -113,7 +107,7 @@ Keep changes small, buildable, and easy to verify.
 
 ## Documentation
 
-- `Docs/README_FOR_CODEX.md`: working instructions for Codex sessions
+- `README_FOR_CODEX.md`: working instructions for Codex sessions
 - `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md`: complete-game and polish checklist
 - `Docs/STARVIVORS_2_0_GDD_AND_BUILD_PLAN.md`: current 2.0 roadmap
 - `Docs/STARVIVORS_MVP_VISUAL_IDENTITY.md`: visual style reference
