@@ -116,7 +116,9 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-28 Batch C verification passed full Vitest with 19 files and 96 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke with Attack Tester target controls, `enemyLabAttacks` Batch A+B+C harness with `batchCSlots`, and the existing `enemyLabPrototype` monochrome harness.
   - Evidence: 2026-05-28 Phase 6 Enemy Lab verification added default-loadout, mixed-squad, player-host target coverage, reduced-FX, and high-contrast harness details; `enemyLabAttacks` reported all ready Batch A/B/C slots with every Phase 6 pass flag true, `enemyLabPrototype` still reported `monochrome-ready`, and screenshots were captured at `artifacts/visual-smoke/enemy-lab-attacks-basic-1280x720.png`, `artifacts/visual-smoke/enemy-lab-attacks-squads-1280x720.png`, `artifacts/visual-smoke/enemy-lab-attacks-player-test-1280x720.png`, and `artifacts/visual-smoke/enemy-lab-attacks-stress-high-contrast-1280x720.png`.
   - Evidence: 2026-05-28 Phase 6 verification passed full Vitest with 19 files and 99 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab headless smoke on port 5176, `enemyLabAttacks` Phase 6 smoke, and `enemyLabPrototype` monochrome smoke.
-  - Next: pair attack audio cues with the stable visual telegraphs, then plan live gameplay adoption.
+  - Evidence: 2026-05-28 Phase 7 Enemy Lab audio pass added procedural attack cues for every registry attack, lab-only audio playback for telegraph/channel/resolve/impact/tick runtime callbacks, a player-fire mode toggle that lets the player host the selected Attack Tester slot, and `enemyLabAttackAudio` harness coverage for all 20 registry attacks while keeping live `GameScene` combat unchanged.
+  - Evidence: 2026-05-28 Phase 7 verification passed full Vitest with 20 files and 104 tests, `npm.cmd run build`, `npm.cmd run electron:build`, Basic-tab smoke with visible `Player Fire: Pulse`, `enemyLabAttackAudio` ready with all attack IDs covered and `missingRequiredResolveCues=[]`, existing `enemyLabAttacks` ready, existing `enemyLabPrototype` `monochrome-ready`, and screenshot `artifacts/visual-smoke/enemy-lab-attack-audio-player-mode-1280x720.png`.
+  - Next: plan live gameplay adoption once attack visuals/audio are stable enough for encounter tuning.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
   - Next: add tier-distinct asteroid marks, debris hazard language, and black-hole warning cues.
@@ -201,9 +203,10 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-28 pass wired master, SFX, UI, and mute settings to playback and added an audio harness covering effective gains and representative cue recording; music volume remains persisted and clearly reserved for the later music/ambience pass.
   - Evidence: 2026-05-28 pass softened player-fire and player-burst-fire procedural cues by lowering high-frequency content, reducing gain, and switching brittle oscillators to triangle waves.
   - Next: add actual music/ambience sources, then promote this from partial to complete once the music slider controls an active source.
-- [ ] Enemy and hazard audio cues exist.
+- [~] Enemy and hazard audio cues exist.
   - Done when: dangerous enemy actions and major hazards have recognizable cues that improve readability.
-  - Next: pair cues with telegraph pass.
+  - Evidence: 2026-05-28 Phase 7 Enemy Lab pass added procedural attack cue coverage for every `ENEMY_ATTACK_DEFINITIONS` entry and wired those cues to lab-only runtime beats through existing Sound settings.
+  - Next: hazards remain future work; add asteroid/debris/black-hole warning and impact cues before marking this complete.
 - [ ] Music/ambience direction exists in game.
   - Done when: menu, run, danger/event, and results ambience have at least placeholder implementation with volume control.
   - Next: defer until SFX categories are in place.
@@ -279,3 +282,4 @@ Current focus: Pass A.
 - 2026-05-28: Completed Enemy Lab Phase 5 Batch B attack polish for `sweep-laser`, `healing-beam`, `shield-wall`, and `plasma-puddle` with sustained tick runtime support, damaged-ally retargeting, reflect shield clarity, lingering puddle feedback, Batch B readability visuals, full Vitest, build, electron build, Basic-tab smoke, `enemyLabAttacks` Batch A+B smoke, and `enemyLabPrototype` recheck.
 - 2026-05-28: Completed Enemy Lab Phase 5 Batch C attack polish for `cluster-bomb`, `alarm-ping`, `berserker-shockwave`, and `mine-reveal` with delayed cluster secondary impacts, alarm squad calls, shockwave/mine status timing, Batch C readability visuals, full Vitest, build, electron build, Basic-tab smoke, `enemyLabAttacks` Batch A+B+C smoke, and `enemyLabPrototype` recheck.
 - 2026-05-28: Completed Enemy Lab Phase 6 verification and polish with Phase 6 harness JSON details, Basic/Squads/Attack Tester/stress-high-contrast screenshots, full Vitest with 99 tests, build, electron build, Basic-tab smoke, `enemyLabAttacks` Phase 6 smoke, and `enemyLabPrototype` recheck.
+- 2026-05-28: Completed Enemy Lab Phase 7 attack audio and player-host attack mode with generated procedural attack cue coverage for all 20 registry attacks, lab-only runtime audio callbacks, a session-local Player Fire toggle, `enemyLabAttackAudio` harness coverage, full Vitest with 104 tests, build, electron build, existing harness rechecks, and `enemy-lab-attack-audio-player-mode-1280x720.png`.

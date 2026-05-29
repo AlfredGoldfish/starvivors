@@ -98,6 +98,18 @@ import {
   type AttackTargetSnapshot,
   type AttackVisualRequest
 } from '../systems/enemyAttackRuntime';
+import { AudioManager, type AudioCueId } from '../systems/audio/audioManager';
+import {
+  getAttackAudioCueId,
+  getRequiredAttackAudioCoverage,
+  type AttackAudioBeat
+} from '../systems/audio/attackAudio';
+import { loadGameSettings } from '../systems/gameSettings';
+import {
+  createDefaultEnemyLabPlayerAttackModes,
+  resolveEnemyLabPlayerFireAction,
+  type EnemyLabPlayerAttackMode
+} from '../systems/enemyLabPlayerAttackMode';
 import {
   applyPlayerStatusEffects,
   createPlayerStatusEffectRuntime,
@@ -326,9 +338,17 @@ interface EnemyLabOverlayRefs {
 const PLAYER_LAB_HULL = 100;
 const PLAYER_LAB_HIT_RADIUS = 32;
 const PLAYER_PROJECTILE_COOLDOWN_MS = 150;
+const PLAYER_SELECTED_ATTACK_QUEUE_INTERVAL_MS = 90;
 const PLAYER_PROJECTILE_SPEED = 900;
 const PLAYER_PROJECTILE_RANGE = 1100;
 const PLAYER_PROJECTILE_DAMAGE = 18;
+const ATTACK_AUDIO_BEAT_THROTTLE_MS: Record<AttackAudioBeat, number> = {
+  telegraph: 180,
+  channel: 320,
+  resolve: 70,
+  impact: 100,
+  tick: 260
+};
 const LAB_PLAYER_SHIP = getShipDefinition(DEFAULT_SHIP_ID);
 const LAB_DIAGNOSTICS_FRAME_LIMIT = 900;
 const FORGE_PALETTE_KEYS: Array<keyof ForgePalette> = [
@@ -411,6 +431,9 @@ export class EnemyLabScene extends Phaser.Scene {
   private selectedForgeAssetId = '';
   private selectedForgeLayerIndex = 0;
   private selectedAttackTestId: EnemyAttackId = 'rail-line';
+  private readonly audio = new AudioManager({ historyLimit: 180 });
+  private readonly attackAudioLastPlayedAt = new Map<string, number>();
+  private playerAttackModesByLabMode = createDefaultEnemyLabPlayerAttackModes();
   private basicLoadoutDraftsByEnemyId: Record<string, AttackLoadoutSlot[]> = {};
   private selectedBasicLoadoutSlotIndex = 0;
   private attackTesterSlots: AttackLoadoutSlot[] = [createDefaultAttackLoadoutSlot('rail-line')];
@@ -473,6 +496,14 @@ export class EnemyLabScene extends Phaser.Scene {
     super('EnemyLabScene');
   }
 
+  private get playerAttackMode(): EnemyLabPlayerAttackMode {
+    return this.playerAttackModesByLabMode[this.labMode];
+  }
+
+  private set playerAttackMode(mode: EnemyLabPlayerAttackMode) {
+    this.playerAttackModesByLabMode[this.labMode] = mode;
+  }
+
   preload(): void {}
 
   create(): void {
@@ -503,6 +534,8 @@ export class EnemyLabScene extends Phaser.Scene {
       )
     ];
     this.createInput();
+    this.audio.applySettings(loadGameSettings().sound);
+    this.audio.installUnlockListeners();
     this.createOverlay();
     this.runEnemyLabSmokeHarnessIfRequested();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
@@ -518,7 +551,9 @@ export class EnemyLabScene extends Phaser.Scene {
       this.clearEnemyCollisionDebug();
       this.overlay?.root.remove();
       this.overlay = undefined;
+      this.audio.dispose();
     });
+    this.events.once(Phaser.Scenes.Events.DESTROY, () => this.audio.dispose());
   }
 
   update(time: number, delta: number): void {
@@ -629,6 +664,7 @@ export class EnemyLabScene extends Phaser.Scene {
       harness !== 'enemyLabVector' &&
       harness !== 'enemyLabPrototype' &&
       harness !== 'enemyLabAttacks' &&
+      harness !== 'enemyLabAttackAudio' &&
       harness !== 'smoke' &&
       !phase6HarnessView
     ) {
@@ -642,6 +678,11 @@ export class EnemyLabScene extends Phaser.Scene {
 
     if (harness === 'enemyLabAttacks') {
       this.runEnemyLabAttackSmokeHarness();
+      return;
+    }
+
+    if (harness === 'enemyLabAttackAudio') {
+      this.runEnemyLabAttackAudioHarness();
       return;
     }
 
@@ -680,6 +721,187 @@ export class EnemyLabScene extends Phaser.Scene {
 
     document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', details.pass ? 'ready' : 'fail');
     document.body.setAttribute('data-starvivors-enemy-lab-attack-harness-details', JSON.stringify(details));
+  }
+
+  private runEnemyLabAttackAudioHarness(): void {
+    this.clearEnemies();
+    this.clearAttackTests();
+    this.audio.clearHistory();
+    this.attackAudioLastPlayedAt.clear();
+    this.attackTesterAutoCycleEnabled = false;
+    this.readabilityMode = 'normal';
+    this.reducedEffects = false;
+    this.setLabMode('attack-tester');
+    this.playerAttackMode = 'selected-attack';
+
+    const center = this.getPreviewPosition();
+    this.player.setPosition(center.x, center.y);
+    this.playerVelocity.set(0, 0);
+    const dummy = this.spawnAttackTestTarget('dummy', wrapCoordinate(center.x + 150, this.arena.width), center.y);
+    const enemy = this.spawnAttackTestTarget('enemy', wrapCoordinate(center.x + 250, this.arena.width), wrapCoordinate(center.y + 40, this.arena.height));
+    const ally = this.spawnAttackTestTarget('ally', wrapCoordinate(center.x - 150, this.arena.width), center.y);
+    dummy.hp = 90;
+    enemy.hp = 90;
+    ally.hp = 42;
+    this.updateAttackTestTargetLabel(dummy);
+    this.updateAttackTestTargetLabel(enemy);
+    this.updateAttackTestTargetLabel(ally);
+
+    this.attackTesterSlots = this.createAttackAudioHarnessSlots();
+    this.attackTesterRuntime = undefined;
+    this.attackTesterRuntimeSignature = '';
+    this.selectedAttackTesterSlotIndex = 0;
+    this.selectedAttackTestId = this.attackTesterSlots[0]?.attackId ?? 'rail-line';
+    this.syncOverlayFromState();
+
+    const runtime = this.ensureAttackTesterRuntime(this.time.now);
+    if (runtime) {
+      this.runAttackAudioHarnessQueue(runtime, this.time.now);
+    }
+
+    const coverage = getRequiredAttackAudioCoverage();
+    const recentCueIds = this.audio.getSnapshot().recentCueIds.filter((cueId) => String(cueId).startsWith('attack-'));
+    const coveredAttackIds = coverage.attackIds.filter((attackId) =>
+      recentCueIds.some((cueId) => String(cueId).startsWith(`attack-${attackId}-`))
+    );
+    const missingAttackIds = coverage.attackIds.filter((attackId) => !coveredAttackIds.includes(attackId));
+    const coveredBeats = Array.from(
+      new Set(recentCueIds.map((cueId) => this.getAttackAudioBeatFromCueId(cueId)).filter((beat): beat is AttackAudioBeat => Boolean(beat)))
+    ).sort();
+    const missingRequiredResolveCues = coverage.attackIds.filter((attackId) =>
+      !recentCueIds.includes(`attack-${attackId}-resolve` as AudioCueId)
+    );
+    const selectedAction = resolveEnemyLabPlayerFireAction({
+      playerAttackMode: 'selected-attack',
+      selectedSlotIndex: 0,
+      slots: this.attackTesterSlots,
+      isAttackRuntimeIdle: true
+    });
+    const pulseAction = resolveEnemyLabPlayerFireAction({
+      playerAttackMode: 'pulse',
+      selectedSlotIndex: 0,
+      slots: this.attackTesterSlots,
+      isAttackRuntimeIdle: true
+    });
+    const playerFireMode = {
+      defaultBasic: this.playerAttackModesByLabMode.basic,
+      defaultAttackTester: this.playerAttackModesByLabMode['attack-tester'],
+      selectedAction,
+      pulseAction,
+      pass:
+        this.playerAttackModesByLabMode.basic === 'pulse' &&
+        this.playerAttackModesByLabMode['attack-tester'] === 'selected-attack' &&
+        selectedAction.type === 'selected-attack' &&
+        pulseAction.type === 'pulse'
+    };
+    const pass =
+      missingAttackIds.length === 0 &&
+      missingRequiredResolveCues.length === 0 &&
+      coverage.missingRequiredResolveCueAttackIds.length === 0 &&
+      coverage.missingTelegraphCueAttackIds.length === 0 &&
+      coverage.missingSustainedTickCueAttackIds.length === 0 &&
+      playerFireMode.pass;
+    const details = {
+      pass,
+      coveredAttackIds,
+      missingAttackIds,
+      coveredBeats,
+      missingRequiredResolveCues,
+      registryCoverage: coverage,
+      playerFireMode,
+      recentCueIds
+    };
+
+    document.body.setAttribute('data-starvivors-enemy-lab-audio-harness', pass ? 'ready' : 'fail');
+    document.body.setAttribute('data-starvivors-enemy-lab-audio-harness-details', JSON.stringify(details));
+  }
+
+  private createAttackAudioHarnessSlots(): AttackLoadoutSlot[] {
+    return getEnemyAttackDefinitions().map((definition) => {
+      const slot = createDefaultAttackLoadoutSlot(definition.id);
+      slot.cooldownOffsetMs = 0;
+      slot.params = {
+        ...(slot.params ?? {}),
+        ...this.createAttackAudioHarnessParams(definition.id)
+      };
+      return slot;
+    });
+  }
+
+  private createAttackAudioHarnessParams(attackId: EnemyAttackId): Record<string, EnemyAttackParamValue> {
+    const definition = getEnemyAttackDefinition(attackId);
+    const params: Record<string, EnemyAttackParamValue> = {
+      initialDelayMs: 0,
+      cooldownMs: 80,
+      recoveryMs: 0,
+      rangePx: Math.max(900, definition.targeting.rangePx)
+    };
+
+    params.windupMs = definition.timing.windupMs > 0 ? 24 : 0;
+    if (definition.timing.activeMs !== undefined) {
+      params.activeMs = 90;
+    }
+    if (definition.timing.channelMs !== undefined) {
+      params.channelMs = 32;
+    }
+
+    switch (attackId) {
+      case 'rail-line':
+        return { ...params, aimMs: 12, lockMs: 12, windupMs: 24, activeMs: 70 };
+      case 'mortar-lob':
+        return { ...params, windupMs: 24, travelMs: 42, activeMs: 42 };
+      case 'summon-glyphs':
+        return { ...params, windupMs: 18, channelMs: 32, activeMs: 70, count: 1 };
+      case 'sweep-laser':
+        return { ...params, windupMs: 24, sweepMs: 150, activeMs: 150, tickMs: 45 };
+      case 'healing-beam':
+        return { ...params, windupMs: 18, activeMs: 150, tickMs: 45, retargetMs: 45 };
+      case 'plasma-puddle':
+        return { ...params, landingMs: 24, windupMs: 24, durationMs: 150, activeMs: 150, tickMs: 45 };
+      case 'cluster-bomb':
+        return { ...params, windupMs: 24, travelMs: 38, delayMs: 42, activeMs: 84, splitCount: 2 };
+      case 'alarm-ping':
+        return { ...params, detectMs: 24, windupMs: 24, callDelayMs: 32, channelMs: 32, activeMs: 70, count: 1 };
+      case 'mine-reveal':
+        return { ...params, chargeMs: 24, windupMs: 24, activeMs: 70, blastRadiusPx: 135 };
+      case 'self-destruct-radius':
+        return { ...params, triggerRangePx: 999, countdownMs: 24, windupMs: 24, activeMs: 70 };
+      case 'contact-ram':
+        return { ...params, rangePx: 999, activeMs: 70 };
+      case 'simple-bolt':
+        return { ...params, windupMs: 20, activeMs: 70, projectileSpeed: 520 };
+      case 'charge-strike':
+        return { ...params, windupMs: 24, activeMs: 70, rangePx: 999 };
+      case 'split-shards':
+        return { ...params, activeMs: 70, childCount: 1 };
+      case 'command-buff-pulse':
+        return { ...params, windupMs: 18, activeMs: 100 };
+      case 'phase-blink-strike':
+        return { ...params, windupMs: 24, activeMs: 70, rangePx: 999 };
+      default:
+        return params;
+    }
+  }
+
+  private runAttackAudioHarnessQueue(runtime: AttackHostRuntime, baseTime: number): void {
+    this.attackTesterSlots.forEach((slot, index) => {
+      const queuedAt = baseTime + index * 340;
+      this.selectedAttackTesterSlotIndex = index;
+      this.selectedAttackTestId = slot.attackId;
+      queueAttackSlot(runtime, index, queuedAt);
+      for (const offset of [0, 30, 80, 150, 250, 420]) {
+        this.updateAttackTesterRuntime(queuedAt + offset, 0.016);
+      }
+    });
+  }
+
+  private getAttackAudioBeatFromCueId(cueId: AudioCueId): AttackAudioBeat | undefined {
+    if (String(cueId).endsWith('-telegraph')) return 'telegraph';
+    if (String(cueId).endsWith('-channel')) return 'channel';
+    if (String(cueId).endsWith('-resolve')) return 'resolve';
+    if (String(cueId).endsWith('-impact')) return 'impact';
+    if (String(cueId).endsWith('-tick')) return 'tick';
+    return undefined;
   }
 
   private runEnemyLabPhase6ScreenshotHarness(view: EnemyLabPhase6HarnessView): void {
@@ -1234,6 +1456,33 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
+    const runtime = this.ensureAttackTesterRuntime(time);
+    const fireAction = resolveEnemyLabPlayerFireAction({
+      playerAttackMode: this.playerAttackMode,
+      selectedSlotIndex: this.selectedAttackTesterSlotIndex,
+      slots: this.attackTesterSlots,
+      isAttackRuntimeIdle: runtime ? this.isAttackRuntimeIdle(runtime) : true
+    });
+
+    if (fireAction.type === 'selected-attack') {
+      if (!runtime) {
+        return;
+      }
+      const selectedSlot = this.attackTesterSlots[fireAction.slotIndex];
+      if (!selectedSlot) {
+        return;
+      }
+
+      this.ensureAttackTesterTargetForSlot(selectedSlot);
+      queueAttackSlot(runtime, fireAction.slotIndex, time);
+      this.nextPlayerFireAt = time + PLAYER_SELECTED_ATTACK_QUEUE_INTERVAL_MS;
+      return;
+    }
+
+    if (fireAction.type === 'none') {
+      return;
+    }
+
     const direction = this.getForwardDirection(this.player.rotation);
     this.createProjectile({
       owner: 'player',
@@ -1246,6 +1495,7 @@ export class EnemyLabScene extends Phaser.Scene {
       radius: 8,
       color: 0x42f5d7
     });
+    this.playAudioCue('player-fire');
     this.nextPlayerFireAt = time + PLAYER_PROJECTILE_COOLDOWN_MS;
   }
 
@@ -1452,18 +1702,121 @@ export class EnemyLabScene extends Phaser.Scene {
     return runtime.attacks.every((slot) => slot.phase === 'idle');
   }
 
+  private playAudioCue(cueId: AudioCueId, time = this.time?.now ?? performance.now()): boolean {
+    return this.audio.playCue(cueId, time);
+  }
+
+  private playAttackAudioBeat(attackId: EnemyAttackId, beat: AttackAudioBeat, time = this.time?.now ?? performance.now()): boolean {
+    const cueId = getAttackAudioCueId(attackId, beat);
+    if (!cueId) {
+      return false;
+    }
+
+    const throttleKey = `${attackId}:${beat}`;
+    const previous = this.attackAudioLastPlayedAt.get(throttleKey);
+    const throttleMs = ATTACK_AUDIO_BEAT_THROTTLE_MS[beat];
+    if (previous !== undefined && time - previous < throttleMs) {
+      return false;
+    }
+
+    this.attackAudioLastPlayedAt.set(throttleKey, time);
+    return this.playAudioCue(cueId as AudioCueId, time);
+  }
+
+  private hasAttackAudioBeat(attackId: EnemyAttackId, beat: AttackAudioBeat): boolean {
+    return Boolean(getAttackAudioCueId(attackId, beat));
+  }
+
+  private playAttackTelegraphAudio(request: AttackVisualRequest): void {
+    const beat = request.beat === 'channel' && this.hasAttackAudioBeat(request.attackId, 'channel')
+      ? 'channel'
+      : 'telegraph';
+    this.playAttackAudioBeat(request.attackId, beat);
+  }
+
+  private playAttackEffectAudio(request: AttackVisualRequest): void {
+    if (request.beat === 'channel' || request.beat === 'impact') {
+      const beat = this.hasAttackAudioBeat(request.attackId, 'tick') ? 'tick' : request.beat;
+      this.playAttackAudioBeat(request.attackId, beat);
+      return;
+    }
+
+    this.playAttackAudioBeat(request.attackId, 'resolve');
+  }
+
+  private playAttackAreaDamageAudio(request: AttackAreaDamageRequest): void {
+    if (this.isSustainedAttackAudio(request.attackId) && request.beat === 'impact') {
+      if (this.hasAttackAudioBeat(request.attackId, 'impact') && !this.attackAudioLastPlayedAt.has(`${request.attackId}:impact`)) {
+        this.playAttackAudioBeat(request.attackId, 'impact');
+      }
+      const beat = this.hasAttackAudioBeat(request.attackId, 'tick') ? 'tick' : 'impact';
+      this.playAttackAudioBeat(request.attackId, beat);
+      return;
+    }
+
+    if (request.beat === 'channel' || this.isSustainedAttackAudio(request.attackId)) {
+      const beat = this.hasAttackAudioBeat(request.attackId, 'tick') ? 'tick' : 'impact';
+      this.playAttackAudioBeat(request.attackId, beat);
+      return;
+    }
+
+    if (this.hasAttackAudioBeat(request.attackId, 'impact')) {
+      this.playAttackAudioBeat(request.attackId, 'impact');
+    }
+  }
+
+  private playAttackSupportAudio(attackId: EnemyAttackId, preferredBeat: AttackAudioBeat = 'impact'): void {
+    const beat = this.hasAttackAudioBeat(attackId, preferredBeat)
+      ? preferredBeat
+      : this.hasAttackAudioBeat(attackId, 'impact')
+        ? 'impact'
+        : 'resolve';
+    this.playAttackAudioBeat(attackId, beat);
+  }
+
+  private isSustainedAttackAudio(attackId: EnemyAttackId): boolean {
+    return attackId === 'sweep-laser' || attackId === 'healing-beam' || attackId === 'plasma-puddle';
+  }
+
   private createAttackRuntimeCallbacks(): Parameters<typeof updateAttackHostRuntime>[0]['callbacks'] {
     return {
-      spawnProjectile: (request) => this.fireAttackRuntimeProjectile(request),
-      areaDamage: (request) => this.applyAttackRuntimeAreaDamage(request),
+      spawnProjectile: (request) => {
+        this.playAttackSupportAudio(request.attackId);
+        this.fireAttackRuntimeProjectile(request);
+      },
+      areaDamage: (request) => {
+        this.playAttackAreaDamageAudio(request);
+        this.applyAttackRuntimeAreaDamage(request);
+      },
       applyStatus: (target, statuses) => this.applyAttackRuntimeStatus(target, statuses),
-      summon: (request) => this.summonFromAttackRuntime(request),
-      heal: (request) => this.applyAttackRuntimeHeal(request),
-      buff: (request) => this.applyAttackRuntimeBuff(request),
-      shield: (request) => this.applyAttackRuntimeShield(request),
-      stealScrap: (request) => this.applyAttackRuntimeScrapSteal(request),
-      telegraph: (request) => this.renderAttackRuntimeTelegraph(request),
-      effect: (request) => this.renderAttackRuntimeEffect(request),
+      summon: (request) => {
+        this.playAttackSupportAudio(request.attackId);
+        this.summonFromAttackRuntime(request);
+      },
+      heal: (request) => {
+        this.playAttackSupportAudio('healing-beam', 'tick');
+        this.applyAttackRuntimeHeal(request);
+      },
+      buff: (request) => {
+        this.playAttackSupportAudio('command-buff-pulse');
+        this.applyAttackRuntimeBuff(request);
+      },
+      shield: (request) => {
+        this.playAttackSupportAudio('shield-wall');
+        this.applyAttackRuntimeShield(request);
+      },
+      stealScrap: (request) => {
+        this.playAttackSupportAudio('scrap-steal');
+        this.applyAttackRuntimeScrapSteal(request);
+      },
+      telegraph: (request) => {
+        this.playAttackTelegraphAudio(request);
+        this.renderAttackRuntimeTelegraph(request);
+      },
+      effect: (request) => {
+        this.playAttackEffectAudio(request);
+        this.renderAttackRuntimeEffect(request);
+      },
       labEffect: (request) => this.renderAttackRuntimeLabEffect(request)
     };
   }
@@ -2963,18 +3316,29 @@ export class EnemyLabScene extends Phaser.Scene {
       return;
     }
 
-    if (this.attackTestTargets.length === 0 && getEnemyAttackDefinition(selectedSlot.attackId).targeting.targetKind !== 'self') {
-      const position = this.getSpawnPositionAroundPlayer(340);
-      this.spawnAttackTestTarget('dummy', position.x, position.y);
-    }
+    this.ensureAttackTesterTargetForSlot(selectedSlot);
 
     queueAttackSlot(runtime, this.selectedAttackTesterSlotIndex, this.time.now);
     this.setPresetStatus(`Queued Attack Tester slot ${this.selectedAttackTesterSlotIndex + 1}: ${getEnemyAttackDefinition(selectedSlot.attackId).displayName}`);
   }
 
+  private ensureAttackTesterTargetForSlot(slot: AttackLoadoutSlot): void {
+    if (this.attackTestTargets.length > 0 || getEnemyAttackDefinition(slot.attackId).targeting.targetKind === 'self') {
+      return;
+    }
+
+    const position = this.getSpawnPositionAroundPlayer(340);
+    this.spawnAttackTestTarget('dummy', position.x, position.y);
+  }
+
   private toggleAttackTesterAutoCycle(): void {
     this.attackTesterAutoCycleEnabled = !this.attackTesterAutoCycleEnabled;
     this.nextAttackTesterAutoCycleAt = 0;
+    this.syncOverlayFromState();
+  }
+
+  private togglePlayerAttackMode(): void {
+    this.playerAttackMode = this.playerAttackMode === 'pulse' ? 'selected-attack' : 'pulse';
     this.syncOverlayFromState();
   }
 
@@ -3347,6 +3711,9 @@ export class EnemyLabScene extends Phaser.Scene {
           <button data-action="pause">Pause</button>
           <button class="enemy-lab-danger-button" data-action="deleteVariant">Delete Variant</button>
         </div>
+        <div class="enemy-lab-row">
+          <button data-action="playerAttackMode">Player Fire: Pulse</button>
+        </div>
       </section>
       <section class="enemy-lab-panel" data-lab-panel="basic">
         <div class="enemy-lab-panel-title">Attack Loadout Draft</div>
@@ -3365,6 +3732,9 @@ export class EnemyLabScene extends Phaser.Scene {
       <section class="enemy-lab-panel" data-lab-panel="attack-tester">
         <div class="enemy-lab-panel-title">Attack Tester</div>
         <label>Host <select disabled><option>Default Player Ship</option></select></label>
+        <div class="enemy-lab-row">
+          <button data-action="playerAttackMode">Player Fire: Selected Attack</button>
+        </div>
         <label>Attack <select data-field="attackTesterAttack"></select></label>
         <div class="enemy-lab-attack-loadout" data-field="attackTesterSlotList"></div>
         <div class="enemy-lab-row">
@@ -3925,6 +4295,7 @@ export class EnemyLabScene extends Phaser.Scene {
       if (action === 'loadAttackLoadout') this.loadAttackLoadoutPreset();
       if (action === 'saveAttackTest') this.saveAttackTestPreset();
       if (action === 'loadAttackTest') this.loadAttackTestPreset();
+      if (action === 'playerAttackMode') this.togglePlayerAttackMode();
       if (action === 'attackTesterFireOnce') this.fireSelectedAttackTesterSlot();
       if (action === 'attackTesterAutoCycle') this.toggleAttackTesterAutoCycle();
       if (action === 'attackTesterSpawnDummy') this.spawnAttackTestTarget('dummy');
@@ -5169,6 +5540,7 @@ export class EnemyLabScene extends Phaser.Scene {
       `current attack target ${selectedAttack.targeting.targetKind}`,
       `range ${selectedAttack.targeting.rangePx}`,
       `test targets ${this.attackTestTargets.length}`,
+      `player fire ${this.playerAttackMode === 'selected-attack' ? 'selected attack' : 'pulse'}`,
       `auto-cycle ${this.attackTesterAutoCycleEnabled ? 'on' : 'off'}`
     ].join(' | ');
   }
@@ -6050,6 +6422,12 @@ export class EnemyLabScene extends Phaser.Scene {
     this.setActionState('reducedEffects', this.reducedEffects, 'Reduced FX On', 'Reduced FX Off');
     this.setActionState('pause', this.isSimulationPaused, 'Paused', 'Pause');
     this.setActionState('attackTesterAutoCycle', this.attackTesterAutoCycleEnabled, 'Auto-Cycle On', 'Auto-Cycle');
+    this.setActionState(
+      'playerAttackMode',
+      this.playerAttackMode === 'selected-attack',
+      'Player Fire: Selected Attack',
+      'Player Fire: Pulse'
+    );
 
     if (!this.overlay) {
       return;
@@ -6565,7 +6943,7 @@ export class EnemyLabScene extends Phaser.Scene {
       `labels ${this.showDebugLabels ? 'on' : 'off'} | telegraphs ${this.showTelegraphs ? 'on' : 'off'} | ` +
       `deconflict ${this.enemyDeconflictionEnabled ? this.enemyDeconflictionStrength.toFixed(2) : 'off'} | circles ${this.enemyCollisionDebugEnabled ? 'on' : 'off'} | ` +
       `paused ${this.isSimulationPaused ? 'yes' : 'no'} | hull ${Math.ceil(this.playerHull)}/${PLAYER_LAB_HULL} | ` +
-      `mode ${this.labMode} | readability ${this.readabilityMode}${this.reducedEffects ? ' reduced-fx' : ''} | ` +
+      `mode ${this.labMode} | player fire ${this.playerAttackMode === 'selected-attack' ? 'selected' : 'pulse'} | readability ${this.readabilityMode}${this.reducedEffects ? ' reduced-fx' : ''} | ` +
       `visual ${selected.visualStyle ?? 'forge-texture'} | forge ${this.presetState.forgeAssets.length} | style ${FORGE_STYLE_GUIDE_VERSION}` +
       `${this.lastDiagnosticsExportPath ? ` | report ${this.lastDiagnosticsExportPath}` : ''}`;
     if (statusText !== this.lastOverlayStatusText) {

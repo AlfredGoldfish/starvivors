@@ -187,7 +187,7 @@ export class AudioManager {
     this.recentCueIds.length = 0;
   }
 
-  private canPlayCue(cue: AudioCueDefinition, timeMs: number): boolean {
+  private canPlayCue(cue: AudioCueDefinition<AudioCueId>, timeMs: number): boolean {
     const previousTime = this.lastPlayedAt.get(cue.id);
     return previousTime === undefined || timeMs - previousTime >= cue.cooldownMs;
   }

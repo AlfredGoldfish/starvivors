@@ -2,7 +2,7 @@
 
 Last updated: 2026-05-28
 
-Status: Phase 6 verification and polish complete in Enemy Lab. Active `GameScene` combat should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 7 attack audio and player-hosted attack mode complete in Enemy Lab. Active `GameScene` combat remains unchanged and should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -668,16 +668,6 @@ Acceptance per attack:
 - Has default params documented in the registry.
 - Does not require a new movement behavior id.
 
-### Future Attack Audio Pairing Reminder
-
-Status: planned for later; no audio implementation in Phase 6.
-
-Tasks:
-
-- Pair finalized attack telegraph, resolve, impact, and recovery beats with enemy/hazard SFX once the visual batches are stable.
-- Keep reduced-flash/reduced-effects readability intact when audio cues are added.
-- Use the saved Sound settings and existing procedural SFX hooks instead of adding one-off playback paths.
-
 ### Phase 6: Verification And Polish
 
 Status: completed 2026-05-28. Scope stayed Enemy Lab-only: no live `GameScene` combat wiring, no attack audio, and no new enabled manual stress UI.
@@ -742,6 +732,38 @@ Desktop smoke:
 ```powershell
 npm.cmd run dev:desktop:enemy-lab
 ```
+
+### Phase 7: Attack Audio And Player-Hosted Attack Mode
+
+Status: completed 2026-05-28. Scope stayed Enemy Lab-only: no live `GameScene` combat wiring and no external audio assets.
+
+Progress:
+
+- Added `src/systems/audio/attackAudio.ts` as the source of truth for attack audio beats: `telegraph`, `channel`, `resolve`, `impact`, and `tick`.
+- Refactored `AudioCueId` so it is inferred from `AUDIO_CUE_REGISTRY` keys, then generated procedural SFX cue definitions for every attack cue referenced by the attack audio map.
+- Covered every attack in `ENEMY_ATTACK_DEFINITIONS` with at least one `resolve` cue, telegraph/channel cue coverage where the attack has a telegraph, and tick cue coverage for sustained sweep/heal/puddle attacks.
+- Wired `AudioManager` into `EnemyLabScene` using saved Sound settings, unlock listeners, shutdown/destroy disposal, cue history, AudioManager cooldowns, and a small per-attack/beat throttle.
+- Routed Enemy Lab runtime callbacks to lab-only audio beats: telegraphs, channel warnings, resolves, projectile/area/support impacts, and sustained ticks. Live `GameScene` combat remains unchanged.
+- Added session-local player fire mode defaults: Basic/Squads/Stress/Presets default to `Player Fire: Pulse`, while Attack Tester defaults to `Player Fire: Selected Attack`.
+- Added visible Player Fire toggle controls and status text; selected-attack fire queues the currently selected Attack Tester slot on the player-test runtime while preserving Fire Once and Auto-Cycle.
+- Added `src/systems/enemyLabPlayerAttackMode.ts` with focused unit coverage for pulse-vs-selected attack routing and default mode behavior.
+- Added `/enemy-lab.html?testHarness=enemyLabAttackAudio`, which runs all registry attacks through the player-test runtime, records attack cue IDs in `AudioManager.recentCueIds`, and reports coverage JSON.
+
+Verification:
+
+- `npm.cmd run test` passed with 20 files and 104 tests.
+- `npm.cmd run build` passed.
+- `npm.cmd run electron:build` passed.
+- Headless `/enemy-lab.html` smoke on local dev port 5177 showed `enemy-lab-overlay is-mode-basic` and visible `Player Fire: Pulse`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttackAudio` on local dev port 5177 reported `data-starvivors-enemy-lab-audio-harness="ready"`.
+- The audio harness reported all 20 registry attack IDs covered, `missingAttackIds=[]`, `missingRequiredResolveCues=[]`, covered beats `channel`, `impact`, `resolve`, `telegraph`, and `tick`, and `playerFireMode.pass=true`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` still reported `data-starvivors-enemy-lab-attack-harness="ready"`.
+- Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
+- Optional screenshot captured at `artifacts/visual-smoke/enemy-lab-attack-audio-player-mode-1280x720.png`.
+
+Future Hazard Audio Reminder:
+
+- Enemy attack cues now exist in Enemy Lab, but asteroid/debris/black-hole hazard audio remains future work outside this phase.
 
 ## Risks And Decisions
 

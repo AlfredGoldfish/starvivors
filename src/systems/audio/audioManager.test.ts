@@ -13,6 +13,11 @@ import {
   REQUIRED_FIRST_PASS_AUDIO_CUES,
   type AudioCueId
 } from './cueRegistry';
+import {
+  ATTACK_AUDIO_BEAT_MAP,
+  getRequiredAttackAudioCoverage
+} from './attackAudio';
+import { ENEMY_ATTACK_DEFINITIONS } from '../../data/enemyAttackDefinitions';
 
 describe('audio manager', () => {
   it('normalizes volumes and computes effective gains from master and category volume', () => {
@@ -98,6 +103,33 @@ describe('audio manager', () => {
       expect(definition.layers.length).toBeGreaterThan(0);
       expect(definition.layers.every((layer) => layer.durationMs > 0 && layer.gain > 0)).toBe(true);
     }
+  });
+
+  it('covers every attack audio map cue with procedural SFX registry entries', () => {
+    for (const [attackId, beatMap] of Object.entries(ATTACK_AUDIO_BEAT_MAP)) {
+      const cueIds = Object.values(beatMap).filter(Boolean) as AudioCueId[];
+      for (const cueId of cueIds) {
+        const definition = AUDIO_CUE_REGISTRY[cueId];
+        expect(definition, `${attackId} ${cueId}`).toBeDefined();
+        expect(definition.id).toBe(cueId);
+        expect(definition.category).toBe('sfx');
+        expect(definition.cooldownMs).toBeGreaterThanOrEqual(0);
+        expect(definition.layers.length).toBeGreaterThan(0);
+        expect(definition.layers.every((layer) => layer.durationMs > 0 && layer.gain > 0)).toBe(true);
+      }
+    }
+  });
+
+  it('requires resolve cues, telegraph cues, and sustained tick coverage for registry attacks', () => {
+    const coverage = getRequiredAttackAudioCoverage();
+    const attackIds = ENEMY_ATTACK_DEFINITIONS.map((definition) => definition.id);
+
+    expect(coverage.attackIds).toEqual(attackIds);
+    expect(coverage.missingAttackIds).toEqual([]);
+    expect(coverage.missingRequiredResolveCueAttackIds).toEqual([]);
+    expect(coverage.missingTelegraphCueAttackIds).toEqual([]);
+    expect(coverage.missingSustainedTickCueAttackIds).toEqual([]);
+    expect(coverage.coveredBeats).toEqual(['channel', 'impact', 'resolve', 'telegraph', 'tick']);
   });
 
   it('keeps player shooting cues present with softened high-frequency content', () => {
