@@ -267,6 +267,38 @@ describe('enemy attack runtime', () => {
     expect(summons).toMatchObject([{ attackId: 'summon-glyphs', definitionId: 'scout', count: 2 }]);
   });
 
+  it('lets player-test offensive attacks prefer the cursor point over nearby enemies', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'cursor', kind: 'point', x: 0, y: 220, radius: 12 };
+    const runtime = createAttackHostRuntime({
+      hostKind: 'player-test',
+      hostId: 'player-test',
+      definitionId: 'interceptor',
+      body: { x: 0, y: 0, rotation: 0 },
+      velocity: { x: 0, y: 0 },
+      time: 0,
+      manualTriggerOnly: true,
+      loadout: [createImmediateSlot('rail-line', { rangePx: 400 })]
+    });
+    const areas: AttackAreaDamageRequest[] = [];
+
+    queueAttackSlot(runtime, 0, 0);
+    updateAttackHostRuntime({
+      host: runtime,
+      time: 0,
+      deltaSeconds: 0.016,
+      targets: [{ ...enemyTarget, x: 120, y: 0 }],
+      pointTarget,
+      targetKindMap: (targetKind) => targetKind === 'player' ? ['point', 'enemy'] : [targetKind],
+      getWrappedDirection: createDirection,
+      callbacks: { areaDamage: (request) => areas.push(request) }
+    });
+
+    expect(areas).toHaveLength(1);
+    expect(areas[0].attackId).toBe('rail-line');
+    expect(areas[0].toX).toBeCloseTo(0);
+    expect(areas[0].toY).toBeGreaterThan(0);
+  });
+
   it('runs a non-native attack on an enemy host without movement state', () => {
     const runtime = createAttackHostRuntime({
       hostKind: 'enemy',

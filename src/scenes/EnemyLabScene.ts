@@ -1899,8 +1899,8 @@ export class EnemyLabScene extends Phaser.Scene {
     if (host.hostKind === 'player-test') {
       if (targetKind === 'ally') return ['ally'];
       if (targetKind === 'self') return ['self'];
-      if (targetKind === 'point') return ['point', 'enemy'];
-      return ['enemy', 'point'];
+      if (targetKind === 'point') return ['point'];
+      return ['point', 'enemy'];
     }
 
     if (targetKind === 'enemy') {

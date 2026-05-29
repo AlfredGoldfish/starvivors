@@ -1139,8 +1139,12 @@ function selectAttackTarget(
   }
 
   const allowedKinds = input.targetKindMap?.(targetKind, input.host, definition) ?? [targetKind];
+  if (input.pointTarget && allowedKinds[0] === 'point') {
+    return createPointTargetSnapshot(input, slot, input.pointTarget);
+  }
+
   const candidates = input.targets.filter((target) => allowedKinds.includes(target.kind));
-  if (targetKind === 'point' && candidates.length === 0 && input.pointTarget) {
+  if (input.pointTarget && allowedKinds.includes('point') && candidates.length === 0) {
     return createPointTargetSnapshot(input, slot, input.pointTarget);
   }
 
