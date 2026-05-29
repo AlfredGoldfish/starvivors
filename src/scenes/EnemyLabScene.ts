@@ -25,6 +25,11 @@ import {
   type EnemyAttackId
 } from '../data/enemyAttackDefinitions';
 import {
+  createAttackVisualAuditRows,
+  getAttackVisualProfile,
+  validateAttackVisualProfiles
+} from '../data/enemyAttackVisualProfiles';
+import {
   ASTEROID_TIERS,
   CAMERA_LEAD_LERP,
   CAMERA_LEAD_MAX_DISTANCE,
@@ -382,6 +387,7 @@ type EnemyLabPresetFolderCategory = 'variants' | 'squads' | 'loadouts' | 'attack
 type EnemyLabPreviewState = 'idle' | 'pursue' | 'telegraph' | 'attack' | 'hit' | 'death';
 type EnemyLabClutterTest = 'single' | 'squad' | 'swarm' | 'bullets' | 'asteroids' | 'asteroidGallery' | 'debris' | 'stress';
 type EnemyLabPhase6HarnessView = 'basic' | 'squads' | 'player-test' | 'stress-high-contrast';
+type EnemyLabAttackVisualHarnessMode = 'normal' | 'reduced' | 'high-contrast';
 
 const PHASE6_READY_ATTACK_BATCHES = new Set(['A', 'B', 'C']);
 const PHASE6_DEFAULT_LOADOUT_HOSTS: Array<{
@@ -403,6 +409,12 @@ const PHASE6_HARNESS_QUERY_TO_VIEW: Record<string, EnemyLabPhase6HarnessView> = 
   enemyLabPhase6Squads: 'squads',
   enemyLabPhase6PlayerTest: 'player-test',
   enemyLabPhase6StressHighContrast: 'stress-high-contrast'
+};
+
+const ATTACK_VISUAL_HARNESS_QUERY_TO_MODE: Record<string, EnemyLabAttackVisualHarnessMode> = {
+  enemyLabAttackVisuals: 'normal',
+  enemyLabAttackVisualsReduced: 'reduced',
+  enemyLabAttackVisualsHighContrast: 'high-contrast'
 };
 
 export class EnemyLabScene extends Phaser.Scene {
@@ -659,6 +671,7 @@ export class EnemyLabScene extends Phaser.Scene {
 
     const harness = new URLSearchParams(window.location.search).get('testHarness');
     const phase6HarnessView = harness ? PHASE6_HARNESS_QUERY_TO_VIEW[harness] : undefined;
+    const attackVisualHarnessMode = harness ? ATTACK_VISUAL_HARNESS_QUERY_TO_MODE[harness] : undefined;
     if (
       harness !== 'enemyLabMonochrome' &&
       harness !== 'enemyLabVector' &&
@@ -666,8 +679,14 @@ export class EnemyLabScene extends Phaser.Scene {
       harness !== 'enemyLabAttacks' &&
       harness !== 'enemyLabAttackAudio' &&
       harness !== 'smoke' &&
+      !attackVisualHarnessMode &&
       !phase6HarnessView
     ) {
+      return;
+    }
+
+    if (attackVisualHarnessMode) {
+      this.runEnemyLabAttackVisualHarness(attackVisualHarnessMode);
       return;
     }
 
@@ -721,6 +740,348 @@ export class EnemyLabScene extends Phaser.Scene {
 
     document.body.setAttribute('data-starvivors-enemy-lab-attack-harness', details.pass ? 'ready' : 'fail');
     document.body.setAttribute('data-starvivors-enemy-lab-attack-harness-details', JSON.stringify(details));
+  }
+
+  private runEnemyLabAttackVisualHarness(mode: EnemyLabAttackVisualHarnessMode): void {
+    this.clearEnemies();
+    this.clearAttackTests();
+    this.audio.clearHistory();
+    this.attackAudioLastPlayedAt.clear();
+    this.showTelegraphs = true;
+    this.readabilityMode = mode === 'high-contrast' ? 'high-contrast' : 'normal';
+    this.reducedEffects = mode !== 'normal';
+    this.setLabMode('attack-tester');
+    this.playerAttackMode = 'selected-attack';
+
+    const center = this.getPreviewPosition();
+    this.player.setPosition(center.x, center.y);
+    this.playerVelocity.set(0, 0);
+    this.attackTesterSlots = this.createAttackVisualHarnessSlots();
+    this.attackTesterRuntime = undefined;
+    this.attackTesterRuntimeSignature = '';
+    this.selectedAttackTesterSlotIndex = 0;
+    this.selectedAttackTestId = this.attackTesterSlots[0]?.attackId ?? 'rail-line';
+
+    const renderedAttackIds = this.drawAttackVisualAuditGallery(mode);
+    this.syncOverlayFromState();
+    this.setOverlayCollapsed(true);
+    if (this.overlay) {
+      this.overlay.root.style.display = 'none';
+    }
+
+    const details = this.verifyAttackVisualHarnessCoverage(renderedAttackIds, mode);
+    document.body.setAttribute('data-starvivors-enemy-lab-visual-harness', details.pass ? 'ready' : 'fail');
+    document.body.setAttribute('data-starvivors-enemy-lab-visual-mode', mode);
+    document.body.setAttribute('data-starvivors-enemy-lab-visual-harness-details', JSON.stringify(details));
+  }
+
+  private createAttackVisualHarnessSlots(): AttackLoadoutSlot[] {
+    return getEnemyAttackDefinitions().map((definition) => {
+      const slot = createDefaultAttackLoadoutSlot(definition.id);
+      slot.cooldownOffsetMs = 0;
+      slot.params = {
+        ...(slot.params ?? {}),
+        ...this.createAttackVisualHarnessParams(definition.id)
+      };
+      return slot;
+    });
+  }
+
+  private createAttackVisualHarnessParams(attackId: EnemyAttackId): Record<string, EnemyAttackParamValue> {
+    const definition = getEnemyAttackDefinition(attackId);
+    const params: Record<string, EnemyAttackParamValue> = {
+      initialDelayMs: 0,
+      cooldownMs: 9999,
+      recoveryMs: 0,
+      windupMs: definition.timing.windupMs > 0 ? 900 : 0,
+      activeMs: 1700,
+      channelMs: definition.timing.channelMs !== undefined ? 1100 : 0,
+      rangePx: 136,
+      radiusPx: 46,
+      widthPx: 18
+    };
+
+    switch (attackId) {
+      case 'rail-line':
+        return { ...params, aimMs: 420, lockMs: 420, windupMs: 840, widthPx: 7 };
+      case 'mortar-lob':
+        return { ...params, windupMs: 1100, travelMs: 1700, splashRadiusPx: 52 };
+      case 'emp-nova':
+        return { ...params, windupMs: 1100, radiusPx: 54 };
+      case 'summon-glyphs':
+        return { ...params, windupMs: 520, channelMs: 1300, glyphRadiusPx: 58, count: 3 };
+      case 'sweep-laser':
+        return { ...params, windupMs: 1050, sweepMs: 1700, arcDegrees: 74, rangePx: 130, widthPx: 7 };
+      case 'healing-beam':
+        return { ...params, windupMs: 520, activeMs: 1700, rangePx: 120, widthPx: 3, tickMs: 500, retargetMs: 500 };
+      case 'shield-wall':
+        return { ...params, windupMs: 700, activeMs: 1700, radiusPx: 48, arcDegrees: 104, reflect: true, widthPx: 5 };
+      case 'plasma-puddle':
+        return { ...params, landingMs: 1050, windupMs: 1050, durationMs: 1700, radiusPx: 50, tickMs: 500 };
+      case 'cluster-bomb':
+        return { ...params, windupMs: 980, travelMs: 900, delayMs: 800, radiusPx: 52, secondaryRadiusPx: 28, splitCount: 5 };
+      case 'alarm-ping':
+        return { ...params, detectMs: 800, windupMs: 800, callDelayMs: 900, channelMs: 900, radiusPx: 54, count: 3 };
+      case 'berserker-shockwave':
+        return { ...params, windupMs: 900, activeMs: 1300, radiusPx: 54, knockback: 220 };
+      case 'mine-reveal':
+        return { ...params, chargeMs: 900, windupMs: 900, activeMs: 1300, blastRadiusPx: 50 };
+      case 'contact-ram':
+        return { ...params, activeMs: 1300, rangePx: 88, widthPx: 26 };
+      case 'simple-bolt':
+        return { ...params, windupMs: 700, activeMs: 1300, rangePx: 116, projectileSpeed: 520, widthPx: 4 };
+      case 'charge-strike':
+        return { ...params, windupMs: 980, activeMs: 1500, rangePx: 122, dashMs: 560, dashSpeed: 520, widthPx: 42 };
+      case 'self-destruct-radius':
+        return { ...params, windupMs: 1200, countdownMs: 1200, triggerRangePx: 999, blastRadiusPx: 56 };
+      case 'split-shards':
+        return { ...params, activeMs: 1500, radiusPx: 54, childCount: 3 };
+      case 'command-buff-pulse':
+        return { ...params, windupMs: 620, activeMs: 1700, auraRadiusPx: 58, widthPx: 4 };
+      case 'scrap-steal':
+        return { ...params, activeMs: 1500, pickupRangePx: 54, rangePx: 120, widthPx: 4 };
+      case 'phase-blink-strike':
+        return { ...params, windupMs: 900, activeMs: 1300, rangePx: 118, strikeRangePx: 46, widthPx: 5 };
+      default:
+        return params;
+    }
+  }
+
+  private drawAttackVisualAuditGallery(mode: EnemyLabAttackVisualHarnessMode): EnemyAttackId[] {
+    const definitions = getEnemyAttackDefinitions();
+    const center = this.getPreviewPosition();
+    const columns = 5;
+    const cellWidth = 214;
+    const cellHeight = 152;
+    const originX = center.x - cellWidth * ((columns - 1) / 2);
+    const originY = center.y - 230;
+    const renderedAttackIds: EnemyAttackId[] = [];
+
+    definitions.forEach((definition, index) => {
+      const column = index % columns;
+      const row = Math.floor(index / columns);
+      const cellX = wrapCoordinate(originX + column * cellWidth, this.arena.width);
+      const cellY = wrapCoordinate(originY + row * cellHeight, this.arena.height);
+      const sourceX = wrapCoordinate(cellX - 42, this.arena.width);
+      const sourceY = wrapCoordinate(cellY + 12, this.arena.height);
+      const target = this.createAttackVisualHarnessTarget(definition, cellX, cellY, sourceX, sourceY);
+      const direction = this.getWrappedDirection(sourceX, sourceY, target.x, target.y);
+      if (direction.lengthSq() > 0.0001) {
+        direction.normalize();
+      } else {
+        direction.set(0, -1);
+      }
+
+      const slot = createDefaultAttackLoadoutSlot(definition.id);
+      slot.params = {
+        ...(slot.params ?? {}),
+        ...this.createAttackVisualHarnessParams(definition.id)
+      };
+      const profile = getAttackVisualProfile(definition.id);
+      const telegraph = resolveRuntimeTelegraphRecipe(definition, slot, {
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode
+      });
+      const effect = resolveRuntimeEffectRecipe(definition, slot, {
+        reducedEffects: this.reducedEffects,
+        readabilityMode: this.readabilityMode
+      });
+      const durationMs = mode === 'normal' ? 2600 : 3000;
+      const requestBase = {
+        sourceHostId: `visual-audit-${definition.id}`,
+        ownerKind: 'player-test' as const,
+        attackId: definition.id,
+        x: sourceX,
+        y: sourceY,
+        direction: { x: direction.x, y: direction.y },
+        target,
+        params: resolveAttackLoadoutSlotParams(slot),
+        progress: 0.75,
+        durationMs
+      };
+
+      const source = this.add.circle(sourceX, sourceY, 8, this.readabilityMode === 'high-contrast' ? 0xffffff : 0x050505, 0.86);
+      source.setStrokeStyle(this.readabilityMode === 'high-contrast' ? 2.6 : 1.6, resolveEnemyLabEffectColor(definition.activeEffect.color, this.readabilityMode), 0.84);
+      source.setDepth(13);
+      this.testProps.push(source);
+
+      const label = this.add.text(cellX - 94, cellY - 56, `${definition.id}\n${profile.visualFamily} / ${profile.explicitMarkerLevel}`, {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: this.readabilityMode === 'high-contrast' ? '#ffffff' : '#d7e8ff',
+        align: 'left'
+      });
+      label.setDepth(30);
+      this.testProps.push(label);
+
+      if (telegraph.kind !== 'none') {
+        this.renderAttackRuntimeTelegraph({
+          ...requestBase,
+          phase: 'windup',
+          beat: definition.id === 'rail-line' ? 'lock' : definition.timing.channelMs !== undefined ? 'channel' : 'anticipation',
+          telegraph
+        });
+      }
+
+      this.renderAttackRuntimeEffect({
+        ...requestBase,
+        phase: 'active',
+        beat: 'resolve',
+        effect
+      });
+      this.renderAttackRuntimeLabEffect({
+        ...requestBase,
+        phase: 'active',
+        beat: 'resolve',
+        effect
+      });
+      renderedAttackIds.push(definition.id);
+    });
+
+    return renderedAttackIds;
+  }
+
+  private createAttackVisualHarnessTarget(
+    definition: ReturnType<typeof getEnemyAttackDefinition>,
+    cellX: number,
+    cellY: number,
+    sourceX: number,
+    sourceY: number
+  ): AttackTargetSnapshot {
+    if (definition.targeting.targetKind === 'self') {
+      return {
+        id: `${definition.id}-self`,
+        kind: 'self',
+        x: sourceX,
+        y: sourceY,
+        radius: 20,
+        label: 'self'
+      };
+    }
+
+    const targetX = definition.targeting.targetKind === 'ally'
+      ? cellX + 52
+      : definition.targeting.targetKind === 'point'
+        ? cellX + 62
+        : cellX + 74;
+    const targetY = definition.targeting.targetKind === 'point'
+      ? cellY + 34
+      : definition.targeting.targetKind === 'ally'
+        ? cellY - 2
+        : cellY + 12;
+    const kind = definition.targeting.targetKind === 'player' ? 'point' : definition.targeting.targetKind;
+
+    return {
+      id: `${definition.id}-visual-target`,
+      kind,
+      x: wrapCoordinate(targetX, this.arena.width),
+      y: wrapCoordinate(targetY, this.arena.height),
+      radius: 18,
+      hp: kind === 'ally' ? 42 : 80,
+      maxHp: 100,
+      label: kind
+    };
+  }
+
+  private verifyAttackVisualHarnessCoverage(renderedAttackIds: EnemyAttackId[], mode: EnemyLabAttackVisualHarnessMode) {
+    const definitions = getEnemyAttackDefinitions();
+    const visualProfileErrors = validateAttackVisualProfiles(definitions);
+    const auditRows = createAttackVisualAuditRows(definitions);
+    const missingRenderedAttackIds = definitions
+      .map((definition) => definition.id)
+      .filter((attackId) => !renderedAttackIds.includes(attackId));
+    const attacks = definitions.map((definition) => {
+      const slot = createDefaultAttackLoadoutSlot(definition.id);
+      slot.params = {
+        ...(slot.params ?? {}),
+        ...this.createAttackVisualHarnessParams(definition.id)
+      };
+      const profile = getAttackVisualProfile(definition.id);
+      const reducedTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, {
+        reducedEffects: true,
+        readabilityMode: 'normal'
+      });
+      const reducedEffect = resolveRuntimeEffectRecipe(definition, slot, {
+        reducedEffects: true,
+        readabilityMode: 'normal'
+      });
+      const highTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, {
+        reducedEffects: true,
+        readabilityMode: 'high-contrast'
+      });
+      const highEffect = resolveRuntimeEffectRecipe(definition, slot, {
+        reducedEffects: true,
+        readabilityMode: 'high-contrast'
+      });
+      const beatsPass = Object.values(profile.beats).every((description) => description.trim().length > 0);
+      const reducedFxPass =
+        Boolean(definition.reducedEffects) &&
+        profile.reducedFxFallback.trim().length > 0 &&
+        Number.isFinite(reducedTelegraph.strokeWidthPx ?? 0) &&
+        Number.isFinite(reducedEffect.widthPx ?? 0);
+      const highContrastPass =
+        profile.highContrastFallback.trim().length > 0 &&
+        profile.nonColorCues.length >= 2 &&
+        this.isPhase6HighContrastColor(highTelegraph.color) &&
+        this.isPhase6HighContrastColor(highTelegraph.accentColor) &&
+        this.isPhase6HighContrastColor(highEffect.color) &&
+        this.isPhase6HighContrastColor(highEffect.accentColor) &&
+        (highTelegraph.strokeWidthPx ?? 0) >= 3 &&
+        (highEffect.widthPx ?? 0) >= 5;
+
+      return {
+        attackId: definition.id,
+        visualFamily: profile.visualFamily,
+        tellShape: profile.tellShape,
+        dangerShape: profile.dangerShape,
+        explicitMarkerLevel: profile.explicitMarkerLevel,
+        audioCue: getAttackAudioCueId(definition.id, 'resolve'),
+        reducedFxPass,
+        highContrastPass,
+        beatsPass,
+        nonColorCues: profile.nonColorCues,
+        telegraph: {
+          kind: highTelegraph.kind,
+          color: highTelegraph.color,
+          accentColor: highTelegraph.accentColor,
+          strokeWidthPx: highTelegraph.strokeWidthPx
+        },
+        effect: {
+          kind: highEffect.kind,
+          color: highEffect.color,
+          accentColor: highEffect.accentColor,
+          widthPx: highEffect.widthPx
+        }
+      };
+    });
+    const missingAudioCueAttackIds = attacks
+      .filter((attack) => !attack.audioCue)
+      .map((attack) => attack.attackId);
+    const reducedFxPass = attacks.every((attack) => attack.reducedFxPass);
+    const highContrastPass = attacks.every((attack) => attack.highContrastPass);
+    const beatsPass = attacks.every((attack) => attack.beatsPass);
+    const pass =
+      visualProfileErrors.length === 0 &&
+      missingRenderedAttackIds.length === 0 &&
+      missingAudioCueAttackIds.length === 0 &&
+      reducedFxPass &&
+      highContrastPass &&
+      beatsPass;
+
+    return {
+      pass,
+      mode,
+      renderedAttackIds,
+      missingRenderedAttackIds,
+      visualProfileErrors,
+      reducedFxPass,
+      highContrastPass,
+      beatsPass,
+      missingAudioCueAttackIds,
+      attackCount: attacks.length,
+      auditRows,
+      attacks
+    };
   }
 
   private runEnemyLabAttackAudioHarness(): void {

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { ENEMY_ATTACK_DEFINITIONS, createDefaultAttackLoadoutSlot, getEnemyAttackDefinition, type AttackLoadoutSlot } from '../data/enemyAttackDefinitions';
+import {
+  ENEMY_ATTACK_DEFINITIONS,
+  createDefaultAttackLoadoutSlot,
+  getEnemyAttackDefinition,
+  type AttackLoadoutSlot,
+  type EnemyAttackId
+} from '../data/enemyAttackDefinitions';
 import {
   createAttackHostRuntime,
   queueAttackSlot,
@@ -297,6 +303,79 @@ describe('enemy attack runtime', () => {
     expect(areas[0].attackId).toBe('rail-line');
     expect(areas[0].toX).toBeCloseTo(0);
     expect(areas[0].toY).toBeGreaterThan(0);
+  });
+
+  it('keeps every player-targeted player-host attack aimed at the cursor point', () => {
+    const pointTarget: AttackTargetSnapshot = { id: 'cursor', kind: 'point', x: 0, y: 220, radius: 12 };
+    const playerTargetedAttacks = ENEMY_ATTACK_DEFINITIONS
+      .filter((definition) => definition.targeting.targetKind === 'player')
+      .map((definition) => definition.id);
+
+    expect(playerTargetedAttacks).toEqual([
+      'rail-line',
+      'sweep-laser',
+      'alarm-ping',
+      'mine-reveal',
+      'contact-ram',
+      'simple-bolt',
+      'charge-strike',
+      'phase-blink-strike'
+    ]);
+
+    for (const attackId of playerTargetedAttacks) {
+      const runtime = createAttackHostRuntime({
+        hostKind: 'player-test',
+        hostId: `player-test-${attackId}`,
+        definitionId: 'interceptor',
+        body: { x: 0, y: 0, rotation: 0 },
+        velocity: { x: 0, y: 0 },
+        time: 0,
+        manualTriggerOnly: true,
+        loadout: [createImmediateSlot(attackId, createCursorAimParams(attackId))]
+      });
+      const areas: AttackAreaDamageRequest[] = [];
+      const projectiles: AttackProjectileRequest[] = [];
+      const summons: AttackSummonRequest[] = [];
+
+      queueAttackSlot(runtime, 0, 0);
+      updateAttackHostRuntime({
+        host: runtime,
+        time: 0,
+        deltaSeconds: 0.016,
+        targets: [{ ...enemyTarget, x: 120, y: 0 }],
+        pointTarget,
+        targetKindMap: (targetKind) => targetKind === 'player' ? ['point', 'enemy'] : [targetKind],
+        getWrappedDirection: createDirection,
+        callbacks: {
+          areaDamage: (request) => areas.push(request),
+          spawnProjectile: (request) => projectiles.push(request),
+          summon: (request) => summons.push(request)
+        }
+      });
+
+      const area = areas[0];
+      const projectile = projectiles[0];
+      const summon = summons[0];
+      if (area?.shape === 'line') {
+        if (attackId === 'sweep-laser') {
+          expect(Math.abs(area.toX ?? 0), attackId).toBeLessThan(area.toY ?? 0);
+        } else {
+          expect(area.toX ?? 0, attackId).toBeCloseTo(0);
+        }
+        expect(area.toY ?? 0, attackId).toBeGreaterThan(0);
+      } else if (area?.shape === 'circle') {
+        expect(area.x, attackId).toBe(pointTarget.x);
+        expect(area.y, attackId).toBe(pointTarget.y);
+      } else if (projectile) {
+        expect(projectile.target?.id, attackId).toBe(pointTarget.id);
+        expect(projectile.direction.x, attackId).toBeCloseTo(0);
+        expect(projectile.direction.y, attackId).toBeGreaterThan(0);
+      } else {
+        expect(summon, attackId).toBeDefined();
+        expect(summon.x, attackId).toBe(pointTarget.x);
+        expect(summon.y, attackId).toBe(pointTarget.y);
+      }
+    }
   });
 
   it('resolves charge-strike as a forward dash lane', () => {
@@ -1005,11 +1084,8 @@ describe('enemy attack runtime', () => {
     expect(mineTelegraph.strokeWidthPx).toBeGreaterThanOrEqual(4);
   });
 
-  it('normalizes reduced-FX and high-contrast recipes for every ready Batch A, B, and C attack', () => {
-    const readyBatchAttacks = ENEMY_ATTACK_DEFINITIONS.filter(
-      (definition) => definition.lab.status === 'ready' && ['A', 'B', 'C'].includes(definition.lab.batch)
-    );
-    const results = readyBatchAttacks.map((definition) => {
+  it('normalizes reduced-FX and high-contrast recipes for every registered attack', () => {
+    const results = ENEMY_ATTACK_DEFINITIONS.map((definition) => {
       const slot = createDefaultAttackLoadoutSlot(definition.id);
       const reducedTelegraph = resolveRuntimeTelegraphRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
       const reducedEffect = resolveRuntimeEffectRecipe(definition, slot, { reducedEffects: true, readabilityMode: 'normal' });
@@ -1035,7 +1111,7 @@ describe('enemy attack runtime', () => {
       };
     });
 
-    expect(readyBatchAttacks.map((definition) => definition.id)).toEqual([
+    expect(ENEMY_ATTACK_DEFINITIONS.map((definition) => definition.id)).toEqual([
       'rail-line',
       'mortar-lob',
       'emp-nova',
@@ -1047,7 +1123,15 @@ describe('enemy attack runtime', () => {
       'cluster-bomb',
       'alarm-ping',
       'berserker-shockwave',
-      'mine-reveal'
+      'mine-reveal',
+      'contact-ram',
+      'simple-bolt',
+      'charge-strike',
+      'self-destruct-radius',
+      'split-shards',
+      'command-buff-pulse',
+      'scrap-steal',
+      'phase-blink-strike'
     ]);
     expect(results.filter((result) => !result.reducedPass)).toEqual([]);
     expect(results.filter((result) => !result.highContrastPass)).toEqual([]);
@@ -1068,6 +1152,34 @@ function createImmediateSlot(
     ...params
   };
   return slot;
+}
+
+function createCursorAimParams(attackId: EnemyAttackId): AttackLoadoutSlot['params'] {
+  const params: NonNullable<AttackLoadoutSlot['params']> = {
+    rangePx: 500,
+    windupMs: 0,
+    activeMs: 100,
+    channelMs: 0,
+    aimMs: 0,
+    lockMs: 0,
+    detectMs: 0,
+    chargeMs: 0,
+    projectileSpeed: 500,
+    triggerRangePx: 999
+  };
+
+  if (attackId === 'alarm-ping') {
+    params.callDelayMs = 0;
+    params.count = 1;
+  }
+  if (attackId === 'mine-reveal') {
+    params.blastRadiusPx = 80;
+  }
+  if (attackId === 'phase-blink-strike') {
+    params.strikeRangePx = 80;
+  }
+
+  return params;
 }
 
 function isHighContrastColor(color: number | undefined): boolean {

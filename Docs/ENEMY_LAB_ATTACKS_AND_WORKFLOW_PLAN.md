@@ -1,8 +1,8 @@
 # Enemy Lab Modular Attacks And Workflow Plan
 
-Last updated: 2026-05-28
+Last updated: 2026-05-29
 
-Status: Phase 7 attack audio and player-hosted attack mode complete in Enemy Lab. Active `GameScene` combat remains unchanged and should adopt the shared data/runtime shapes later without requiring a redesign.
+Status: Phase 8 attack visual profiles and audit harness complete in Enemy Lab. Active `GameScene` combat remains unchanged and should adopt the shared data/runtime shapes later without requiring a redesign.
 
 ## Goal
 
@@ -41,6 +41,23 @@ Notes:
 - `enemyLabAi.ts` owns movement, support auras, telegraphs, firing, spawning, status shots, reflect arcs, and detonation logic in one behavior switch.
 - Presets are currently localStorage-backed variants and squads with Markdown import/export. The desktop bridge already supports `debug-presets`, `saveTextFile`, `readTextFile`, and `openDataFolder`.
 - Existing harnesses include `enemyLabVector`, `enemyLabMonochrome`, `enemyLabPrototype`, and `smoke`.
+
+## Visual Readability Baseline
+
+Research references used for the attack visual pass:
+
+- FFXIV AoE marker taxonomy: https://ffxiv.consolegameswiki.com/wiki/AoE_marker
+- Anticipation/action/recovery timing: https://www.rivalslib.com/workshop_guide/art/anticipation_action_recovery.html
+- Xbox Accessibility Guideline 102 contrast/readability guidance: https://learn.microsoft.com/en-us/gaming/accessibility/xbox-accessibility-guidelines/102
+- Accessible Game Design aesthetics guidance: https://accessiblegamedesign.com/guidelines/aesthetics.html
+
+Starvivors-specific rules:
+
+- Color never carries enemy-attack meaning alone; every attack profile lists at least two non-color cues.
+- Every danger shape needs a readable silhouette or pattern: lane, reticle, ring segment, tether, arc, socket, chevron, or corridor.
+- Every attack has anticipation, resolve, impact, and recovery coverage in the visual audit data.
+- Reduced-FX keeps critical markers visible by simplifying motion/particles rather than removing the danger shape.
+- High-contrast mode resolves attack marker colors to the existing white/yellow readable palette and relies on width, pattern, and shape.
 
 ## Non-Goals
 
@@ -765,6 +782,32 @@ Future Hazard Audio Reminder:
 
 - Enemy attack cues now exist in Enemy Lab, but asteroid/debris/black-hole hazard audio remains future work outside this phase.
 
+### Phase 8: Attack Visual Profiles And Audit Harness
+
+Status: completed 2026-05-29. Scope stayed Enemy Lab-only: no live `GameScene` combat wiring and no new encounter tuning.
+
+Progress:
+
+- Added `src/data/enemyAttackVisualProfiles.ts` as the attack visual audit source of truth, with shared grammar families: `line`, `landing`, `radial`, `support`, and `summon`.
+- Covered every `ENEMY_ATTACK_DEFINITIONS` id with a visual profile containing tell shape, danger shape, explicit marker level, diegetic tell, marker pattern, anticipation/resolve/impact/recovery beats, reduced-FX fallback, high-contrast fallback, non-color cues, and screenshot scenario.
+- Promoted the 8 core/planned compatibility attacks to Enemy Lab `ready` status after confirming they have real lab execution paths and reduced/high-contrast visual fallbacks: `contact-ram`, `simple-bolt`, `charge-strike`, `self-destruct-radius`, `split-shards`, `command-buff-pulse`, `scrap-steal`, and `phase-blink-strike`.
+- Added `/enemy-lab.html?testHarness=enemyLabAttackVisuals` plus reduced/high-contrast variants: `enemyLabAttackVisualsReduced` and `enemyLabAttackVisualsHighContrast`.
+- The visual harness renders a compact all-attack audit gallery, reports `data-starvivors-enemy-lab-visual-harness="ready"`, and publishes JSON details for rendered attack ids, profile validation, reduced-FX coverage, high-contrast coverage, visual beat coverage, and resolve-audio cue coverage.
+- Expanded unit coverage for all-attack visual profiles, all-attack reduced/high-contrast runtime recipes, and player-host cursor targeting across every player-targeted attack.
+
+Verification:
+
+- `npm.cmd run test` passed with 21 files and 114 tests.
+- `npm.cmd run build` passed.
+- `npm.cmd run electron:build` passed.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttackVisuals` on local dev port 5178 reported `data-starvivors-enemy-lab-visual-harness="ready"`, `attackCount=20`, `missingRenderedAttackIds=[]`, `visualProfileErrors=[]`, `reducedFxPass=true`, `highContrastPass=true`, `beatsPass=true`, and `missingAudioCueAttackIds=[]`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttacks` still reported `data-starvivors-enemy-lab-attack-harness="ready"`.
+- Headless `/enemy-lab.html?testHarness=enemyLabAttackAudio` still reported `data-starvivors-enemy-lab-audio-harness="ready"` with all 20 attack ids covered.
+- Headless `/enemy-lab.html?testHarness=enemyLabPrototype` still reported `data-starvivors-enemy-lab-harness="monochrome-ready"`.
+- Captured `artifacts/visual-smoke/enemy-lab-attack-visuals-normal-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabAttackVisuals`.
+- Captured `artifacts/visual-smoke/enemy-lab-attack-visuals-reduced-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabAttackVisualsReduced`.
+- Captured `artifacts/visual-smoke/enemy-lab-attack-visuals-high-contrast-1280x720.png` from `/enemy-lab.html?testHarness=enemyLabAttackVisualsHighContrast`.
+
 ## Risks And Decisions
 
 - `EnemyLabScene.ts` is already large. UI rework should be incremental and should move reusable data/preset/runtime logic out of the scene.
@@ -781,6 +824,7 @@ Future Hazard Audio Reminder:
 - Any attack can be assigned to any enemy.
 - The default player ship can test each enemy attack.
 - Squads can mix enemies and attack loadouts.
+- Every registered attack has an auditable visual profile with reduced-FX and high-contrast fallback coverage.
 - Desktop presets save/load from the Electron data folder.
 - Browser fallback still works.
 - Reduced FX and high contrast preserve telegraph readability.

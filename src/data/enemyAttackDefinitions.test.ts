@@ -141,6 +141,26 @@ describe('enemy attack definitions', () => {
     expect(createDefaultAttackLoadoutSlot('cluster-bomb').params).toMatchObject({ radiusPx: 140, secondaryRadiusPx: 70 });
   });
 
+  it('marks core compatibility attacks ready for Enemy Lab visual audit coverage', () => {
+    const core = ENEMY_ATTACK_DEFINITIONS.filter((definition) => definition.lab.batch === 'core');
+
+    expect(core.map((definition) => definition.id)).toEqual([
+      'contact-ram',
+      'simple-bolt',
+      'charge-strike',
+      'self-destruct-radius',
+      'split-shards',
+      'command-buff-pulse',
+      'scrap-steal',
+      'phase-blink-strike'
+    ]);
+    expect(core.every((definition) => definition.lab.status === 'ready')).toBe(true);
+    expect(createDefaultAttackLoadoutSlot('contact-ram').params).toMatchObject({ useContactDamage: true });
+    expect(createDefaultAttackLoadoutSlot('simple-bolt').params).toMatchObject({ projectileSpeed: 430, rangePx: 1050 });
+    expect(createDefaultAttackLoadoutSlot('charge-strike').params).toMatchObject({ windupMs: 720, dashMs: 560 });
+    expect(createDefaultAttackLoadoutSlot('phase-blink-strike').params).toMatchObject({ blinkMs: 320, strikeRangePx: 180 });
+  });
+
   it('surfaces invalid attack ids through loadout validation', () => {
     const errors = validateAttackLoadoutSlots([
       { attackId: 'unknown-attack' as never, enabled: true }

@@ -308,9 +308,10 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     timing: { initialDelayMs: 0, cooldownMs: 250, windupMs: 0, activeMs: 250, recoveryMs: 0 },
     targeting: { targetKind: 'player', rangePx: 60 },
     telegraph: { kind: 'none', color: ATTACK_WHITE },
-    activeEffect: { kind: 'contact', color: ATTACK_WHITE, durationMs: 100 },
+    activeEffect: { kind: 'contact', color: ATTACK_WHITE, accentColor: ATTACK_AREA, widthPx: 24, durationMs: 100 },
     execution: { kind: 'contact-ram' },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for baseline contact damage pressure.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 24 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for baseline contact pressure; Attack Tester shows a short explicit contact lane.' }
   },
   {
     id: 'simple-bolt',
@@ -321,10 +322,11 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     defaultParams: { cooldownMs: 1250, projectileSpeed: 430, damage: 10, rangePx: 1050 },
     timing: { initialDelayMs: 350, cooldownMs: 1250, windupMs: 120, activeMs: 120, recoveryMs: 260 },
     targeting: { targetKind: 'player', rangePx: 1050, leadTarget: true },
-    telegraph: { kind: 'line-lock', color: ATTACK_WARNING, rangePx: 1050, durationMs: 120 },
-    activeEffect: { kind: 'projectile', color: ATTACK_WARNING, radiusPx: 7, durationMs: 120 },
+    telegraph: { kind: 'line-lock', color: ATTACK_WARNING, accentColor: ATTACK_WHITE, strokeWidthPx: 2, rangePx: 1050, durationMs: 120 },
+    activeEffect: { kind: 'projectile', color: ATTACK_WARNING, accentColor: ATTACK_WHITE, radiusPx: 7, widthPx: 3, durationMs: 120 },
     execution: { kind: 'simple-bolt', damage: 10, projectileSpeedPx: 430 },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for current ranged projectile behavior.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for current ranged projectile behavior with explicit lead-dot readability.' }
   },
   {
     id: 'charge-strike',
@@ -335,10 +337,11 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     defaultParams: { windupMs: 720, dashMs: 560, dashSpeed: 520, damage: 18 },
     timing: { initialDelayMs: 450, cooldownMs: 2400, windupMs: 720, activeMs: 560, recoveryMs: 850 },
     targeting: { targetKind: 'player', rangePx: 760, leadTarget: false },
-    telegraph: { kind: 'line-lock', color: ATTACK_AREA, rangePx: 760, durationMs: 720 },
-    activeEffect: { kind: 'contact', color: ATTACK_WARNING, durationMs: 560 },
+    telegraph: { kind: 'line-lock', color: ATTACK_AREA, accentColor: ATTACK_WHITE, strokeWidthPx: 3, rangePx: 760, durationMs: 720 },
+    activeEffect: { kind: 'contact', color: ATTACK_WARNING, accentColor: ATTACK_WHITE, widthPx: 48, durationMs: 560 },
     execution: { kind: 'charge-strike', damage: 18 },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for wedge dash impact, separate from movement later.' }
+    reducedEffects: { strokeWidthPx: 4, widthPx: 44 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for wedge dash impact, with a readable corridor separate from movement.' }
   },
   {
     id: 'self-destruct-radius',
@@ -352,7 +355,8 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     telegraph: { kind: 'expanding-ring', color: ATTACK_WARNING, radiusPx: 170, durationMs: 1500 },
     activeEffect: { kind: 'blast-radius', color: ATTACK_WARNING, radiusPx: 170, durationMs: 160 },
     execution: { kind: 'self-destruct-radius', damage: 35 },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for proximity and impact bomber explosions.' }
+    reducedEffects: { strokeWidthPx: 4, widthPx: 5 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for proximity and impact bomber explosions with countdown ticks.' }
   },
   {
     id: 'split-shards',
@@ -364,9 +368,10 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     timing: { initialDelayMs: 0, cooldownMs: 9999, windupMs: 0, activeMs: 220, recoveryMs: 0 },
     targeting: { targetKind: 'self', rangePx: 140 },
     telegraph: { kind: 'none', color: ATTACK_WHITE },
-    activeEffect: { kind: 'shards', color: 0xdcc7ff, radiusPx: 140, durationMs: 220 },
+    activeEffect: { kind: 'shards', color: 0xdcc7ff, accentColor: ATTACK_WHITE, radiusPx: 140, widthPx: 3, durationMs: 220 },
     execution: { kind: 'split-shards', spawnId: 'shard-drone' },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for child spawn on death or threshold.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for child spawn on death or threshold with shard socket feedback.' }
   },
   {
     id: 'command-buff-pulse',
@@ -377,10 +382,11 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     defaultParams: { auraRadiusPx: 270, speedBonus: 1.22, fireRateBonus: 0.78 },
     timing: { initialDelayMs: 250, cooldownMs: 900, windupMs: 120, activeMs: 900, recoveryMs: 120 },
     targeting: { targetKind: 'ally', rangePx: 270 },
-    telegraph: { kind: 'tether', color: ATTACK_AREA, radiusPx: 270, durationMs: 120 },
-    activeEffect: { kind: 'buff-pulse', color: ATTACK_AREA, radiusPx: 270, durationMs: 900 },
+    telegraph: { kind: 'tether', color: ATTACK_AREA, accentColor: ATTACK_WHITE, strokeWidthPx: 2, radiusPx: 270, durationMs: 120 },
+    activeEffect: { kind: 'buff-pulse', color: ATTACK_AREA, accentColor: ATTACK_WHITE, radiusPx: 270, widthPx: 3, durationMs: 900 },
     execution: { kind: 'command-buff-pulse' },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for command speed/fire-rate buff aura.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for command speed/fire-rate buff aura with rally chevrons.' }
   },
   {
     id: 'scrap-steal',
@@ -392,9 +398,10 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     timing: { initialDelayMs: 0, cooldownMs: 300, windupMs: 0, activeMs: 300, recoveryMs: 0 },
     targeting: { targetKind: 'point', rangePx: 480 },
     telegraph: { kind: 'none', color: ATTACK_AREA },
-    activeEffect: { kind: 'scrap-link', color: ATTACK_AREA, durationMs: 180 },
+    activeEffect: { kind: 'scrap-link', color: ATTACK_AREA, accentColor: ATTACK_WHITE, widthPx: 3, durationMs: 180 },
     execution: { kind: 'scrap-steal' },
-    lab: { batch: 'core', status: 'prototype', notes: 'Compatibility attack for scrap pickup theft behavior.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 4 },
+    lab: { batch: 'core', status: 'ready', notes: 'Compatibility attack for scrap pickup theft behavior with tractor-link feedback.' }
   },
   {
     id: 'phase-blink-strike',
@@ -408,7 +415,8 @@ export const ENEMY_ATTACK_DEFINITIONS: EnemyAttackDefinition[] = [
     telegraph: { kind: 'hidden-reveal', color: 0x8f7cff, accentColor: ATTACK_WHITE, radiusPx: 90, durationMs: 320 },
     activeEffect: { kind: 'blink-strike', color: 0x8f7cff, radiusPx: 90, durationMs: 220 },
     execution: { kind: 'phase-blink-strike', damage: 14 },
-    lab: { batch: 'core', status: 'planned', notes: 'Optional future phase attack if teleport becomes movement-only.' }
+    reducedEffects: { strokeWidthPx: 3, widthPx: 5 },
+    lab: { batch: 'core', status: 'ready', notes: 'Optional phase attack now has a lab execution path with blink vector and destination lock visuals.' }
   }
 ];
 
