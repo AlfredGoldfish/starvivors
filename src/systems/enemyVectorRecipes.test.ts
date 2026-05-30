@@ -10,6 +10,7 @@ import {
 } from '../data/enemyDefinitions';
 import {
   MONOCHROME_OUTLINE_ACTIVE_IDS,
+  PROTOTYPE_COLOR_ACTIVE_IDS,
   VECTOR_OUTLINE_MIGRATION_IDS,
   getEnemyVisualStyle,
   normalizeEnemyEffectEntry,
@@ -22,12 +23,25 @@ describe('enemy vector recipes', () => {
   it('validates every active enemy role as monochrome-outline', () => {
     const definitionsById = getDefinitionsById();
 
-    expect(MONOCHROME_OUTLINE_ACTIVE_IDS).toHaveLength(ENEMY_DEFINITIONS.length);
+    expect(MONOCHROME_OUTLINE_ACTIVE_IDS.length + PROTOTYPE_COLOR_ACTIVE_IDS.length).toBe(ENEMY_DEFINITIONS.length);
 
     for (const id of MONOCHROME_OUTLINE_ACTIVE_IDS) {
       const definition = definitionsById.get(id);
       expect(definition, id).toBeDefined();
       expect(validateMonochromeEnemyDefinition(definition as EnemyDefinition), id).toMatchObject({
+        valid: true,
+        issues: []
+      });
+    }
+  });
+
+  it('validates active prototype-colored enemies as vector-outline', () => {
+    const definitionsById = getDefinitionsById();
+
+    for (const id of PROTOTYPE_COLOR_ACTIVE_IDS) {
+      const definition = definitionsById.get(id);
+      expect(definition, id).toBeDefined();
+      expect(validateVectorEnemyDefinition(definition as EnemyDefinition), id).toMatchObject({
         valid: true,
         issues: []
       });
@@ -93,21 +107,26 @@ describe('enemy vector recipes', () => {
     expect(reactor.shapeRecipe?.basePolygon).toBe('starburst');
     expect(reactor.shapeRecipe?.attachments).toContain('core-ring');
     expect(reactor.behavior.params?.countdownMs).toBe(1500);
+    expect(getEnemyVisualStyle(impactBomber)).toBe('vector-outline');
     expect(impactBomber.shapeRecipe?.basePolygon).toBe('block-square');
     expect(impactBomber.shapeRecipe?.attachments).toContain('danger-mark');
     expect(impactBomber.shapeRecipe?.attachments).not.toContain('core-ring');
+    expect(impactBomber.shapeRecipe?.outlineColor).toBe(0xff5722);
+    expect(impactBomber.shapeRecipe?.fillColor).toBe(0xff5722);
+    expect(impactBomber.shapeRecipe?.accentColor).toBe(0x000000);
     expect(impactBomber.behavior.id).toBe('proximityDetonate');
     expect(behaviorParams?.triggerRange).toBe(100);
     expect(behaviorParams?.blastRadius).toBe(125);
-    expect(behaviorParams?.countdownMs).toBe(650);
+    expect(behaviorParams?.countdownMs).toBe(0);
     expect(behaviorParams?.blastDamage).toBe(26);
-    expect(behaviorParams?.resetCountdownOnExit).toBe(true);
+    expect(behaviorParams?.resetCountdownOnExit).toBe(false);
     expect(reactor.behavior.params?.resetCountdownOnExit).toBeUndefined();
     expect(impactBomber.stats.hp).toBeLessThan(reactor.stats.hp);
     expect(impactBomber.stats.speed).toBeGreaterThan(reactor.stats.speed);
-    expect(impactBomber.effectRecipe?.spawn.color).toBe(0xffc857);
-    expect(impactBomber.effectRecipe?.move.color).toBe(0xff8f4f);
-    expect(impactBomber.effectRecipe?.telegraph.durationMs).toBe(650);
+    expect(impactBomber.effectRecipe?.spawn.color).toBe(0xff5722);
+    expect(impactBomber.effectRecipe?.move.color).toBe(0xff5722);
+    expect(impactBomber.effectRecipe?.fire.color).toBe(0xffca28);
+    expect(impactBomber.effectRecipe?.telegraph.durationMs).toBe(0);
     expect(impactBomber.effectRecipe?.death.kind).toBe('shard-burst');
   });
 

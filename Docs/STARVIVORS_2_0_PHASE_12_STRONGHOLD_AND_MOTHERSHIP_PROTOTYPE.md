@@ -16,7 +16,7 @@ Phase 12 adds the first world-anchor event structure with a prototype mothership
 - Player projectiles can damage and destroy the mothership.
 - Destroying the mothership drops a high-value scrap pickup and banked-upgrade crates.
 - The minimap shows world event markers and danger presence.
-- Phase 12 verification is available with `?testHarness=phase12&sectorSeed=phase12-smoke`.
+- The old Phase 12 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Design Notes
 

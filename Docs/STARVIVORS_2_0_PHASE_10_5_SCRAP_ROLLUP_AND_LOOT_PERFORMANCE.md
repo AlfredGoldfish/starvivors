@@ -19,7 +19,7 @@ Phase 10.5 keeps scrap plentiful while reducing lag from large kill chains.
 - Rollup conserves scrap value by adding the source pickup value into another off-screen scrap pickup.
 - Sector-generated scrap, magnetized scrap, upgrade crates, and rare upgrade pickups are excluded from rollup.
 - The minimap colors scrap dots by tier.
-- Phase 10.5 verification is available with `?testHarness=phase10_5`.
+- The old Phase 10.5 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Deferred
 

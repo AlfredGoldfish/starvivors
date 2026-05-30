@@ -16,7 +16,7 @@ Use this as the overall refactor workflow: `GameScene.ts` conducts the game, foc
 
 - Preserve current gameplay behavior unless the task explicitly authorizes a behavior change.
 - Keep the game buildable after every focused extraction.
-- Preserve query-string smoke harnesses and debug menu behavior.
+- Preserve the `?testHarness=smoke` browser smoke path and debug menu behavior.
 - Preserve desktop bridge behavior and auto diagnostics.
 - Do not delete legacy compatibility paths until replacements are verified.
 - Do not mix gameplay tuning, balance changes, asset changes, or new content into refactor slices.
@@ -52,14 +52,14 @@ Focused modules should own:
 5. Add small adapter interfaces when a module needs only part of `GameScene`.
 6. Keep all exported types close to the module that owns the concept.
 7. Run `npm.cmd run build` after each extraction slice.
-8. When practical, run the relevant query-string harness for the touched area.
+8. When practical, run focused unit/manual verification for the touched area plus `?testHarness=smoke` for browser smoke coverage.
 
 ## Proposed Module Map
 
 New or expanded modules:
 
 - `src/scenes/gameSceneRunState.ts`: run reset defaults, run result capture helpers, run lifecycle state helpers.
-- `src/scenes/gameSceneHarness.ts`: query-string harness installation and scenario functions.
+- `src/scenes/gameSceneHarness.ts`: `?testHarness=smoke` browser smoke installation and dispatch.
 - `src/scenes/gameScenePreRunFlow.ts`: main menu, ship select, loadout, mission cycling, and shop navigation adapters.
 - `src/systems/missionRuntime.ts`: mission runtime creation, completion/failure transitions, objective targeting.
 - `src/systems/worldEventRuntime.ts`: world-event instance creation/update/reward hooks.
@@ -105,7 +105,7 @@ Candidate extraction:
 - `installTestHarness`
 - `getTestHarnessState`
 - `runTestHarnessSmoke`
-- `runTestHarnessPhase*`
+- Retired phase query harness bodies
 - Other query-string scenario methods
 
 Target:
@@ -119,7 +119,7 @@ Boundary:
 
 Acceptance:
 
-- Existing query-string harness attributes are unchanged.
+- The retained smoke query attribute is unchanged.
 - `npm.cmd run build` passes.
 - Main smoke and at least one phase harness still pass.
 
@@ -400,8 +400,7 @@ Acceptance:
 
 Current extracted ownership:
 
-- `src/scenes/gameSceneHarness.ts`: query-string harness installation and dispatch.
-- `src/scenes/gameSceneImpactBomberHarness.ts`: Impact Bomber validation phase scenario logic behind an explicit `GameScene` adapter.
+- `src/scenes/gameSceneHarness.ts`: `?testHarness=smoke` browser smoke installation and dispatch.
 - `src/scenes/gameSceneRunState.ts`: pure run reset defaults and run-state helper values.
 - `src/scenes/gameScenePreRunFlow.ts`: pre-run navigation, ship availability, unlock, loadout, and label decisions.
 - `src/systems/gameplaySnapshots.ts`: HUD, minimap, diagnostics, profiler, and collision overlay snapshot shaping.
@@ -430,7 +429,7 @@ For new work after this refactor:
 2. Choose the existing module that owns the behavior, or create one focused module if none fits.
 3. Keep `GameScene.ts` as the conductor for lifecycle, Phaser ownership, and system wiring.
 4. Preserve behavior unless the prompt explicitly requests gameplay changes.
-5. Run `npm.cmd run build` and the smallest relevant query-string harnesses before committing.
+5. Run `npm.cmd run build`, focused tests/manual checks for the touched area, and `?testHarness=smoke` when browser flow is affected before committing.
 
 ## Tracking
 
@@ -447,5 +446,5 @@ Use this section to record extraction progress.
 - Phase 8: complete. Player/enemy, asteroid, and debris contact detection plus player/world impact cooldown bookkeeping moved to `src/systems/playerContactRuntime.ts`; `GameScene` remains the conductor for knockback, damage, VFX, destruction, rewards, black-hole death checks, and ramming shield side effects.
 - Phase 9: complete. Sector asteroid, scrap, and signal spawn data creation plus sector asteroid/scrap completion bookkeeping moved to `src/systems/sectorRuntime.ts`; `GameScene` remains the conductor for streaming decisions, Phaser object creation/destruction, active maps, beacon visuals, scrap rollup, and asteroid coalescing.
 - Phase 10: complete. Final guardrail pass updated module ownership, future workflow, and deferred risks; no extra runtime extraction was made beyond verified module boundaries.
-- Follow-up safety pass: complete. Startup navigation and debug menu hangar harness scenario bodies moved behind `src/scenes/gameScenePreRunHarness.ts`; broader visual/debrief and gameplay lifecycle harnesses remain in `GameScene` until their adapter contracts are narrower.
-- Follow-up harness extraction: complete for Impact Bomber. `testHarness=impactBomberPhase` scenario logic moved to `src/scenes/gameSceneImpactBomberHarness.ts` behind a narrow adapter; `npm.cmd run build`, focused Impact Bomber/vector tests, full Vitest, `testHarness=impactBomberPhase`, and `testHarness=smoke` passed.
+- Follow-up safety pass: superseded by the smoke-only harness prune. Startup navigation, debug menu hangar, visual/debrief, and phase browser harness bodies were removed; use focused tests/manual checks plus `?testHarness=smoke`.
+- Follow-up harness extraction: superseded by the smoke-only harness prune. The Impact Bomber phase scenario body and adapter were removed; focused Impact Bomber/vector tests remain the verification path alongside `?testHarness=smoke`.

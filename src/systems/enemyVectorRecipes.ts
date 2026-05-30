@@ -38,8 +38,11 @@ export const MONOCHROME_OUTLINE_ACTIVE_IDS = [
   'electric-leech',
   'combat-summoner',
   'scrap-thief',
-  'impact-bomber',
   'spawner-nest'
+] as const;
+
+export const PROTOTYPE_COLOR_ACTIVE_IDS = [
+  'impact-bomber'
 ] as const;
 
 export const VECTOR_OUTLINE_MIGRATION_IDS = [
@@ -52,6 +55,7 @@ export const VECTOR_OUTLINE_MIGRATION_IDS = [
 ] as const;
 
 export type MonochromeOutlineActiveId = (typeof MONOCHROME_OUTLINE_ACTIVE_IDS)[number];
+export type PrototypeColorActiveId = (typeof PROTOTYPE_COLOR_ACTIVE_IDS)[number];
 export type VectorOutlineMigrationId = (typeof VECTOR_OUTLINE_MIGRATION_IDS)[number];
 
 export interface NormalizedEnemyEffectRecipeEntry {
@@ -88,6 +92,10 @@ export function getEnemyVisualStyle(definition: EnemyDefinition): EnemyVisualSty
 
 export function isMonochromeOutlineActiveId(id: string): id is MonochromeOutlineActiveId {
   return MONOCHROME_OUTLINE_ACTIVE_IDS.includes(id as MonochromeOutlineActiveId);
+}
+
+export function isPrototypeColorActiveId(id: string): id is PrototypeColorActiveId {
+  return PROTOTYPE_COLOR_ACTIVE_IDS.includes(id as PrototypeColorActiveId);
 }
 
 export function resolveEnemyDefinitionSize(definition: EnemyDefinition): ResolvedObjectSizeProfile {

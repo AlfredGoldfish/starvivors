@@ -20,7 +20,7 @@ No gameplay redesign was done in this phase.
 - `index.html` mounts `src/main.ts`, which creates a Phaser game from `src/config/gameConfig.ts`.
 - `gameConfig` runs `BootScene` then `GameScene`.
 - `BootScene.create()` immediately starts `GameScene`.
-- `GameScene.create()` initializes shared systems, creates generated enemy visual textures for live-game use, shows the main menu, installs query-string smoke harnesses, installs auto-run diagnostics, and registers resize handling.
+- `GameScene.create()` initializes shared systems, creates generated enemy visual textures for live-game use, shows the main menu, installs the `?testHarness=smoke` browser smoke path, installs auto-run diagnostics, and registers resize handling.
 - `GameScene.startRun()` destroys menu/shop/results UI, calls `rebuildWorld()`, and starts auto-run diagnostics.
 - `GameScene.rebuildWorld()` resets run state, creates the starfield/player, spawns initial live enemies, creates asteroids, creates a black hole, and recreates HUD/minimap/debug systems.
 - `GameScene.update()` exits early for menu/shop/ship-select states. During a run it updates player movement, enemy spawning, live enemies, asteroids, black hole, debris, impacts, pickups, weapons, projectiles, HUD, minimap, debug UI, and performance profiling.

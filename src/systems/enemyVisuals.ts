@@ -321,12 +321,11 @@ function drawVectorAttachment(
       drawLine(context, radius * 0.13, -radius * 0.88, 0, -radius * 1.16);
       break;
     case 'danger-mark':
-      context.strokeStyle = colorToRgba(recipe.accentColor, 0.98);
-      context.fillStyle = colorToRgba(recipe.accentColor, 0.92);
-      context.lineWidth = Math.max(1.4, recipe.strokeWidth * 0.82);
-      drawLine(context, 0, -radius * 0.46, 0, radius * 0.1);
-      context.fillRect(-radius * 0.08, radius * 0.34, radius * 0.16, radius * 0.16);
-      context.strokeRect(-radius * 0.08, radius * 0.34, radius * 0.16, radius * 0.16);
+      context.fillStyle = colorToRgba(recipe.accentColor, 0.42);
+      context.font = `700 ${Math.max(7, radius * 0.82)}px "IBM Plex Mono", "Consolas", monospace`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillText('!', 0, radius * 0.06);
       context.strokeStyle = colorToRgba(recipe.accentColor, 0.96);
       context.fillStyle = colorToRgba(recipe.accentColor, 0.08);
       break;

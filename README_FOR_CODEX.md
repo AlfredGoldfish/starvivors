@@ -37,7 +37,7 @@ When adding or changing systems:
 - Keep `GameScene.ts` responsible for scene lifecycle, high-level wiring, Phaser ownership, and coordination.
 - Do not add large gameplay mechanics, UI builders, test harness logic, data definitions, or tuning tables directly to `GameScene.ts`.
 - Extract existing `GameScene.ts` responsibilities gradually in behavior-preserving slices.
-- Preserve current gameplay behavior, debug tools, desktop bridges, and query-string smoke harnesses during refactors.
+- Preserve current gameplay behavior, debug tools, desktop bridges, and the `?testHarness=smoke` browser smoke path during refactors.
 - Run `npm.cmd run build` after focused implementation changes.
 
 ## Project Direction
@@ -104,5 +104,5 @@ After the completed organization refactor:
 - Read the current source before moving code.
 - Check `Docs/GAMESCENE_REFACTOR_PLAN.md` for module ownership and deferred followups.
 - Keep `npm.cmd run build` passing after each focused change.
-- Preserve query-string smoke harnesses and debug menu behavior.
+- Preserve the `?testHarness=smoke` browser smoke path and debug menu behavior.
 - Leave unrelated local artifacts such as Vite logs out of commits.

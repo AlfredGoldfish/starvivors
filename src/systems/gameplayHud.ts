@@ -190,8 +190,7 @@ export class GameplayHudSystem {
     this.openPickerSlot = null;
     this.hoveredSlot = null;
     this.isMissionButtonHovered = false;
-    this.isMissionLogOpen =
-      typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('testHarness') === 'hudMissionLog';
+    this.isMissionLogOpen = false;
     this.missionLogBounds = undefined;
     this.isEjectHovered = false;
     this.pressedDashboardButton = null;

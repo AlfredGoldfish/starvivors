@@ -19,7 +19,7 @@ Phase 14 connects run rewards to persistent progression and adds the first Secto
   - Level 1: timed scan only.
   - Level 2: edge arrow after scan completion.
   - Level 3: scanner target minimap marker after scan completion.
-- Phase 14 verification is available with `?testHarness=phase14&sectorSeed=phase14-smoke`.
+- The old Phase 14 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Phase Alignment Check
 

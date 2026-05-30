@@ -15,7 +15,7 @@ Phase 13 adds the first rare-event layer for unusual, high-value sector encounte
 - Swarm rare events complete after their themed squad enemies are defeated.
 - Rare events drop scrap and banked-upgrade crates, with unlock hook ids reserved for Phase 14.
 - The minimap now shows rare-event signal, danger, and objective markers.
-- Phase 13 verification is available with `?testHarness=phase13&sectorSeed=phase13-smoke`.
+- The old Phase 13 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Design Notes
 

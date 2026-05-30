@@ -1293,7 +1293,7 @@ Tasks:
 - Coalesce offscreen small asteroids with the recipe `10x Tn -> 1x T(n+1)`, with emergency cleanup under high asteroid pressure.
 - Throttle asteroid death shards under heavy pressure independently from fragment burst protection.
 - Add toroidal spatial collision filtering for asteroid/debris world impacts.
-- Add `?testHarness=phase10_6`.
+- Add focused asteroid/debris performance verification. Browser query harnesses are smoke-only via `?testHarness=smoke`.
 
 Do not:
 

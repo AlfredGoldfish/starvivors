@@ -35,7 +35,7 @@ Phase 10.6 protects the game from lockups during large asteroid bursts and remov
 - Under heavy asteroid pressure, death-shard emission is skipped while the normal breakup feedback remains.
 - Asteroid death-shard throttling is independent from fragment burst protection, so the 250-destruction burst setting does not allow hundreds of shard effects at once.
 - Asteroid-to-asteroid, enemy-to-asteroid, enemy-to-debris, and asteroid-to-debris collision checks now use a lightweight toroidal spatial hash before exact collision tests.
-- Phase 10.6 verification is available with `?testHarness=phase10_6`.
+- The old Phase 10.6 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Gameplay Intent
 

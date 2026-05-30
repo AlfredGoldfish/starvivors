@@ -13,7 +13,7 @@ Phase 11 adds the first mission/contract framework without building a polished m
 - Active missions complete when the player reaches the objective radius.
 - Active missions fail when the player dies, and are marked incomplete if the player extracts before completing the objective.
 - Query-string mission selection is available with `?missionId=survey-signal`, `?missionId=salvage-cache`, or `?missionId=enemy-probe`.
-- Phase 11 verification is available with `?testHarness=phase11&sectorSeed=phase11-smoke`.
+- The old Phase 11 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Deferred
 

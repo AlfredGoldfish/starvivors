@@ -274,6 +274,18 @@ function createMonochromeShapeRecipe(
   };
 }
 
+function createPrototypeExploderShapeRecipe(): VectorShapeRecipe {
+  return {
+    basePolygon: 'block-square',
+    strokeWidth: 0.75,
+    outlineColor: 0xff5722,
+    accentColor: 0x000000,
+    fillColor: 0xff5722,
+    fillAlpha: 1,
+    attachments: ['danger-mark']
+  };
+}
+
 export function resolveEnemyContactKnockbackMultiplier(definition: Pick<EnemyDefinition, 'stats'>): number {
   return sanitizeContactImpulseMultiplier(definition.stats.contactKnockbackMultiplier);
 }
@@ -1016,26 +1028,26 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     displayName: 'Impact Bomber',
     role: 'exploder',
     tier: 2,
-    visualStyle: 'monochrome-outline',
+    visualStyle: 'vector-outline',
     sizeProfile: createEnemySizeProfile('impact-bomber', 24, 2.5),
-    shapeRecipe: createMonochromeShapeRecipe('block-square', 2.5, ['danger-mark']),
+    shapeRecipe: createPrototypeExploderShapeRecipe(),
     effectRecipe: {
-      spawn: { kind: 'blink-ring', color: 0xffc857, durationMs: 240, radius: 44, intensity: 1 },
-      move: { kind: 'spark-trail', color: 0xff8f4f, durationMs: 130, length: 38, intensity: 1 },
-      telegraph: { kind: 'warning-radius', color: 0xff7043, durationMs: 650, radius: 125, intensity: 1 },
-      fire: { kind: 'spark-burst', color: 0xff5964, durationMs: 120, radius: 52, intensity: 1 },
+      spawn: { kind: 'spark-burst', color: 0xff5722, durationMs: 180, radius: 32, intensity: 1 },
+      move: { kind: 'spark-trail', color: 0xff5722, durationMs: 130, length: 38, intensity: 1 },
+      telegraph: { kind: 'warning-radius', color: 0xff5722, durationMs: 0, radius: 125, intensity: 1 },
+      fire: { kind: 'spark-burst', color: 0xffca28, durationMs: 120, radius: 52, intensity: 1 },
       hit: { kind: 'outline-flash', color: 0xffffff, durationMs: 70, intensity: 1 },
-      death: { kind: 'shard-burst', color: 0xff7043, durationMs: 360, radius: 96, intensity: 1 }
+      death: { kind: 'shard-burst', color: 0xff5722, durationMs: 330, radius: 125, intensity: 1 }
     },
     visual: {
       hullShape: 'reactor',
       size: 52,
-      primaryColor: 0xff7043,
-      secondaryColor: 0x5c1e14,
-      accentColor: 0xffc857,
-      glowColor: 0xff7043,
-      outlineColor: 0xffd0b0,
-      engineColor: 0xffc857,
+      primaryColor: 0xff5722,
+      secondaryColor: 0x000000,
+      accentColor: 0xffca28,
+      glowColor: 0xff5722,
+      outlineColor: 0xff5722,
+      engineColor: 0xffca28,
       trailType: 'plasma',
       telegraphType: 'blast-radius',
       hasCore: true
@@ -1043,7 +1055,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     stats: { hp: 22, speed: 132, acceleration: 4.6, contactDamage: 8, radius: 24 },
     behavior: {
       id: 'proximityDetonate',
-      params: { triggerRange: 100, blastRadius: 125, countdownMs: 650, blastDamage: 26, resetCountdownOnExit: true }
+      params: { triggerRange: 100, blastRadius: 125, countdownMs: 0, blastDamage: 26, resetCountdownOnExit: false }
     },
     rewards: { scrap: 2, xp: 10 }
   },

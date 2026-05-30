@@ -11,7 +11,7 @@ Phase 10 starts world population by making squads exist in the sector instead of
 - Squads have a leash: if the player escapes far enough from the squad home, remaining members despawn without rewards and the squad enters `disengage`.
 - Distant squads update on a low-frequency timer instead of simulating full enemy AI.
 - The debug overlay shows active and defeated world squad counts.
-- Phase 10 verification is available with `?testHarness=phase10&sectorSeed=phase10-smoke`.
+- The old Phase 10 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Deferred
 

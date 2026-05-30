@@ -257,7 +257,7 @@
     </div>
     <div class="source-note">
       Prototype references are the files under Docs/references/Enemy_Prototype/Preview Files/ named preview-enemy-*.html. Use them as player-facing clarity references, not as a mandate to copy colors or exact shapes.
-      Current normal validation mode: Wedge Striker spawning is active for charger polish. Scout-only regression spawning remains available through ?testHarness=scoutPhase, and Wedge Striker charger validation remains available through ?testHarness=wedgeStrikerPhase, including a controlled Scout + Wedge Striker mix. Live enemy telegraphs use a shared red warning tint with near-complete brightening, Wedge Striker charge windups and normal projectile shot telegraphs use small randomized timing offsets, and Wedge Striker charges commit to the end of the displayed lane. Committed Wedge charges ignore enemy-side contact recoil and displacement during player hits so the striker still reaches its lane endpoint. Regular player-body collision no longer damages enemies, while enemy touch damage and knockback remain active. Asteroid spawning, activation, breakup, and collision validation remain unchanged.
+      Current normal validation mode: Wedge Striker spawning is active for charger polish. The old Scout and Wedge browser regression harnesses have been retired; use focused unit tests or manual play for those scenarios, then run ?testHarness=smoke for baseline browser smoke. Live enemy telegraphs use a shared red warning tint with near-complete brightening, Wedge Striker charge windups and normal projectile shot telegraphs use small randomized timing offsets, and Wedge Striker charges commit to the end of the displayed lane. Committed Wedge charges ignore enemy-side contact recoil and displacement during player hits so the striker still reaches its lane endpoint. Regular player-body collision no longer damages enemies, while enemy touch damage and knockback remain active. Asteroid spawning, activation, breakup, and collision validation remain unchanged.
     </div>
 
     <h2>Goal And Success Criteria</h2>
@@ -347,7 +347,7 @@
           <td><strong>Scout</strong><br><span class="phase-tag">Regression harness</span></td>
           <td>chaser</td>
           <td>Live baseline chaser</td>
-          <td>Fast basic pressure unit; direction, intent, contact danger, and death pop must stay readable in groups. Scout-only regression spawning is pinned through ?testHarness=scoutPhase while asteroids remain unchanged.</td>
+          <td>Fast basic pressure unit; direction, intent, contact danger, and death pop must stay readable in groups. Scout-only regression checks should use focused tests or manual play; browser query harnesses are smoke-only.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
         <tr>

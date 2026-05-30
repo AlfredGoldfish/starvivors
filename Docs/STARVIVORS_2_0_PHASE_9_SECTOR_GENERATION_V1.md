@@ -13,7 +13,7 @@ Phase 9 adds the first readable sector layout on top of the larger Phase 8 map.
 - Sector asteroids, scrap pockets, and signal beacons are now stored as lightweight generated data first.
 - Only nearby sector content is activated as Phaser objects; distant static sector content is destroyed and restored from data when the player returns.
 - The debug overlay shows active/generated sector counts for asteroids, scrap, and signals.
-- Phase 9 verification is available with `?testHarness=phase9&sectorSeed=phase9-smoke`.
+- The old Phase 9 browser query harness has been retired. Verify this area with focused unit tests or manual play, then run `?testHarness=smoke` for baseline browser smoke.
 
 ## Deferred
 
