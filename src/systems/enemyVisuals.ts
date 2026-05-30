@@ -242,6 +242,14 @@ function drawVectorBaseShape(
         [-radius * 0.68, radius * 0.22]
       ], fill);
       break;
+    case 'block-square':
+      drawPolygon(context, [
+        [-radius * 0.76, -radius * 0.76],
+        [radius * 0.76, -radius * 0.76],
+        [radius * 0.76, radius * 0.76],
+        [-radius * 0.76, radius * 0.76]
+      ], fill);
+      break;
     case 'chevron':
       drawPolygon(context, [
         [0, -radius],
@@ -311,6 +319,16 @@ function drawVectorAttachment(
     case 'barrel-notch':
       drawLine(context, -radius * 0.13, -radius * 0.88, 0, -radius * 1.16);
       drawLine(context, radius * 0.13, -radius * 0.88, 0, -radius * 1.16);
+      break;
+    case 'danger-mark':
+      context.strokeStyle = colorToRgba(recipe.accentColor, 0.98);
+      context.fillStyle = colorToRgba(recipe.accentColor, 0.92);
+      context.lineWidth = Math.max(1.4, recipe.strokeWidth * 0.82);
+      drawLine(context, 0, -radius * 0.46, 0, radius * 0.1);
+      context.fillRect(-radius * 0.08, radius * 0.34, radius * 0.16, radius * 0.16);
+      context.strokeRect(-radius * 0.08, radius * 0.34, radius * 0.16, radius * 0.16);
+      context.strokeStyle = colorToRgba(recipe.accentColor, 0.96);
+      context.fillStyle = colorToRgba(recipe.accentColor, 0.08);
       break;
     case 'rear-thrusters':
       drawLine(context, -radius * 0.22, radius * 0.62, -radius * 0.32, radius * 0.96);

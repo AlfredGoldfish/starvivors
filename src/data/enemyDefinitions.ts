@@ -49,6 +49,7 @@ export type EnemyTelegraphType = 'none' | 'charge-line' | 'sniper-beam' | 'blast
 export type EnemyVisualStyle = 'forge-texture' | 'vector-outline' | 'monochrome-outline';
 export type VectorShapeBase =
   | 'arrow-diamond'
+  | 'block-square'
   | 'chevron'
   | 'hex'
   | 'wedge'
@@ -59,6 +60,7 @@ export type VectorShapeBase =
 export type VectorShapeAttachment =
   | 'nose-line'
   | 'barrel-notch'
+  | 'danger-mark'
   | 'rear-thrusters'
   | 'aim-line'
   | 'core-ring'
@@ -1016,7 +1018,15 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     tier: 2,
     visualStyle: 'monochrome-outline',
     sizeProfile: createEnemySizeProfile('impact-bomber', 24, 2.5),
-    shapeRecipe: createMonochromeShapeRecipe('starburst', 2.5, ['core-ring']),
+    shapeRecipe: createMonochromeShapeRecipe('block-square', 2.5, ['danger-mark']),
+    effectRecipe: {
+      spawn: { kind: 'blink-ring', color: 0xffc857, durationMs: 240, radius: 44, intensity: 1 },
+      move: { kind: 'spark-trail', color: 0xff8f4f, durationMs: 130, length: 38, intensity: 1 },
+      telegraph: { kind: 'warning-radius', color: 0xff7043, durationMs: 650, radius: 125, intensity: 1 },
+      fire: { kind: 'spark-burst', color: 0xff5964, durationMs: 120, radius: 52, intensity: 1 },
+      hit: { kind: 'outline-flash', color: 0xffffff, durationMs: 70, intensity: 1 },
+      death: { kind: 'shard-burst', color: 0xff7043, durationMs: 360, radius: 96, intensity: 1 }
+    },
     visual: {
       hullShape: 'reactor',
       size: 52,
@@ -1033,7 +1043,7 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     stats: { hp: 22, speed: 132, acceleration: 4.6, contactDamage: 8, radius: 24 },
     behavior: {
       id: 'proximityDetonate',
-      params: { triggerRange: 62, blastRadius: 125, countdownMs: 0, blastDamage: 26 }
+      params: { triggerRange: 100, blastRadius: 125, countdownMs: 650, blastDamage: 26, resetCountdownOnExit: true }
     },
     rewards: { scrap: 2, xp: 10 }
   },

@@ -84,6 +84,33 @@ describe('enemy vector recipes', () => {
     expect(tank.behavior.id).toBe('heavyChase');
   });
 
+  it('keeps Impact Bomber as a square proximity-fuse bomber distinct from Reactor Drone', () => {
+    const definitionsById = getDefinitionsById();
+    const reactor = definitionsById.get('reactor-drone') as EnemyDefinition;
+    const impactBomber = definitionsById.get('impact-bomber') as EnemyDefinition;
+    const behaviorParams = impactBomber.behavior.params;
+
+    expect(reactor.shapeRecipe?.basePolygon).toBe('starburst');
+    expect(reactor.shapeRecipe?.attachments).toContain('core-ring');
+    expect(reactor.behavior.params?.countdownMs).toBe(1500);
+    expect(impactBomber.shapeRecipe?.basePolygon).toBe('block-square');
+    expect(impactBomber.shapeRecipe?.attachments).toContain('danger-mark');
+    expect(impactBomber.shapeRecipe?.attachments).not.toContain('core-ring');
+    expect(impactBomber.behavior.id).toBe('proximityDetonate');
+    expect(behaviorParams?.triggerRange).toBe(100);
+    expect(behaviorParams?.blastRadius).toBe(125);
+    expect(behaviorParams?.countdownMs).toBe(650);
+    expect(behaviorParams?.blastDamage).toBe(26);
+    expect(behaviorParams?.resetCountdownOnExit).toBe(true);
+    expect(reactor.behavior.params?.resetCountdownOnExit).toBeUndefined();
+    expect(impactBomber.stats.hp).toBeLessThan(reactor.stats.hp);
+    expect(impactBomber.stats.speed).toBeGreaterThan(reactor.stats.speed);
+    expect(impactBomber.effectRecipe?.spawn.color).toBe(0xffc857);
+    expect(impactBomber.effectRecipe?.move.color).toBe(0xff8f4f);
+    expect(impactBomber.effectRecipe?.telegraph.durationMs).toBe(650);
+    expect(impactBomber.effectRecipe?.death.kind).toBe('shard-burst');
+  });
+
   it('covers every prototype enemy concept with handled portable behavior IDs', () => {
     const definitionsById = getDefinitionsById();
     const expectedPrototypeIds = [

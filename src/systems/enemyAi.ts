@@ -258,8 +258,13 @@ function getEnemyStateOptionalNumber(enemy: EnemyInstance, key: string): number 
 
 function getRandomizedTelegraphDurationMs(enemy: EnemyInstance, key: string, baseDurationMs: number): number {
   const existing = getEnemyStateOptionalNumber(enemy, key);
-  if (existing !== undefined && existing > 0) {
+  if (existing !== undefined) {
     return existing;
+  }
+
+  if (baseDurationMs <= 0) {
+    enemy.stateData[key] = 0;
+    return 0;
   }
 
   const duration = Math.max(
@@ -913,9 +918,18 @@ function updateProximityDetonate(input: UpdateEnemyAiInput, enemy: EnemyInstance
   const blastRadius = getParam(enemy.definition, 'blastRadius', 170);
   const countdownMs = getParam(enemy.definition, 'countdownMs', 1500);
   const blastDamage = getParam(enemy.definition, 'blastDamage', 35);
+  const resetCountdownOnExit = getParamBoolean(enemy.definition, 'resetCountdownOnExit', false);
   const offset = getWrappedDirection(input.arena, enemy.body.x, enemy.body.y, input.playerX, input.playerY);
+  const distance = offset.length();
 
-  if (enemy.state !== 'detonating' && offset.length() <= triggerRange) {
+  if (enemy.state === 'detonating' && resetCountdownOnExit && distance > triggerRange) {
+    enemy.state = 'approach';
+    enemy.stateStartedAt = input.time;
+    delete enemy.stateData.detonateCountdownMs;
+    destroyTelegraphs(enemy);
+  }
+
+  if (enemy.state !== 'detonating' && distance <= triggerRange) {
     enemy.state = 'detonating';
     enemy.stateStartedAt = input.time;
     getRandomizedTelegraphDurationMs(enemy, 'detonateCountdownMs', countdownMs);
@@ -1311,6 +1325,11 @@ function getEnemySpeed(input: UpdateEnemyAiInput, enemy: EnemyInstance): number 
 function getParam(definition: EnemyDefinition, key: string, fallback: number): number {
   const raw = definition.behavior.params?.[key];
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : fallback;
+}
+
+function getParamBoolean(definition: EnemyDefinition, key: string, fallback: boolean): boolean {
+  const raw = definition.behavior.params?.[key];
+  return typeof raw === 'boolean' ? raw : fallback;
 }
 
 function getParamString(definition: EnemyDefinition, key: string, fallback: string): string {
