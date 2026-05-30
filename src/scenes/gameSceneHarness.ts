@@ -40,6 +40,7 @@ export interface GameSceneHarnessAdapter {
   runHarnessScoutPhase: HarnessRunner;
   runHarnessWedgeStrikerPhase: HarnessRunner;
   runHarnessTankPhase: HarnessRunner;
+  runHarnessReactorPhase: HarnessRunner;
   runHarnessDirectCombatNumbers: HarnessRunner;
   runHarnessHudMissionLog: HarnessRunner;
   runHarnessAudio: HarnessRunner;
@@ -84,6 +85,7 @@ type HarnessId =
   | 'scoutPhase'
   | 'wedgeStrikerPhase'
   | 'tankPhase'
+  | 'reactorPhase'
   | 'directCombatNumbers'
   | 'hudMissionLog'
   | 'audio'
@@ -133,6 +135,7 @@ const HARNESS_RUNNERS: Record<HarnessId, (adapter: GameSceneHarnessAdapter) => v
   scoutPhase: (adapter) => adapter.runHarnessScoutPhase(),
   wedgeStrikerPhase: (adapter) => adapter.runHarnessWedgeStrikerPhase(),
   tankPhase: (adapter) => adapter.runHarnessTankPhase(),
+  reactorPhase: (adapter) => adapter.runHarnessReactorPhase(),
   directCombatNumbers: (adapter) => {
     adapter.startRun();
     adapter.runHarnessDirectCombatNumbers();

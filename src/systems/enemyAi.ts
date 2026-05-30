@@ -926,6 +926,8 @@ function updateProximityDetonate(input: UpdateEnemyAiInput, enemy: EnemyInstance
     const randomizedCountdownMs = getRandomizedTelegraphDurationMs(enemy, 'detonateCountdownMs', countdownMs);
     if (randomizedCountdownMs <= 0) {
       input.explodeAt(enemy.body.x, enemy.body.y, blastRadius, blastDamage, enemy.id);
+      enemy.stateData.lastDamageSource = 'enemy';
+      enemy.stateData.selfDetonated = true;
       enemy.hp = 0;
       return;
     }
@@ -935,6 +937,8 @@ function updateProximityDetonate(input: UpdateEnemyAiInput, enemy: EnemyInstance
     updateBlastTelegraph(input, enemy, blastRadius, progress);
     if (progress >= 1) {
       input.explodeAt(enemy.body.x, enemy.body.y, blastRadius, blastDamage, enemy.id);
+      enemy.stateData.lastDamageSource = 'enemy';
+      enemy.stateData.selfDetonated = true;
       enemy.hp = 0;
     }
   } else {

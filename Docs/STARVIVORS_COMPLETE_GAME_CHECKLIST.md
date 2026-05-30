@@ -1,6 +1,6 @@
 # Starvivors Complete Game Checklist
 
-Last reviewed: 2026-05-29
+Last reviewed: 2026-05-30
 
 This file tracks the gap between the current playable Starvivors prototype and a complete, polished game. It is intentionally practical: every item should be something a future session can read, update, and verify.
 
@@ -106,7 +106,9 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-29 Wedge Striker charger phase added a committed aim, windup, charge, and recovery loop with generated lane/recovery warning textures; default live validation spawns now resolve to Wedge Striker while `testHarness=scoutPhase` pins Scout regression spawning, and `testHarness=wedgeStrikerPhase` verifies solo Wedge-only spawning, Scout+Wedge mix setup, state sequence, standardized red telegraph tint with resolve brightening, randomized Wedge charge windup timing, randomized normal projectile shot telegraphs, telegraph-before-damage timing, full-lane charge endpoint completion, charge hit collision, dodge outside the committed path, and reward gating through the normal death path.
   - Evidence: 2026-05-29 Wedge charge-hit fix keeps committed chargers in the `charging` state after player contact, skips enemy-side contact recoil/displacement during the dash, and verifies the striker still reaches the lane endpoint and recovery state in `testHarness=wedgeStrikerPhase`.
   - Evidence: 2026-05-29 Hex Tank validation promoted `hex-tank` as the active live validation enemy while keeping `testHarness=scoutPhase` and `testHarness=wedgeStrikerPhase` pinned for regressions; `testHarness=tankPhase` verifies solo Hex Tank spawning, the controlled Scout+Wedge+Tank mix, and the tank v1 identity as a slow, high-HP `heavyChase` pursuer.
-  - Next: validate sniper, exploder, support, carrier, and status enemy readability directly in live gameplay and add main-game harness evidence before marking this complete.
+  - Evidence: 2026-05-30 Reactor Drone validation promoted `reactor-drone` as the active live validation enemy while keeping Scout, Wedge Striker, and Hex Tank as pinned regression harnesses; `testHarness=reactorPhase` verifies solo Reactor spawning, the exact Scout+Wedge+Tank+Reactor mix, approach into proximity detonation, warning-radius telegraph before blast damage, inside/outside blast damage behavior, normal reward cleanup after self-detonation, and no Reactor HP loss from player body contact.
+  - Evidence: 2026-05-30 Reactor Drone follow-up added a smaller player/shield-kill death blast, quieter enemy-to-enemy blast damage feedback, and per-frame explosion VFX budgeting to reduce slowdown when several blasts resolve together; `npm.cmd run build` passed and harnesses were intentionally skipped by request.
+  - Next: validate sniper, support, carrier, and status enemy readability directly in live gameplay and add main-game harness evidence before marking this complete.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
   - Next: add tier-distinct asteroid marks, debris hazard language, and black-hole warning cues.
@@ -223,6 +225,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-28 prototype completion pass added player status, enemy roster/behavior, and asteroid visual family unit coverage; full Vitest suite and `npm.cmd run build` passed.
   - Evidence: 2026-05-29 Scout phase pass added `src/systems/scoutPhaseSpawning.test.ts`; focused Vitest, full Vitest, `npm.cmd run build`, `testHarness=scoutPhase`, and baseline `testHarness=smoke` passed.
   - Evidence: 2026-05-29 Hex Tank validation pass added `src/systems/tankPhaseSpawning.test.ts`; focused Vitest, `npm.cmd run build`, `testHarness=tankPhase`, `testHarness=scoutPhase`, `testHarness=wedgeStrikerPhase`, `testHarness=enemyContactBalance`, and `testHarness=smoke` passed.
+  - Evidence: 2026-05-30 Reactor Drone validation pass added `src/systems/reactorPhaseSpawning.test.ts`; focused Vitest, `npm.cmd run build`, `testHarness=reactorPhase`, and `testHarness=smoke` passed.
+  - Evidence: 2026-05-30 Reactor Drone blast follow-up passed `npm.cmd run build`; harnesses were intentionally skipped by request.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
@@ -292,3 +296,5 @@ Current focus: Pass A.
 - 2026-05-29: Made the Wedge Striker charge travel to the end of its displayed lane and standardized live enemy telegraphs to shared red warning tint/alpha across enemy AI lanes, rings, beams, paths, and support shapes.
 - 2026-05-29: Added randomized shared telegraph timing and near-complete brightening for Wedge windups plus normal projectile shot telegraphs, and removed regular player-body collision damage against enemies while keeping enemy touch damage/knockback active.
 - 2026-05-29: Promoted Hex Tank as the active live validation enemy with solo and Scout+Wedge+Tank harness coverage, tank-specific player/self knockback multipliers, visual-only 1px outline thinning for Scout/Wedge/Tank, focused unit coverage, build pass, and `tankPhase`, `scoutPhase`, `wedgeStrikerPhase`, `enemyContactBalance`, and `smoke` harness passes.
+- 2026-05-30: Promoted Reactor Drone as the active live validation enemy with focused solo and exact Scout+Wedge+Tank+Reactor mix coverage, unchanged `proximityDetonate` identity checks, warning-radius telegraph-before-damage validation, inside/outside blast checks, reward cleanup verification, player-body-contact HP safety, focused unit coverage, build pass, `reactorPhase` pass, and `smoke` pass.
+- 2026-05-30: Added the Reactor Drone blast follow-up with smaller player/shield-kill death AOE, quieter enemy-to-enemy blast feedback, per-frame explosion VFX budgeting, and a build pass; harnesses were intentionally not run by request.

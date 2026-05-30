@@ -303,6 +303,14 @@ import {
   resolveTankPhaseEnemyDefinitionId
 } from '../systems/tankPhaseSpawning';
 import {
+  REACTOR_PHASE_MODE_LABEL,
+  getReactorPhaseMixCounts,
+  getReactorPhaseMixedSpawnPlan,
+  getReactorPhaseSoloSpawnPlan,
+  isReactorPhaseSolo,
+  resolveReactorPhaseEnemyDefinitionId
+} from '../systems/reactorPhaseSpawning';
+import {
   clearEnemyWreckageDebris as clearEnemyWreckageDebrisSystem,
   destroyEnemyWreckageDebris as destroyEnemyWreckageDebrisSystem,
   updateEnemyWreckageDebris as updateEnemyWreckageDebrisSystem
@@ -702,6 +710,20 @@ interface PlayerDeathShockwaveTriggerLog {
   sequence: number;
 }
 
+interface ImpactExplosionOptions {
+  particleScale?: number;
+  shakeScale?: number;
+  playSound?: boolean;
+}
+
+interface LiveEnemyExplosionOptions {
+  enemyDamageSource?: DamageFeedbackSource;
+  playerDamageSource?: DamageFeedbackSource;
+  enemyDamageMultiplier?: number;
+  emitEnemyDamageFeedback?: boolean;
+  vfxScale?: number;
+}
+
 const REROLL_BASE_COST = 5;
 const REROLL_DEBUG_BASE_COST = 10;
 const DEATH_SHARD_MAX_ACTIVE = 360;
@@ -740,6 +762,11 @@ const ASTEROID_COALESCE_NEAR_RADIUS = 420;
 const BEAM_IGNITION_MS = 140;
 const BEAM_SPARK_INTERVAL_MS = 55;
 const BEAM_CONTACT_SPARK_MAX_PER_TICK = 4;
+const LIVE_ENEMY_EXPLOSION_FULL_VFX_PER_FRAME = 2;
+const LIVE_ENEMY_EXPLOSION_REDUCED_VFX_PER_FRAME = 5;
+const REACTOR_PLAYER_KILL_BLAST_RADIUS = 105;
+const REACTOR_PLAYER_KILL_BLAST_DAMAGE = 16;
+const REACTOR_PLAYER_KILL_BLAST_VFX_SCALE = 0.58;
 const BEAM_RENDER_DEPTH = 9.5;
 const SCOUT_MOTION_HINT_INTERVAL_MS = 130;
 const SCOUT_MOTION_HINT_MAX_PER_TICK = 12;
@@ -966,8 +993,10 @@ export class GameScene extends Phaser.Scene {
   private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
-  private activeValidationEnemyDefinitionId: string = resolveTankPhaseEnemyDefinitionId();
-  private activeValidationEnemyModeLabel: string = TANK_PHASE_MODE_LABEL;
+  private liveEnemyExplosionVfxBudgetFrame = Number.NEGATIVE_INFINITY;
+  private liveEnemyExplosionVfxBudgetUsed = 0;
+  private activeValidationEnemyDefinitionId: string = resolveReactorPhaseEnemyDefinitionId();
+  private activeValidationEnemyModeLabel: string = REACTOR_PHASE_MODE_LABEL;
   private nextScoutMotionHintAt = 0;
   private scoutMotionHintCursor = 0;
   private encounterDirectorState: EncounterDirectorState = createEncounterDirectorState();
@@ -1827,6 +1856,7 @@ export class GameScene extends Phaser.Scene {
       runHarnessScoutPhase: () => this.runTestHarnessScoutPhase(),
       runHarnessWedgeStrikerPhase: () => this.runTestHarnessWedgeStrikerPhase(),
       runHarnessTankPhase: () => this.runTestHarnessTankPhase(),
+      runHarnessReactorPhase: () => this.runTestHarnessReactorPhase(),
       runHarnessDirectCombatNumbers: () => this.runTestHarnessDirectCombatNumbers(),
       runHarnessHudMissionLog: () => this.runTestHarnessHudMissionLog(),
       runHarnessAudio: () => this.runTestHarnessAudio(),
@@ -3769,6 +3799,398 @@ export class GameScene extends Phaser.Scene {
       })
     );
     this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
+  }
+
+  private runTestHarnessReactorPhase(): void {
+    const harness = window.starvivorsTestHarness;
+    const resultAttribute = 'data-starvivors-reactor-phase-harness';
+    const detailsAttribute = 'data-starvivors-reactor-phase-harness-details';
+
+    if (!harness) {
+      document.body.setAttribute(resultAttribute, 'fail');
+      document.body.setAttribute(detailsAttribute, 'Harness was not installed.');
+      return;
+    }
+
+    const previousValidationDefinitionId = this.activeValidationEnemyDefinitionId;
+    const previousValidationModeLabel = this.activeValidationEnemyModeLabel;
+    const restoreValidationMode = (): void => {
+      this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
+    };
+    const setFailure = (message: string): void => {
+      document.body.setAttribute(resultAttribute, 'fail');
+      document.body.setAttribute(detailsAttribute, message);
+      restoreValidationMode();
+    };
+    const syncEnemyPosition = (enemy: LiveGameEnemy): void => {
+      enemy.previousX = enemy.body.x;
+      enemy.previousY = enemy.body.y;
+      enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
+    };
+    const spawnValidationEnemy = (
+      definitionId: string,
+      x: number,
+      y: number,
+      time: number,
+      spawnMode = REACTOR_PHASE_MODE_LABEL
+    ): LiveGameEnemy | undefined => {
+      const enemy = this.spawnValidationLiveEnemy(definitionId, x, y, time, spawnMode);
+      if (enemy) {
+        syncEnemyPosition(enemy);
+      }
+      return enemy;
+    };
+    const isStandardWarningCircle = (image?: Phaser.GameObjects.Image): boolean =>
+      Boolean(image?.scene) &&
+      (image?.alpha ?? 0) >= ENEMY_TELEGRAPH_WARNING_ALPHA - 0.001 &&
+      (image?.alpha ?? 0) <= ENEMY_TELEGRAPH_WARNING_READY_ALPHA + 0.001 &&
+      image?.tintTopLeft === ENEMY_TELEGRAPH_WARNING_COLOR;
+    const resetPlayerForReactorCheck = (x: number, y: number): void => {
+      this.player.setPosition(x, y);
+      this.capturePreviousPlayerContactPosition();
+      this.playerVelocity.set(0, 0);
+      this.playerHull = this.getPlayerMaxHull();
+      this.playerInvulnerableUntil = 0;
+    };
+
+    this.setActiveValidationEnemyMode(resolveReactorPhaseEnemyDefinitionId(), REACTOR_PHASE_MODE_LABEL);
+    this.startRun();
+    this.clearEnemies();
+    this.clearScrapPickups();
+    this.clearPlayerProjectiles();
+    this.clearEnemyProjectiles();
+
+    const center = getArenaCenter(this.arena);
+    const baseTime = this.time.now + 1000;
+    resetPlayerForReactorCheck(center.x, center.y);
+
+    const activeValidationDefinitionId = this.getActiveValidationEnemyDefinitionId();
+    const activeValidationModeLabel = this.getActiveValidationEnemyModeLabel();
+    const activeValidationPass =
+      activeValidationDefinitionId === resolveReactorPhaseEnemyDefinitionId() &&
+      activeValidationModeLabel === REACTOR_PHASE_MODE_LABEL;
+
+    const soloPlan = getReactorPhaseSoloSpawnPlan();
+    for (let index = 0; index < soloPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, soloPlan.length);
+      spawnValidationEnemy(
+        soloPlan[index],
+        center.x + Math.cos(angle) * 460,
+        center.y + Math.sin(angle) * 460,
+        baseTime
+      );
+    }
+
+    const soloDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const soloSpawnModes = [...new Set(this.liveEnemies.map((enemy) => enemy.stateData.spawnMode))];
+    const soloOnlyPass = isReactorPhaseSolo(soloDefinitionIds);
+    const soloModePass = soloSpawnModes.length === 1 && soloSpawnModes[0] === REACTOR_PHASE_MODE_LABEL;
+
+    this.clearEnemies();
+    const mixedPlan = getReactorPhaseMixedSpawnPlan();
+    for (let index = 0; index < mixedPlan.length; index += 1) {
+      const angle = (Math.PI * 2 * index) / Math.max(1, mixedPlan.length);
+      spawnValidationEnemy(
+        mixedPlan[index],
+        center.x + Math.cos(angle) * 520,
+        center.y + Math.sin(angle) * 520,
+        baseTime + 1000,
+        `${REACTOR_PHASE_MODE_LABEL}-mixed`
+      );
+    }
+
+    const mixedDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
+    const mixedCounts = getReactorPhaseMixCounts(mixedDefinitionIds);
+    const expectedMixedCounts = getReactorPhaseMixCounts(mixedPlan);
+    const mixedSequencePass =
+      mixedDefinitionIds.length === mixedPlan.length &&
+      mixedDefinitionIds.every((definitionId, index) => definitionId === mixedPlan[index]);
+    const mixedPass =
+      mixedSequencePass &&
+      mixedCounts.scout === expectedMixedCounts.scout &&
+      mixedCounts['wedge-striker'] === expectedMixedCounts['wedge-striker'] &&
+      mixedCounts['hex-tank'] === expectedMixedCounts['hex-tank'] &&
+      mixedCounts['reactor-drone'] === expectedMixedCounts['reactor-drone'];
+
+    this.clearEnemies();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const approachEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x + 260,
+      center.y,
+      baseTime + 2000
+    );
+
+    if (!approachEnemy) {
+      setFailure('No Reactor Drone spawned for approach validation.');
+      return;
+    }
+
+    approachEnemy.velocity.set(0, 0);
+    syncEnemyPosition(approachEnemy);
+    this.updateLiveEnemies(baseTime + 2016, 1 / 60);
+    const approachState = approachEnemy.state;
+    const approachPass = approachState === 'approach';
+
+    this.clearEnemies();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const behaviorEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x + 100,
+      center.y,
+      baseTime + 3000
+    );
+
+    if (!behaviorEnemy) {
+      setFailure('No Reactor Drone spawned for detonation validation.');
+      return;
+    }
+
+    behaviorEnemy.velocity.set(0, 0);
+    syncEnemyPosition(behaviorEnemy);
+    const triggerTime = baseTime + 3016;
+    const triggerHullBefore = this.playerHull;
+    this.updateLiveEnemies(triggerTime, 1 / 60);
+    const triggerHullAfter = this.playerHull;
+    const triggerState = behaviorEnemy.state;
+    const warningCircleVisible = Boolean(behaviorEnemy.telegraphs.warningCircle?.scene);
+    const warningCircleStandard = isStandardWarningCircle(behaviorEnemy.telegraphs.warningCircle);
+    const warningCircleAlpha = behaviorEnemy.telegraphs.warningCircle?.alpha ?? 0;
+    const randomizedCountdownMs = Number(behaviorEnemy.stateData.detonateCountdownMs ?? Number.NaN);
+    const expectedCountdownMs = Number(behaviorEnemy.definition.behavior.params?.countdownMs ?? 1500);
+    const randomizedCountdownPass =
+      Number.isFinite(randomizedCountdownMs) &&
+      randomizedCountdownMs >= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER &&
+      randomizedCountdownMs <= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER;
+    const triggerPass = triggerState === 'detonating';
+    const warningBeforeDamagePass =
+      triggerPass &&
+      warningCircleVisible &&
+      warningCircleStandard &&
+      triggerHullAfter === triggerHullBefore &&
+      randomizedCountdownPass;
+
+    this.clearEnemies();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const insideEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x + 100,
+      center.y,
+      baseTime + 5000
+    );
+
+    if (!insideEnemy) {
+      setFailure('No Reactor Drone spawned for inside-blast validation.');
+      return;
+    }
+
+    insideEnemy.velocity.set(0, 0);
+    syncEnemyPosition(insideEnemy);
+    const insideTriggerTime = baseTime + 5016;
+    this.updateLiveEnemies(insideTriggerTime, 1 / 60);
+    const insideCountdownMs = Number(insideEnemy.stateData.detonateCountdownMs ?? expectedCountdownMs);
+    const insideWarningBeforeResolve = Boolean(insideEnemy.telegraphs.warningCircle?.scene);
+    const insideHullBefore = this.playerHull;
+    this.updateLiveEnemies(insideTriggerTime + insideCountdownMs + 32, 1 / 60);
+    const insideHullAfter = this.playerHull;
+    const insideBlastPass = insideWarningBeforeResolve && insideHullAfter < insideHullBefore;
+
+    this.clearEnemies();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const outsideEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x + 100,
+      center.y,
+      baseTime + 7000
+    );
+
+    if (!outsideEnemy) {
+      setFailure('No Reactor Drone spawned for outside-blast validation.');
+      return;
+    }
+
+    outsideEnemy.velocity.set(0, 0);
+    syncEnemyPosition(outsideEnemy);
+    const outsideTriggerTime = baseTime + 7016;
+    this.updateLiveEnemies(outsideTriggerTime, 1 / 60);
+    const outsideCountdownMs = Number(outsideEnemy.stateData.detonateCountdownMs ?? expectedCountdownMs);
+    const outsideHullBefore = this.playerHull;
+    this.player.setPosition(center.x + 420, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.playerInvulnerableUntil = 0;
+    this.updateLiveEnemies(outsideTriggerTime + outsideCountdownMs + 32, 1 / 60);
+    const outsideHullAfter = this.playerHull;
+    const outsideBlastPass = outsideHullAfter === outsideHullBefore;
+
+    this.clearEnemies();
+    this.clearScrapPickups();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const rewardEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x + 100,
+      center.y,
+      baseTime + 9000
+    );
+
+    if (!rewardEnemy) {
+      setFailure('No Reactor Drone spawned for reward validation.');
+      return;
+    }
+
+    rewardEnemy.velocity.set(0, 0);
+    syncEnemyPosition(rewardEnemy);
+    const rewardLiveEnemiesBefore = this.liveEnemies.length;
+    const rewardScrapBefore = this.scrapPickups.length;
+    const rewardXpBefore = this.playerXp;
+    const rewardRunScrapBefore = this.runScrapTotal;
+    const rewardTriggerTime = baseTime + 9016;
+    this.updateLiveEnemies(rewardTriggerTime, 1 / 60);
+    const rewardCountdownMs = Number(rewardEnemy.stateData.detonateCountdownMs ?? expectedCountdownMs);
+    this.player.setPosition(center.x + 420, center.y);
+    this.capturePreviousPlayerContactPosition();
+    this.playerVelocity.set(0, 0);
+    this.playerInvulnerableUntil = 0;
+    this.updateLiveEnemies(rewardTriggerTime + rewardCountdownMs + 32, 1 / 60);
+    const rewardScrapAfterDeath = this.scrapPickups.length;
+    const rewardLiveEnemiesAfterDeath = this.liveEnemies.length;
+    const collectedRewards = harness.collectAllScrap();
+    const rewardDeathPathPass =
+      rewardLiveEnemiesAfterDeath === rewardLiveEnemiesBefore - 1 &&
+      rewardScrapAfterDeath > rewardScrapBefore &&
+      collectedRewards.runScrapTotal > rewardRunScrapBefore &&
+      collectedRewards.playerXp > rewardXpBefore;
+
+    this.clearEnemies();
+    resetPlayerForReactorCheck(center.x, center.y);
+    const contactEnemy = spawnValidationEnemy(
+      resolveReactorPhaseEnemyDefinitionId(),
+      center.x,
+      center.y,
+      baseTime + 11000
+    );
+
+    if (!contactEnemy) {
+      setFailure('No Reactor Drone spawned for body-contact validation.');
+      return;
+    }
+
+    contactEnemy.velocity.set(0, 0);
+    syncEnemyPosition(contactEnemy);
+    const contactHpBefore = contactEnemy.hp;
+    const contact = this.getEnemyContact();
+    if (contact) {
+      this.resolvePlayerEnemyContact(contact, baseTime + 11016);
+    }
+    const contactHpAfter = contactEnemy.hp;
+    const bodyContactHpPass = Boolean(contact) && contactHpAfter === contactHpBefore;
+
+    const reactorDefinition = ENEMY_DEFINITIONS.find((definition) => definition.id === resolveReactorPhaseEnemyDefinitionId());
+    const behaviorParams = reactorDefinition?.behavior.params;
+    const reactorIdentityPass = Boolean(
+      reactorDefinition &&
+      reactorDefinition.behavior.id === 'proximityDetonate' &&
+      behaviorParams?.triggerRange === 120 &&
+      behaviorParams?.blastRadius === 170 &&
+      behaviorParams?.countdownMs === 1500 &&
+      behaviorParams?.blastDamage === 35
+    );
+    const pass =
+      activeValidationPass &&
+      soloOnlyPass &&
+      soloModePass &&
+      mixedPass &&
+      reactorIdentityPass &&
+      approachPass &&
+      triggerPass &&
+      warningBeforeDamagePass &&
+      insideBlastPass &&
+      outsideBlastPass &&
+      rewardDeathPathPass &&
+      bodyContactHpPass;
+
+    document.body.setAttribute(resultAttribute, pass ? 'pass' : 'fail');
+    document.body.setAttribute(
+      detailsAttribute,
+      JSON.stringify({
+        mode: REACTOR_PHASE_MODE_LABEL,
+        activeValidation: {
+          definitionId: activeValidationDefinitionId,
+          modeLabel: activeValidationModeLabel,
+          pass: activeValidationPass
+        },
+        soloDefinitionIds,
+        soloSpawnModes,
+        soloOnlyPass,
+        soloModePass,
+        mixedDefinitionIds,
+        mixedPlan,
+        mixedCounts,
+        expectedMixedCounts,
+        mixedSequencePass,
+        mixedPass,
+        reactorIdentity: reactorDefinition
+          ? {
+              behaviorId: reactorDefinition.behavior.id,
+              triggerRange: behaviorParams?.triggerRange,
+              blastRadius: behaviorParams?.blastRadius,
+              countdownMs: behaviorParams?.countdownMs,
+              blastDamage: behaviorParams?.blastDamage,
+              pass: reactorIdentityPass
+            }
+          : null,
+        approach: {
+          approachState,
+          approachPass
+        },
+        trigger: {
+          triggerState,
+          triggerPass,
+          randomizedCountdownMs,
+          expectedCountdownMinMs: expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER,
+          expectedCountdownMaxMs: expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER,
+          randomizedCountdownPass
+        },
+        warningBeforeDamage: {
+          warningCircleVisible,
+          warningCircleStandard,
+          warningCircleAlpha,
+          triggerHullBefore,
+          triggerHullAfter,
+          warningBeforeDamagePass
+        },
+        insideBlast: {
+          insideWarningBeforeResolve,
+          insideHullBefore,
+          insideHullAfter,
+          insideBlastPass
+        },
+        outsideBlast: {
+          outsideHullBefore,
+          outsideHullAfter,
+          outsideBlastPass
+        },
+        rewards: {
+          rewardDeathPathPass,
+          rewardLiveEnemiesBefore,
+          rewardLiveEnemiesAfterDeath,
+          rewardScrapBefore,
+          rewardScrapAfterDeath,
+          rewardRunScrapBefore,
+          rewardRunScrapAfterCollect: collectedRewards.runScrapTotal,
+          rewardXpBefore,
+          rewardXpAfterCollect: collectedRewards.playerXp
+        },
+        bodyContact: {
+          contactDetected: Boolean(contact),
+          contactHpBefore,
+          contactHpAfter,
+          bodyContactHpPass
+        },
+        pass
+      })
+    );
+    restoreValidationMode();
   }
 
   private runTestHarnessBulwark(): void {
@@ -9244,6 +9666,7 @@ export class GameScene extends Phaser.Scene {
     );
     destroyLiveEnemySystem(enemy);
     this.liveEnemies.splice(index, 1);
+    this.applyReactorPlayerKillDeathBlast(enemy, x, y);
 
     if (enemy.definition.behavior.id === 'splitterChase') {
       const childId = String(enemy.definition.behavior.params?.childId ?? 'shard-drone');
@@ -9253,6 +9676,40 @@ export class GameScene extends Phaser.Scene {
         this.spawnLiveEnemy(childId, x + Math.cos(angle) * 42, y + Math.sin(angle) * 42, this.time.now, 'chaser');
       }
     }
+  }
+
+  private applyReactorPlayerKillDeathBlast(enemy: LiveGameEnemy, x: number, y: number): void {
+    if (!this.shouldTriggerReactorPlayerKillDeathBlast(enemy)) {
+      return;
+    }
+
+    const radius = this.getLiveEnemyBehaviorParamNumber(enemy, 'playerKillBlastRadius', REACTOR_PLAYER_KILL_BLAST_RADIUS);
+    const damage = this.getLiveEnemyBehaviorParamNumber(enemy, 'playerKillBlastDamage', REACTOR_PLAYER_KILL_BLAST_DAMAGE);
+    if (radius <= 0 || damage <= 0) {
+      return;
+    }
+
+    this.explodeLiveEnemyAt(x, y, radius, damage, enemy.id, {
+      enemyDamageSource: 'player',
+      playerDamageSource: 'enemy',
+      enemyDamageMultiplier: 1,
+      emitEnemyDamageFeedback: false,
+      vfxScale: REACTOR_PLAYER_KILL_BLAST_VFX_SCALE
+    });
+  }
+
+  private shouldTriggerReactorPlayerKillDeathBlast(enemy: LiveGameEnemy): boolean {
+    if (enemy.definitionId !== 'reactor-drone' || enemy.stateData.selfDetonated === true) {
+      return false;
+    }
+
+    const lastDamageSource = enemy.stateData.lastDamageSource;
+    return lastDamageSource === 'player' || lastDamageSource === 'shield';
+  }
+
+  private getLiveEnemyBehaviorParamNumber(enemy: LiveGameEnemy, key: string, fallback: number): number {
+    const value = enemy.definition.behavior.params?.[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
   }
 
   private destroyLiveEnemyWithoutRewards(enemy: LiveGameEnemy): void {
@@ -12563,7 +13020,8 @@ export class GameScene extends Phaser.Scene {
     enemy: LiveGameEnemy,
     damage: number,
     source: DamageFeedbackSource = 'environment',
-    revealHealthBar = false
+    revealHealthBar = false,
+    emitFeedback = true
   ): number {
     if (damage <= 0) {
       return 0;
@@ -12571,8 +13029,11 @@ export class GameScene extends Phaser.Scene {
 
     const appliedDamage = Math.max(1, Math.round(damage));
     enemy.hp -= appliedDamage;
+    enemy.stateData.lastDamageSource = source;
     this.recordDamageDone(appliedDamage, source);
-    this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.maxHp, enemy.definition.stats.radius, appliedDamage, source, revealHealthBar);
+    if (emitFeedback) {
+      this.emitDamageFeedback(enemy, enemy.body, enemy.hp, enemy.maxHp, enemy.definition.stats.radius, appliedDamage, source, revealHealthBar);
+    }
     return appliedDamage;
   }
 
@@ -14243,22 +14704,65 @@ export class GameScene extends Phaser.Scene {
     return projectile;
   }
 
-  private explodeLiveEnemyAt(x: number, y: number, radius: number, damage: number, sourceId: string): void {
-    this.emitShipCollisionImpactExplosion(x, y);
+  private explodeLiveEnemyAt(
+    x: number,
+    y: number,
+    radius: number,
+    damage: number,
+    sourceId: string,
+    options: LiveEnemyExplosionOptions = {}
+  ): void {
+    this.emitLiveEnemyExplosionFeedback(x, y, options.vfxScale ?? 1);
 
-    if (!this.isPlayerDead && this.getWrappedDirection(x, y, this.player.x, this.player.y).length() <= radius) {
-      this.damagePlayer(this.rollSourceDamage(damage, ENEMY_PROJECTILE_DAMAGE_VARIANCE), this.time.now, x, y, { source: 'enemy' });
+    const radiusSq = radius * radius;
+    const playerDamageSource = options.playerDamageSource ?? 'enemy';
+    if (!this.isPlayerDead && this.getWrappedDirection(x, y, this.player.x, this.player.y).lengthSq() <= radiusSq) {
+      this.damagePlayer(this.rollSourceDamage(damage, ENEMY_PROJECTILE_DAMAGE_VARIANCE), this.time.now, x, y, { source: playerDamageSource });
     }
 
+    const enemyDamageSource = options.enemyDamageSource ?? 'enemy';
+    const enemyDamageMultiplier = options.enemyDamageMultiplier ?? 0.45;
+    const emitEnemyDamageFeedback = options.emitEnemyDamageFeedback ?? false;
     for (const enemy of this.liveEnemies) {
       if (enemy.id === sourceId || enemy.hp <= 0) {
         continue;
       }
 
-      if (this.getWrappedDirection(x, y, enemy.body.x, enemy.body.y).length() <= radius) {
-        this.damageLiveEnemy(enemy, this.rollSourceDamage(damage * 0.45, ENEMY_PROJECTILE_DAMAGE_VARIANCE), 'enemy', true);
+      if (this.getWrappedDirection(x, y, enemy.body.x, enemy.body.y).lengthSq() <= radiusSq) {
+        this.damageLiveEnemy(
+          enemy,
+          this.rollSourceDamage(damage * enemyDamageMultiplier, ENEMY_PROJECTILE_DAMAGE_VARIANCE),
+          enemyDamageSource,
+          emitEnemyDamageFeedback,
+          emitEnemyDamageFeedback
+        );
       }
     }
+  }
+
+  private emitLiveEnemyExplosionFeedback(x: number, y: number, requestedScale: number): void {
+    const frame = Math.floor(this.time.now);
+    if (frame !== this.liveEnemyExplosionVfxBudgetFrame) {
+      this.liveEnemyExplosionVfxBudgetFrame = frame;
+      this.liveEnemyExplosionVfxBudgetUsed = 0;
+    }
+
+    const budgetIndex = this.liveEnemyExplosionVfxBudgetUsed;
+    this.liveEnemyExplosionVfxBudgetUsed += 1;
+    if (budgetIndex >= LIVE_ENEMY_EXPLOSION_REDUCED_VFX_PER_FRAME) {
+      return;
+    }
+
+    const burstScale = Phaser.Math.Clamp(requestedScale, 0.15, 1);
+    const budgetScale = budgetIndex < LIVE_ENEMY_EXPLOSION_FULL_VFX_PER_FRAME
+      ? burstScale
+      : burstScale * (budgetIndex < LIVE_ENEMY_EXPLOSION_FULL_VFX_PER_FRAME + 2 ? 0.42 : 0.24);
+
+    this.emitShipCollisionImpactExplosion(x, y, {
+      particleScale: budgetScale,
+      shakeScale: budgetIndex === 0 ? budgetScale : budgetScale * 0.32,
+      playSound: budgetIndex < LIVE_ENEMY_EXPLOSION_FULL_VFX_PER_FRAME + 1
+    });
   }
 
   private emitLiveEnemyBurst(x: number, y: number, color: number, count = 8): void {
@@ -15596,19 +16100,25 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  private emitShipCollisionImpactExplosion(x: number, y: number): void {
-    this.playSfxCue('world-impact');
+  private emitShipCollisionImpactExplosion(x: number, y: number, options: ImpactExplosionOptions = {}): void {
+    const particleScale = Phaser.Math.Clamp(options.particleScale ?? 1, 0, 2);
+    const shakeScale = Phaser.Math.Clamp(options.shakeScale ?? 1, 0, 2);
+    if (options.playSound !== false) {
+      this.playSfxCue('world-impact');
+    }
     const effectPosition = this.getNearestWrappedRenderPosition(x, y);
-    const particleCount = this.getNonCriticalParticleCount(9);
-    this.shakeCamera(95, 0.006);
+    const particleCount = this.getNonCriticalParticleCount(Math.round(9 * particleScale));
+    if (shakeScale > 0) {
+      this.shakeCamera(95, 0.006 * shakeScale);
+    }
 
     for (let i = 0; i < particleCount; i += 1) {
       const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(16, 42);
+      const distance = Phaser.Math.FloatBetween(16, 42) * Math.max(0.35, particleScale);
       const particle = this.add.circle(
         effectPosition.x,
         effectPosition.y,
-        Phaser.Math.FloatBetween(2.2, 4.2),
+        Phaser.Math.FloatBetween(2.2, 4.2) * Math.max(0.55, particleScale),
         Phaser.Utils.Array.GetRandom([0xff5964, 0xff8f4f, 0xffc857]),
         0.86
       );

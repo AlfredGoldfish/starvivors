@@ -470,7 +470,14 @@ export const ENEMY_DEFINITIONS: EnemyDefinition[] = [
     stats: { hp: 30, speed: 104, acceleration: 3.8, contactDamage: 10, radius: 26 },
     behavior: {
       id: 'proximityDetonate',
-      params: { triggerRange: 120, blastRadius: 170, countdownMs: 1500, blastDamage: 35 }
+      params: {
+        triggerRange: 120,
+        blastRadius: 170,
+        countdownMs: 1500,
+        blastDamage: 35,
+        playerKillBlastRadius: 105,
+        playerKillBlastDamage: 16
+      }
     },
     rewards: { scrap: 2, xp: 12 }
   },
