@@ -179,7 +179,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 Interceptor one-object production session generated four standalone candidates under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources and 512x512 RGBA validation.
   - Evidence: 2026-05-30 Bulwark one-object production session generated four standalone candidates under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources and 512x512 RGBA validation.
   - Evidence: 2026-05-30 Engineer one-object production session generated four standalone red/orange-accent candidates under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources and 512x512 RGBA validation.
-  - Next: review the Interceptor, Bulwark, and Engineer candidates at gameplay scale before any runtime promotion.
+  - Evidence: 2026-05-30 enemy production batch generated four standalone candidates each for Diamond Gunner, Scout, Wedge Striker, Hex Tank, and Reactor Drone under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources and 512x512 RGBA validation.
+  - Next: review the player ship and first enemy candidate sets at gameplay scale before any runtime promotion.
 - [~] Player ship assets are cohesive.
   - Done when: Interceptor, Bulwark, and Engineer share a final visual language and no active ship uses a misleading fallback.
   - Evidence: 2026-05-28 monochrome object pass replaced active ship PNG/Forge rendering with generated `monochrome-outline` silhouettes for gameplay and hangar previews, while leaving legacy asset references available.
@@ -194,7 +195,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-29 Scout active phase target added a clearer monochrome directional nose/rear-thruster silhouette, capped sampled movement trail hints, and contact recoil scale feedback for live-game validation.
   - Evidence: 2026-05-29 Scout, Wedge Striker, and Hex Tank monochrome outline strokes were thinned to 1px as a visual-only pass; collision radius, HP, contact damage, speed, and visual footprint remain unchanged.
   - Evidence: 2026-05-30 prototype enemy match pass promoted 23 prototype-mapped live enemy definitions to colored `vector-outline` recipes sourced from the preview files; Scout, Carrier Foundry, Scrap Jackal, and Electric Leech remain intentional live extra/fallback roles.
-  - Next: validate colored enemy recipes at gameplay scale in dense live runs, then add audio cues for high-risk telegraphs.
+  - Evidence: 2026-05-30 AI raster production created four review candidates each for Diamond Gunner, Scout, Wedge Striker, Hex Tank, and Reactor Drone, using distinct neon reads: blue, cyan/teal, red/orange, amber/yellow, and violet/magenta. These assets were not wired into runtime.
+  - Next: review the enemy raster directions at gameplay scale before promotion, then validate colored enemy recipes in dense live runs.
 - [~] Pickup/resource assets are cohesive.
   - Done when: scrap tiers, upgrade crates, future fuel cells, and future rare parts are distinct at gameplay scale.
   - Next: finish scrap tier polish and separate debris from collectible scrap.
@@ -330,3 +332,4 @@ Current focus: Pass A.
 - 2026-05-30: Generated the first one-object AI production candidate set for the Interceptor player ship, including four standalone candidates, selected candidate 04 as the preferred direction, preserved chroma-key sources, and 512x512 RGBA validation under `assets/ai-generated-images/production-candidates/`.
 - 2026-05-30: Generated the one-object AI production candidate set for the Bulwark player ship, including four standalone candidates, preserved chroma-key sources, and 512x512 RGBA validation under `assets/ai-generated-images/production-candidates/`.
 - 2026-05-30: Generated the one-object AI production candidate set for the Engineer player ship, including four standalone red/orange-accent candidates, preserved chroma-key sources, and 512x512 RGBA validation under `assets/ai-generated-images/production-candidates/`.
+- 2026-05-30: Generated the first enemy AI raster production batch for Diamond Gunner, Scout, Wedge Striker, Hex Tank, and Reactor Drone, including four standalone candidates per enemy, preserved chroma-key sources, distinct neon color reads, and 512x512 RGBA validation under `assets/ai-generated-images/production-candidates/`.

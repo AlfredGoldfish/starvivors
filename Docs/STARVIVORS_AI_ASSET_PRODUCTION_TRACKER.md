@@ -78,11 +78,11 @@ Default production pass for each enemy or ship-like threat: exactly 4 standalone
 
 | Status | Session prompt object | Asset ID | Required production outputs | Evidence / Folder | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `[R]` | Scout enemy | `enemy_scout` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_scout_ai.png` | Root concept exists; production pass not started. |
-| `[R]` | Wedge Striker enemy | `enemy_wedge_striker` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_wedge_striker_ai.png` | Root concept exists; production pass not started. |
-| `[R]` | Diamond Gunner enemy | `enemy_diamond_gunner` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_diamond_gunner_ai.png` | Primary art anchor; recommended first production pass. |
-| `[R]` | Hex Tank enemy | `enemy_hex_tank` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_hex_tank_ai.png` | Root concept exists; production pass not started. |
-| `[R]` | Reactor Drone enemy | `enemy_reactor_drone` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_reactor_drone_ai.png` | Root concept exists; production pass not started. |
+| `[C]` | Scout enemy | `enemy_scout` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/scout/` | Four cyan/teal 512x512 RGBA candidates; no runtime promotion. |
+| `[C]` | Wedge Striker enemy | `enemy_wedge_striker` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/wedge_striker/` | Four red/orange 512x512 RGBA charger candidates; no runtime promotion. |
+| `[C]` | Diamond Gunner enemy | `enemy_diamond_gunner` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/diamond_gunner/` | Four blue 512x512 RGBA gunship candidates; no runtime promotion. |
+| `[C]` | Hex Tank enemy | `enemy_hex_tank` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/hex_tank/` | Four amber/yellow 512x512 RGBA heavy candidates; no runtime promotion. |
+| `[C]` | Reactor Drone enemy | `enemy_reactor_drone` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/reactor_drone/` | Four violet/magenta 512x512 RGBA reactor candidates; no runtime promotion. |
 | `[ ]` | Splitter enemy | `enemy_splitter` | 4 candidates only |  | Needs production concept. |
 | `[ ]` | Needle Sniper enemy | `enemy_needle_sniper` | 4 candidates only |  | Long-range high-threat silhouette. |
 | `[ ]` | Shield Frigate enemy | `enemy_shield_frigate` | 4 candidates only |  | Support/defensive threat. |
@@ -223,3 +223,8 @@ Add one line per completed production session.
 
 - 2026-05-30: `ship_bulwark` - `[C]` - `assets/ai-generated-images/production-candidates/ships/bulwark/` - Four standalone 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `ship_engineer` - `[C]` - `assets/ai-generated-images/production-candidates/ships/engineer/` - Four standalone red/orange-accent 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_diamond_gunner` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/diamond_gunner/` - Four standalone blue 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_scout` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/scout/` - Four standalone cyan/teal 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_wedge_striker` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/wedge_striker/` - Four standalone red/orange 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_hex_tank` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/hex_tank/` - Four standalone amber/yellow 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_reactor_drone` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/reactor_drone/` - Four standalone violet/magenta 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
