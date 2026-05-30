@@ -87,11 +87,11 @@ Default production pass for each enemy or ship-like threat: exactly 4 standalone
 | `[C]` | Needle Sniper enemy | `enemy_needle_sniper` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/needle_sniper/` | Four crimson/red 512x512 RGBA sniper candidates; no runtime promotion. |
 | `[C]` | Shield Frigate enemy | `enemy_shield_frigate` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/shield_frigate/` | Four amber/gold 512x512 RGBA support candidates; no runtime promotion. |
 | `[C]` | Repair Skiff enemy | `enemy_repair_skiff` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/repair_skiff/` | Four coral/warm-white 512x512 RGBA repair candidates; no runtime promotion. |
-| `[ ]` | Command Relay enemy | `enemy_command_relay` | 4 candidates only |  | Priority support target. |
-| `[ ]` | Frost Gunner enemy | `enemy_frost_gunner` | 4 candidates only |  | Cold/status color read. |
-| `[ ]` | Poison Leech enemy | `enemy_poison_leech` | 4 candidates only |  | Poison/status melee read. |
-| `[ ]` | Combat Summoner enemy | `enemy_combat_summoner` | 4 candidates only |  | Spawns or calls support. |
-| `[ ]` | Spawner Nest enemy | `enemy_spawner_nest` | 4 candidates only |  | Large stationary/slow spawning threat. |
+| `[C]` | Command Relay enemy | `enemy_command_relay` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/command_relay/` | Four electric cyan/deep-blue 512x512 RGBA command-support candidates; no runtime promotion. |
+| `[C]` | Frost Gunner enemy | `enemy_frost_gunner` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/frost_gunner/` | Four icy cyan/white 512x512 RGBA cold-status gunner candidates; no runtime promotion. |
+| `[C]` | Poison Leech enemy | `enemy_poison_leech` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/poison_leech/` | Four toxic lime/acid-green 512x512 RGBA poison melee candidates; no runtime promotion. |
+| `[C]` | Combat Summoner enemy | `enemy_combat_summoner` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/combat_summoner/` | Four violet/magenta 512x512 RGBA summoner support candidates; no runtime promotion. |
+| `[C]` | Spawner Nest enemy | `enemy_spawner_nest` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/spawner_nest/` | Four hot orange/amber 512x512 RGBA spawning-structure candidates; no runtime promotion. |
 | `[ ]` | Impact Bomber enemy | `enemy_impact_bomber` | 4 candidates only |  | Explosive warning silhouette. |
 | `[C]` | Phase Skiff enemy | `enemy_phase_skiff` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/phase_skiff/` | Four violet/hot-pink 512x512 RGBA skiff candidates; no runtime promotion. |
 | `[ ]` | Mothership boss/event threat | `boss_mothership` | 4 candidates only |  | Produce only when boss art pass is requested. |
@@ -233,3 +233,8 @@ Add one line per completed production session.
 - 2026-05-30: `enemy_needle_sniper` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/needle_sniper/` - Four standalone crimson/red 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `enemy_shield_frigate` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/shield_frigate/` - Four standalone amber/gold 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `enemy_repair_skiff` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/repair_skiff/` - Four standalone coral/warm-white 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_command_relay` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/command_relay/` - Four standalone electric cyan/deep-blue 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_frost_gunner` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/frost_gunner/` - Four standalone icy cyan/white 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_poison_leech` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/poison_leech/` - Four standalone toxic lime/acid-green 512x512 RGBA candidates generated with preserved magenta-key sources; no runtime promotion.
+- 2026-05-30: `enemy_combat_summoner` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/combat_summoner/` - Four standalone violet/magenta 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_spawner_nest` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/spawner_nest/` - Four standalone hot orange/amber 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
