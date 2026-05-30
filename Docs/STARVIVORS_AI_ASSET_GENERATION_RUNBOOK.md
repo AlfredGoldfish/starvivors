@@ -110,7 +110,7 @@ Use the built-in image generation tool first. For transparent sprites, use the c
 ```powershell
 python C:\Users\joshu\.codex\skills\.system\imagegen\scripts\remove_chroma_key.py `
   --input <source.png> `
-  --out <final.png> `
+  --out <transparent_candidate.png> `
   --auto-key border `
   --soft-matte `
   --transparent-threshold 12 `
@@ -119,8 +119,8 @@ python C:\Users\joshu\.codex\skills\.system\imagegen\scripts\remove_chroma_key.p
   --force
 ```
 
-4. Resize to the requested final dimensions while preserving alpha.
-5. Validate the final output.
+4. Resize to the requested output dimensions while preserving alpha.
+5. Validate the transparent candidate output.
 
 Only ask about CLI/native transparency if chroma-key removal is unsuitable or fails.
 
@@ -129,7 +129,7 @@ Only ask about CLI/native transparency if chroma-key removal is unsuitable or fa
 Before finishing an asset batch, validate:
 
 - Files are in the requested project folder.
-- Final gameplay sprites are PNG unless the user asks otherwise.
+- Gameplay sprite candidates are PNG unless the user asks otherwise.
 - Transparent assets use RGBA mode.
 - Corners are transparent.
 - Dimensions match the request, commonly `512x512` for sprites.
@@ -313,7 +313,7 @@ Constraints: no text, no icons unless requested, no watermark, no background tex
 - Do not edit asset manifests or definitions unless the user asks for integration.
 - Do not overwrite existing project assets without explicit permission.
 - Do not delete the built-in generated source files under `.codex/generated_images`.
-- Do not leave project-bound final assets only under `.codex/generated_images`.
+- Do not leave project-bound generated assets only under `.codex/generated_images`.
 - Do not bake UI text into buttons or panels unless the user gives exact text.
 - Do not use busy backgrounds or shadows for transparent gameplay sprites.
 - Do not treat generated assets as approved final art until the user reviews them.
@@ -322,7 +322,7 @@ Constraints: no text, no icons unless requested, no watermark, no background tex
 
 At the end of an asset session, report:
 
-- The final saved folder.
+- The saved candidate folder.
 - The file names generated.
 - Whether assets are transparent PNGs and their dimensions.
 - Whether chroma-key removal and alpha validation passed.

@@ -8,7 +8,9 @@ Use this document together with `Docs/STARVIVORS_AI_ASSET_GENERATION_RUNBOOK.md`
 
 ## Purpose
 
-The existing full-library batch is a concept test batch only. Future production candidates should be generated one named game object at a time, with user review before expanding variants or promoting anything into runtime.
+The existing full-library batch is a concept test batch only. Future production candidates should be generated one named game object at a time, with user review before any selection or promotion into runtime.
+
+Each production session generates exactly four standalone candidate variations for the named object. Do not generate follow-up damaged variants or "final" variant sets by default. Current image generation can change major structural details between related prompts, so damage-state variants are not reliable enough for the default workflow.
 
 Generated assets are for review unless the user explicitly asks to wire them into gameplay, UI, manifests, data definitions, or build code.
 
@@ -70,14 +72,12 @@ Each session works on one named game object only. Do not generate a multi-object
    - Silhouette shape and movement/attack identity.
    - Accent color and danger/readability color.
    - Required output size.
-   - Required variants.
-4. Generate exactly 4 standalone base candidates for that one object.
-5. Save candidates under the production-candidates folder.
-6. Let the user pick a direction or request a combined revision.
-7. Generate final standalone variants from the selected direction.
-8. Save both candidates and finals.
-9. Validate transparency, dimensions, centering, cropping, and small-size readability.
-10. Report final filenames and validation results.
+   - Candidate variation axes, such as silhouette, plating density, or accent placement.
+4. Generate exactly 4 standalone candidate variations for that one object.
+5. Save source chroma-key images and transparent candidates under the production-candidates folder.
+6. Let the user pick a direction or request a combined revision in a later session if needed.
+7. Validate transparency, dimensions, centering, cropping, and small-size readability for the four candidates.
+8. Report candidate filenames and validation results.
 
 Do not make runtime code changes during an asset-only session.
 
@@ -106,7 +106,7 @@ assets/ai-generated-images/production-candidates/
   source-chromakey/<asset_id>/
 ```
 
-Keep source chroma-key images in `source-chromakey/<asset_id>/`. Keep final transparent PNGs in the relevant category/object folder.
+Keep source chroma-key images in `source-chromakey/<asset_id>/`. Keep transparent candidate PNGs in the relevant category/object folder.
 
 Do not overwrite existing files unless the user explicitly asks. If a name already exists, add a version suffix such as `_v2`.
 
@@ -123,65 +123,34 @@ starvivors_<category>_<asset_id>_candidate_03_ai.png
 starvivors_<category>_<asset_id>_candidate_04_ai.png
 ```
 
-Finals:
-
-```text
-starvivors_<category>_<asset_id>_<variant>_ai.png
-```
-
 Examples:
 
 ```text
-starvivors_enemy_scout_base_ai.png
-starvivors_enemy_scout_damaged_01_ai.png
-starvivors_enemy_scout_damaged_02_ai.png
-starvivors_enemy_scout_damaged_03_ai.png
-starvivors_button_primary_idle_ai.png
-starvivors_button_danger_pressed_ai.png
-starvivors_pickup_scrap_tier_01_base_ai.png
+starvivors_enemy_scout_candidate_01_ai.png
+starvivors_enemy_scout_candidate_02_ai.png
+starvivors_button_primary_idle_candidate_01_ai.png
+starvivors_pickup_scrap_tier_01_candidate_01_ai.png
 ```
 
-## Variant Rules
+## Candidate Variation Rules
 
-Player ships, enemy ships, bosses, and special threats:
+All production sessions:
 
 ```text
-base
-damaged_01
-damaged_02
-damaged_03
+candidate_01
+candidate_02
+candidate_03
+candidate_04
 ```
 
-Damage variants should be increasing degrees of readable damage, not color swaps:
+Do not generate damaged variants by default. In practice, damage prompts can change the ship or enemy's major structure, engine count, wing count, or silhouette, which makes them unsuitable for production review as variants of the same object.
 
-- `damaged_01`: light armor scoring, small panel breaks, minor energy instability.
-- `damaged_02`: visible hull cracks, missing plates, stronger glow leakage.
-- `damaged_03`: severe damage, exposed core/structure, heavy but still readable silhouette.
+For every asset type:
 
-Buttons and reusable UI frames:
-
-```text
-primary_idle
-primary_hover
-primary_pressed
-primary_disabled
-danger_idle
-danger_hover
-danger_pressed
-danger_disabled
-neutral_idle
-neutral_hover
-neutral_pressed
-neutral_disabled
-```
-
-Projectiles, VFX, pickups, asteroids, icons, and backgrounds:
-
-- Start with 4 standalone candidates.
-- Decide final variants during the object-specific conversation.
-- Keep projectile/VFX variants based on gameplay read: damage type, intensity, charge, warning, or impact state.
-- Keep pickup/icon variants based on tier, rarity, or resource type.
-- Keep asteroid variants based on tier, fracture state, rare ore, debris size, or hazard role.
+- Generate exactly 4 standalone candidates for the named object.
+- Keep each prompt close to the same gameplay role and output size.
+- Vary one or two reviewable qualities: silhouette, armor/plating density, accent placement, color read, or proportion.
+- If the game later needs another state, tier, UI state, or damage state, treat that as a separate explicit asset session with its own 4 candidates.
 
 ## Asset Coverage
 
@@ -285,7 +254,7 @@ Use single-image chroma-key removal for transparent assets.
 
 Rules:
 
-- One source image must contain one candidate or one final variant only.
+- One source image must contain one candidate only.
 - Use a perfectly flat solid chroma-key background.
 - Do not use multi-object sheets, grids, contact sheets, or atlases.
 - Keep the object centered with generous padding.
@@ -299,7 +268,7 @@ If the user later asks for native transparency instead of chroma-key removal, ex
 Before ending each asset session, validate:
 
 - Files are saved under `assets/ai-generated-images/production-candidates/`.
-- Final transparent assets are PNG files in RGBA mode.
+- Transparent candidate assets are PNG files in RGBA mode.
 - Corners are transparent.
 - Dimensions match the agreed output size.
 - The object is centered and not cropped.
@@ -310,9 +279,9 @@ Before ending each asset session, validate:
 
 Report:
 
-- Final saved folder.
+- Saved candidate folder.
+- Saved source chroma-key folder.
 - Candidate filenames.
-- Selected final filenames.
 - Dimensions.
 - Alpha validation result.
 - Any asset that needs regeneration or manual review.
@@ -345,19 +314,20 @@ This session's phase/game object is:
 
 <PHASE_OR_GAME_OBJECT_HERE>
 
-Start by discussing this specific object's gameplay role, silhouette, variants, accent color, and required output sizes. Then make a clear per-object image-generation plan before generating anything.
+Start by discussing this specific object's gameplay role, silhouette, candidate variation axes, accent color, and required output size. Then make a clear per-object image-generation plan before generating anything.
 
 Important rules:
 - Work on one named game object only.
 - Generate standalone images only, never multi-object sheets or grids.
-- Start with 4 candidates.
+- Generate exactly 4 candidate variations.
+- Do not generate damaged variants or final variant sets by default.
 - Use single-image chroma-key removal for transparent assets.
-- Save candidates and selected finals under assets/ai-generated-images/production-candidates/.
+- Save candidates under assets/ai-generated-images/production-candidates/.
 - Preserve source chroma-key images.
 - Validate dimensions, RGBA alpha, transparent corners, centering, and 64px readability.
-- Report final saved filenames and validation results.
+- Report candidate saved filenames and validation results.
 ```
 
 ## Session Closeout
 
-For checklist-related asset work, update `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` with evidence before ending the session. Do not mark final art complete until selected assets have been reviewed at gameplay scale and explicitly promoted.
+For checklist-related asset work, update `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` with evidence before ending the session. Do not mark final art complete until a candidate has been reviewed at gameplay scale and explicitly promoted.
