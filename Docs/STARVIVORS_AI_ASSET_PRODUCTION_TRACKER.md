@@ -103,7 +103,7 @@ Default production pass: exactly 4 standalone candidates. Additional intensity, 
 
 | Status | Session prompt object | Asset ID | Required production outputs | Evidence / Folder | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `[ ]` | Pulse Cannon bolt projectile | `projectile_pulse_bolt` | 4 candidates only |  | Player primary projectile. |
+| `[C]` | Pulse Cannon bolt projectile | `projectile_pulse_bolt` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/pulse_bolt/` | Four cyan/blue 128x128 RGBA player-primary bolt candidates; no runtime promotion. |
 | `[ ]` | Enemy bolt projectile | `projectile_enemy_bolt` | 4 candidates only |  | Generic enemy shot. |
 | `[ ]` | Rail shot projectile | `projectile_rail_shot` | 4 candidates only |  | Long thin sniper/rail asset. |
 | `[ ]` | Frost needle projectile | `projectile_frost_needle` | 4 candidates only |  | Cold/status projectile. |
@@ -242,3 +242,4 @@ Add one line per completed production session.
 - 2026-05-30: `enemy_spawner_nest` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/spawner_nest/` - Four standalone ship-theme cyan/blue and orange v2 candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `enemy_impact_bomber` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/impact_bomber/` - Four standalone graphite/white/orange-red 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `boss_mothership` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/boss_mothership/` - Four standalone graphite carrier 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_pulse_bolt` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/pulse_bolt/` - Four standalone cyan/blue 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.

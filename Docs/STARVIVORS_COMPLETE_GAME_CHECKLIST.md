@@ -182,7 +182,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 enemy production batch generated four standalone candidates each for Diamond Gunner, Scout, Wedge Striker, Hex Tank, and Reactor Drone under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources and 512x512 RGBA validation.
   - Evidence: 2026-05-30 enemy production batch generated four standalone candidates each for Phase Skiff, Splitter, Needle Sniper, Shield Frigate, and Repair Skiff under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources, no blue accents, and 512x512 RGBA validation.
   - Evidence: 2026-05-30 enemy production batch generated four standalone candidates each for Command Relay, Frost Gunner, Poison Leech, Combat Summoner, and Spawner Nest under `assets/ai-generated-images/production-candidates/`, with preserved chroma-key sources, role-reflective neon reads, 64px footprint checks, and 512x512 RGBA validation.
-  - Next: review the player ship and enemy candidate sets at gameplay scale before any runtime promotion.
+  - Evidence: 2026-05-30 Pulse Cannon bolt projectile production session generated four standalone cyan/blue 128x128 RGBA candidates under `assets/ai-generated-images/production-candidates/projectiles/pulse_bolt/`, with preserved chroma-key sources, transparent-corner validation, no detected green fringe, and 64px footprint checks.
+  - Next: review the player ship, enemy, and projectile candidate sets at gameplay scale before any runtime promotion.
 - [~] Player ship assets are cohesive.
   - Done when: Interceptor, Bulwark, and Engineer share a final visual language and no active ship uses a misleading fallback.
   - Evidence: 2026-05-28 monochrome object pass replaced active ship PNG/Forge rendering with generated `monochrome-outline` silhouettes for gameplay and hangar previews, while leaving legacy asset references available.
