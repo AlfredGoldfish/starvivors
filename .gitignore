@@ -9,4 +9,6 @@ release/
 runtime-data/
 /.vite-dev-server.pid
 /vite-dev*.log
+artifacts/dev-smoke/*.log
+artifacts/dev-smoke/*.pid
 /nano_key.txt

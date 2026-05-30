@@ -229,6 +229,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 Reactor Drone validation pass added `src/systems/reactorPhaseSpawning.test.ts`; focused Vitest, `npm.cmd run build`, `testHarness=reactorPhase`, and `testHarness=smoke` passed.
   - Evidence: 2026-05-30 Reactor Drone blast follow-up passed `npm.cmd run build`; harnesses were intentionally skipped by request.
   - Evidence: 2026-05-30 Impact Bomber validation pass added `src/systems/impactBomberPhaseSpawning.test.ts`; focused Vitest for Impact Bomber spawning and enemy visual definitions passed, `npm.cmd run build` passed, `testHarness=impactBomberPhase` passed, and `testHarness=smoke` passed.
+  - Evidence: 2026-05-30 Impact Bomber harness refactor moved the phase scenario body to `src/scenes/gameSceneImpactBomberHarness.ts`; focused Impact Bomber/vector tests, full Vitest, `npm.cmd run build`, `testHarness=impactBomberPhase`, and `testHarness=smoke` passed.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
@@ -240,7 +241,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: create canned 2-minute stress runs.
 - [!] GameScene remains a broad orchestration risk.
   - Done when: new work stays in focused modules and existing broad responsibilities are extracted only in behavior-preserving slices.
-  - Next: keep using `Docs/GAMESCENE_REFACTOR_PLAN.md` before moving code.
+  - Evidence: 2026-05-30 Impact Bomber phase harness logic was extracted behind an explicit adapter, reducing `GameScene.ts` by roughly 500 lines while preserving the query-string harness ID.
+  - Next: keep using `Docs/GAMESCENE_REFACTOR_PLAN.md` before moving code; prioritize remaining harness scenario bodies before higher-risk gameplay side-effect extraction.
 - [~] Desktop packaging exists but is not release-polished.
   - Done when: desktop icon, fullscreen/window settings, save location behavior, crash logging, installer/portable decision, and desktop smoke are complete.
   - Next: keep browser primary until loop polish is stronger.
@@ -301,3 +303,4 @@ Current focus: Pass A.
 - 2026-05-30: Promoted Reactor Drone as the active live validation enemy with focused solo and exact Scout+Wedge+Tank+Reactor mix coverage, unchanged `proximityDetonate` identity checks, warning-radius telegraph-before-damage validation, inside/outside blast checks, reward cleanup verification, player-body-contact HP safety, focused unit coverage, build pass, `reactorPhase` pass, and `smoke` pass.
 - 2026-05-30: Added the Reactor Drone blast follow-up with smaller player/shield-kill death AOE, quieter enemy-to-enemy blast feedback, per-frame explosion VFX budgeting, and a build pass; harnesses were intentionally not run by request.
 - 2026-05-30: Promoted Impact Bomber as the active live validation enemy with focused solo and exact Scout+Wedge+Tank+Reactor+Impact mix coverage, square danger-mark silhouette, restartable non-contact proximity-fuse countdown behavior, blast-ring feedback on completed detonation, inside/escaped blast checks, reward cleanup verification, player-body-contact HP safety, focused unit coverage, build pass, `impactBomberPhase` pass, and `smoke` pass.
+- 2026-05-30: Checkpointed the Impact Bomber validation baseline, removed generated dev-smoke logs/PIDs from tracking, added the missing `Docs/README_FOR_CODEX.md` shim, extracted the Impact Bomber phase harness body out of `GameScene.ts`, and reverified focused tests, full Vitest, build, `impactBomberPhase`, and `smoke`.

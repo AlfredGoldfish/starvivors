@@ -312,10 +312,6 @@ import {
 } from '../systems/reactorPhaseSpawning';
 import {
   IMPACT_BOMBER_PHASE_MODE_LABEL,
-  getImpactBomberPhaseMixCounts,
-  getImpactBomberPhaseMixedSpawnPlan,
-  getImpactBomberPhaseSoloSpawnPlan,
-  isImpactBomberPhaseSolo,
   resolveImpactBomberPhaseEnemyDefinitionId
 } from '../systems/impactBomberPhaseSpawning';
 import {
@@ -395,6 +391,10 @@ import {
   runStartupNavigationHarness,
   type GameScenePreRunHarnessAdapter
 } from './gameScenePreRunHarness';
+import {
+  runImpactBomberPhaseHarness,
+  type GameSceneImpactBomberHarnessAdapter
+} from './gameSceneImpactBomberHarness';
 import { createStagedDebriefHarnessState } from './gameSceneResultsStaging';
 import { runVisualModuleHarness } from './gameSceneVisualHarness';
 import {
@@ -4218,520 +4218,58 @@ export class GameScene extends Phaser.Scene {
   }
 
   private runTestHarnessImpactBomberPhase(): void {
-    const harness = window.starvivorsTestHarness;
-    const resultAttribute = 'data-starvivors-impact-bomber-phase-harness';
-    const detailsAttribute = 'data-starvivors-impact-bomber-phase-harness-details';
+    runImpactBomberPhaseHarness(this.createImpactBomberPhaseHarnessAdapter());
+  }
 
-    if (!harness) {
-      document.body.setAttribute(resultAttribute, 'fail');
-      document.body.setAttribute(detailsAttribute, 'Harness was not installed.');
-      return;
-    }
-
-    const previousValidationDefinitionId = this.activeValidationEnemyDefinitionId;
-    const previousValidationModeLabel = this.activeValidationEnemyModeLabel;
-    const restoreValidationMode = (): void => {
-      this.setActiveValidationEnemyMode(previousValidationDefinitionId, previousValidationModeLabel);
-    };
-    const setFailure = (message: string): void => {
-      document.body.setAttribute(resultAttribute, 'fail');
-      document.body.setAttribute(detailsAttribute, message);
-      restoreValidationMode();
-    };
-    const syncEnemyPosition = (enemy: LiveGameEnemy): void => {
-      enemy.previousX = enemy.body.x;
-      enemy.previousY = enemy.body.y;
-      enemy.wrapMirrorBody.setPosition(enemy.body.x, enemy.body.y);
-    };
-    const spawnValidationEnemy = (
-      definitionId: string,
-      x: number,
-      y: number,
-      time: number,
-      spawnMode = IMPACT_BOMBER_PHASE_MODE_LABEL
-    ): LiveGameEnemy | undefined => {
-      const enemy = this.spawnValidationLiveEnemy(definitionId, x, y, time, spawnMode);
-      if (enemy) {
-        syncEnemyPosition(enemy);
-      }
-      return enemy;
-    };
-    const resetPlayerForImpactCheck = (x: number, y: number): void => {
+  private createImpactBomberPhaseHarnessAdapter(): GameSceneImpactBomberHarnessAdapter {
+    const placePlayerForImpactCheck = (x: number, y: number): void => {
       this.player.setPosition(x, y);
       this.capturePreviousPlayerContactPosition();
       this.playerVelocity.set(0, 0);
-      this.playerHull = this.getPlayerMaxHull();
       this.playerInvulnerableUntil = 0;
-      this.rammingShieldState.hp = 0;
     };
-    const getLastImpactBlastFeedback = (): LiveEnemyBlastFeedbackLog | undefined =>
-      [...this.liveEnemyBlastFeedbackLog]
-        .reverse()
-        .find((entry) => entry.sourceDefinitionId === resolveImpactBomberPhaseEnemyDefinitionId());
 
-    this.liveEnemyBlastFeedbackLog = [];
-    this.setActiveValidationEnemyMode(resolveImpactBomberPhaseEnemyDefinitionId(), IMPACT_BOMBER_PHASE_MODE_LABEL);
-    this.startRun();
-    this.clearEnemies();
-    this.clearScrapPickups();
-    this.clearPlayerProjectiles();
-    this.clearEnemyProjectiles();
-
-    const center = getArenaCenter(this.arena);
-    const baseTime = this.time.now + 1000;
-    const proximityFuseDistance = this.getPlayerCollisionRadius() + 50;
-    resetPlayerForImpactCheck(center.x, center.y);
-
-    const activeValidationDefinitionId = this.getActiveValidationEnemyDefinitionId();
-    const activeValidationModeLabel = this.getActiveValidationEnemyModeLabel();
-    const activeValidationPass =
-      activeValidationDefinitionId === resolveImpactBomberPhaseEnemyDefinitionId() &&
-      activeValidationModeLabel === IMPACT_BOMBER_PHASE_MODE_LABEL;
-
-    const soloPlan = getImpactBomberPhaseSoloSpawnPlan();
-    for (let index = 0; index < soloPlan.length; index += 1) {
-      const angle = (Math.PI * 2 * index) / Math.max(1, soloPlan.length);
-      spawnValidationEnemy(
-        soloPlan[index],
-        center.x + Math.cos(angle) * 460,
-        center.y + Math.sin(angle) * 460,
-        baseTime
-      );
-    }
-
-    const soloDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
-    const soloSpawnModes = [...new Set(this.liveEnemies.map((enemy) => enemy.stateData.spawnMode))];
-    const soloOnlyPass = isImpactBomberPhaseSolo(soloDefinitionIds);
-    const soloModePass = soloSpawnModes.length === 1 && soloSpawnModes[0] === IMPACT_BOMBER_PHASE_MODE_LABEL;
-
-    this.clearEnemies();
-    const mixedPlan = getImpactBomberPhaseMixedSpawnPlan();
-    for (let index = 0; index < mixedPlan.length; index += 1) {
-      const angle = (Math.PI * 2 * index) / Math.max(1, mixedPlan.length);
-      spawnValidationEnemy(
-        mixedPlan[index],
-        center.x + Math.cos(angle) * 520,
-        center.y + Math.sin(angle) * 520,
-        baseTime + 1000,
-        `${IMPACT_BOMBER_PHASE_MODE_LABEL}-mixed`
-      );
-    }
-
-    const mixedDefinitionIds = this.liveEnemies.map((enemy) => enemy.definitionId);
-    const mixedCounts = getImpactBomberPhaseMixCounts(mixedDefinitionIds);
-    const expectedMixedCounts = getImpactBomberPhaseMixCounts(mixedPlan);
-    const mixedSequencePass =
-      mixedDefinitionIds.length === mixedPlan.length &&
-      mixedDefinitionIds.every((definitionId, index) => definitionId === mixedPlan[index]);
-    const mixedPass =
-      mixedSequencePass &&
-      mixedCounts.scout === expectedMixedCounts.scout &&
-      mixedCounts['wedge-striker'] === expectedMixedCounts['wedge-striker'] &&
-      mixedCounts['hex-tank'] === expectedMixedCounts['hex-tank'] &&
-      mixedCounts['reactor-drone'] === expectedMixedCounts['reactor-drone'] &&
-      mixedCounts['impact-bomber'] === expectedMixedCounts['impact-bomber'];
-
-    this.clearEnemies();
-    resetPlayerForImpactCheck(center.x, center.y);
-    const approachEnemy = spawnValidationEnemy(
-      resolveImpactBomberPhaseEnemyDefinitionId(),
-      center.x + 180,
-      center.y,
-      baseTime + 2000
-    );
-
-    if (!approachEnemy) {
-      setFailure('No Impact Bomber spawned for approach validation.');
-      return;
-    }
-
-    approachEnemy.velocity.set(0, 0);
-    syncEnemyPosition(approachEnemy);
-    const approachDistanceBefore = this.getWrappedDirection(
-      approachEnemy.body.x,
-      approachEnemy.body.y,
-      this.player.x,
-      this.player.y
-    ).length();
-    this.updateLiveEnemies(baseTime + 2016, 1 / 60);
-    const approachState = approachEnemy.state;
-    const approachDistanceAfter = this.getWrappedDirection(
-      approachEnemy.body.x,
-      approachEnemy.body.y,
-      this.player.x,
-      this.player.y
-    ).length();
-    const approachPass =
-      approachState === 'approach' &&
-      approachEnemy.hp > 0 &&
-      approachDistanceAfter < approachDistanceBefore;
-
-    this.clearEnemies();
-    resetPlayerForImpactCheck(center.x, center.y);
-    this.liveEnemyBlastFeedbackLog = [];
-    const fuseEnemy = spawnValidationEnemy(
-      resolveImpactBomberPhaseEnemyDefinitionId(),
-      center.x + proximityFuseDistance,
-      center.y,
-      baseTime + 3000
-    );
-
-    if (!fuseEnemy) {
-      setFailure('No Impact Bomber spawned for proximity-fuse validation.');
-      return;
-    }
-
-    fuseEnemy.velocity.set(0, 0);
-    syncEnemyPosition(fuseEnemy);
-    const fuseLiveEnemiesBefore = this.liveEnemies.length;
-    const fuseHullBeforeStart = this.playerHull;
-    const fuseContactAtStart = this.getEnemyContact();
-    const fuseStartTime = baseTime + 3016;
-    this.updateLiveEnemies(fuseStartTime, 1 / 60);
-    const fuseHullAfterStart = this.playerHull;
-    const fuseStartState = fuseEnemy.state;
-    const fuseWarningCircleVisible = Boolean(fuseEnemy.telegraphs.warningCircle?.scene);
-    const firstCountdownMs = Number(fuseEnemy.stateData.detonateCountdownMs ?? Number.NaN);
-    const expectedCountdownMs = Number(fuseEnemy.definition.behavior.params?.countdownMs ?? 650);
-    const expectedTriggerRange = Number(fuseEnemy.definition.behavior.params?.triggerRange ?? 100);
-    const contactDistance = this.getPlayerCollisionRadius() + fuseEnemy.definition.stats.radius;
-    const triggerDistanceGap = expectedTriggerRange - contactDistance;
-    const countdownRandomizedPass =
-      Number.isFinite(firstCountdownMs) &&
-      firstCountdownMs >= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER &&
-      firstCountdownMs <= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER;
-    const firstCountdownForTiming = Number.isFinite(firstCountdownMs) ? firstCountdownMs : expectedCountdownMs;
-    const expectedBlastRadius = Number(fuseEnemy.definition.behavior.params?.blastRadius ?? 125);
-    const fuseStartPass =
-      this.liveEnemies.length === fuseLiveEnemiesBefore &&
-      fuseEnemy.hp > 0 &&
-      !fuseContactAtStart &&
-      proximityFuseDistance > contactDistance &&
-      proximityFuseDistance <= expectedTriggerRange &&
-      triggerDistanceGap >= 32 &&
-      fuseStartState === 'detonating' &&
-      fuseWarningCircleVisible &&
-      countdownRandomizedPass &&
-      fuseHullAfterStart === fuseHullBeforeStart &&
-      getLastImpactBlastFeedback() === undefined;
-
-    this.player.setPosition(center.x + 420, center.y);
-    this.capturePreviousPlayerContactPosition();
-    this.playerVelocity.set(0, 0);
-    this.playerInvulnerableUntil = 0;
-    const fuseCancelTime = fuseStartTime + Math.max(120, firstCountdownForTiming * 0.35);
-    const fuseHullBeforeCancel = this.playerHull;
-    this.updateLiveEnemies(fuseCancelTime, 1 / 60);
-    const fuseHullAfterCancel = this.playerHull;
-    const fuseCancelState = fuseEnemy.state;
-    const fuseWarningCircleAfterCancel = Boolean(fuseEnemy.telegraphs.warningCircle?.scene);
-    const countdownAfterCancel = fuseEnemy.stateData.detonateCountdownMs;
-    const fuseResetPass =
-      this.liveEnemies.length === fuseLiveEnemiesBefore &&
-      fuseEnemy.hp > 0 &&
-      fuseCancelState === 'approach' &&
-      !fuseWarningCircleAfterCancel &&
-      countdownAfterCancel === undefined &&
-      fuseHullAfterCancel === fuseHullBeforeCancel &&
-      getLastImpactBlastFeedback() === undefined;
-
-    this.player.setPosition(fuseEnemy.body.x, fuseEnemy.body.y);
-    this.capturePreviousPlayerContactPosition();
-    this.playerVelocity.set(0, 0);
-    this.playerInvulnerableUntil = 0;
-    const fuseRestartTime = fuseCancelTime + 180;
-    const fuseHullBeforeRestart = this.playerHull;
-    this.updateLiveEnemies(fuseRestartTime, 1 / 60);
-    const fuseHullAfterRestart = this.playerHull;
-    const fuseRestartState = fuseEnemy.state;
-    const restartCountdownMs = Number(fuseEnemy.stateData.detonateCountdownMs ?? Number.NaN);
-    const restartCountdownRandomizedPass =
-      Number.isFinite(restartCountdownMs) &&
-      restartCountdownMs >= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER &&
-      restartCountdownMs <= expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER;
-    const restartCountdownForTiming = Number.isFinite(restartCountdownMs) ? restartCountdownMs : expectedCountdownMs;
-    const fuseRestartPass =
-      this.liveEnemies.length === fuseLiveEnemiesBefore &&
-      fuseEnemy.hp > 0 &&
-      fuseRestartState === 'detonating' &&
-      fuseEnemy.stateStartedAt === fuseRestartTime &&
-      Boolean(fuseEnemy.telegraphs.warningCircle?.scene) &&
-      restartCountdownRandomizedPass &&
-      fuseHullAfterRestart === fuseHullBeforeRestart &&
-      getLastImpactBlastFeedback() === undefined;
-
-    const fuseHullBeforeResolve = this.playerHull;
-    this.updateLiveEnemies(fuseRestartTime + restartCountdownForTiming + 32, 1 / 60);
-    const fuseHullAfterResolve = this.playerHull;
-    const fuseLiveEnemiesAfterResolve = this.liveEnemies.length;
-    const fuseBlastFeedback = getLastImpactBlastFeedback();
-    const fuseResolvePass =
-      fuseLiveEnemiesAfterResolve === fuseLiveEnemiesBefore - 1 &&
-      fuseEnemy.hp <= 0;
-    const blastFeedbackPass =
-      Boolean(fuseBlastFeedback?.ringCreated) &&
-      fuseBlastFeedback?.radius === expectedBlastRadius &&
-      fuseBlastFeedback?.ringRadius === expectedBlastRadius;
-    const insideBlastPass = fuseHullAfterResolve < fuseHullBeforeResolve;
-
-    this.clearEnemies();
-    resetPlayerForImpactCheck(center.x, center.y);
-    this.liveEnemyBlastFeedbackLog = [];
-    const escapeEnemy = spawnValidationEnemy(
-      resolveImpactBomberPhaseEnemyDefinitionId(),
-      center.x + proximityFuseDistance,
-      center.y,
-      baseTime + 5000
-    );
-
-    if (!escapeEnemy) {
-      setFailure('No Impact Bomber spawned for escape-before-blast validation.');
-      return;
-    }
-
-    escapeEnemy.velocity.set(0, 0);
-    syncEnemyPosition(escapeEnemy);
-    const escapeStartTime = baseTime + 5016;
-    this.updateLiveEnemies(escapeStartTime, 1 / 60);
-    const escapeCountdownMs = Number(escapeEnemy.stateData.detonateCountdownMs ?? expectedCountdownMs);
-    const outsideHullBefore = this.playerHull;
-    this.player.setPosition(center.x + 420, center.y);
-    this.capturePreviousPlayerContactPosition();
-    this.playerVelocity.set(0, 0);
-    this.playerInvulnerableUntil = 0;
-    this.updateLiveEnemies(escapeStartTime + escapeCountdownMs + 32, 1 / 60);
-    const outsideHullAfter = this.playerHull;
-    const outsideBlastFeedback = getLastImpactBlastFeedback();
-    const outsideBlastPass =
-      outsideHullAfter === outsideHullBefore &&
-      outsideBlastFeedback === undefined &&
-      this.liveEnemies.includes(escapeEnemy) &&
-      escapeEnemy.hp > 0 &&
-      escapeEnemy.state === 'approach' &&
-      escapeEnemy.stateData.detonateCountdownMs === undefined;
-
-    this.clearEnemies();
-    this.clearScrapPickups();
-    resetPlayerForImpactCheck(center.x, center.y);
-    const rewardEnemy = spawnValidationEnemy(
-      resolveImpactBomberPhaseEnemyDefinitionId(),
-      center.x + proximityFuseDistance,
-      center.y,
-      baseTime + 7000
-    );
-
-    if (!rewardEnemy) {
-      setFailure('No Impact Bomber spawned for reward validation.');
-      return;
-    }
-
-    rewardEnemy.velocity.set(0, 0);
-    syncEnemyPosition(rewardEnemy);
-    const rewardLiveEnemiesBefore = this.liveEnemies.length;
-    const rewardScrapBefore = this.scrapPickups.length;
-    const rewardXpBefore = this.playerXp;
-    const rewardRunScrapBefore = this.runScrapTotal;
-    const rewardStartTime = baseTime + 7016;
-    this.updateLiveEnemies(rewardStartTime, 1 / 60);
-    const rewardCountdownMs = Number(rewardEnemy.stateData.detonateCountdownMs ?? expectedCountdownMs);
-    this.updateLiveEnemies(rewardStartTime + rewardCountdownMs + 32, 1 / 60);
-    const rewardScrapAfterDeath = this.scrapPickups.length;
-    const rewardLiveEnemiesAfterDeath = this.liveEnemies.length;
-    const collectedRewards = harness.collectAllScrap();
-    const rewardDeathPathPass =
-      rewardLiveEnemiesAfterDeath === rewardLiveEnemiesBefore - 1 &&
-      rewardScrapAfterDeath > rewardScrapBefore &&
-      collectedRewards.runScrapTotal > rewardRunScrapBefore &&
-      collectedRewards.playerXp > rewardXpBefore;
-
-    this.clearEnemies();
-    resetPlayerForImpactCheck(center.x, center.y);
-    const contactEnemy = spawnValidationEnemy(
-      resolveImpactBomberPhaseEnemyDefinitionId(),
-      center.x,
-      center.y,
-      baseTime + 9000
-    );
-
-    if (!contactEnemy) {
-      setFailure('No Impact Bomber spawned for body-contact validation.');
-      return;
-    }
-
-    contactEnemy.velocity.set(0, 0);
-    syncEnemyPosition(contactEnemy);
-    const contactHpBefore = contactEnemy.hp;
-    const contact = this.getEnemyContact();
-    if (contact) {
-      this.resolvePlayerEnemyContact(contact, baseTime + 9016);
-    }
-    const contactHpAfter = contactEnemy.hp;
-    const bodyContactHpPass = Boolean(contact) && contactHpAfter === contactHpBefore;
-
-    const impactDefinition = ENEMY_DEFINITIONS.find((definition) => definition.id === resolveImpactBomberPhaseEnemyDefinitionId());
-    const reactorDefinition = ENEMY_DEFINITIONS.find((definition) => definition.id === resolveReactorPhaseEnemyDefinitionId());
-    const behaviorParams = impactDefinition?.behavior.params;
-    const impactIdentityPass = Boolean(
-      impactDefinition &&
-      reactorDefinition &&
-      impactDefinition.behavior.id === 'proximityDetonate' &&
-      behaviorParams?.triggerRange === 100 &&
-      behaviorParams?.blastRadius === 125 &&
-      behaviorParams?.countdownMs === 650 &&
-      behaviorParams?.resetCountdownOnExit === true &&
-      behaviorParams?.blastDamage === 26 &&
-      impactDefinition.stats.hp < reactorDefinition.stats.hp &&
-      impactDefinition.stats.speed > reactorDefinition.stats.speed
-    );
-    const visualRecipePass = Boolean(
-      impactDefinition?.shapeRecipe?.basePolygon === 'block-square' &&
-      impactDefinition?.shapeRecipe?.attachments?.includes('danger-mark') &&
-      !impactDefinition?.shapeRecipe?.attachments?.includes('core-ring') &&
-      reactorDefinition?.shapeRecipe?.basePolygon === 'starburst' &&
-      reactorDefinition?.shapeRecipe?.attachments?.includes('core-ring')
-    );
-    const effectIdentityPass = Boolean(
-      impactDefinition?.effectRecipe?.spawn.color === 0xffc857 &&
-      impactDefinition?.effectRecipe?.move.color === 0xff8f4f &&
-      impactDefinition?.effectRecipe?.telegraph.radius === 125 &&
-      impactDefinition?.effectRecipe?.death.kind === 'shard-burst'
-    );
-
-    const pass =
-      activeValidationPass &&
-      soloOnlyPass &&
-      soloModePass &&
-      mixedPass &&
-      approachPass &&
-      fuseStartPass &&
-      fuseResetPass &&
-      fuseRestartPass &&
-      fuseResolvePass &&
-      blastFeedbackPass &&
-      insideBlastPass &&
-      outsideBlastPass &&
-      rewardDeathPathPass &&
-      bodyContactHpPass &&
-      impactIdentityPass &&
-      visualRecipePass &&
-      effectIdentityPass;
-
-    document.body.setAttribute(resultAttribute, pass ? 'pass' : 'fail');
-    document.body.setAttribute(
-      detailsAttribute,
-      JSON.stringify({
-        mode: IMPACT_BOMBER_PHASE_MODE_LABEL,
-        activeValidation: {
-          definitionId: activeValidationDefinitionId,
-          modeLabel: activeValidationModeLabel,
-          pass: activeValidationPass
-        },
-        soloDefinitionIds,
-        soloSpawnModes,
-        soloOnlyPass,
-        soloModePass,
-        mixedDefinitionIds,
-        mixedPlan,
-        mixedCounts,
-        expectedMixedCounts,
-        mixedSequencePass,
-        mixedPass,
-        approach: {
-          approachState,
-          approachDistanceBefore,
-          approachDistanceAfter,
-          approachPass
-        },
-        proximityFuse: {
-          fuseLiveEnemiesBefore,
-          proximityFuseDistance,
-          contactDistance,
-          expectedTriggerRange,
-          triggerDistanceGap,
-          fuseContactAtStart: Boolean(fuseContactAtStart),
-          fuseStartState,
-          fuseWarningCircleVisible,
-          firstCountdownMs,
-          expectedCountdownMinMs: expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MIN_MULTIPLIER,
-          expectedCountdownMaxMs: expectedCountdownMs * ENEMY_TELEGRAPH_RANDOM_MAX_MULTIPLIER,
-          countdownRandomizedPass,
-          fuseHullBeforeStart,
-          fuseHullAfterStart,
-          fuseStartPass,
-          fuseCancelState,
-          fuseWarningCircleAfterCancel,
-          countdownAfterCancel,
-          fuseHullBeforeCancel,
-          fuseHullAfterCancel,
-          fuseResetPass,
-          fuseRestartState,
-          restartCountdownMs,
-          restartCountdownRandomizedPass,
-          fuseHullBeforeRestart,
-          fuseHullAfterRestart,
-          fuseRestartPass,
-          fuseLiveEnemiesAfterResolve,
-          fuseResolvePass
-        },
-        blastFeedback: {
-          fuseBlastFeedback,
-          outsideBlastFeedback,
-          expectedBlastRadius,
-          blastFeedbackPass
-        },
-        insideBlast: {
-          insideHullBefore: fuseHullBeforeResolve,
-          insideHullAfter: fuseHullAfterResolve,
-          insideBlastPass
-        },
-        outsideBlast: {
-          outsideHullBefore,
-          outsideHullAfter,
-          outsideBlastPass
-        },
-        rewards: {
-          rewardDeathPathPass,
-          rewardLiveEnemiesBefore,
-          rewardLiveEnemiesAfterDeath,
-          rewardScrapBefore,
-          rewardScrapAfterDeath,
-          rewardRunScrapBefore,
-          rewardRunScrapAfterCollect: collectedRewards.runScrapTotal,
-          rewardXpBefore,
-          rewardXpAfterCollect: collectedRewards.playerXp
-        },
-        bodyContact: {
-          contactDetected: Boolean(contact),
-          contactHpBefore,
-          contactHpAfter,
-          bodyContactHpPass
-        },
-        impactIdentity: impactDefinition
-          ? {
-              behaviorId: impactDefinition.behavior.id,
-              triggerRange: behaviorParams?.triggerRange,
-              blastRadius: behaviorParams?.blastRadius,
-              countdownMs: behaviorParams?.countdownMs,
-              blastDamage: behaviorParams?.blastDamage,
-              hp: impactDefinition.stats.hp,
-              speed: impactDefinition.stats.speed,
-              pass: impactIdentityPass
-            }
-          : null,
-        visualRecipe: impactDefinition
-          ? {
-              basePolygon: impactDefinition.shapeRecipe?.basePolygon,
-              attachments: impactDefinition.shapeRecipe?.attachments,
-              reactorBasePolygon: reactorDefinition?.shapeRecipe?.basePolygon,
-              reactorAttachments: reactorDefinition?.shapeRecipe?.attachments,
-              visualRecipePass,
-              effectIdentityPass
-            }
-          : null,
-        pass
-      })
-    );
-    restoreValidationMode();
+    return {
+      getHarness: () => window.starvivorsTestHarness,
+      getArena: () => this.arena,
+      getTimeNow: () => this.time.now,
+      getActiveValidationEnemyDefinitionId: () => this.getActiveValidationEnemyDefinitionId(),
+      getActiveValidationEnemyModeLabel: () => this.getActiveValidationEnemyModeLabel(),
+      setActiveValidationEnemyMode: (definitionId, modeLabel) =>
+        this.setActiveValidationEnemyMode(definitionId, modeLabel),
+      startRun: () => this.startRun(),
+      clearEnemies: () => this.clearEnemies(),
+      clearScrapPickups: () => this.clearScrapPickups(),
+      clearPlayerProjectiles: () => this.clearPlayerProjectiles(),
+      clearEnemyProjectiles: () => this.clearEnemyProjectiles(),
+      resetPlayerForImpactCheck: (x, y) => {
+        placePlayerForImpactCheck(x, y);
+        this.playerHull = this.getPlayerMaxHull();
+        this.rammingShieldState.hp = 0;
+      },
+      placePlayerForImpactCheck,
+      getPlayerPosition: () => ({ x: this.player.x, y: this.player.y }),
+      getPlayerCollisionRadius: () => this.getPlayerCollisionRadius(),
+      getPlayerHull: () => this.playerHull,
+      getPlayerXp: () => this.playerXp,
+      getRunScrapTotal: () => this.runScrapTotal,
+      getLiveEnemies: () => this.liveEnemies,
+      getScrapPickupCount: () => this.scrapPickups.length,
+      spawnValidationEnemy: (definitionId, x, y, time, spawnMode) =>
+        this.spawnValidationLiveEnemy(definitionId, x, y, time, spawnMode),
+      updateLiveEnemies: (time, deltaSeconds) => this.updateLiveEnemies(time, deltaSeconds),
+      getWrappedDistance: (fromX, fromY, toX, toY) =>
+        this.getWrappedDirection(fromX, fromY, toX, toY).length(),
+      getEnemyContact: () => this.getEnemyContact(),
+      resolvePlayerEnemyContact: (contact, time) => this.resolvePlayerEnemyContact(contact, time),
+      clearBlastFeedbackLog: () => {
+        this.liveEnemyBlastFeedbackLog = [];
+      },
+      getLastImpactBlastFeedback: () =>
+        [...this.liveEnemyBlastFeedbackLog]
+          .reverse()
+          .find((entry) => entry.sourceDefinitionId === resolveImpactBomberPhaseEnemyDefinitionId())
+    };
   }
 
   private runTestHarnessBulwark(): void {

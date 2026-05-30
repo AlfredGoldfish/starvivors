@@ -401,6 +401,7 @@ Acceptance:
 Current extracted ownership:
 
 - `src/scenes/gameSceneHarness.ts`: query-string harness installation and dispatch.
+- `src/scenes/gameSceneImpactBomberHarness.ts`: Impact Bomber validation phase scenario logic behind an explicit `GameScene` adapter.
 - `src/scenes/gameSceneRunState.ts`: pure run reset defaults and run-state helper values.
 - `src/scenes/gameScenePreRunFlow.ts`: pre-run navigation, ship availability, unlock, loadout, and label decisions.
 - `src/systems/gameplaySnapshots.ts`: HUD, minimap, diagnostics, profiler, and collision overlay snapshot shaping.
@@ -415,7 +416,7 @@ Current extracted ownership:
 
 Deferred cleanup and risks:
 
-- Deep harness scenario bodies still live in `GameScene.ts`; the installer/dispatch layer is extracted, but moving scenario bodies needs a larger adapter contract.
+- Many deep harness scenario bodies still live in `GameScene.ts`; the installer/dispatch layer is extracted, and Impact Bomber/pre-run harness bodies are now adapter-based examples for future slices.
 - Phaser object creation for asteroids, pickups, sector signals, world events, rare events, projectiles, and many UI entry points still belongs to `GameScene.ts` until lifecycle ownership is explicit.
 - Scrap rollup and asteroid coalescing remain scene-led because they mutate active Phaser objects and scene-owned arrays.
 - Weapon damage/reward/VFX callbacks remain in `GameScene.ts`; future extraction should preserve callback contracts and avoid balance changes.
@@ -447,3 +448,4 @@ Use this section to record extraction progress.
 - Phase 9: complete. Sector asteroid, scrap, and signal spawn data creation plus sector asteroid/scrap completion bookkeeping moved to `src/systems/sectorRuntime.ts`; `GameScene` remains the conductor for streaming decisions, Phaser object creation/destruction, active maps, beacon visuals, scrap rollup, and asteroid coalescing.
 - Phase 10: complete. Final guardrail pass updated module ownership, future workflow, and deferred risks; no extra runtime extraction was made beyond verified module boundaries.
 - Follow-up safety pass: complete. Startup navigation and debug menu hangar harness scenario bodies moved behind `src/scenes/gameScenePreRunHarness.ts`; broader visual/debrief and gameplay lifecycle harnesses remain in `GameScene` until their adapter contracts are narrower.
+- Follow-up harness extraction: complete for Impact Bomber. `testHarness=impactBomberPhase` scenario logic moved to `src/scenes/gameSceneImpactBomberHarness.ts` behind a narrow adapter; `npm.cmd run build`, focused Impact Bomber/vector tests, full Vitest, `testHarness=impactBomberPhase`, and `testHarness=smoke` passed.
