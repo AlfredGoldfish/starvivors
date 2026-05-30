@@ -1,0 +1,2540 @@
+{
+  "created_count": 122,
+  "source_sheet_count": 9,
+  "background_count": 6,
+  "warnings": [],
+  "validation": [
+    {
+      "path": "assets/ai-generated-images/style_tests/ship_style_a_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.303,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/asteroid_style_a_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2462,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/projectile_vfx_style_a_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.095,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/ui_button_style_a_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1459,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/ship_style_b_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.464,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/asteroid_style_b_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2708,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/projectile_vfx_style_b_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1876,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/ui_button_style_b_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1472,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/ship_style_c_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3265,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/asteroid_style_c_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2794,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/projectile_vfx_style_c_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1063,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/style_tests/ui_button_style_c_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1252,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/interceptor_game_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2534,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/interceptor_damaged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2549,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/interceptor_charged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2968,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/bulwark_game_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4834,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/bulwark_damaged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4932,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/bulwark_charged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5401,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/engineer_game_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3297,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/engineer_damaged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3378,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/engineer_charged_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3546,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/interceptor_icon_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1788,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/interceptor_hangar_ai.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "expected": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4707,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/bulwark_icon_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2891,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/bulwark_hangar_ai.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "expected": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5906,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/engineer_icon_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2392,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ships/engineer_hangar_ai.png",
+      "size": [
+        1024,
+        1024
+      ],
+      "expected": [
+        1024,
+        1024
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5522,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/scout_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3485,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/wedge_striker_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3451,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/diamond_gunner_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2906,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/hex_tank_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3823,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/reactor_drone_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3072,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/splitter_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2999,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/needle_sniper_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.113,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/shield_frigate_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3069,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/repair_skiff_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2608,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/command_relay_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2092,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/frost_gunner_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2402,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/poison_leech_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.237,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/combat_summoner_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3874,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/spawner_nest_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.428,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/enemies/impact_bomber_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5735,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/pulse_bolt_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1584,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/enemy_bolt_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1668,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/rail_shot_ai.png",
+      "size": [
+        256,
+        64
+      ],
+      "expected": [
+        256,
+        64
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3484,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/frost_needle_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1309,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/poison_glob_needle_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.0954,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/electric_arc_bolt_ai.png",
+      "size": [
+        256,
+        128
+      ],
+      "expected": [
+        256,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.0798,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/summoner_shot_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1926,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/impact_bomber_warning_marker_ai.png",
+      "size": [
+        128,
+        128
+      ],
+      "expected": [
+        128,
+        128
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2611,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/beam_contact_spark_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2584,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/projectiles/shield_impact_shard_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4713,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/muzzle_flash_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1974,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/enemy_hit_spark_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2774,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/shield_block_spark_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2952,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/explosion_ring_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.421,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/reactor_blast_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4311,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/poison_tick_burst_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1854,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/frost_shatter_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3681,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/electric_status_pulse_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2799,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/scrap_pickup_glint_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2585,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/upgrade_pickup_burst_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2892,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/player_death_shard_burst_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4152,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/vfx/black_hole_warning_ripple_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4713,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_01_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5822,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_02_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5794,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_03_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1686,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_04_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5709,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_05_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5224,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_06_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4905,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_07_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2045,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_08_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5464,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_09_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4748,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/asteroid_tier_10_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4995,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/fractured_asteroid_01_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1951,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/fractured_asteroid_02_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5385,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/fractured_asteroid_03_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4182,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/fractured_asteroid_04_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3908,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/debris_chunk_01_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1411,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/debris_chunk_02_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4213,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/debris_chunk_03_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3905,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/debris_chunk_04_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3486,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/rare_ore_asteroid_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1961,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/asteroids/rare_crystal_asteroid_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5166,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/scrap_tier_01_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4213,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/scrap_tier_02_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4414,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/scrap_tier_03_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4682,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/scrap_tier_04_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.487,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/credits_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2535,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/upgrade_crate_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3027,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/banked_upgrade_pickup_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4928,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/pickups/special_upgrade_pickup_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4598,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_primary_idle_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5404,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_primary_hover_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5342,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_primary_pressed_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.5067,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_launch_frame_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2085,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_eject_frame_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1993,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/buttons/button_result_frame_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1988,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/panel_backing_ai.png",
+      "size": [
+        768,
+        384
+      ],
+      "expected": [
+        768,
+        384
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.6914,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/tab_active_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.7148,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/tab_inactive_ai.png",
+      "size": [
+        512,
+        192
+      ],
+      "expected": [
+        512,
+        192
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.7028,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/card_common_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4107,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/card_rare_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3824,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/card_epic_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.4437,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/card_legendary_ai.png",
+      "size": [
+        512,
+        512
+      ],
+      "expected": [
+        512,
+        512
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.3914,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/warning_badge_danger_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2306,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/warning_badge_mission_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2225,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_hull_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.312,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_fuel_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2507,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_scrap_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.245,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_weapon_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2532,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_settings_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2775,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_radar_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.2347,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_minimap_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.1583,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_speed_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.0212,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/ui/icon_shield_ai.png",
+      "size": [
+        256,
+        256
+      ],
+      "expected": [
+        256,
+        256
+      ],
+      "mode": "RGBA",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 0.0932,
+      "corner_alpha": [
+        0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/starfield_plate_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/nebula_backdrop_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/sector_map_background_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/hangar_backdrop_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/results_screen_background_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    },
+    {
+      "path": "assets/ai-generated-images/backgrounds/black_hole_reference_ai.png",
+      "size": [
+        1920,
+        1080
+      ],
+      "expected": [
+        1920,
+        1080
+      ],
+      "mode": "RGB",
+      "size_ok": true,
+      "alpha_ok": true,
+      "coverage": 1.0,
+      "corner_alpha": null
+    }
+  ]
+}

@@ -15,6 +15,12 @@ import {
 
 export const MONOCHROME_OUTLINE_ACTIVE_IDS = [
   'scout',
+  'carrier',
+  'scrap-jackal',
+  'electric-leech'
+] as const;
+
+export const PROTOTYPE_COLOR_ACTIVE_IDS = [
   'wedge-striker',
   'diamond-gunner',
   'hex-tank',
@@ -22,11 +28,9 @@ export const MONOCHROME_OUTLINE_ACTIVE_IDS = [
   'splitter',
   'shard-drone',
   'needle-sniper',
-  'carrier',
   'shield-frigate',
   'repair-skiff',
   'command-relay',
-  'scrap-jackal',
   'flanker',
   'reflector',
   'phase-skiff',
@@ -35,13 +39,10 @@ export const MONOCHROME_OUTLINE_ACTIVE_IDS = [
   'orbiter',
   'patrol-guard',
   'frost-gunner',
-  'electric-leech',
+  'poison-leech',
   'combat-summoner',
   'scrap-thief',
-  'spawner-nest'
-] as const;
-
-export const PROTOTYPE_COLOR_ACTIVE_IDS = [
+  'spawner-nest',
   'impact-bomber'
 ] as const;
 
@@ -189,7 +190,11 @@ export function normalizeVectorShapeRecipe(recipe: VectorShapeRecipe | undefined
     accentColor: normalizeColor(recipe.accentColor, 0xff5964),
     fillColor: normalizeColor(recipe.fillColor, 0x000000),
     fillAlpha: clampFinite(recipe.fillAlpha, 0.02, 0, 1),
-    attachments: Array.isArray(recipe.attachments) ? recipe.attachments : []
+    attachments: Array.isArray(recipe.attachments) ? recipe.attachments : [],
+    symbol: typeof recipe.symbol === 'string' ? recipe.symbol : undefined,
+    symbolColor: normalizeColor(recipe.symbolColor, recipe.accentColor),
+    label: typeof recipe.label === 'string' ? recipe.label : undefined,
+    labelColor: normalizeColor(recipe.labelColor, recipe.accentColor)
   };
 }
 
@@ -217,6 +222,14 @@ function validateShapeRecipe(recipe: VectorShapeRecipe | undefined, issues: stri
 
   if (recipe.fillColor !== undefined && !isValidColor(recipe.fillColor)) {
     issues.push('shapeRecipe.fillColor must be a 24-bit color');
+  }
+
+  if (recipe.symbolColor !== undefined && !isValidColor(recipe.symbolColor)) {
+    issues.push('shapeRecipe.symbolColor must be a 24-bit color');
+  }
+
+  if (recipe.labelColor !== undefined && !isValidColor(recipe.labelColor)) {
+    issues.push('shapeRecipe.labelColor must be a 24-bit color');
   }
 }
 

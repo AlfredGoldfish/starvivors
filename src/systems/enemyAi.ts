@@ -645,7 +645,8 @@ function updateStatusShooter(input: UpdateEnemyAiInput, enemy: EnemyInstance): v
   const orbitSpeed = getParam(enemy.definition, 'orbitSpeed', 0.42);
   const target = new Phaser.Math.Vector2(0, 0);
 
-  enemy.state = getParamString(enemy.definition, 'statusKind', 'frost') === 'electric' ? 'arc-range' : 'frost-range';
+  const statusKind = getParamString(enemy.definition, 'statusKind', 'frost');
+  enemy.state = statusKind === 'electric' ? 'arc-range' : statusKind === 'poison' ? 'poison-range' : 'frost-range';
   if (distance <= 0) {
     return;
   }
@@ -947,6 +948,9 @@ function updateProximityDetonate(input: UpdateEnemyAiInput, enemy: EnemyInstance
     }
 
     const progress = Math.min(1, (input.time - enemy.stateStartedAt) / randomizedCountdownMs);
+    const swellScale = 1 + progress * getParam(enemy.definition, 'detonateSwellScale', 0.18);
+    enemy.body.setScale(swellScale);
+    enemy.wrapMirrorBody.setScale(swellScale);
     enemy.velocity.scale(Math.pow(0.9, input.deltaSeconds * 60));
     updateBlastTelegraph(input, enemy, blastRadius, progress);
     if (progress >= 1) {
@@ -956,6 +960,8 @@ function updateProximityDetonate(input: UpdateEnemyAiInput, enemy: EnemyInstance
       enemy.hp = 0;
     }
   } else {
+    enemy.body.setScale(1);
+    enemy.wrapMirrorBody.setScale(1);
     enemy.state = 'approach';
     steerToward(input, enemy, offset, getEnemySpeed(input, enemy));
   }
@@ -1266,7 +1272,7 @@ function updateProjectileShotTelegraph(
     enemy,
     enemy.body.x + direction.x * weaponRange,
     enemy.body.y + direction.y * weaponRange,
-    ENEMY_TELEGRAPH_WARNING_COLOR,
+    getEnemyTelegraphColor(enemy),
     ENEMY_TELEGRAPH_WARNING_ALPHA,
     progress
   );
@@ -1339,7 +1345,7 @@ function getParamString(definition: EnemyDefinition, key: string, fallback: stri
 
 function createProjectileStatuses(enemy: EnemyInstance): EnemyStatusEffect[] | undefined {
   const statusKind = getParamString(enemy.definition, 'statusKind', '');
-  if (statusKind !== 'frost' && statusKind !== 'electric') {
+  if (statusKind !== 'frost' && statusKind !== 'electric' && statusKind !== 'poison') {
     return undefined;
   }
 
@@ -1353,6 +1359,9 @@ function createProjectileStatuses(enemy: EnemyInstance): EnemyStatusEffect[] | u
     status.damagePerSecond = getParam(enemy.definition, 'statusDamagePerSecond', 5);
     status.tickMs = getParam(enemy.definition, 'statusTickMs', 500);
     status.accelerationDrag = getParam(enemy.definition, 'statusAccelerationDrag', 0.18);
+  } else if (statusKind === 'poison') {
+    status.damagePerSecond = getParam(enemy.definition, 'statusDamagePerSecond', 5);
+    status.tickMs = getParam(enemy.definition, 'statusTickMs', 500);
   }
 
   return [status];
@@ -1428,6 +1437,7 @@ function updateChargeTelegraph(input: UpdateEnemyAiInput, enemy: EnemyInstance, 
   const laneLength = Math.max(distance + enemy.definition.stats.radius * 5, recipeLength);
   const laneWidth = enemy.definition.stats.radius * (1.25 + progress * 0.7);
   const alpha = getEnemyTelegraphWarningAlpha(progress);
+  const color = getEnemyTelegraphColor(enemy);
 
   const lane = enemy.telegraphs.chargeLane ?? createEffectLaneImage({
     scene: input.scene,
@@ -1435,7 +1445,7 @@ function updateChargeTelegraph(input: UpdateEnemyAiInput, enemy: EnemyInstance, 
     y: enemy.body.y,
     length: laneLength,
     width: laneWidth,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color,
     alpha,
     depth: 6,
     rotation
@@ -1443,7 +1453,7 @@ function updateChargeTelegraph(input: UpdateEnemyAiInput, enemy: EnemyInstance, 
   enemy.telegraphs.chargeLane = lane;
   lane.setPosition(enemy.body.x, enemy.body.y);
   lane.setRotation(rotation);
-  lane.setTint(ENEMY_TELEGRAPH_WARNING_COLOR);
+  lane.setTint(color);
   lane.setAlpha(alpha);
   setEffectLaneSize(lane, laneLength, laneWidth);
   enemy.stateData.chargeLaneLength = laneLength;
@@ -1458,18 +1468,19 @@ function updateChargeRecoveryTelegraph(input: UpdateEnemyAiInput, enemy: EnemyIn
 
   const radius = enemy.definition.stats.radius * (1.15 + progress * 0.55);
   const alpha = getEnemyTelegraphWarningAlpha(0);
+  const color = getEnemyTelegraphColor(enemy);
   const ring = enemy.telegraphs.warningCircle ?? createEffectRingImage({
     scene: input.scene,
     x: enemy.body.x,
     y: enemy.body.y,
     radius,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color,
     alpha,
     depth: 6
   });
   enemy.telegraphs.warningCircle = ring;
   ring.setPosition(enemy.body.x, enemy.body.y);
-  ring.setTint(ENEMY_TELEGRAPH_WARNING_COLOR);
+  ring.setTint(color);
   ring.setAlpha(alpha);
   setEffectRingRadius(ring, radius);
 }
@@ -1481,18 +1492,19 @@ function updateBlastTelegraph(input: UpdateEnemyAiInput, enemy: EnemyInstance, r
   }
 
   const alpha = getEnemyTelegraphWarningAlpha(progress);
+  const color = getEnemyTelegraphColor(enemy);
   const circle = enemy.telegraphs.warningCircle ?? createEffectRingImage({
     scene: input.scene,
     x: enemy.body.x,
     y: enemy.body.y,
     radius,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color,
     alpha,
     depth: 5
   });
   enemy.telegraphs.warningCircle = circle;
   circle.setPosition(enemy.body.x, enemy.body.y);
-  circle.setTint(ENEMY_TELEGRAPH_WARNING_COLOR);
+  circle.setTint(color);
   circle.setAlpha(alpha);
   setEffectRingRadius(circle, radius * (0.88 + progress * 0.12));
 }
@@ -1510,11 +1522,12 @@ function updateSniperBeam(
   }
 
   const alpha = getEnemyTelegraphWarningAlpha(locked ? 1 : progress);
-  const beam = enemy.telegraphs.beamLine ?? input.scene.add.line(0, 0, 0, 0, 0, 0, ENEMY_TELEGRAPH_WARNING_COLOR, alpha).setOrigin(0, 0).setDepth(6);
+  const color = getEnemyTelegraphColor(enemy);
+  const beam = enemy.telegraphs.beamLine ?? input.scene.add.line(0, 0, 0, 0, 0, 0, color, alpha).setOrigin(0, 0).setDepth(6);
   enemy.telegraphs.beamLine = beam;
   const range = enemy.definition.weapon?.range ?? 1400;
   beam.setTo(enemy.body.x, enemy.body.y, enemy.body.x + direction.x * range, enemy.body.y + direction.y * range);
-  beam.setStrokeStyle(locked ? 3 : 1.5 + progress, ENEMY_TELEGRAPH_WARNING_COLOR, alpha);
+  beam.setStrokeStyle(locked ? 3 : 1.5 + progress, color, alpha);
   beam.setAlpha(alpha);
 }
 
@@ -1522,8 +1535,8 @@ function updateAura(
   input: UpdateEnemyAiInput,
   enemy: EnemyInstance,
   radius: number,
-  _color: number,
-  _alpha: number,
+  color: number,
+  baseAlpha: number,
   progress = 0
 ): void {
   if (!input.telegraphsEnabled) {
@@ -1532,19 +1545,19 @@ function updateAura(
     return;
   }
 
-  const alpha = getEnemyTelegraphWarningAlpha(progress);
+  const alpha = progress > 0 ? getEnemyTelegraphWarningAlpha(progress) : baseAlpha;
   const aura = enemy.telegraphs.auraCircle ?? createEffectRingImage({
     scene: input.scene,
     x: enemy.body.x,
     y: enemy.body.y,
     radius,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color,
     alpha,
     depth: 4
   });
   enemy.telegraphs.auraCircle = aura;
   aura.setPosition(enemy.body.x, enemy.body.y);
-  aura.setTint(ENEMY_TELEGRAPH_WARNING_COLOR);
+  aura.setTint(color);
   aura.setAlpha(alpha);
   setEffectRingRadius(aura, radius);
 }
@@ -1554,8 +1567,8 @@ function updateBeam(
   enemy: EnemyInstance,
   targetX: number,
   targetY: number,
-  _color: number,
-  _alpha: number,
+  color: number,
+  baseAlpha: number,
   progress = 0
 ): void {
   if (!input.telegraphsEnabled) {
@@ -1564,11 +1577,11 @@ function updateBeam(
     return;
   }
 
-  const alpha = getEnemyTelegraphWarningAlpha(progress);
-  const beam = enemy.telegraphs.beamLine ?? input.scene.add.line(0, 0, 0, 0, 0, 0, ENEMY_TELEGRAPH_WARNING_COLOR, alpha).setOrigin(0, 0).setDepth(6);
+  const alpha = progress > 0 ? getEnemyTelegraphWarningAlpha(progress) : baseAlpha;
+  const beam = enemy.telegraphs.beamLine ?? input.scene.add.line(0, 0, 0, 0, 0, 0, color, alpha).setOrigin(0, 0).setDepth(6);
   enemy.telegraphs.beamLine = beam;
   beam.setTo(enemy.body.x, enemy.body.y, targetX, targetY);
-  beam.setStrokeStyle(1.5 + progress, ENEMY_TELEGRAPH_WARNING_COLOR, alpha);
+  beam.setStrokeStyle(1.5 + progress, color, alpha);
   beam.setAlpha(alpha);
 }
 
@@ -1581,18 +1594,19 @@ function updateShieldArc(input: UpdateEnemyAiInput, enemy: EnemyInstance, progre
 
   const radius = enemy.definition.visual.size * 0.72;
   const alpha = getEnemyTelegraphWarningAlpha(progress);
+  const color = getEnemyTelegraphColor(enemy);
   const arc = enemy.telegraphs.shieldArc ?? createEffectRingImage({
     scene: input.scene,
     x: enemy.body.x,
     y: enemy.body.y,
     radius,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color,
     alpha,
     depth: 7
   });
   enemy.telegraphs.shieldArc = arc;
   arc.setPosition(enemy.body.x, enemy.body.y);
-  arc.setTint(ENEMY_TELEGRAPH_WARNING_COLOR);
+  arc.setTint(color);
   arc.setAlpha(alpha);
   setEffectRingRadius(arc, radius);
 }
@@ -1607,7 +1621,7 @@ function updatePhaseRing(input: UpdateEnemyAiInput, enemy: EnemyInstance): void 
     x: enemy.body.x,
     y: enemy.body.y,
     radius: enemy.definition.visual.size * 0.45,
-    color: ENEMY_TELEGRAPH_WARNING_COLOR,
+    color: getEnemyTelegraphColor(enemy),
     alpha: ENEMY_TELEGRAPH_WARNING_ALPHA,
     depth: 6
   });
@@ -1619,4 +1633,8 @@ function updatePhaseRing(input: UpdateEnemyAiInput, enemy: EnemyInstance): void 
     ease: 'Quad.easeOut',
     onComplete: () => ring.destroy()
   });
+}
+
+function getEnemyTelegraphColor(enemy: EnemyInstance): number {
+  return enemy.definition.effectRecipe?.telegraph.color ?? ENEMY_TELEGRAPH_WARNING_COLOR;
 }

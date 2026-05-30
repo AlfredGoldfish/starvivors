@@ -701,6 +701,7 @@ export class DebugState {
     rammingShieldDashCharges: number;
     rammingShieldDashMaxCharges: number;
     nextEnemySpawnSeconds: number;
+    spawnDirectorSummary: string;
     shipTuningSummaries: Record<ShipId, string>;
     weaponTuningSummaries: Record<WeaponId, string>;
     hudButtonVariant: DebugMenuValues['hudButtonVariant'];
@@ -854,7 +855,7 @@ export class DebugState {
         blackHoleShip: this.getDeathShardTuningSummary('blackHoleShip'),
         blackHoleAsteroid: this.getDeathShardTuningSummary('blackHoleAsteroid')
       },
-      spawnDirectorSummary: `Spawner ${this.enemySpawningEnabled ? 'on' : 'off'} / next ${snapshot.nextEnemySpawnSeconds.toFixed(1)}s`,
+      spawnDirectorSummary: snapshot.spawnDirectorSummary,
       hudButtonVariant: snapshot.hudButtonVariant,
       hudButtonVariantTitle: snapshot.hudButtonVariantTitle,
       hudButtonVariantDesignTarget: snapshot.hudButtonVariantDesignTarget,

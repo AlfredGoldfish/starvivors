@@ -252,12 +252,12 @@
     <div class="meta">
       <div><strong>Purpose:</strong> Track the work needed to make live enemies and asteroid hazards match the readability and communication quality of the prototype preview files.</div>
       <div><strong>Editable source:</strong> Docs/STARVIVORS_ENEMY_AND_ASTEROID_PROTOTYPE_CHECKLIST.html</div>
-      <div><strong>Roster source:</strong> src/data/enemyDefinitions.ts, ENEMY_DEFINITIONS, 26 live entries.</div>
-      <div><strong>Generated:</strong> 2026-05-29</div>
+      <div><strong>Roster source:</strong> src/data/enemyDefinitions.ts, ENEMY_DEFINITIONS, 27 live entries.</div>
+      <div><strong>Generated:</strong> 2026-05-30</div>
     </div>
     <div class="source-note">
-      Prototype references are the files under Docs/references/Enemy_Prototype/Preview Files/ named preview-enemy-*.html. Use them as player-facing clarity references, not as a mandate to copy colors or exact shapes.
-      Current normal validation mode: Wedge Striker spawning is active for charger polish. The old Scout and Wedge browser regression harnesses have been retired; use focused unit tests or manual play for those scenarios, then run ?testHarness=smoke for baseline browser smoke. Live enemy telegraphs use a shared red warning tint with near-complete brightening, Wedge Striker charge windups and normal projectile shot telegraphs use small randomized timing offsets, and Wedge Striker charges commit to the end of the displayed lane. Committed Wedge charges ignore enemy-side contact recoil and displacement during player hits so the striker still reaches its lane endpoint. Regular player-body collision no longer damages enemies, while enemy touch damage and knockback remain active. Asteroid spawning, activation, breakup, and collision validation remain unchanged.
+      Prototype references are the files under Docs/references/Enemy_Prototype/Preview Files/ named preview-enemy-*.html. Use them as the current player-facing clarity target for enemy shape, color, symbols, telegraphs, status feedback, and role readability.
+      Current validation path: browser query harnesses are smoke-only. Focused unit tests cover enemy recipe/behavior data, poison status runtime, and retired phase spawning rules; manual play or future screenshot smoke should cover dense readability. The 2026-05-30 prototype-match pass promoted all mapped preview-enemy concepts except live extras to colored vector recipes, added Poison Leech for the poisoner/freezer prototype pairing, and made live enemy telegraphs use per-enemy prototype colors.
     </div>
 
     <h2>Goal And Success Criteria</h2>
@@ -360,10 +360,10 @@
         </tr>
         <tr class="active-phase">
           <td><span class="mini-check"></span></td>
-          <td><strong>Wedge Striker</strong><br><span class="phase-tag">Active phase target</span></td>
+          <td><strong>Wedge Striker</strong><br><span class="phase-tag">Prototype matched</span></td>
           <td>charger</td>
           <td>charger</td>
-          <td>Standard red brightening windup line with randomized timing, committed full-lane dash, impact trail, and recovery pause should make the dash fair at speed; player hits must not stop the striker before the displayed lane endpoint.</td>
+          <td>Prototype charger square, red windup line, committed full-lane dash, impact trail, and recovery pause should make the dash fair at speed; player hits must not stop the striker before the displayed lane endpoint.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
         <tr>
@@ -379,7 +379,7 @@
           <td>Reactor Drone</td>
           <td>exploder</td>
           <td>exploder</td>
-          <td>Countdown radius and escalating core state must tell the player exactly when and where the blast will hit.</td>
+          <td>Circle fuse body, countdown radius, swelling core state, and orange blast feedback must tell the player exactly when and where the blast will hit.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
         <tr>
@@ -387,7 +387,7 @@
           <td>Impact Bomber</td>
           <td>exploder</td>
           <td>exploder</td>
-          <td>Contact-trigger bomber; proximity danger, short fuse behavior, blast radius, and impact should read faster than Reactor Drone.</td>
+          <td>Square instant proximity bomber; orange body, black danger mark, no fuse delay, blast radius, and impact should read faster than Reactor Drone.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
         <tr>
@@ -446,10 +446,18 @@
         </tr>
         <tr>
           <td><span class="mini-check"></span></td>
+          <td>Poison Leech</td>
+          <td>poison</td>
+          <td>poisoner/freezer</td>
+          <td>Melee status chaser; green body, poison symbol, contact DOT ticks, and the frost-enabled catch-up pairing must be distinct from Electric Leech.</td>
+          <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
+        </tr>
+        <tr>
+          <td><span class="mini-check"></span></td>
           <td>Electric Leech</td>
           <td>electric</td>
-          <td>poisoner/freezer</td>
-          <td>Status shooter; arc bolt, damage ticks, acceleration drag, and leech pressure must not be confused with frost.</td>
+          <td>Live extra status role</td>
+          <td>Status shooter; arc bolt, damage ticks, acceleration drag, and leech pressure must not be confused with frost or poison.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
       </tbody>
@@ -490,8 +498,8 @@
           <td><span class="mini-check"></span></td>
           <td>Carrier Foundry</td>
           <td>carrier</td>
-          <td>spawner</td>
-          <td>Large mobile spawner; bay animation, child launch, max-child pressure, and foundry death should be unmistakable.</td>
+          <td>Live extra carrier role</td>
+          <td>Large mobile spawner; bay animation, child launch, max-child pressure, and foundry death should be unmistakable. Spawner Nest is the direct spawner prototype match.</td>
           <td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td><td><span class="mini-check"></span></td>
         </tr>
         <tr>
@@ -731,7 +739,7 @@
         </tr>
         <tr>
           <td><span class="mini-check"></span></td>
-          <td>Confirm all 26 live enemy display names remain represented if ENEMY_DEFINITIONS changes.</td>
+          <td>Confirm all 27 live enemy display names remain represented if ENEMY_DEFINITIONS changes.</td>
           <td>Roster diff or generated name list checked against this document.</td>
         </tr>
         <tr>

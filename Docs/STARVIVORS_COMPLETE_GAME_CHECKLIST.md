@@ -109,6 +109,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 Reactor Drone validation promoted `reactor-drone` as the active live validation enemy; solo Reactor, controlled mix, detonation, warning, blast, reward cleanup, and body-contact HP safety checks should now use focused tests/manual play plus `testHarness=smoke`.
   - Evidence: 2026-05-30 Reactor Drone follow-up added a smaller player/shield-kill death blast, quieter enemy-to-enemy blast damage feedback, and per-frame explosion VFX budgeting to reduce slowdown when several blasts resolve together; `npm.cmd run build` passed and harnesses were intentionally skipped by request.
   - Evidence: 2026-05-30 Impact Bomber validation promoted `impact-bomber` as the active live validation enemy; a later prototype-match pass changed it to the prototype square instant exploder visual/effects language with orange filled square, black exclamation mark, instant proximity detonation, orange/yellow burst particles, and expanding orange blast fill/ring.
+  - Evidence: 2026-05-30 prototype enemy match pass converted the remaining mapped `preview-enemy-*.html` concepts to colored vector recipes with prototype silhouettes, fills, labels/symbols, effect colors, and per-enemy telegraph colors; it also added `poison-leech` for the poisoner/freezer melee DOT role. Focused enemy/status tests, full Vitest, `npm.cmd run build`, and `?testHarness=smoke` passed.
+  - Evidence: 2026-05-30 time-based mixed spawn director replaced the scout-only automatic ramp with 5-second first wave timing, randomized 10-30 second follow-up waves, mixed enemy pools, camera-offscreen placement, a 50 active-enemy director cap, and debug spawn summaries.
   - Next: validate sniper, support, carrier, and status enemy readability directly in live gameplay and add main-game harness evidence before marking this complete.
 - [~] World hazards are readable.
   - Done when: asteroid tiers, debris, black holes, and danger radii have consistent visual language and warning hierarchy.
@@ -170,7 +172,11 @@ This file tracks the gap between the current playable Starvivors prototype and a
 
 - [~] Asset Forge pipeline is usable.
   - Done when: promoted assets have a repeatable review, export, import, and source promotion process.
-  - Next: keep manual promotion until quality standards are stable.
+  - Evidence: 2026-05-30 AI asset generation runbook added `Docs/STARVIVORS_AI_ASSET_GENERATION_RUNBOOK.md` with repeatable image-generation, chroma-key removal, validation, naming, folder, and batch-order guidance for future raster asset sessions.
+  - Evidence: 2026-05-30 generated a first-pass AI raster asset library under `assets/ai-generated-images/` covering style tests, player ships, enemies, projectiles, VFX, asteroids/debris, pickups, UI/buttons, and backgrounds; `asset_generation_manifest_2026-05-30.json` recorded 122 final PNGs with zero dimension/alpha validation warnings.
+  - Evidence: 2026-05-30 added `Docs/STARVIVORS_AI_ASSET_PRODUCTION_WORKFLOW.md` as the reusable Codex workflow for one-game-object asset sessions, using the original AI enemy concepts as style references, standalone candidates instead of sheets, explicit variant rules, and a copy/paste future-session prompt.
+  - Evidence: 2026-05-30 added `Docs/STARVIVORS_AI_ASSET_PRODUCTION_TRACKER.md` as the user-facing asset checklist for choosing each future session object, tracking candidate/final/promotion status, and carrying the copy/paste Codex session prompt.
+  - Next: use the production tracker to run the first one-object production session, likely Diamond Gunner or Scout, then review candidates at gameplay scale before promotion.
 - [~] Player ship assets are cohesive.
   - Done when: Interceptor, Bulwark, and Engineer share a final visual language and no active ship uses a misleading fallback.
   - Evidence: 2026-05-28 monochrome object pass replaced active ship PNG/Forge rendering with generated `monochrome-outline` silhouettes for gameplay and hangar previews, while leaving legacy asset references available.
@@ -181,7 +187,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-29 cleanup moved shared enemy definitions to `src/data/enemyDefinitions.ts` and kept live-game texture generation through `src/systems/enemyVisuals.ts`.
   - Evidence: 2026-05-29 Scout active phase target added a clearer monochrome directional nose/rear-thruster silhouette, capped sampled movement trail hints, and contact recoil scale feedback for live-game validation.
   - Evidence: 2026-05-29 Scout, Wedge Striker, and Hex Tank monochrome outline strokes were thinned to 1px as a visual-only pass; collision radius, HP, contact damage, speed, and visual footprint remain unchanged.
-  - Next: pair the monochrome silhouettes with final telegraph/audio cues for sniper, charger, exploder, support, and carrier roles.
+  - Evidence: 2026-05-30 prototype enemy match pass promoted 23 prototype-mapped live enemy definitions to colored `vector-outline` recipes sourced from the preview files; Scout, Carrier Foundry, Scrap Jackal, and Electric Leech remain intentional live extra/fallback roles.
+  - Next: validate colored enemy recipes at gameplay scale in dense live runs, then add audio cues for high-risk telegraphs.
 - [~] Pickup/resource assets are cohesive.
   - Done when: scrap tiers, upgrade crates, future fuel cells, and future rare parts are distinct at gameplay scale.
   - Next: finish scrap tier polish and separate debris from collectible scrap.
@@ -232,6 +239,8 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 Impact Bomber prototype-match pass updated the live enemy to the square instant exploder visual/effects from `Docs/references/Enemy_Prototype/Preview Files/preview-enemy-exploder.html`; focused Impact Bomber/vector tests, full Vitest, and `npm.cmd run build` passed.
   - Evidence: 2026-05-30 Impact Bomber harness refactor moved the phase scenario body to `src/scenes/gameSceneImpactBomberHarness.ts`; focused Impact Bomber/vector tests, full Vitest, `npm.cmd run build`, `testHarness=impactBomberPhase`, and `testHarness=smoke` passed before the later smoke-only harness prune retired that query ID.
   - Evidence: 2026-05-30 smoke-only harness prune removed all non-smoke browser query harnesses and the global `window.starvivorsTestHarness` API; unit tests/manual play now cover focused scenarios, and `?testHarness=smoke` is the only browser query harness.
+  - Evidence: 2026-05-30 prototype enemy match pass passed focused enemy vector/status tests, full Vitest, `npm.cmd run build`, and `?testHarness=smoke` on the existing local Vite server.
+  - Evidence: 2026-05-30 time-based spawn director pass added pure director and offscreen placement tests; focused Vitest, full Vitest, `npm.cmd run build`, and `?testHarness=smoke` passed on the existing local Vite server.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
@@ -309,3 +318,6 @@ Current focus: Pass A.
 - 2026-05-30: Promoted Impact Bomber as the active live validation enemy with focused solo and exact Scout+Wedge+Tank+Reactor+Impact mix coverage, square danger-mark silhouette, restartable non-contact proximity-fuse countdown behavior, blast-ring feedback on completed detonation, inside/escaped blast checks, reward cleanup verification, player-body-contact HP safety, focused unit coverage, build pass, `impactBomberPhase` pass, and `smoke` pass.
 - 2026-05-30: Updated Impact Bomber to match the prototype square instant exploder visual/effects: orange filled square, black exclamation mark, no fuse countdown ring, orange/yellow particle burst, and expanding orange blast fill/ring; focused Impact Bomber/vector tests, full Vitest, and build passed.
 - 2026-05-30: Checkpointed the Impact Bomber validation baseline, removed generated dev-smoke logs/PIDs from tracking, added the missing `Docs/README_FOR_CODEX.md` shim, extracted the Impact Bomber phase harness body out of `GameScene.ts`, and reverified focused tests, full Vitest, build, `impactBomberPhase`, and `smoke`.
+- 2026-05-30: Matched the remaining enemy prototype preview concepts with colored live vector recipes, per-enemy telegraph colors, a new `poison-leech` melee DOT role, poison player status feedback, updated enemy prototype docs for 27 live entries, focused enemy/status tests, full Vitest, build, and `?testHarness=smoke`.
+- 2026-05-30: Added the time-based mixed enemy spawn director with 5-second first wave timing, randomized 10-30 second follow-up waves, staggered mixed enemy batches, camera-offscreen placement, a 50 active-enemy director cap, debug spawn summary updates, focused director tests, full Vitest, build, and `?testHarness=smoke`.
+- 2026-05-30: Added `Docs/STARVIVORS_AI_ASSET_GENERATION_RUNBOOK.md` as the future Codex workflow for AI-generated raster asset batches, including folders, naming, prompt templates, chroma-key removal, validation, and reporting rules.

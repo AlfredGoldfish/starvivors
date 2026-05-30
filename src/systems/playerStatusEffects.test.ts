@@ -42,4 +42,24 @@ describe('player status effects', () => {
     expect(runtime.electricDamagePerSecond).toBe(0);
     expect(getActivePlayerStatusKinds(runtime, 1801)).not.toContain('electric');
   });
+
+  it('applies poison damage over time without changing movement modifiers', () => {
+    const runtime = createPlayerStatusEffectRuntime();
+    const applyDamage = vi.fn();
+
+    applyPlayerStatusEffects(
+      runtime,
+      [{ kind: 'poison', durationMs: 1600, intensity: 1.2, damagePerSecond: 5, tickMs: 500 }],
+      100
+    );
+
+    expect(getActivePlayerStatusKinds(runtime, 200)).toContain('poison');
+    expect(resolvePlayerStatusMovementModifiers(runtime, 600).accelerationScale).toBe(1);
+    expect(updatePlayerStatusEffects({ runtime, time: 600, applyDamage })).toBeCloseTo(3);
+    expect(applyDamage.mock.calls[0][0]).toBeCloseTo(3);
+
+    updatePlayerStatusEffects({ runtime, time: 1801, applyDamage });
+    expect(runtime.poisonDamagePerSecond).toBe(0);
+    expect(getActivePlayerStatusKinds(runtime, 1801)).not.toContain('poison');
+  });
 });

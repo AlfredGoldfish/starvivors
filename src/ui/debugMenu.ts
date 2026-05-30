@@ -969,8 +969,8 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
   function buildSpawnsTab(): void {
     let y = CONTENT_TOP;
     y = addSection('spawns', y, 'Enemy Spawns');
-    addValue('spawn-state', 'spawns', y, VALUE_LINE_HEIGHT * 2);
-    y += VALUE_LINE_HEIGHT * 2 + BUTTON_GAP;
+    addValue('spawn-state', 'spawns', y, VALUE_LINE_HEIGHT * 5);
+    y += VALUE_LINE_HEIGHT * 5 + BUTTON_GAP;
     addButton('spawns', 'enemy-spawning', panelX + PANEL_PADDING, y, COLUMN_WIDTH, 'Enemy spawning', config.callbacks.toggleEnemySpawning);
     y += BUTTON_HEIGHT + BUTTON_GAP;
     addButton('spawns', 'spawn-chaser', panelX + PANEL_PADDING, y, 98, 'Chaser', () => config.callbacks.spawnEnemy('chaser'));
@@ -1830,7 +1830,7 @@ export function createDebugMenu(scene: Phaser.Scene, config: DebugMenuConfig): D
       } else if (activeTab === 'collision') {
         setValue('collision-shapes', values.collisionShapeTuningSummary);
       } else if (activeTab === 'spawns') {
-        setValue('spawn-state', `${values.spawnDirectorSummary}\nEnemies active: ${values.activeEnemies}`);
+        setValue('spawn-state', values.spawnDirectorSummary);
         setValue(
           'asteroid-state',
           `Asteroids active: ${values.activeAsteroids}\nSpawner: ${

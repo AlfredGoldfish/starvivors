@@ -213,7 +213,10 @@ function createVectorOutlineTexture(scene: Phaser.Scene, definition: EnemyDefini
   context.lineJoin = 'miter';
   context.lineCap = 'square';
   context.strokeStyle = colorToRgba(recipe.outlineColor, 0.94);
-  context.fillStyle = colorToRgba(monochrome ? recipe.fillColor ?? 0x000000 : recipe.outlineColor, monochrome ? 1 : recipe.fillAlpha ?? 0.02);
+  context.fillStyle = colorToRgba(
+    monochrome ? recipe.fillColor ?? 0x000000 : recipe.fillColor ?? recipe.outlineColor,
+    monochrome ? 1 : recipe.fillAlpha ?? 0.02
+  );
   context.lineWidth = monochrome
     ? Math.max(1, (resolvedSize?.strokeWidthPx ?? recipe.strokeWidth) / Math.max(0.01, resolvedSize?.runtimeScale ?? 1))
     : recipe.strokeWidth;
@@ -260,6 +263,14 @@ function drawVectorBaseShape(
         [-radius * 0.82, -radius * 0.22]
       ], fill);
       break;
+    case 'circle':
+      context.beginPath();
+      context.arc(0, 0, radius * 0.86, 0, Math.PI * 2);
+      if (fill) {
+        context.fill();
+      }
+      context.stroke();
+      break;
     case 'hex':
       drawPolygon(context, createRegularPolygon(6, radius * 0.92, -Math.PI / 6), fill);
       break;
@@ -303,6 +314,26 @@ function drawVectorAttachments(context: CanvasRenderingContext2D, recipe: Vector
 
   for (const attachment of attachments) {
     drawVectorAttachment(context, attachment, radius, recipe);
+  }
+
+  drawVectorRecipeText(context, recipe, radius);
+}
+
+function drawVectorRecipeText(context: CanvasRenderingContext2D, recipe: VectorShapeRecipe, radius: number): void {
+  if (recipe.symbol) {
+    context.fillStyle = colorToRgba(recipe.symbolColor ?? recipe.accentColor, 0.9);
+    context.font = `800 ${Math.max(7, radius * (recipe.symbol.length > 1 ? 0.38 : 0.62))}px "IBM Plex Mono", "Consolas", monospace`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(recipe.symbol, 0, radius * 0.02);
+  }
+
+  if (recipe.label) {
+    context.fillStyle = colorToRgba(recipe.labelColor ?? recipe.accentColor, 0.7);
+    context.font = `700 ${Math.max(5, radius * 0.18)}px "IBM Plex Mono", "Consolas", monospace`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(recipe.label, 0, radius * 1.18);
   }
 }
 

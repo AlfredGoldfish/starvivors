@@ -20,7 +20,7 @@ import {
 } from './enemyVectorRecipes';
 
 describe('enemy vector recipes', () => {
-  it('validates every active enemy role as monochrome-outline', () => {
+  it('validates active monochrome fallback enemies as monochrome-outline', () => {
     const definitionsById = getDefinitionsById();
 
     expect(MONOCHROME_OUTLINE_ACTIVE_IDS.length + PROTOTYPE_COLOR_ACTIVE_IDS.length).toBe(ENEMY_DEFINITIONS.length);
@@ -69,7 +69,7 @@ describe('enemy vector recipes', () => {
     expect(definitionsById.get('needle-sniper')?.weapon?.id).toBe('enemy-rail');
   });
 
-  it('keeps live validation enemies on thin outlines without changing their collision radii', () => {
+  it('keeps live validation enemies at their established collision radii', () => {
     const definitionsById = getDefinitionsById();
 
     for (const id of ['scout', 'wedge-striker', 'hex-tank']) {
@@ -77,7 +77,6 @@ describe('enemy vector recipes', () => {
       const size = resolveEnemyDefinitionSize(definition);
 
       expect(definition.sizeProfile?.strokeWidthPx, id).toBe(1);
-      expect(definition.shapeRecipe?.strokeWidth, id).toBe(1);
       expect(size.collisionRadiusPx, id).toBeCloseTo(definition.stats.radius, 4);
     }
   });
@@ -104,8 +103,9 @@ describe('enemy vector recipes', () => {
     const impactBomber = definitionsById.get('impact-bomber') as EnemyDefinition;
     const behaviorParams = impactBomber.behavior.params;
 
-    expect(reactor.shapeRecipe?.basePolygon).toBe('starburst');
+    expect(reactor.shapeRecipe?.basePolygon).toBe('circle');
     expect(reactor.shapeRecipe?.attachments).toContain('core-ring');
+    expect(reactor.shapeRecipe?.label).toBe('FUSE');
     expect(reactor.behavior.params?.countdownMs).toBe(1500);
     expect(getEnemyVisualStyle(impactBomber)).toBe('vector-outline');
     expect(impactBomber.shapeRecipe?.basePolygon).toBe('block-square');
@@ -152,7 +152,7 @@ describe('enemy vector recipes', () => {
       'orbiter',
       'patrol-guard',
       'frost-gunner',
-      'electric-leech',
+      'poison-leech',
       'combat-summoner',
       'scrap-thief'
     ];
@@ -165,9 +165,47 @@ describe('enemy vector recipes', () => {
     }
 
     expect(definitionsById.get('frost-gunner')?.behavior.params?.statusKind).toBe('frost');
-    expect(definitionsById.get('electric-leech')?.behavior.params?.statusKind).toBe('electric');
+    expect(definitionsById.get('poison-leech')?.behavior.params?.contactStatusKind).toBe('poison');
     expect(definitionsById.get('combat-summoner')?.behavior.id).toBe('summonerShooter');
     expect(definitionsById.get('scrap-thief')?.behavior.id).toBe('scrapThief');
+  });
+
+  it('maps prototype preview colors, labels, and silhouettes onto active live enemies', () => {
+    const definitionsById = getDefinitionsById();
+    const expectations: Array<[string, string, number, string | undefined]> = [
+      ['wedge-striker', 'block-square', 0xef5350, 'CHARGER'],
+      ['diamond-gunner', 'chevron', 0xf44336, 'SHOOTER'],
+      ['hex-tank', 'hex', 0x78909c, 'TANK'],
+      ['reactor-drone', 'circle', 0xff9800, 'FUSE'],
+      ['repair-skiff', 'support-core', 0x66bb6a, 'HEALER'],
+      ['shield-frigate', 'block-square', 0x42a5f5, 'SHIELD'],
+      ['command-relay', 'starburst', 0xffb300, 'BUFFER'],
+      ['needle-sniper', 'needle', 0xe040fb, 'SNIPER'],
+      ['spawner-nest', 'carrier-frame', 0x9c27b0, 'SPAWNER'],
+      ['combat-summoner', 'arrow-diamond', 0x00bcd4, 'SUMMONER'],
+      ['scrap-thief', 'wedge', 0x78909c, 'THIEF'],
+      ['flanker', 'chevron', 0xff9800, 'FLANKER'],
+      ['reflector', 'support-core', 0x7e57c2, 'REFLECT'],
+      ['phase-skiff', 'hex', 0xba68c8, 'TELEPORT'],
+      ['ambusher-mine', 'block-square', 0xfdd835, 'AMBUSHER'],
+      ['berserker', 'block-square', 0x8d6e63, 'BERSERK'],
+      ['orbiter', 'circle', 0xffab40, 'ORBITER'],
+      ['patrol-guard', 'block-square', 0xffa726, 'PATROL'],
+      ['frost-gunner', 'needle', 0x40c4ff, 'FREEZER'],
+      ['poison-leech', 'chevron', 0x69f0ae, 'POISONER'],
+      ['splitter', 'starburst', 0x7c4dff, 'SPLITTER'],
+      ['shard-drone', 'arrow-diamond', 0xb388ff, 'SHARD']
+    ];
+
+    for (const [id, basePolygon, fillColor, label] of expectations) {
+      const definition = definitionsById.get(id) as EnemyDefinition;
+      expect(getEnemyVisualStyle(definition), id).toBe('vector-outline');
+      expect(definition.shapeRecipe?.basePolygon, id).toBe(basePolygon);
+      expect(definition.shapeRecipe?.fillColor, id).toBe(fillColor);
+      expect(definition.shapeRecipe?.fillAlpha, id).toBe(1);
+      expect(definition.shapeRecipe?.label, id).toBe(label);
+      expect(definition.effectRecipe?.telegraph.color, id).toBeGreaterThan(0);
+    }
   });
 
   it('clamps unsafe effect values and tightens output in reduced-effects mode', () => {

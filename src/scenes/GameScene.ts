@@ -278,14 +278,17 @@ import {
   type EnemyInstance
 } from '../systems/enemySpawner';
 import {
-  SCOUT_PHASE_MAX_ACTIVE_ENEMIES,
-  SCOUT_PHASE_MODE_LABEL,
-  SCOUT_PHASE_SPAWN_INTERVAL_MS,
-  getNextScoutPhaseSpawnAt,
-  getScoutPhaseSpawnRamp,
-  getScoutPhaseWaveIndex,
-  resolveScoutPhaseEnemyDefinitionId
-} from '../systems/scoutPhaseSpawning';
+  TIME_SPAWN_DIRECTOR_ACTIVE_ENEMY_CAP,
+  TIME_SPAWN_DIRECTOR_FIRST_WAVE_MS,
+  TIME_SPAWN_DIRECTOR_MODE_LABEL,
+  createTimeSpawnDirectorState,
+  delayTimeSpawnDirectorState,
+  getTimeSpawnDirectorMixSummary,
+  getTimeSpawnDirectorSpawnPosition,
+  updateTimeSpawnDirector as updateTimeSpawnDirectorSystem,
+  type TimeSpawnDirectorPendingSpawn,
+  type TimeSpawnDirectorState
+} from '../systems/timeSpawnDirector';
 import {
   WEDGE_STRIKER_PHASE_MODE_LABEL,
   getWedgeStrikerPhaseMixCounts,
@@ -1039,6 +1042,7 @@ export class GameScene extends Phaser.Scene {
   private combatFeedback!: CombatFeedbackSystem;
   private nextBlackHolePlayerDamageAt = 0;
   private nextEnemySpawnAt = 0;
+  private timeSpawnDirectorState: TimeSpawnDirectorState = createTimeSpawnDirectorState();
   private liveEnemyExplosionVfxBudgetFrame = Number.NEGATIVE_INFINITY;
   private liveEnemyExplosionVfxBudgetUsed = 0;
   private liveEnemyBlastFeedbackLog: LiveEnemyBlastFeedbackLog[] = [];
@@ -1663,7 +1667,7 @@ export class GameScene extends Phaser.Scene {
 
     const pauseDurationMs = Math.max(0, time - this.debugMenuOpenedAt);
     this.totalDebugPauseMs += pauseDurationMs;
-    this.nextEnemySpawnAt += pauseDurationMs;
+    this.delayEnemySpawnDirector(pauseDurationMs);
     delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     this.debugMenuOpenedAt = 0;
   }
@@ -1855,6 +1859,7 @@ export class GameScene extends Phaser.Scene {
         'salvage-beam': this.debugState.getWeaponTuningSummary(getWeaponDefinition('salvage-beam'))
       },
       nextEnemySpawnSeconds: Math.max(0, this.nextEnemySpawnAt - time) / 1000,
+      spawnDirectorSummary: this.getEnemySpawnDirectorSummary(time),
       hudButtonVariant: hudVariant.id,
       hudButtonVariantTitle: hudVariant.title,
       hudButtonVariantDesignTarget: hudVariant.designTarget,
@@ -2280,11 +2285,12 @@ export class GameScene extends Phaser.Scene {
     this.nextBlackHolePlayerDamageAt = 0;
     const timingReset = createEncounterTimingResetState({
       runStartedAt: this.time.now,
-      enemySpawnInitialDelayMs: ENEMY_SPAWN_INITIAL_DELAY_MS,
+      enemySpawnInitialDelayMs: TIME_SPAWN_DIRECTOR_FIRST_WAVE_MS,
       enemySwarmFirstSpawnMs: ENEMY_SWARM_FIRST_SPAWN_MS
     });
     this.runStartedAt = timingReset.runStartedAt;
-    this.nextEnemySpawnAt = timingReset.nextEnemySpawnAt;
+    this.timeSpawnDirectorState = createTimeSpawnDirectorState(timingReset.runStartedAt);
+    this.nextEnemySpawnAt = this.timeSpawnDirectorState.nextWaveAt;
     this.nextScoutMotionHintAt = 0;
     this.scoutMotionHintCursor = 0;
     this.encounterDirectorState = timingReset.encounterDirectorState;
@@ -4398,24 +4404,46 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (time < this.nextEnemySpawnAt) {
-      return;
-    }
-
-    const ramp = getScoutPhaseSpawnRamp({
+    const result = updateTimeSpawnDirectorSystem({
+      state: this.timeSpawnDirectorState,
+      time,
       elapsedMs: this.getSurvivalElapsedMs(time),
-      activeEnemyCount: this.getActiveEnemyCount()
+      activeEnemyCount: this.getActiveEnemyCount(),
+      maxActiveEnemies: this.getEnemySpawnMaxActiveEnemies(time),
+      random: () => Phaser.Math.FloatBetween(0, 1)
     });
+    this.timeSpawnDirectorState = result.state;
+    this.nextEnemySpawnAt = this.timeSpawnDirectorState.nextWaveAt;
 
-    if (ramp.allowedSpawnCount <= 0) {
+    for (const spawn of result.dueSpawns) {
+      this.spawnTimedDirectorEnemy(spawn, time);
+    }
+  }
+
+  private delayEnemySpawnDirector(delayMs: number): void {
+    this.timeSpawnDirectorState = delayTimeSpawnDirectorState(this.timeSpawnDirectorState, delayMs);
+    this.nextEnemySpawnAt = this.timeSpawnDirectorState.nextWaveAt;
+  }
+
+  private spawnTimedDirectorEnemy(spawn: TimeSpawnDirectorPendingSpawn, time: number): void {
+    const position = this.getEnemyDirectorSpawnPosition();
+    const enemy = this.spawnLiveEnemy(
+      spawn.definitionId,
+      position.x,
+      position.y,
+      time,
+      this.getLegacySpawnTypeForLiveDefinition(spawn.definitionId),
+      TIME_SPAWN_DIRECTOR_MODE_LABEL
+    );
+
+    if (!enemy) {
       return;
     }
 
-    for (let i = 0; i < ramp.allowedSpawnCount; i += 1) {
-      this.spawnDirectedEnemy('chaser', time);
-    }
-
-    this.nextEnemySpawnAt = getNextScoutPhaseSpawnAt(this.runStartedAt, time);
+    enemy.stateData.directorWaveId = spawn.waveId;
+    enemy.stateData.directorWaveIndex = spawn.waveIndex;
+    enemy.stateData.directorWaveSequence = spawn.sequence;
+    enemy.stateData.directorWaveSize = spawn.waveSize;
   }
 
   private updateEnemyEncounterDirector(time: number): void {
@@ -4441,7 +4469,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   private spawnDirectedEnemyAt(enemyType: EnemySpawnType, time: number, x: number, y: number): void {
-    this.spawnLiveEnemy(this.getLiveEnemyDefinitionIdForSpawnType(enemyType), x, y, time, enemyType);
+    this.spawnLiveEnemy(this.getLiveEnemyDefinitionIdForSpawnType(enemyType), x, y, time, enemyType, `debug:${enemyType}`);
   }
 
   private getActiveValidationEnemyDefinitionId(): string {
@@ -4462,9 +4490,10 @@ export class GameScene extends Phaser.Scene {
     x: number,
     y: number,
     time: number,
-    legacySpawnType: EnemySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId)
+    legacySpawnType: EnemySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId),
+    spawnMode: string = this.getActiveValidationEnemyModeLabel()
   ): LiveGameEnemy | undefined {
-    if (!this.canSpawnScoutPhaseEnemy()) {
+    if (!this.canSpawnLiveEnemy()) {
       return undefined;
     }
 
@@ -4484,7 +4513,7 @@ export class GameScene extends Phaser.Scene {
     enemy.stateData.legacySpawnType = this.getLegacySpawnTypeForLiveDefinition(definitionId);
     enemy.stateData.requestedDefinitionId = definitionId;
     enemy.stateData.requestedLegacySpawnType = legacySpawnType;
-    enemy.stateData.spawnMode = this.getActiveValidationEnemyModeLabel();
+    enemy.stateData.spawnMode = spawnMode;
     this.liveEnemies.push(enemy);
     return enemy;
   }
@@ -4496,7 +4525,7 @@ export class GameScene extends Phaser.Scene {
     time: number,
     spawnMode: string
   ): LiveGameEnemy | undefined {
-    if (!this.canSpawnScoutPhaseEnemy()) {
+    if (!this.canSpawnLiveEnemy()) {
       return undefined;
     }
 
@@ -4532,20 +4561,24 @@ export class GameScene extends Phaser.Scene {
       return [];
     }
 
-    const requestedCount = resolvedSquad.entries.reduce((sum, entry) => sum + entry.count, 0);
-    const spawnCount = Math.min(requestedCount, this.getScoutPhaseSpawnCapacity());
-    const validationDefinitionId = this.getActiveValidationEnemyDefinitionId();
+    const requestedDefinitionIds = resolvedSquad.entries.flatMap((entry) =>
+      Array.from({ length: entry.count }, () => entry.definitionId)
+    );
+    const requestedCount = requestedDefinitionIds.length;
+    const spawnCount = Math.min(requestedCount, this.getLiveEnemySpawnCapacity());
     const spawned: LiveGameEnemy[] = [];
 
     for (let index = 0; index < spawnCount; index += 1) {
       const angle = (Math.PI * 2 * index) / Math.max(1, requestedCount);
       const ring = resolvedSquad.radius * (0.38 + 0.62 * ((index % 3) / 2));
+      const definitionId = requestedDefinitionIds[index] ?? 'scout';
       const enemy = this.spawnLiveEnemy(
-        validationDefinitionId,
+        definitionId,
         centerX + Math.cos(angle) * ring,
         centerY + Math.sin(angle) * ring,
         time,
-        this.getLegacySpawnTypeForLiveDefinition(validationDefinitionId)
+        this.getLegacySpawnTypeForLiveDefinition(definitionId),
+        `squad:${resolvedSquad.id}`
       );
 
       if (!enemy) {
@@ -4565,8 +4598,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getLiveEnemyDefinitionIdForSpawnType(enemyType: EnemySpawnType): string {
-    void enemyType;
-    return this.getActiveValidationEnemyDefinitionId();
+    if (enemyType === 'shooter') {
+      return 'diamond-gunner';
+    }
+
+    if (enemyType === 'tank') {
+      return 'hex-tank';
+    }
+
+    return 'scout';
   }
 
   private getLegacySpawnTypeForLiveDefinition(definitionId: string): EnemySpawnType {
@@ -4582,29 +4622,28 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemyDirectorSpawnPosition(): Phaser.Math.Vector2 {
+    const camera = this.cameras.main;
     const safeDistance = Math.min(
       ENEMY_SPAWN_SAFE_DISTANCE,
       Math.max(PLAYER_HIT_RADIUS * 4, Math.min(this.arena.width, this.arena.height) * 0.45)
     );
+    const position = getTimeSpawnDirectorSpawnPosition({
+      arena: this.arena,
+      camera: {
+        x: camera.scrollX,
+        y: camera.scrollY,
+        width: camera.width,
+        height: camera.height
+      },
+      player: {
+        x: this.player.x,
+        y: this.player.y
+      },
+      minPlayerDistance: safeDistance,
+      random: () => Phaser.Math.FloatBetween(0, 1)
+    });
 
-    for (let i = 0; i < 12; i += 1) {
-      const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-      const distance = Phaser.Math.FloatBetween(safeDistance, safeDistance * 1.55);
-      const x = wrapCoordinate(this.player.x + Math.cos(angle) * distance, this.arena.width);
-      const y = wrapCoordinate(this.player.y + Math.sin(angle) * distance, this.arena.height);
-      const offsetFromPlayer = this.getWrappedDirection(this.player.x, this.player.y, x, y);
-
-      if (offsetFromPlayer.length() >= safeDistance) {
-        return new Phaser.Math.Vector2(x, y);
-      }
-    }
-
-    const fallbackAngle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-
-    return new Phaser.Math.Vector2(
-      wrapCoordinate(this.player.x + Math.cos(fallbackAngle) * safeDistance, this.arena.width),
-      wrapCoordinate(this.player.y + Math.sin(fallbackAngle) * safeDistance, this.arena.height)
-    );
+    return new Phaser.Math.Vector2(position.x, position.y);
   }
 
   private chooseDirectedEnemyType(time: number): EnemySpawnType {
@@ -4631,33 +4670,51 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getEnemySpawnDifficultyStep(time: number): number {
-    return getScoutPhaseWaveIndex(this.getSurvivalElapsedMs(time));
+    void time;
+    return this.timeSpawnDirectorState.waveIndex;
   }
 
   private getEnemySpawnIntervalMs(time: number): number {
     void time;
-    return SCOUT_PHASE_SPAWN_INTERVAL_MS;
+    return this.timeSpawnDirectorState.lastNextDelayMs;
   }
 
   private getEnemySpawnMaxActiveEnemies(time: number): number {
     void time;
-    return SCOUT_PHASE_MAX_ACTIVE_ENEMIES;
+    return TIME_SPAWN_DIRECTOR_ACTIVE_ENEMY_CAP;
   }
 
   private getEnemyEncounterMaxActiveEnemies(time: number): number {
     return this.getEnemySpawnMaxActiveEnemies(time);
   }
 
+  private getEnemySpawnDirectorSummary(time: number): string {
+    const state = this.timeSpawnDirectorState;
+    const nextSeconds = Math.max(0, state.nextWaveAt - time) / 1000;
+    const activeCount = this.getActiveEnemyCount();
+    const activeCap = this.getEnemySpawnMaxActiveEnemies(time);
+    const mixSummary = getTimeSpawnDirectorMixSummary(state.lastMix);
+    const cappedSuffix = state.lastCapped ? ' capped' : '';
+
+    return (
+      `Director: ${TIME_SPAWN_DIRECTOR_MODE_LABEL} / ${this.debugState.enemySpawningEnabled ? 'on' : 'off'}\n` +
+      `Next: ${nextSeconds.toFixed(1)}s / wave ${state.waveIndex + 1}\n` +
+      `Last req/allowed: ${state.lastRequestedCount}/${state.lastAllowedCount}${cappedSuffix}\n` +
+      `Active cap: ${activeCount}/${activeCap} / capacity ${Math.max(0, activeCap - activeCount)}\n` +
+      `Last mix: ${mixSummary}`
+    );
+  }
+
   private getActiveEnemyCount(): number {
     return this.liveEnemies.length;
   }
 
-  private getScoutPhaseSpawnCapacity(): number {
-    return Math.max(0, SCOUT_PHASE_MAX_ACTIVE_ENEMIES - this.getActiveEnemyCount());
+  private getLiveEnemySpawnCapacity(): number {
+    return Math.max(0, TIME_SPAWN_DIRECTOR_ACTIVE_ENEMY_CAP - this.getActiveEnemyCount());
   }
 
-  private canSpawnScoutPhaseEnemy(): boolean {
-    return this.getScoutPhaseSpawnCapacity() > 0;
+  private canSpawnLiveEnemy(): boolean {
+    return this.getLiveEnemySpawnCapacity() > 0;
   }
 
   private spawnDebugEnemy(enemyType: DebugEnemyType): void {
@@ -6878,7 +6935,7 @@ export class GameScene extends Phaser.Scene {
 
     const pauseDurationMs = Math.max(0, time - this.pauseMenuOpenedAt);
     this.totalPauseMenuPauseMs += pauseDurationMs;
-    this.nextEnemySpawnAt += pauseDurationMs;
+    this.delayEnemySpawnDirector(pauseDurationMs);
     delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     this.pauseMenuOpenedAt = 0;
     this.pauseMenuTab = 'pause';
@@ -7213,7 +7270,7 @@ export class GameScene extends Phaser.Scene {
     if (this.isUpgradeOverlayOpen) {
       const pauseDurationMs = Math.max(0, time - this.upgradeOverlayOpenedAt);
       this.totalUpgradePauseMs += pauseDurationMs;
-      this.nextEnemySpawnAt += pauseDurationMs;
+      this.delayEnemySpawnDirector(pauseDurationMs);
       delayEncounterDirectorState(this.encounterDirectorState, pauseDurationMs);
     }
 
@@ -8410,18 +8467,33 @@ export class GameScene extends Phaser.Scene {
     }
 
     const statusKind = enemy.definition.behavior.params?.contactStatusKind;
-    if (statusKind !== 'frost' && statusKind !== 'electric') {
+    if (statusKind !== 'frost' && statusKind !== 'electric' && statusKind !== 'poison') {
       return;
     }
 
-    const durationMs = Number(enemy.definition.behavior.params?.contactStatusDurationMs ?? (statusKind === 'frost' ? 1800 : 2800));
-    const intensity = Number(enemy.definition.behavior.params?.contactStatusIntensity ?? 1);
-    this.applyEnemyProjectileStatuses([{ kind: statusKind, durationMs, intensity }], time);
+    const rawDurationMs = Number(enemy.definition.behavior.params?.contactStatusDurationMs);
+    const rawIntensity = Number(enemy.definition.behavior.params?.contactStatusIntensity);
+    const durationMs = Number.isFinite(rawDurationMs)
+      ? rawDurationMs
+      : statusKind === 'frost' ? 1800 : 2800;
+    const intensity = Number.isFinite(rawIntensity) ? rawIntensity : 1;
+    const status: EnemyStatusEffect = { kind: statusKind, durationMs, intensity };
+    const damagePerSecond = Number(enemy.definition.behavior.params?.contactStatusDamagePerSecond);
+    const tickMs = Number(enemy.definition.behavior.params?.contactStatusTickMs);
+    if (Number.isFinite(damagePerSecond)) {
+      status.damagePerSecond = damagePerSecond;
+    }
+    if (Number.isFinite(tickMs)) {
+      status.tickMs = tickMs;
+    }
+    this.applyEnemyProjectileStatuses([status], time);
   }
 
   private applyEnemyProjectileStatuses(statuses: EnemyProjectile['statuses'], time: number): void {
     const playerStatuses = statuses
-      ?.filter((status): status is EnemyStatusEffect => status.kind === 'frost' || status.kind === 'electric')
+      ?.filter((status): status is EnemyStatusEffect =>
+        status.kind === 'frost' || status.kind === 'electric' || status.kind === 'poison'
+      )
       .map((status) => ({
         kind: status.kind,
         durationMs: status.durationMs,
@@ -8436,7 +8508,12 @@ export class GameScene extends Phaser.Scene {
     }
 
     applyPlayerStatusEffects(this.playerStatusRuntime, playerStatuses, time);
-    this.emitLiveEnemyBurst(this.player.x, this.player.y, playerStatuses.some((status) => status.kind === 'frost') ? 0x8eeaff : 0xb3f7ff, 8);
+    const burstColor = playerStatuses.some((status) => status.kind === 'poison')
+      ? 0xb2ff59
+      : playerStatuses.some((status) => status.kind === 'frost')
+        ? 0x8eeaff
+        : 0xb3f7ff;
+    this.emitLiveEnemyBurst(this.player.x, this.player.y, burstColor, 8);
   }
 
   private updatePlayerStatuses(time: number): void {
@@ -8488,6 +8565,10 @@ export class GameScene extends Phaser.Scene {
     if (activeStatuses.includes('electric')) {
       this.drawElectricStatusOverlay(overlay, time);
     }
+
+    if (activeStatuses.includes('poison')) {
+      this.drawPoisonStatusOverlay(overlay, time);
+    }
   }
 
   private drawFrostStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
@@ -8529,6 +8610,25 @@ export class GameScene extends Phaser.Scene {
       graphics.lineTo(midX, midY);
       graphics.lineTo(x2, y2);
       graphics.strokePath();
+    }
+  }
+
+  private drawPoisonStatusOverlay(graphics: Phaser.GameObjects.Graphics, time: number): void {
+    const phase = time * 0.011;
+    graphics.lineStyle(1.4, 0xb2ff59, 0.72);
+    graphics.fillStyle(0x69f0ae, 0.08);
+    graphics.beginPath();
+    graphics.arc(0, 0, 45 + Math.sin(phase) * 3, 0, Math.PI * 2);
+    graphics.fillPath();
+    graphics.strokePath();
+
+    graphics.fillStyle(0xb2ff59, 0.42);
+    for (let index = 0; index < 5; index += 1) {
+      const angle = phase + index * Math.PI * 0.42;
+      const radius = 29 + index * 3;
+      graphics.beginPath();
+      graphics.arc(Math.cos(angle) * radius, Math.sin(angle) * radius, 2.2, 0, Math.PI * 2);
+      graphics.fillPath();
     }
   }
 
@@ -13525,7 +13625,7 @@ export class GameScene extends Phaser.Scene {
     const viewportHeight = this.scale.height;
     const enemyScaling = this.getEnemyTimeScaling(time);
     const spawnDirectorLine = this.debugState.collisionDebugEnabled
-      ? `Spawn director: ${this.getActiveValidationEnemyDefinitionId()} wave ${this.getEnemySpawnDifficultyStep(time)} / active ${this.getActiveEnemyCount()} of ${this.getEnemySpawnMaxActiveEnemies(time)} / next ${(Math.max(0, this.nextEnemySpawnAt - time) / 1000).toFixed(1)}s\n` +
+      ? `Spawn director: ${this.getEnemySpawnDirectorSummary(time).replace(/\n/g, ' / ')}\n` +
         `Enemy scaling: HP x${enemyScaling.hpMultiplier.toFixed(2)} / damage x${enemyScaling.damageMultiplier.toFixed(2)}\n`
       : '';
     const debugWeapon = this.getActivePrimaryWeaponDefinition() ?? this.getEffectiveAutoWeaponDefinition() ?? getWeaponDefinition('pulse-cannon');
