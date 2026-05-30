@@ -77,7 +77,8 @@ Each session works on one named game object only. Do not generate a multi-object
 5. Save source chroma-key images and transparent candidates under the production-candidates folder.
 6. Let the user pick a direction or request a combined revision in a later session if needed.
 7. Validate transparency, dimensions, centering, cropping, and small-size readability for the four candidates.
-8. Report candidate filenames and validation results.
+8. Commit the completed asset session before the final report, including source chroma-key images, transparent candidates, and any tracker/checklist evidence updates.
+9. Report candidate filenames, validation results, and the commit hash.
 
 Do not make runtime code changes during an asset-only session.
 
@@ -331,3 +332,5 @@ Important rules:
 ## Session Closeout
 
 For checklist-related asset work, update `Docs/STARVIVORS_COMPLETE_GAME_CHECKLIST.md` with evidence before ending the session. Do not mark final art complete until a candidate has been reviewed at gameplay scale and explicitly promoted.
+
+Every AI asset production session must end with a git commit after validation and evidence updates. Include only the session's generated source images, transparent candidate assets, and asset/checklist documentation changes. Do not include gameplay code, runtime wiring, manifests, or unrelated work unless the user explicitly requested those changes. If the worktree has no session changes to commit, state that explicitly in the final report.

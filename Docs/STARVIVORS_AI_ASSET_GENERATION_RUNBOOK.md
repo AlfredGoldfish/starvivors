@@ -137,6 +137,8 @@ Before finishing an asset batch, validate:
 - The asset remains readable when previewed around `64x64`.
 - No text, watermark, extra object, floor plane, shadow, gradient background, or leftover green fringe is obvious.
 
+After validation, commit the completed asset session before the final report. The commit should include the generated source chroma-key images, transparent candidates, and any asset tracker/checklist evidence updates for that session. Do not include runtime wiring, manifests, gameplay code, or unrelated work unless the user explicitly requested those changes.
+
 For a quick Python validation:
 
 ```powershell
@@ -326,6 +328,7 @@ At the end of an asset session, report:
 - The file names generated.
 - Whether assets are transparent PNGs and their dimensions.
 - Whether chroma-key removal and alpha validation passed.
+- The git commit hash for the completed asset session.
 - Any assets that need regeneration or manual review.
 
 Keep the response short unless the user asks for a detailed audit.
