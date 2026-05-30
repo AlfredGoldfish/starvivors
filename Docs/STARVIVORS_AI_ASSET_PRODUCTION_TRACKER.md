@@ -83,17 +83,17 @@ Default production pass for each enemy or ship-like threat: exactly 4 standalone
 | `[C]` | Diamond Gunner enemy | `enemy_diamond_gunner` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/diamond_gunner/` | Four blue 512x512 RGBA gunship candidates; no runtime promotion. |
 | `[C]` | Hex Tank enemy | `enemy_hex_tank` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/hex_tank/` | Four amber/yellow 512x512 RGBA heavy candidates; no runtime promotion. |
 | `[C]` | Reactor Drone enemy | `enemy_reactor_drone` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/reactor_drone/` | Four violet/magenta 512x512 RGBA reactor candidates; no runtime promotion. |
-| `[ ]` | Splitter enemy | `enemy_splitter` | 4 candidates only |  | Needs production concept. |
-| `[ ]` | Needle Sniper enemy | `enemy_needle_sniper` | 4 candidates only |  | Long-range high-threat silhouette. |
-| `[ ]` | Shield Frigate enemy | `enemy_shield_frigate` | 4 candidates only |  | Support/defensive threat. |
-| `[ ]` | Repair Skiff enemy | `enemy_repair_skiff` | 4 candidates only |  | Support healer/repair read. |
+| `[C]` | Splitter enemy | `enemy_splitter` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/splitter/` | Four acid-yellow 512x512 RGBA splitter candidates; no runtime promotion. |
+| `[C]` | Needle Sniper enemy | `enemy_needle_sniper` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/needle_sniper/` | Four crimson/red 512x512 RGBA sniper candidates; no runtime promotion. |
+| `[C]` | Shield Frigate enemy | `enemy_shield_frigate` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/shield_frigate/` | Four amber/gold 512x512 RGBA support candidates; no runtime promotion. |
+| `[C]` | Repair Skiff enemy | `enemy_repair_skiff` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/repair_skiff/` | Four coral/warm-white 512x512 RGBA repair candidates; no runtime promotion. |
 | `[ ]` | Command Relay enemy | `enemy_command_relay` | 4 candidates only |  | Priority support target. |
 | `[ ]` | Frost Gunner enemy | `enemy_frost_gunner` | 4 candidates only |  | Cold/status color read. |
 | `[ ]` | Poison Leech enemy | `enemy_poison_leech` | 4 candidates only |  | Poison/status melee read. |
 | `[ ]` | Combat Summoner enemy | `enemy_combat_summoner` | 4 candidates only |  | Spawns or calls support. |
 | `[ ]` | Spawner Nest enemy | `enemy_spawner_nest` | 4 candidates only |  | Large stationary/slow spawning threat. |
 | `[ ]` | Impact Bomber enemy | `enemy_impact_bomber` | 4 candidates only |  | Explosive warning silhouette. |
-| `[R]` | Phase Skiff enemy | `enemy_phase_skiff` | 4 candidates only | `assets/ai-generated-images/starvivors_enemy_phase_skiff_ai.png` | Root concept exists; not currently listed in core roster but useful special reference. |
+| `[C]` | Phase Skiff enemy | `enemy_phase_skiff` | 4 candidates only | `assets/ai-generated-images/production-candidates/enemies/phase_skiff/` | Four violet/hot-pink 512x512 RGBA skiff candidates; no runtime promotion. |
 | `[ ]` | Mothership boss/event threat | `boss_mothership` | 4 candidates only |  | Produce only when boss art pass is requested. |
 | `[ ]` | Stronghold event structure | `event_stronghold` | 4 candidates only |  | Produce only when stronghold art pass is requested. |
 
@@ -228,3 +228,8 @@ Add one line per completed production session.
 - 2026-05-30: `enemy_wedge_striker` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/wedge_striker/` - Four standalone red/orange 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `enemy_hex_tank` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/hex_tank/` - Four standalone amber/yellow 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `enemy_reactor_drone` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/reactor_drone/` - Four standalone violet/magenta 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_phase_skiff` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/phase_skiff/` - Four standalone violet/hot-pink 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_splitter` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/splitter/` - Four standalone acid-yellow 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_needle_sniper` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/needle_sniper/` - Four standalone crimson/red 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_shield_frigate` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/shield_frigate/` - Four standalone amber/gold 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `enemy_repair_skiff` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/repair_skiff/` - Four standalone coral/warm-white 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
