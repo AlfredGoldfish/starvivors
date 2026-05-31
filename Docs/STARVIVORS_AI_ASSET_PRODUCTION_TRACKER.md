@@ -1,6 +1,6 @@
 # Starvivors AI Asset Production Tracker
 
-Last reviewed: 2026-05-30
+Last reviewed: 2026-05-31
 
 Use this tracker to choose the one game object for each future Starvivors AI asset production session. This is a living list: update it after each session with the candidate folder, selected candidate notes, validation result, and promotion status.
 
@@ -16,8 +16,8 @@ The first full-library batch is archived as concept work only. Do not treat thos
 
 - `[ ]` Not started: no production one-object session yet.
 - `[R]` Reference only: useful concept/reference art exists, but no production pass is complete.
-- `[C]` Candidates: 4 standalone candidates have been generated and saved.
-- `[S]` Selected: one of the 4 candidates has been selected for possible future promotion.
+- `[C]` Candidates: standalone candidate set has been generated and saved; normal rows use 4 candidates, and custom rows note exceptions.
+- `[S]` Selected: one candidate has been selected for possible future promotion.
 - `[P]` Promoted: asset has been manually wired into runtime/UI by explicit user request.
 
 ## Session Starter Prompt
@@ -138,8 +138,20 @@ Default production pass: exactly 4 standalone candidates. Additional effect stat
 
 Default production pass: exactly 4 standalone candidates per named object. Asteroids default to `512x512`; debris defaults to `256x256`.
 
+The 2026-05-31 mineral-composite asteroid batch is a custom exception: exactly 3 standalone `1024x1024` candidates per named asteroid family, with preserved chroma-key sources.
+
 | Status | Session prompt object | Asset ID | Required production outputs | Evidence / Folder | Notes |
 | --- | --- | --- | --- | --- | --- |
+| `[C]` | Basalt crater asteroid mineral family | `asteroid_basalt_crater` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_basalt_crater/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Iron ore asteroid mineral family | `asteroid_iron_ore` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_iron_ore/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Copper ore asteroid mineral family | `asteroid_copper_ore` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_copper_ore/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Gold vein asteroid mineral family | `asteroid_gold_vein` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_gold_vein/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Diamond crystal asteroid mineral family | `asteroid_diamond_crystal` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_diamond_crystal/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Ice crystal asteroid mineral family | `asteroid_ice_crystal` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_ice_crystal/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Uranium ore asteroid mineral family | `asteroid_uranium_ore` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_uranium_ore/` | Three RGBA candidates with preserved magenta-key sources; no runtime promotion. |
+| `[C]` | Obsidian glass asteroid mineral family | `asteroid_obsidian_glass` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_obsidian_glass/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Quartz vein asteroid mineral family | `asteroid_quartz_vein` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_quartz_vein/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
+| `[C]` | Sulfur crater asteroid mineral family | `asteroid_sulfur_crater` | 3 candidates only, `1024x1024` | `assets/ai-generated-images/production-candidates/asteroids/asteroid_sulfur_crater/` | Three RGBA candidates with preserved chroma-key sources; no runtime promotion. |
 | `[ ]` | Asteroid tier 01 | `asteroid_tier_01` | 4 candidates only |  | Small/basic hazard. |
 | `[ ]` | Asteroid tier 02 | `asteroid_tier_02` | 4 candidates only |  |  |
 | `[ ]` | Asteroid tier 03 | `asteroid_tier_03` | 4 candidates only |  |  |
@@ -266,3 +278,4 @@ Add one line per completed production session.
 - 2026-05-31: `vfx_upgrade_pickup_burst` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/upgrade_pickup_burst/` - Four standalone gold/cyan 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-31: `vfx_player_death_shard_burst` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/player_death_shard_burst/` - Four standalone cyan-white/graphite 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-31: `vfx_black_hole_warning_ripple` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/black_hole_warning_ripple/` - Four standalone violet/cyan 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: asteroid mineral-composite batch - `[C]` - `assets/ai-generated-images/production-candidates/asteroids/` - Three standalone 1024x1024 RGBA candidates each for basalt crater, iron ore, copper ore, gold vein, diamond crystal, ice crystal, uranium ore, obsidian glass, quartz vein, and sulfur crater; preserved chroma-key sources; no runtime promotion.
