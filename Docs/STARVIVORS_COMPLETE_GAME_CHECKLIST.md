@@ -40,6 +40,7 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Next: improve command screen first-read for mode, ship, weapon, risk, and launch readiness.
 - [~] Run lifecycle states are understandable.
   - Done when: start, mission complete, continue, eject cancel, eject confirm, death, restart, and return-to-hub are all clear and covered by QA.
+  - Evidence: 2026-05-31 pass restored manual death debrief behavior on `092af89`: death holds the arena for the 7.6s black-box delay, leaves results closed when the debrief becomes available, shows the debrief button, and only opens results after the explicit debrief action; focused regression tests, full Vitest, build, and `?testHarness=smoke` passed.
   - Next: add a run-state QA checklist and keep result language consistent.
 - [~] Mission completion does not confuse run end behavior.
   - Done when: completion ceremony explains completed objective, reward, and whether the player can keep exploring.

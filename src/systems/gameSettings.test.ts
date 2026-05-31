@@ -31,6 +31,10 @@ describe('game settings', () => {
     expect(DEFAULT_GAME_SETTINGS.keyBindings.moveUp.primary).toBe('KeyW');
   });
 
+  it('defaults death debrief to manual open', () => {
+    expect(DEFAULT_GAME_SETTINGS.autoOpenDebriefOnDeath).toBe(false);
+  });
+
   it('normalizes stored settings and falls back per binding slot', () => {
     const storage = createLocalStorage({
       [STORAGE_KEY]: JSON.stringify({

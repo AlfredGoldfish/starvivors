@@ -384,9 +384,6 @@ function addGameplayTab(config: SharedSettingsEditorConfig): void {
       }),
     config.settings.movementMode === 'shipRelative' ? 'Ship-relative' : 'World-relative'
   );
-  y += rowStep(config);
-  addToggleSetting(config, y, 'Auto-open debrief', config.settings.autoOpenDebriefOnDeath, () =>
-    updateSettings(config, { autoOpenDebriefOnDeath: !config.settings.autoOpenDebriefOnDeath }));
 }
 
 function addAccessibilityTab(config: SharedSettingsEditorConfig): void {

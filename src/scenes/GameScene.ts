@@ -1999,11 +1999,6 @@ export class GameScene extends Phaser.Scene {
       }
       return snapshot();
     };
-    const setAutoOpenDebrief = (enabled: boolean): SmokeHarnessState => {
-      this.gameSettings = { ...this.gameSettings, autoOpenDebriefOnDeath: enabled };
-      saveGameSettings(this.gameSettings);
-      return snapshot();
-    };
     const restartRun = (): SmokeHarnessState => {
       this.startRun();
       return snapshot();
@@ -2048,7 +2043,6 @@ export class GameScene extends Phaser.Scene {
       this.toggleMinimapIfUnlocked();
       return snapshot();
     })();
-    setAutoOpenDebrief(false);
     const dead = killPlayer();
     const debriefReady = finishDeathSequence();
     const debriefOpened = openDebrief();
@@ -7117,13 +7111,6 @@ export class GameScene extends Phaser.Scene {
     this.refreshCurrentPanel();
   }
 
-  private toggleAutoOpenDebriefSetting(): void {
-    this.commitGameSettings({
-      ...this.gameSettings,
-      autoOpenDebriefOnDeath: !this.gameSettings.autoOpenDebriefOnDeath
-    });
-  }
-
   private startBindingCapture(action: RunControlAction, slot: BindingSlot): void {
     if (!this.input.keyboard) {
       return;
@@ -9871,11 +9858,6 @@ export class GameScene extends Phaser.Scene {
 
     this.isDebriefAvailable = true;
     this.updateResultsButton();
-
-    if (this.gameSettings.autoOpenDebriefOnDeath && !this.hasAutoOpenedDebrief) {
-      this.hasAutoOpenedDebrief = true;
-      this.showResultsScreen();
-    }
   }
 
   private restorePlayerHull(): void {
