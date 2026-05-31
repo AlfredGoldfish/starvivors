@@ -120,19 +120,19 @@ Default production pass: exactly 4 standalone candidates. Additional effect stat
 
 | Status | Session prompt object | Asset ID | Required production outputs | Evidence / Folder | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `[ ]` | Muzzle flash VFX | `vfx_muzzle_flash` | 4 candidates only |  | Weapon firing flash. |
-| `[ ]` | Enemy hit spark VFX | `vfx_enemy_hit_spark` | 4 candidates only |  | Common hit feedback. |
-| `[ ]` | Shield block spark VFX | `vfx_shield_block_spark` | 4 candidates only |  | Ramming Shield/block feedback. |
+| `[C]` | Muzzle flash VFX | `vfx_muzzle_flash` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/muzzle_flash/` | Four cyan-white 256x256 RGBA candidates with amber heat accents; no runtime promotion. |
+| `[C]` | Enemy hit spark VFX | `vfx_enemy_hit_spark` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/enemy_hit_spark/` | Four white/red-orange 256x256 RGBA hit-spark candidates; no runtime promotion. |
+| `[C]` | Shield block spark VFX | `vfx_shield_block_spark` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/shield_block_spark/` | Four cyan-blue 256x256 RGBA defensive impact candidates; no runtime promotion. |
 | `[C]` | Circular energy shield VFX | `vfx_circular_energy_shield` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/circular_energy_shield/` | Four cyan/blue 512x512 RGBA circular shield candidates; no runtime promotion. |
-| `[ ]` | Explosion ring VFX | `vfx_explosion_ring` | 4 candidates only |  | General explosion ring. |
-| `[ ]` | Reactor blast VFX | `vfx_reactor_blast` | 4 candidates only |  | Reactor Drone blast. |
-| `[ ]` | Poison tick burst VFX | `vfx_poison_tick_burst` | 4 candidates only |  | DOT/status feedback. |
-| `[ ]` | Frost shatter VFX | `vfx_frost_shatter` | 4 candidates only |  | Cold/status feedback. |
-| `[ ]` | Electric status pulse VFX | `vfx_electric_status_pulse` | 4 candidates only |  | Electric/status feedback. |
-| `[ ]` | Scrap pickup glint VFX | `vfx_scrap_pickup_glint` | 4 candidates only |  | Pickup feedback. |
-| `[ ]` | Upgrade pickup burst VFX | `vfx_upgrade_pickup_burst` | 4 candidates only |  | Upgrade feedback. |
-| `[ ]` | Player death shard burst VFX | `vfx_player_death_shard_burst` | 4 candidates only |  | Player destruction feedback. |
-| `[ ]` | Black-hole warning ripple VFX | `vfx_black_hole_warning_ripple` | 4 candidates only |  | Hazard warning feedback. |
+| `[C]` | Explosion ring VFX | `vfx_explosion_ring` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/explosion_ring/` | Four orange/yellow 512x512 RGBA blast-ring candidates; no runtime promotion. |
+| `[C]` | Reactor blast VFX | `vfx_reactor_blast` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/reactor_blast/` | Four violet/magenta 512x512 RGBA reactor-pulse candidates; no runtime promotion. |
+| `[C]` | Poison tick burst VFX | `vfx_poison_tick_burst` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/poison_tick_burst/` | Four toxic lime/yellow-green 256x256 RGBA candidates generated from magenta-key sources; no runtime promotion. |
+| `[C]` | Frost shatter VFX | `vfx_frost_shatter` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/frost_shatter/` | Four icy cyan/white 256x256 RGBA crystalline burst candidates; no runtime promotion. |
+| `[C]` | Electric status pulse VFX | `vfx_electric_status_pulse` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/electric_status_pulse/` | Four cyan/violet 256x256 RGBA pulse-ring candidates; no runtime promotion. |
+| `[C]` | Scrap pickup glint VFX | `vfx_scrap_pickup_glint` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/scrap_pickup_glint/` | Four cyan-white 256x256 RGBA pickup-glint candidates with graphite facets; no runtime promotion. |
+| `[C]` | Upgrade pickup burst VFX | `vfx_upgrade_pickup_burst` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/upgrade_pickup_burst/` | Four gold/cyan 256x256 RGBA upgrade-burst candidates with no symbols/text; no runtime promotion. |
+| `[C]` | Player death shard burst VFX | `vfx_player_death_shard_burst` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/player_death_shard_burst/` | Four cyan-white/graphite 512x512 RGBA ship-shard burst candidates; no runtime promotion. |
+| `[C]` | Black-hole warning ripple VFX | `vfx_black_hole_warning_ripple` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/black_hole_warning_ripple/` | Four violet/cyan 512x512 RGBA gravitational warning-ripple candidates; no runtime promotion. |
 
 ## Asteroids, Debris, And World Hazards
 
@@ -254,3 +254,15 @@ Add one line per completed production session.
 - 2026-05-30: `projectile_beam_contact_spark` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/beam_contact_spark/` - Four standalone cyan/white 256x256 RGBA VFX candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `projectile_shield_impact_shard` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/shield_impact_shard/` - Four standalone cyan/blue 256x256 RGBA VFX candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `vfx_circular_energy_shield` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/circular_energy_shield/` - Four standalone cyan/blue 512x512 RGBA shield candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_muzzle_flash` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/muzzle_flash/` - Four standalone cyan-white 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_enemy_hit_spark` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/enemy_hit_spark/` - Four standalone white/red-orange 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_shield_block_spark` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/shield_block_spark/` - Four standalone cyan-blue 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_explosion_ring` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/explosion_ring/` - Four standalone orange/yellow 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_reactor_blast` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/reactor_blast/` - Four standalone violet/magenta 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_poison_tick_burst` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/poison_tick_burst/` - Four standalone toxic lime/yellow-green 256x256 RGBA candidates generated with preserved magenta-key sources; no runtime promotion.
+- 2026-05-31: `vfx_frost_shatter` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/frost_shatter/` - Four standalone icy cyan/white 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_electric_status_pulse` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/electric_status_pulse/` - Four standalone cyan/violet 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_scrap_pickup_glint` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/scrap_pickup_glint/` - Four standalone cyan-white 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_upgrade_pickup_burst` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/upgrade_pickup_burst/` - Four standalone gold/cyan 256x256 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_player_death_shard_burst` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/player_death_shard_burst/` - Four standalone cyan-white/graphite 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-31: `vfx_black_hole_warning_ripple` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/black_hole_warning_ripple/` - Four standalone violet/cyan 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
