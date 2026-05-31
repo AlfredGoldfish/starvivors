@@ -104,15 +104,15 @@ Default production pass: exactly 4 standalone candidates. Additional intensity, 
 | Status | Session prompt object | Asset ID | Required production outputs | Evidence / Folder | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `[C]` | Pulse Cannon bolt projectile | `projectile_pulse_bolt` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/pulse_bolt/` | Four cyan/blue 128x128 RGBA player-primary bolt candidates; no runtime promotion. |
-| `[ ]` | Enemy bolt projectile | `projectile_enemy_bolt` | 4 candidates only |  | Generic enemy shot. |
-| `[ ]` | Rail shot projectile | `projectile_rail_shot` | 4 candidates only |  | Long thin sniper/rail asset. |
-| `[ ]` | Frost needle projectile | `projectile_frost_needle` | 4 candidates only |  | Cold/status projectile. |
-| `[ ]` | Poison shot projectile | `projectile_poison_shot` | 4 candidates only |  | Poison/status projectile. |
-| `[ ]` | Electric arc bolt projectile | `projectile_electric_arc_bolt` | 4 candidates only |  | Electric/status projectile. |
-| `[ ]` | Summoner shot projectile | `projectile_summoner_shot` | 4 candidates only |  | Special enemy projectile. |
-| `[ ]` | Impact bomber warning marker | `projectile_impact_bomber_warning_marker` | 4 candidates only |  | Warning/telegraph marker. |
-| `[ ]` | Beam contact spark projectile/VFX | `projectile_beam_contact_spark` | 4 candidates only |  | Beam impact contact effect. |
-| `[ ]` | Shield impact shard projectile/VFX | `projectile_shield_impact_shard` | 4 candidates only |  | Defensive impact fragment. |
+| `[C]` | Enemy bolt projectile | `projectile_enemy_bolt` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/enemy_bolt/` | Four red/orange 128x128 RGBA generic enemy-shot candidates; no runtime promotion. |
+| `[C]` | Rail shot projectile | `projectile_rail_shot` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/rail_shot/` | Four cyan/blue 256x64 RGBA long thin rail candidates; no runtime promotion. |
+| `[C]` | Frost needle projectile | `projectile_frost_needle` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/frost_needle/` | Four icy cyan/white 128x128 RGBA cold-status projectile candidates; no runtime promotion. |
+| `[C]` | Poison shot projectile | `projectile_poison_shot` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/poison_shot/` | Four toxic lime/acid-green 128x128 RGBA poison-status candidates generated from magenta-key sources; no runtime promotion. |
+| `[C]` | Electric arc bolt projectile | `projectile_electric_arc_bolt` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/electric_arc_bolt/` | Four cyan/violet 128x128 RGBA electric-status projectile candidates; no runtime promotion. |
+| `[C]` | Summoner shot projectile | `projectile_summoner_shot` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/summoner_shot/` | Four violet/magenta 128x128 RGBA special enemy-shot candidates; no runtime promotion. |
+| `[C]` | Impact bomber warning marker | `projectile_impact_bomber_warning_marker` | 4 candidates only | `assets/ai-generated-images/production-candidates/projectiles/impact_bomber_warning_marker/` | Four orange/amber 256x256 RGBA warning marker candidates; no runtime promotion. |
+| `[C]` | Beam contact spark projectile/VFX | `projectile_beam_contact_spark` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/beam_contact_spark/` | Four cyan/white 256x256 RGBA beam contact VFX candidates; stored under VFX; no runtime promotion. |
+| `[C]` | Shield impact shard projectile/VFX | `projectile_shield_impact_shard` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/shield_impact_shard/` | Four cyan/blue 256x256 RGBA shield impact shard VFX candidates; stored under VFX; no runtime promotion. |
 
 ## VFX
 
@@ -123,6 +123,7 @@ Default production pass: exactly 4 standalone candidates. Additional effect stat
 | `[ ]` | Muzzle flash VFX | `vfx_muzzle_flash` | 4 candidates only |  | Weapon firing flash. |
 | `[ ]` | Enemy hit spark VFX | `vfx_enemy_hit_spark` | 4 candidates only |  | Common hit feedback. |
 | `[ ]` | Shield block spark VFX | `vfx_shield_block_spark` | 4 candidates only |  | Ramming Shield/block feedback. |
+| `[C]` | Circular energy shield VFX | `vfx_circular_energy_shield` | 4 candidates only | `assets/ai-generated-images/production-candidates/vfx/circular_energy_shield/` | Four cyan/blue 512x512 RGBA circular shield candidates; no runtime promotion. |
 | `[ ]` | Explosion ring VFX | `vfx_explosion_ring` | 4 candidates only |  | General explosion ring. |
 | `[ ]` | Reactor blast VFX | `vfx_reactor_blast` | 4 candidates only |  | Reactor Drone blast. |
 | `[ ]` | Poison tick burst VFX | `vfx_poison_tick_burst` | 4 candidates only |  | DOT/status feedback. |
@@ -243,3 +244,13 @@ Add one line per completed production session.
 - 2026-05-30: `enemy_impact_bomber` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/impact_bomber/` - Four standalone graphite/white/orange-red 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `boss_mothership` - `[C]` - `assets/ai-generated-images/production-candidates/enemies/boss_mothership/` - Four standalone graphite carrier 512x512 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
 - 2026-05-30: `projectile_pulse_bolt` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/pulse_bolt/` - Four standalone cyan/blue 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_enemy_bolt` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/enemy_bolt/` - Four standalone red/orange 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_rail_shot` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/rail_shot/` - Four standalone cyan/blue 256x64 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_frost_needle` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/frost_needle/` - Four standalone icy cyan/white 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_poison_shot` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/poison_shot/` - Four standalone toxic lime/acid-green 128x128 RGBA candidates generated with preserved magenta-key sources; no runtime promotion.
+- 2026-05-30: `projectile_electric_arc_bolt` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/electric_arc_bolt/` - Four standalone cyan/violet 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_summoner_shot` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/summoner_shot/` - Four standalone violet/magenta 128x128 RGBA candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_impact_bomber_warning_marker` - `[C]` - `assets/ai-generated-images/production-candidates/projectiles/impact_bomber_warning_marker/` - Four standalone orange/amber 256x256 RGBA warning candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_beam_contact_spark` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/beam_contact_spark/` - Four standalone cyan/white 256x256 RGBA VFX candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `projectile_shield_impact_shard` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/shield_impact_shard/` - Four standalone cyan/blue 256x256 RGBA VFX candidates generated with preserved chroma-key sources; no runtime promotion.
+- 2026-05-30: `vfx_circular_energy_shield` - `[C]` - `assets/ai-generated-images/production-candidates/vfx/circular_energy_shield/` - Four standalone cyan/blue 512x512 RGBA shield candidates generated with preserved chroma-key sources; no runtime promotion.
