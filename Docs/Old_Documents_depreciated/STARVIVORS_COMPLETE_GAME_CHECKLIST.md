@@ -1,6 +1,6 @@
 # Starvivors Complete Game Checklist
 
-Last reviewed: 2026-05-31
+Last reviewed: 2026-06-01
 
 This file tracks the gap between the current playable Starvivors prototype and a complete, polished game. It is intentionally practical: every item should be something a future session can read, update, and verify.
 
@@ -41,6 +41,9 @@ This file tracks the gap between the current playable Starvivors prototype and a
 - [~] Run lifecycle states are understandable.
   - Done when: start, mission complete, continue, eject cancel, eject confirm, death, restart, and return-to-hub are all clear and covered by QA.
   - Evidence: 2026-05-31 pass restored manual death debrief behavior on `092af89`: death holds the arena for the 7.6s black-box delay, leaves results closed when the debrief becomes available, shows the debrief button, and only opens results after the explicit debrief action; focused regression tests, full Vitest, build, and `?testHarness=smoke` passed.
+  - Evidence: 2026-06-01 death sequence state refactor moved death debrief timing into `gameSceneDeathSequence`, kept `GameScene` as the HUD/results conductor, added focused death-state coverage, and verified default plus `?testHarness=smoke&testShip=bulwark` browser smokes.
+  - Evidence: 2026-06-01 harness cleanup stopped `?testHarness=smoke` from opening debrief automatically, made `?testShip=bulwark` work without requiring smoke mode, and verified default plus Bulwark smoke states keep results closed when the debrief button becomes available.
+  - Evidence: 2026-06-01 browser query harnesses were removed from runtime code and harness helper scripts were deleted; death flow is now covered by focused tests and manual QA instead of `?testHarness=smoke`.
   - Next: add a run-state QA checklist and keep result language consistent.
 - [~] Mission completion does not confuse run end behavior.
   - Done when: completion ceremony explains completed objective, reward, and whether the player can keep exploring.
@@ -256,15 +259,15 @@ This file tracks the gap between the current playable Starvivors prototype and a
   - Evidence: 2026-05-30 Impact Bomber validation pass added `src/systems/impactBomberPhaseSpawning.test.ts`; focused Vitest for Impact Bomber spawning and enemy visual definitions passed, `npm.cmd run build` passed, `testHarness=impactBomberPhase` passed, and `testHarness=smoke` passed.
   - Evidence: 2026-05-30 Impact Bomber prototype-match pass updated the live enemy to the square instant exploder visual/effects from `Docs/references/Enemy_Prototype/Preview Files/preview-enemy-exploder.html`; focused Impact Bomber/vector tests, full Vitest, and `npm.cmd run build` passed.
   - Evidence: 2026-05-30 Impact Bomber harness refactor moved the phase scenario body to `src/scenes/gameSceneImpactBomberHarness.ts`; focused Impact Bomber/vector tests, full Vitest, `npm.cmd run build`, `testHarness=impactBomberPhase`, and `testHarness=smoke` passed before the later smoke-only harness prune retired that query ID.
-  - Evidence: 2026-05-30 smoke-only harness prune removed all non-smoke browser query harnesses and the global `window.starvivorsTestHarness` API; unit tests/manual play now cover focused scenarios, and `?testHarness=smoke` is the only browser query harness.
+  - Evidence: 2026-05-30 smoke-only harness prune removed all non-smoke browser query harnesses and the global `window.starvivorsTestHarness` API; this was later superseded by the 2026-06-01 removal of browser query harnesses entirely.
   - Evidence: 2026-05-30 prototype enemy match pass passed focused enemy vector/status tests, full Vitest, `npm.cmd run build`, and `?testHarness=smoke` on the existing local Vite server.
   - Evidence: 2026-05-30 time-based spawn director pass added pure director and offscreen placement tests; focused Vitest, full Vitest, `npm.cmd run build`, and `?testHarness=smoke` passed on the existing local Vite server.
   - Next: keep build required after implementation changes.
 - [~] Smoke harness coverage exists.
   - Done when: key run flows, HUD, results, settings, mission, fuel, eject, and progression flows have stable harness or screenshot coverage.
   - Evidence: 2026-05-28 pass added a `pauseSettings` visual module harness path and captured desktop/narrow settings screenshots for pre-run and pause settings.
-  - Evidence: 2026-05-29 cleanup removed standalone enemy sandbox harnesses and artifacts; live `?testHarness=smoke` remains the required baseline.
-  - Evidence: 2026-05-30 smoke-only harness prune made `?testHarness=smoke` the only retained browser query harness; focused unit tests and manual play now cover retired phase, visual, shop, audio, and debug-menu scenarios.
+  - Evidence: 2026-05-29 cleanup removed standalone enemy sandbox harnesses and artifacts.
+  - Evidence: 2026-05-30 smoke-only harness prune made `?testHarness=smoke` the only retained browser query harness; this was later superseded by the 2026-06-01 removal of browser query harnesses entirely.
   - Next: add screenshot smoke set for command, hangar, shop, upgrade overlay, HUD, minimap/radar levels, results, and live enemy readability.
 - [~] Performance profiling exists.
   - Done when: repeatable stress scenarios exist for asteroid burst, swarm, mothership, rare event, high-upgrade Pulse, beam, and black hole.
@@ -349,3 +352,4 @@ Current focus: Pass A.
 - 2026-05-30: Generated the projectile/VFX AI raster production batch for enemy bolt, rail shot, frost needle, poison shot, electric arc bolt, summoner shot, impact bomber warning marker, beam contact spark, shield impact shard, and circular energy shield, including preserved chroma-key sources, transparent candidate PNGs, 64px footprint checks, and dimension/alpha/key-fringe validation under `assets/ai-generated-images/production-candidates/`.
 - 2026-05-31: Generated the VFX AI raster production batch for muzzle flash, enemy hit spark, shield block spark, explosion ring, reactor blast, poison tick burst, frost shatter, electric status pulse, scrap pickup glint, upgrade pickup burst, player death shard burst, and black-hole warning ripple, including preserved chroma-key sources, transparent candidate PNGs, 64px footprint checks, and dimension/alpha/key-fringe validation under `assets/ai-generated-images/production-candidates/vfx/`; no runtime promotion.
 - 2026-05-31: Generated the asteroid mineral-composite AI raster production batch for basalt crater, iron ore, copper ore, gold vein, diamond crystal, ice crystal, uranium ore, obsidian glass, quartz vein, and sulfur crater, including 30 preserved chroma-key sources, 30 transparent 1024x1024 candidate PNGs, 64px footprint checks, padded alpha bounds, and dimension/alpha/key-fringe validation under `assets/ai-generated-images/production-candidates/asteroids/`; no runtime promotion.
+- 2026-06-01: Refactored player death debrief gating into `src/scenes/gameSceneDeathSequence.ts`, removed death timing ownership from `GameScene`, added unit/static regression coverage, and verified focused tests, full Vitest, build, default smoke, and Bulwark smoke.

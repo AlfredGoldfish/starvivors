@@ -18,7 +18,6 @@ import {
 } from '../core/arena';
 import { getViewportSize } from '../core/viewport';
 import { basicEnemy, shooterEnemy, tankEnemy, type EnemyStatProfile } from '../data/enemies';
-import { interceptorMovement } from '../data/balance';
 import {
   ASTEROID_IMPACT_DAMAGE_VARIANCE,
   BLACK_HOLE_DAMAGE_VARIANCE,
@@ -38,7 +37,7 @@ import {
 } from '../data/missions';
 import { getRareEventDefinition, isRareEventDefinitionId, type RareEventDefinitionId } from '../data/rareEvents';
 import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
-import { DEFAULT_SHIP_ID, getShipDefinition, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
+import { DEFAULT_SHIP_ID, getShipDefinition, isShipId, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
 import {
   BOOST_EMERGENCY_PATCH_HULL_BONUS,
   BOOST_FUEL_CANISTER_BONUS,
@@ -386,7 +385,6 @@ import type {
   TankEnemy,
   UpgradeOverlayChoice
 } from './gameTypes';
-import { installGameSceneHarness } from './gameSceneHarness';
 import {
   cancelLaunchConfirmation as cancelLaunchConfirmationFlow,
   confirmLaunch as confirmLaunchFlow,
@@ -406,6 +404,12 @@ import {
   type GameSceneRunEndReason,
   type GameSceneWeaponRuntimeSlot
 } from './gameSceneRunState';
+import {
+  createDeathSequenceState,
+  resetDeathSequence,
+  startDeathSequence,
+  updateDeathSequence
+} from './gameSceneDeathSequence';
 import {
   canStartConfiguredRun as canStartConfiguredRunPreRun,
   canStartRunWithShip as canStartRunWithShipPreRun,
@@ -498,7 +502,6 @@ import {
   type WeaponLoadoutState,
   type WeaponMkLevels
 } from '../systems/progressionStorage';
-import { runProgressionLoadoutMigrationHarness } from '../systems/progressionLoadoutHarness';
 import {
   createSectorScannerRuntime,
   buildSectorScannerTargets,
@@ -823,7 +826,6 @@ interface WorldEventInstance {
 
 type WorldSquadState = 'roam' | 'patrol' | 'guard' | 'pursue' | 'disengage' | 'defeated';
 
-const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 7600;
 const PLAYER_DEATH_FLASH_MS = 900;
 const PLAYER_DEATH_RING_MS = 1000;
 const PLAYER_DEATH_SHOCKWAVE_FAR_WIDTH_MS = 5000;
@@ -847,44 +849,6 @@ interface WorldSquadInstance {
 }
 
 type HubNavConfig = Omit<PreRunNavConfig, 'scene' | 'container' | 'actionZones' | 'activeTab'>;
-
-interface SmokeHarnessState {
-  hull: number;
-  maxHull: number;
-  playerXp: number;
-  nextXpThreshold: number;
-  bankedUpgrades: number;
-  totalCredits: number;
-  radarLevel: number;
-  primaryWeaponId: WeaponId | null;
-  pulseDamageLevel: number;
-  pulseFireRateLevel: number;
-  pulseVelocityLevel: number;
-  hullPlatingLevel: number;
-  engineTuningLevel: number;
-  damageControlLevel: number;
-  weaponDamageMultiplier: number;
-  pulseCooldownMs: number;
-  pulseProjectileSpeed: number;
-  playerAccelerationMultiplier: number;
-  playerMaxSpeed: number;
-  playerInvulnerabilityMs: number;
-  isMinimapVisible: boolean;
-  isUpgradeOverlayOpen: boolean;
-  isPlayerDead: boolean;
-  isDebriefAvailable: boolean;
-  deathSequenceRemainingMs: number;
-  isResultsScreenOpen: boolean;
-  isResultsButtonVisible: boolean;
-  damageTakenTotal: number;
-  finalDamageAmount: number;
-  liveEnemies: number;
-  activeEnemies: number;
-  shooterEnemies: number;
-  tankEnemies: number;
-  projectiles: number;
-  enemyProjectiles: number;
-}
 
 export class GameScene extends Phaser.Scene {
   private arena!: ArenaSize;
@@ -928,9 +892,7 @@ export class GameScene extends Phaser.Scene {
   private resultsButtonContainer?: Phaser.GameObjects.Container;
   private resultsButtonGraphics?: Phaser.GameObjects.Graphics;
   private resultsButtonText?: Phaser.GameObjects.Text;
-  private isDebriefAvailable = false;
-  private deathSequenceEndsAt = 0;
-  private hasAutoOpenedDebrief = false;
+  private readonly deathSequence = createDeathSequenceState();
   private collisionDebugOverlay!: CollisionDebugOverlaySystem;
   private readonly performanceProfiler = new PerformanceProfilerSystem();
   private readonly autoRunDiagnostics = new AutoRunDiagnosticsSystem({
@@ -1152,9 +1114,9 @@ export class GameScene extends Phaser.Scene {
     this.events.once(Phaser.Scenes.Events.DESTROY, () => this.audio.dispose());
     this.createBackgroundTextures();
     this.applyProgressionState(loadProgressionState());
+    this.applyConfiguredTestShipOverride();
     this.showStartScreen();
     this.applyRuntimeSettings();
-    this.installTestHarness();
     this.autoRunDiagnostics.installGlobalHandlers();
     this.scale.on(Phaser.Scale.Events.RESIZE, this.handleResize, this);
   }
@@ -1867,308 +1829,6 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
-  private installTestHarness(): void {
-    installGameSceneHarness({
-      setCollisionDebugEnabled: (enabled) => {
-        this.debugState.collisionDebugEnabled = enabled;
-      },
-      startRun: () => this.startRun(),
-      runSmoke: () => this.runTestHarnessSmoke()
-    });
-  }
-
-  private getSmokeHarnessState(): SmokeHarnessState {
-    return {
-      hull: this.playerHull,
-      maxHull: this.getPlayerMaxHull(),
-      playerXp: this.playerXp,
-      nextXpThreshold: this.nextXpThreshold,
-      bankedUpgrades: this.bankedUpgrades,
-      totalCredits: this.totalCredits,
-      radarLevel: this.progressionState.radarLevel,
-      primaryWeaponId: this.playerWeapons.activePrimaryWeaponId,
-      pulseDamageLevel: this.getRunUpgradeLevelById('pulse_damage'),
-      pulseFireRateLevel: this.getRunUpgradeLevelById('pulse_fire_rate'),
-      pulseVelocityLevel: this.getRunUpgradeLevelById('pulse_velocity'),
-      hullPlatingLevel: this.getRunUpgradeLevelById('hull-plating'),
-      engineTuningLevel: this.getRunUpgradeLevelById('engine-tuning'),
-      damageControlLevel: this.getRunUpgradeLevelById('damage-control'),
-      weaponDamageMultiplier: this.getActiveAutoWeaponDamageMultiplier(),
-      pulseCooldownMs: this.getPulseCannonCooldownMs(),
-      pulseProjectileSpeed: this.getActiveAutoWeaponProjectileSpeed(),
-      playerAccelerationMultiplier: this.getPlayerAccelerationMultiplier(),
-      playerMaxSpeed: this.getPlayerMaxSpeed(),
-      playerInvulnerabilityMs: this.getPlayerDamageInvulnerabilityMs(),
-      isMinimapVisible: this.progressionState.radarLevel > 0 && this.minimap.isVisible(),
-      isUpgradeOverlayOpen: this.isUpgradeOverlayOpen,
-      isPlayerDead: this.isPlayerDead,
-      isDebriefAvailable: this.isDebriefAvailable,
-      deathSequenceRemainingMs: this.isPlayerDead && !this.isDebriefAvailable
-        ? Math.max(0, Math.ceil(this.deathSequenceEndsAt - this.time.now))
-        : 0,
-      isResultsScreenOpen: Boolean(this.resultsScreen),
-      isResultsButtonVisible: Boolean(this.resultsButtonContainer?.visible),
-      damageTakenTotal: this.runCombatStats.damageTakenTotal,
-      finalDamageAmount: this.runCombatStats.finalDamageAmount,
-      liveEnemies: this.liveEnemies.length,
-      activeEnemies: this.getActiveEnemyCount(),
-      shooterEnemies: this.getLiveEnemyLegacyCount('shooter'),
-      tankEnemies: this.getLiveEnemyLegacyCount('tank'),
-      projectiles: this.playerProjectiles.length,
-      enemyProjectiles: this.enemyProjectiles.length
-    };
-  }
-
-  private runTestHarnessSmoke(): void {
-    const snapshot = () => this.getSmokeHarnessState();
-    const grantXp = (amount: number): SmokeHarnessState => {
-      this.grantXp(amount);
-      return snapshot();
-    };
-    const selectUpgradeById = (upgradeId: UpgradeId): SmokeHarnessState => {
-      const upgrade = UPGRADE_CHOICES.find((candidate) => candidate.id === upgradeId);
-      if (!upgrade) {
-        return snapshot();
-      }
-
-      if (!this.isUpgradeOverlayOpen && this.bankedUpgrades > 0 && !this.isPlayerDead) {
-        this.openUpgradeOverlay(this.time.now);
-      }
-
-      this.selectUpgrade(upgrade, this.time.now);
-      return snapshot();
-    };
-    const collectAllScrap = (): SmokeHarnessState => {
-      for (const scrap of [...this.scrapPickups]) {
-        if (scrap.kind !== 'scrap') {
-          continue;
-        }
-
-        this.collectScrapPickup(scrap);
-        const index = this.scrapPickups.indexOf(scrap);
-        if (index >= 0) {
-          this.scrapPickups.splice(index, 1);
-        }
-      }
-
-      return snapshot();
-    };
-    const destroyFirstEnemy = (): SmokeHarnessState => {
-      const enemy = this.liveEnemies[0];
-      if (enemy && !this.isPlayerDead) {
-        this.destroyLiveEnemyWithRewards(enemy, 0);
-      }
-      return snapshot();
-    };
-    const addCredits = (amount: number): SmokeHarnessState => {
-      this.totalCredits = Math.max(0, this.totalCredits + amount);
-      this.saveProgression();
-      return snapshot();
-    };
-    const openUpgradeOverlayForSmoke = (): SmokeHarnessState => {
-      if (this.bankedUpgrades > 0 && !this.isPlayerDead) {
-        this.openUpgradeOverlay(this.time.now);
-      }
-      return snapshot();
-    };
-    const clickUpgradeButton = (): SmokeHarnessState => {
-      this.handleNormalUpgradeButtonClick();
-      return snapshot();
-    };
-    const killPlayer = (): SmokeHarnessState => {
-      this.damagePlayer(this.getPlayerMaxHull(), this.time.now, this.player.x, this.player.y, {
-        bypassShield: true,
-        bypassDefense: true
-      });
-      return snapshot();
-    };
-    const finishDeathSequence = (): SmokeHarnessState => {
-      if (this.isPlayerDead && this.runEndReason === 'death') {
-        this.deathSequenceEndsAt = this.time.now;
-        this.updateDeathDebriefGate(this.time.now);
-        if (!this.isDebriefAvailable) {
-          this.isDebriefAvailable = true;
-          this.updateResultsButton();
-        }
-      }
-      return snapshot();
-    };
-    const openDebrief = (): SmokeHarnessState => {
-      if (this.isDebriefAvailable) {
-        this.showResultsScreen();
-      }
-      return snapshot();
-    };
-    const restartRun = (): SmokeHarnessState => {
-      this.startRun();
-      return snapshot();
-    };
-
-    const initial = snapshot();
-    const primaryShotsBefore = this.playerProjectiles.length;
-    const primaryWeapon = this.getActivePrimaryWeaponDefinition();
-    if (primaryWeapon) {
-      this.usePlayerWeapon(primaryWeapon, 'primary', this.time.now);
-      this.playerWeapons.nextPrimaryWeaponFireAt = this.time.now + this.getWeaponSlotCooldownMs(primaryWeapon, 'primary');
-    }
-    const primaryShot = snapshot();
-    const enemyAfterKill = destroyFirstEnemy();
-    this.spawnScrapPickup('enemy', 5, this.player.x, this.player.y, new Phaser.Math.Vector2(0, 0));
-    const enemyXp = collectAllScrap();
-    const enemyRewardXp = Math.max(0, enemyXp.playerXp - initial.playerXp);
-    const rolloverGrant = Math.max(0, INITIAL_XP_THRESHOLD - enemyXp.playerXp + 5);
-    const rollover = grantXp(rolloverGrant);
-    const multi = grantXp(250);
-    const buttonOpened = clickUpgradeButton();
-    this.closeUpgradeOverlay(this.time.now);
-    const opened = openUpgradeOverlayForSmoke();
-    const damageUpgrade = selectUpgradeById('pulse_damage');
-    const fireRateUpgrade = selectUpgradeById('pulse_fire_rate');
-    const rebanked = grantXp(10);
-    const velocityUpgrade = selectUpgradeById('pulse_velocity');
-    const passiveBank = grantXp(900);
-    const hullUpgrade = selectUpgradeById('hull-plating');
-    const engineUpgrade = selectUpgradeById('engine-tuning');
-    const damageControlUpgrade = selectUpgradeById('damage-control');
-    const radarCredits = addCredits(50);
-    const radarPurchased = (() => {
-      this.purchaseRadarUpgrade();
-      return snapshot();
-    })();
-    const minimapOff = (() => {
-      this.toggleMinimapIfUnlocked();
-      return snapshot();
-    })();
-    const minimapOn = (() => {
-      this.toggleMinimapIfUnlocked();
-      return snapshot();
-    })();
-    const dead = killPlayer();
-    const debriefReady = finishDeathSequence();
-    const debriefOpened = openDebrief();
-    const afterDeadXp = grantXp(1000);
-    const restarted = restartRun();
-    const pass =
-      initial.playerXp === 0 &&
-      initial.nextXpThreshold === INITIAL_XP_THRESHOLD &&
-      initial.bankedUpgrades === 0 &&
-      initial.primaryWeaponId === 'pulse-cannon' &&
-      initial.liveEnemies === BASIC_ENEMY_COUNT &&
-      initial.activeEnemies === BASIC_ENEMY_COUNT &&
-      initial.shooterEnemies === SHOOTER_ENEMY_COUNT &&
-      initial.tankEnemies === TANK_ENEMY_COUNT &&
-      initial.enemyProjectiles === 0 &&
-      primaryShot.projectiles === primaryShotsBefore + 1 &&
-      enemyRewardXp > 0 &&
-      enemyXp.activeEnemies === Math.max(0, initial.activeEnemies - 1) &&
-      rollover.playerXp === 5 &&
-      rollover.nextXpThreshold === 120 &&
-      rollover.bankedUpgrades === 1 &&
-      multi.playerXp === 135 &&
-      multi.nextXpThreshold === 144 &&
-      multi.bankedUpgrades === 2 &&
-      buttonOpened.isUpgradeOverlayOpen &&
-      opened.isUpgradeOverlayOpen &&
-      damageUpgrade.bankedUpgrades === 1 &&
-      damageUpgrade.isUpgradeOverlayOpen &&
-      damageUpgrade.pulseDamageLevel === 1 &&
-      damageUpgrade.weaponDamageMultiplier === 1.25 &&
-      fireRateUpgrade.bankedUpgrades === 0 &&
-      !fireRateUpgrade.isUpgradeOverlayOpen &&
-      fireRateUpgrade.pulseFireRateLevel === 1 &&
-      fireRateUpgrade.pulseCooldownMs < damageUpgrade.pulseCooldownMs &&
-      rebanked.bankedUpgrades === 1 &&
-      velocityUpgrade.bankedUpgrades === 0 &&
-      velocityUpgrade.pulseVelocityLevel === 1 &&
-      velocityUpgrade.pulseProjectileSpeed > fireRateUpgrade.pulseProjectileSpeed &&
-      passiveBank.bankedUpgrades === 3 &&
-      hullUpgrade.bankedUpgrades === 2 &&
-      hullUpgrade.isUpgradeOverlayOpen &&
-      hullUpgrade.hullPlatingLevel === 1 &&
-      hullUpgrade.maxHull === PLAYER_MAX_HULL + HULL_PLATING_MAX_HULL_BONUS &&
-      hullUpgrade.hull === PLAYER_MAX_HULL + HULL_PLATING_REPAIR &&
-      engineUpgrade.bankedUpgrades === 1 &&
-      engineUpgrade.isUpgradeOverlayOpen &&
-      engineUpgrade.engineTuningLevel === 1 &&
-      engineUpgrade.playerAccelerationMultiplier === 1.08 &&
-      engineUpgrade.playerMaxSpeed === Math.round(interceptorMovement.maxSpeed * 1.04) &&
-      damageControlUpgrade.bankedUpgrades === 0 &&
-      !damageControlUpgrade.isUpgradeOverlayOpen &&
-      damageControlUpgrade.damageControlLevel === 1 &&
-      damageControlUpgrade.playerInvulnerabilityMs === PLAYER_DAMAGE_INVULNERABILITY_MS + DAMAGE_CONTROL_INVULNERABILITY_BONUS_MS &&
-      radarCredits.totalCredits >= 50 &&
-      radarPurchased.radarLevel === 1 &&
-      !minimapOff.isMinimapVisible &&
-      minimapOn.isMinimapVisible &&
-      dead.isPlayerDead &&
-      !dead.isResultsScreenOpen &&
-      !dead.isDebriefAvailable &&
-      !dead.isResultsButtonVisible &&
-      dead.deathSequenceRemainingMs > 0 &&
-      debriefReady.isDebriefAvailable &&
-      debriefReady.isResultsButtonVisible &&
-      !debriefReady.isResultsScreenOpen &&
-      debriefOpened.isResultsScreenOpen &&
-      !debriefOpened.isResultsButtonVisible &&
-      debriefOpened.damageTakenTotal > 0 &&
-      debriefOpened.finalDamageAmount > 0 &&
-      afterDeadXp.playerXp === damageControlUpgrade.playerXp &&
-      afterDeadXp.bankedUpgrades === damageControlUpgrade.bankedUpgrades &&
-      restarted.hull === PLAYER_MAX_HULL &&
-      restarted.maxHull === PLAYER_MAX_HULL &&
-      restarted.playerXp === 0 &&
-      restarted.nextXpThreshold === INITIAL_XP_THRESHOLD &&
-      restarted.bankedUpgrades === 0 &&
-      restarted.primaryWeaponId === 'pulse-cannon' &&
-      restarted.liveEnemies === BASIC_ENEMY_COUNT &&
-      restarted.activeEnemies === BASIC_ENEMY_COUNT &&
-      restarted.shooterEnemies === SHOOTER_ENEMY_COUNT &&
-      restarted.tankEnemies === TANK_ENEMY_COUNT &&
-      restarted.enemyProjectiles === 0 &&
-      restarted.pulseDamageLevel === 0 &&
-      restarted.pulseFireRateLevel === 0 &&
-      restarted.pulseVelocityLevel === 0 &&
-      restarted.hullPlatingLevel === 0 &&
-      restarted.engineTuningLevel === 0 &&
-      restarted.damageControlLevel === 0 &&
-      !restarted.isPlayerDead;
-
-    document.body.setAttribute('data-starvivors-harness', pass ? 'pass' : 'fail');
-    document.body.setAttribute(
-      'data-starvivors-harness-details',
-      JSON.stringify({
-        initial,
-        primaryShotsBefore,
-        primaryShot,
-        enemyAfterKill,
-        enemyXp,
-        enemyRewardXp,
-        rolloverGrant,
-        rollover,
-        multi,
-        buttonOpened,
-        opened,
-        damageUpgrade,
-        fireRateUpgrade,
-        rebanked,
-        velocityUpgrade,
-        passiveBank,
-        hullUpgrade,
-        engineUpgrade,
-        damageControlUpgrade,
-        radarCredits,
-        radarPurchased,
-        minimapOff,
-        minimapOn,
-        dead,
-        debriefReady,
-        debriefOpened,
-        afterDeadXp,
-        restarted
-      })
-    );
-  }
-
   private rebuildWorld(options: { consumePendingRunBoosts?: boolean } = {}): void {
     const consumePendingRunBoosts = options.consumePendingRunBoosts ?? true;
     this.gameFlowState = 'running';
@@ -2218,9 +1878,7 @@ export class GameScene extends Phaser.Scene {
     this.hasPaidRunCredits = rewardReset.hasPaidRunCredits;
     this.lastRunSurvivalMs = rewardReset.lastRunSurvivalMs;
     this.runCombatStats = createInitialRunCombatStats();
-    this.isDebriefAvailable = false;
-    this.deathSequenceEndsAt = 0;
-    this.hasAutoOpenedDebrief = false;
+    resetDeathSequence(this.deathSequence);
     const progressReset = createRunProgressResetState(INITIAL_XP_THRESHOLD);
     this.playerInvulnerableUntil = progressReset.playerInvulnerableUntil;
     this.isPlayerDead = progressReset.isPlayerDead;
@@ -2428,6 +2086,25 @@ export class GameScene extends Phaser.Scene {
     return clampHudButtonVariant(Number(query.get('hudButtonVariant')));
   }
 
+  private applyConfiguredTestShipOverride(): void {
+    const query = new URLSearchParams(window.location.search);
+    const requestedShipId = query.get('testShip');
+    if (!isShipId(requestedShipId)) {
+      return;
+    }
+
+    const ship = getShipDefinition(requestedShipId);
+    if (!ship.selectable) {
+      return;
+    }
+
+    this.unlockedShipIds.add(ship.id);
+    this.selectedShipId = ship.id;
+    this.hangarPreviewShipId = ship.id;
+    this.ensureSelectedShipStartingWeaponAvailable(ship);
+    this.saveProgression();
+  }
+
   private getConfiguredMissionId(): MissionDefinitionId {
     const query = new URLSearchParams(window.location.search);
     const requestedMissionId = query.get('missionId');
@@ -2522,9 +2199,7 @@ export class GameScene extends Phaser.Scene {
     this.bankedUpgrades = 0;
     this.pendingRareUpgrades = 0;
     this.rerollsThisRun = 0;
-    this.isDebriefAvailable = false;
-    this.deathSequenceEndsAt = 0;
-    this.hasAutoOpenedDebrief = false;
+    resetDeathSequence(this.deathSequence);
     this.playerProjectiles = [];
     this.enemyProjectiles = [];
     this.nextScoutMotionHintAt = 0;
@@ -8017,7 +7692,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const isVisible = this.isDebriefAvailable && !this.resultsScreen;
+    const isVisible = this.deathSequence.isDebriefAvailable && !this.resultsScreen;
     this.resultsButtonContainer
       .setPosition(this.scale.width / 2, this.scale.height - 238)
       .setVisible(isVisible)
@@ -9819,9 +9494,7 @@ export class GameScene extends Phaser.Scene {
 
     this.isPlayerDead = true;
     this.runEndReason = 'death';
-    this.isDebriefAvailable = false;
-    this.hasAutoOpenedDebrief = false;
-    this.deathSequenceEndsAt = this.time.now + DEATH_SEQUENCE_DEBRIEF_DELAY_MS;
+    startDeathSequence(this.deathSequence, this.time.now);
     this.failMission('player-death', this.time.now);
     this.playerHull = 0;
     this.captureRunResults(this.time.now);
@@ -9848,16 +9521,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   private updateDeathDebriefGate(time: number): void {
-    if (!this.isPlayerDead || this.runEndReason !== 'death' || this.isDebriefAvailable || this.deathSequenceEndsAt <= 0) {
-      return;
+    if (updateDeathSequence(this.deathSequence, time, this.runEndReason, this.isPlayerDead)) {
+      this.updateResultsButton();
     }
-
-    if (time < this.deathSequenceEndsAt) {
-      return;
-    }
-
-    this.isDebriefAvailable = true;
-    this.updateResultsButton();
   }
 
   private restorePlayerHull(): void {
@@ -9868,9 +9534,7 @@ export class GameScene extends Phaser.Scene {
     this.playerHull = this.getPlayerMaxHull();
     this.isPlayerDead = false;
     this.runEndReason = 'none';
-    this.isDebriefAvailable = false;
-    this.deathSequenceEndsAt = 0;
-    this.hasAutoOpenedDebrief = false;
+    resetDeathSequence(this.deathSequence);
     this.player.setVisible(true);
     this.playerSprite.clearTint();
     this.playerSprite.setAlpha(1);
@@ -10303,9 +9967,7 @@ export class GameScene extends Phaser.Scene {
     this.gameFlowState = 'running';
     this.isPlayerDead = false;
     this.runEndReason = 'none';
-    this.isDebriefAvailable = false;
-    this.deathSequenceEndsAt = 0;
-    this.hasAutoOpenedDebrief = false;
+    resetDeathSequence(this.deathSequence);
     this.playerHull = Math.max(this.playerHull, this.getPlayerMaxHull());
     this.player.setVisible(true);
     this.playerSprite.clearTint();

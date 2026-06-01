@@ -32,9 +32,31 @@ describe('GameScene death debrief gate', () => {
   it('makes the debrief button available without opening results automatically', () => {
     const body = getPrivateMethodBody('updateDeathDebriefGate');
 
-    expect(body).toContain('this.isDebriefAvailable = true');
+    expect(body).toContain('updateDeathSequence');
     expect(body).toContain('this.updateResultsButton()');
     expect(body).not.toContain('autoOpenDebriefOnDeath');
     expect(body).not.toContain('showResultsScreen');
+  });
+
+  it('does not let the removed auto-open setting control the death flow', () => {
+    const killPlayerBody = getPrivateMethodBody('killPlayer');
+    const gateBody = getPrivateMethodBody('updateDeathDebriefGate');
+
+    expect(killPlayerBody).not.toContain('autoOpenDebriefOnDeath');
+    expect(gateBody).not.toContain('autoOpenDebriefOnDeath');
+  });
+
+  it('does not install browser query test harnesses in the game scene', () => {
+    expect(sceneSource).not.toContain('installGameSceneHarness');
+    expect(sceneSource).not.toContain('installTestHarness');
+    expect(sceneSource).not.toContain('runTestHarnessSmoke');
+    expect(sceneSource).not.toContain('data-starvivors-harness');
+  });
+
+  it('lets testShip select a ship without forcing the smoke harness', () => {
+    const body = getPrivateMethodBody('applyConfiguredTestShipOverride');
+
+    expect(body).toContain("query.get('testShip')");
+    expect(body).not.toContain("query.get('testHarness')");
   });
 });
