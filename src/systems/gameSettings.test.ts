@@ -31,8 +31,8 @@ describe('game settings', () => {
     expect(DEFAULT_GAME_SETTINGS.keyBindings.moveUp.primary).toBe('KeyW');
   });
 
-  it('defaults death debrief to manual open', () => {
-    expect(DEFAULT_GAME_SETTINGS.autoOpenDebriefOnDeath).toBe(false);
+  it('defaults death debrief to auto-open after the death sequence', () => {
+    expect(DEFAULT_GAME_SETTINGS.autoOpenDebriefOnDeath).toBe(true);
   });
 
   it('normalizes stored settings and falls back per binding slot', () => {

@@ -9,6 +9,10 @@ import {
 } from './gameSceneDeathSequence';
 
 describe('game scene death sequence state', () => {
+  it('uses the five second death pause before debrief', () => {
+    expect(DEATH_SEQUENCE_DEBRIEF_DELAY_MS).toBe(5000);
+  });
+
   it('starts death with debrief unavailable and the full delay remaining', () => {
     const state = createDeathSequenceState();
 
@@ -40,15 +44,23 @@ describe('game scene death sequence state', () => {
     expect(getDeathSequenceRemainingMs(state, 3000 + DEATH_SEQUENCE_DEBRIEF_DELAY_MS, true)).toBe(0);
   });
 
-  it('does not unlock debrief for non-death run endings', () => {
+  it('unlocks debrief when an eject sequence delay expires', () => {
     const state = createDeathSequenceState();
 
     startDeathSequence(state, 4000);
-    const missionChanged = updateDeathSequence(state, 4000 + DEATH_SEQUENCE_DEBRIEF_DELAY_MS, 'mission', true);
     const ejectChanged = updateDeathSequence(state, 4000 + DEATH_SEQUENCE_DEBRIEF_DELAY_MS, 'eject', true);
 
+    expect(ejectChanged).toBe(true);
+    expect(state.isDebriefAvailable).toBe(true);
+  });
+
+  it('does not unlock debrief for mission completion', () => {
+    const state = createDeathSequenceState();
+
+    startDeathSequence(state, 4500);
+    const missionChanged = updateDeathSequence(state, 4500 + DEATH_SEQUENCE_DEBRIEF_DELAY_MS, 'mission', true);
+
     expect(missionChanged).toBe(false);
-    expect(ejectChanged).toBe(false);
     expect(state.isDebriefAvailable).toBe(false);
   });
 

@@ -81,7 +81,7 @@ export const RUN_CONTROL_ACTIONS: RunControlAction[] = [
 export const DEFAULT_GAME_SETTINGS: GameSettings = {
   settingsVersion: CURRENT_SETTINGS_VERSION,
   movementMode: 'shipRelative',
-  autoOpenDebriefOnDeath: false,
+  autoOpenDebriefOnDeath: true,
   graphics: {
     vfxDensity: 1,
     screenShakeAmount: 0.7,

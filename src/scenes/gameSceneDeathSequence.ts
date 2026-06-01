@@ -1,6 +1,6 @@
 import type { GameSceneRunEndReason } from './gameSceneRunState';
 
-export const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 7600;
+export const DEATH_SEQUENCE_DEBRIEF_DELAY_MS = 5000;
 
 export interface GameSceneDeathSequenceState {
   isDebriefAvailable: boolean;
@@ -30,7 +30,12 @@ export function updateDeathSequence(
   runEndReason: GameSceneRunEndReason,
   isPlayerDead: boolean
 ): boolean {
-  if (!isPlayerDead || runEndReason !== 'death' || state.isDebriefAvailable || state.endsAt <= 0) {
+  if (
+    !isPlayerDead ||
+    (runEndReason !== 'death' && runEndReason !== 'eject') ||
+    state.isDebriefAvailable ||
+    state.endsAt <= 0
+  ) {
     return false;
   }
 

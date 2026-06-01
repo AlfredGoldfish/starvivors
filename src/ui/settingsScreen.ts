@@ -381,8 +381,17 @@ function addGameplayTab(config: SharedSettingsEditorConfig): void {
     () =>
       updateSettings(config, {
         movementMode: config.settings.movementMode === 'shipRelative' ? 'worldRelative' : 'shipRelative'
-      }),
+    }),
     config.settings.movementMode === 'shipRelative' ? 'Ship-relative' : 'World-relative'
+  );
+  y += rowStep(config);
+  addToggleSetting(
+    config,
+    y,
+    'Auto-open debrief',
+    config.settings.autoOpenDebriefOnDeath,
+    () => updateSettings(config, { autoOpenDebriefOnDeath: !config.settings.autoOpenDebriefOnDeath }),
+    config.settings.autoOpenDebriefOnDeath ? 'After 5s' : 'Manual'
   );
 }
 

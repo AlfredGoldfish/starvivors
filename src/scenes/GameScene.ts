@@ -6368,12 +6368,13 @@ export class GameScene extends Phaser.Scene {
 
     this.isPlayerDead = true;
     this.runEndReason = 'eject';
-    this.gameFlowState = 'results';
+    startDeathSequence(this.deathSequence, this.time.now);
     this.failMission('run-ended', this.time.now);
     this.captureRunResults(this.time.now);
     this.payRunCredits();
     this.playSfxCue('eject-confirmed', { bypassCooldown: true });
     this.emitPlayerDeathShards();
+    this.schedulePlayerDeathShockwave(this.time.now);
     this.playerVelocity.set(0, 0);
     this.clearRammingShieldDashBurst();
     this.player.setVisible(false);
@@ -6387,7 +6388,6 @@ export class GameScene extends Phaser.Scene {
     }
     this.closeEjectConfirmation();
     this.updateGameplayHud(this.time.now);
-    this.showResultsScreen();
     this.autoRunDiagnostics.endRun('ejected');
   }
 
@@ -9523,6 +9523,10 @@ export class GameScene extends Phaser.Scene {
   private updateDeathDebriefGate(time: number): void {
     if (updateDeathSequence(this.deathSequence, time, this.runEndReason, this.isPlayerDead)) {
       this.updateResultsButton();
+
+      if (this.gameSettings.autoOpenDebriefOnDeath) {
+        this.showResultsScreen();
+      }
     }
   }
 
@@ -13358,7 +13362,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    if (this.isPlayerDead && this.runEndReason === 'death') {
+    if (this.isPlayerDead && (this.runEndReason === 'death' || this.runEndReason === 'eject')) {
       this.updateGameplayHud(this.time.now);
       this.updateResultsButton();
       return;

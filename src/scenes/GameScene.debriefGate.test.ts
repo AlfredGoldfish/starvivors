@@ -28,22 +28,30 @@ function getPrivateMethodBody(methodName: string): string {
   throw new Error(`Could not read ${methodName} body.`);
 }
 
-describe('GameScene death debrief gate', () => {
-  it('makes the debrief button available without opening results automatically', () => {
+describe('GameScene run-end debrief gate', () => {
+  it('makes the debrief button available and auto-opens only when the setting allows it', () => {
     const body = getPrivateMethodBody('updateDeathDebriefGate');
 
     expect(body).toContain('updateDeathSequence');
     expect(body).toContain('this.updateResultsButton()');
-    expect(body).not.toContain('autoOpenDebriefOnDeath');
-    expect(body).not.toContain('showResultsScreen');
+    expect(body).toContain('this.gameSettings.autoOpenDebriefOnDeath');
+    expect(body).toContain('this.showResultsScreen()');
   });
 
-  it('does not let the removed auto-open setting control the death flow', () => {
+  it('does not open debrief from the immediate player death path', () => {
     const killPlayerBody = getPrivateMethodBody('killPlayer');
-    const gateBody = getPrivateMethodBody('updateDeathDebriefGate');
 
-    expect(killPlayerBody).not.toContain('autoOpenDebriefOnDeath');
-    expect(gateBody).not.toContain('autoOpenDebriefOnDeath');
+    expect(killPlayerBody).toContain('startDeathSequence');
+    expect(killPlayerBody).not.toContain('showResultsScreen');
+  });
+
+  it('delays eject debrief and schedules the run-end shockwave', () => {
+    const completeEjectRunBody = getPrivateMethodBody('completeEjectRun');
+
+    expect(completeEjectRunBody).toContain('startDeathSequence');
+    expect(completeEjectRunBody).toContain('schedulePlayerDeathShockwave');
+    expect(completeEjectRunBody).not.toContain("this.gameFlowState = 'results'");
+    expect(completeEjectRunBody).not.toContain('showResultsScreen');
   });
 
   it('does not install browser query test harnesses in the game scene', () => {
