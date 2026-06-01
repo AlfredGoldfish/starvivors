@@ -48,6 +48,7 @@ export interface ShipSkinDefinition {
   id: string;
   displayName: string;
   tint?: number;
+  textureKey?: string;
   unlockedByDefault?: boolean;
 }
 
@@ -165,9 +166,9 @@ export const shipRegistry: ShipRegistryEntry[] = [
     startingPrimaryWeaponId: pulseCannon.id,
     startingSecondaryWeaponId: null,
     skins: [
-      { id: 'interceptor-cyan', displayName: 'Cyan', unlockedByDefault: true },
-      { id: 'interceptor-amber', displayName: 'Amber', tint: 0xffc857, unlockedByDefault: true },
-      { id: 'interceptor-ghost', displayName: 'Ghost', tint: 0xd6f7ff }
+      { id: 'interceptor-cyan', displayName: 'Cyan', textureKey: 'player-ship-interceptor-default', unlockedByDefault: true },
+      { id: 'interceptor-amber', displayName: 'Amber', tint: 0xffc857, textureKey: 'player-ship-interceptor-skin-02', unlockedByDefault: true },
+      { id: 'interceptor-ghost', displayName: 'Ghost', tint: 0xd6f7ff, textureKey: 'player-ship-interceptor-skin-03' }
     ],
     speedRating: 'Fast',
     handlingRating: 'Responsive',
@@ -231,9 +232,9 @@ export const shipRegistry: ShipRegistryEntry[] = [
     startingPrimaryWeaponId: rammingShield.id,
     startingSecondaryWeaponId: null,
     skins: [
-      { id: 'bulwark-teal', displayName: 'Teal', unlockedByDefault: true },
-      { id: 'bulwark-red', displayName: 'Redline', tint: 0xff5964, unlockedByDefault: true },
-      { id: 'bulwark-gold', displayName: 'Gold', tint: 0xffc857 }
+      { id: 'bulwark-teal', displayName: 'Teal', textureKey: 'player-ship-bulwark-default', unlockedByDefault: true },
+      { id: 'bulwark-red', displayName: 'Redline', tint: 0xff5964, textureKey: 'player-ship-bulwark-skin-02', unlockedByDefault: true },
+      { id: 'bulwark-gold', displayName: 'Gold', tint: 0xffc857, textureKey: 'player-ship-bulwark-skin-03' }
     ],
     defaultPrimaryWeaponBonuses: {
       'ramming-shield': {
@@ -315,9 +316,9 @@ export const shipRegistry: ShipRegistryEntry[] = [
     startingPrimaryWeaponId: salvageBeam.id,
     startingSecondaryWeaponId: null,
     skins: [
-      { id: 'engineer-green', displayName: 'Green', tint: 0x69f0ae, unlockedByDefault: true },
-      { id: 'engineer-yellow', displayName: 'Yellow', tint: 0xffc857, unlockedByDefault: true },
-      { id: 'engineer-white', displayName: 'White', tint: 0xd8fff2 }
+      { id: 'engineer-green', displayName: 'Green', tint: 0x69f0ae, textureKey: 'player-ship-engineer-default', unlockedByDefault: true },
+      { id: 'engineer-yellow', displayName: 'Yellow', tint: 0xffc857, textureKey: 'player-ship-engineer-skin-02', unlockedByDefault: true },
+      { id: 'engineer-white', displayName: 'White', tint: 0xd8fff2, textureKey: 'player-ship-engineer-skin-03' }
     ],
     scrapValueMultiplier: 1.25,
     speedRating: 'Moderate',

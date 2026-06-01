@@ -1,11 +1,11 @@
 import Phaser from 'phaser';
-import enemyWreckageDebrisUrl from '../../assets/scraps_debri/debri.png';
-import scrapTier1CyanShardUrl from '../../assets/scraps_debri/scrap_tier_1_cyan_shard.png';
-import scrapTier2GreenClusterUrl from '../../assets/scraps_debri/scrap_tier_2_green_cluster.png';
-import scrapTier3GoldClusterUrl from '../../assets/scraps_debri/scrap_tier_3_gold_cluster.png';
-import scrapTier4RedClusterUrl from '../../assets/scraps_debri/scrap_tier_4_red_cluster.png';
-import upgradeCratePickupUrl from '../../assets/upgrade_create.png';
-import rammingShieldUrl from '../../assets/ships/ramming shield.png';
+import enemyWreckageDebrisUrl from '../assets/debris/enemy_wreckage.png';
+import rammingShieldUrl from '../assets/equipment/ramming_shield.png';
+import scrapTier1CyanShardUrl from '../assets/pickups/scrap/scrap_tier_01_cyan_shard.png';
+import scrapTier2GreenClusterUrl from '../assets/pickups/scrap/scrap_tier_02_green_cluster.png';
+import scrapTier3GoldClusterUrl from '../assets/pickups/scrap/scrap_tier_03_gold_cluster.png';
+import scrapTier4RedClusterUrl from '../assets/pickups/scrap/scrap_tier_04_red_cluster.png';
+import upgradeCratePickupUrl from '../assets/pickups/upgrades/upgrade_crate.png';
 import {
   createArenaSize,
   DEFAULT_SECTOR_SCALE,
@@ -38,6 +38,11 @@ import {
 import { getRareEventDefinition, isRareEventDefinitionId, type RareEventDefinitionId } from '../data/rareEvents';
 import { getWorldEventDefinition, type WorldEventDefinition, type WorldEventDefinitionId } from '../data/worldEvents';
 import { DEFAULT_SHIP_ID, getShipDefinition, isShipId, shipRegistry, type ShipId, type ShipRegistryEntry } from '../data/ships';
+import {
+  getEnemyVariantAsset,
+  getPlayerShipSkinAsset,
+  getRuntimePngAssets
+} from '../data/gameplayPngAssets';
 import {
   BOOST_EMERGENCY_PATCH_HULL_BONUS,
   BOOST_FUEL_CANISTER_BONUS,
@@ -1065,6 +1070,9 @@ export class GameScene extends Phaser.Scene {
     this.load.image(SCRAP_PICKUP_TIER_4_TEXTURE_KEY, scrapTier4RedClusterUrl);
     this.load.image(UPGRADE_CRATE_PICKUP_TEXTURE_KEY, upgradeCratePickupUrl);
     this.load.image(RAMMING_SHIELD_TEXTURE_KEY, rammingShieldUrl);
+    for (const asset of getRuntimePngAssets()) {
+      this.load.image(asset.textureKey, asset.url);
+    }
   }
 
   create(): void {
@@ -3244,6 +3252,11 @@ export class GameScene extends Phaser.Scene {
   }
 
   private getShipTextureKey(ship: ShipRegistryEntry): string {
+    const skinAsset = getPlayerShipSkinAsset(ship.id, this.selectedSkinIds[ship.id]);
+    if (skinAsset && this.textures.exists(skinAsset.textureKey)) {
+      return skinAsset.textureKey;
+    }
+
     const textureKey = getPlayerShipMonochromeTextureKey(ship);
     if (!this.textures.exists(textureKey)) {
       createPlayerShipMonochromeTextures(this, [ship]);
@@ -4175,7 +4188,8 @@ export class GameScene extends Phaser.Scene {
       y,
       time,
       hpMultiplier: scaling.hpMultiplier,
-      showDebugLabel: false
+      showDebugLabel: false,
+      random: () => Phaser.Math.FloatBetween(0, 1)
     });
 
     enemy.damageMultiplier = scaling.damageMultiplier;
@@ -4207,7 +4221,8 @@ export class GameScene extends Phaser.Scene {
       y,
       time,
       hpMultiplier: scaling.hpMultiplier,
-      showDebugLabel: false
+      showDebugLabel: false,
+      random: () => Phaser.Math.FloatBetween(0, 1)
     });
 
     enemy.damageMultiplier = scaling.damageMultiplier;
@@ -5173,14 +5188,26 @@ export class GameScene extends Phaser.Scene {
     style: DeathShardStyle = 'ship'
   ): void {
     this.emitDeathShards(
-      getEnemyTextureKey(enemy.definitionId),
+      this.getLiveEnemyTextureKey(enemy),
       enemy.body.x,
       enemy.body.y,
-      enemy.definition.visual.size,
+      this.getLiveEnemyVisualDisplaySize(enemy),
       enemy.body.rotation,
       inheritedVelocity,
       style
     );
+  }
+
+  private getLiveEnemyTextureKey(enemy: LiveGameEnemy): string {
+    const variantTextureKey = getEnemyVariantAsset(enemy.definitionId, enemy.variantId)?.textureKey;
+    return variantTextureKey && this.textures.exists(variantTextureKey)
+      ? variantTextureKey
+      : getEnemyTextureKey(enemy.definitionId);
+  }
+
+  private getLiveEnemyVisualDisplaySize(enemy: LiveGameEnemy): number {
+    const image = enemy.body.getData('visualImage') as Phaser.GameObjects.Image | undefined;
+    return image?.displayWidth ?? enemy.definition.visual.size;
   }
 
   private getLiveEnemyLegacySpawnType(enemy: LiveGameEnemy): EnemySpawnType {
@@ -9432,10 +9459,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.emitPlayerStyleDeathFeedback(
-      getEnemyTextureKey(enemy.definitionId),
+      this.getLiveEnemyTextureKey(enemy),
       enemy.body.x,
       enemy.body.y,
-      enemy.definition.visual.size,
+      this.getLiveEnemyVisualDisplaySize(enemy),
       enemy.body.rotation,
       this.getLiveEnemyTotalVelocity(enemy)
     );

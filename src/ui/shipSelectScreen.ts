@@ -9,6 +9,7 @@ import {
   type ShipId,
   type ShipRegistryEntry
 } from '../data/ships';
+import { getPlayerShipSkinAsset } from '../data/gameplayPngAssets';
 import { getWeaponDefinition, type WeaponId, type WeaponRegistryEntry, type WeaponSlotType } from '../data/weapons';
 import { type WeaponLoadoutState, type WeaponMkLevels } from '../systems/progressionStorage';
 import {
@@ -168,7 +169,7 @@ function renderShipRoster(
     graphics.fillRect(rowX + 10, rowY + rowHeight - 5, rowWidth - 20, 2);
 
     const preview = config.scene.add
-      .image(rowX + 32, rowY + rowHeight / 2, getShipPreviewTextureKey(config.scene, ship))
+      .image(rowX + 32, rowY + rowHeight / 2, getShipPreviewTextureKey(config.scene, ship, config.selectedSkinIds))
       .setDisplaySize(48, 48)
       .setRotation(ship.visualRotation)
       .setAlpha(unlocked ? 1 : 0.5);
@@ -219,7 +220,7 @@ function renderHullPanel(
   const contentX = x + 20;
   const contentWidth = width - 40;
   const image = config.scene.add
-    .image(x + width / 2, imageY, getShipPreviewTextureKey(config.scene, ship))
+    .image(x + width / 2, imageY, getShipPreviewTextureKey(config.scene, ship, config.selectedSkinIds))
     .setDisplaySize(
       resolveShipObjectSizeProfile(ship).visualDiameterPx * (compact ? 0.68 : 0.92),
       resolveShipObjectSizeProfile(ship).visualDiameterPx * (compact ? 0.68 : 0.92)
@@ -289,7 +290,16 @@ function renderHullPanel(
   });
 }
 
-function getShipPreviewTextureKey(scene: Phaser.Scene, ship: ShipRegistryEntry): string {
+function getShipPreviewTextureKey(
+  scene: Phaser.Scene,
+  ship: ShipRegistryEntry,
+  selectedSkinIds: Partial<Record<ShipId, string>>
+): string {
+  const skinAsset = getPlayerShipSkinAsset(ship.id, selectedSkinIds[ship.id]);
+  if (skinAsset && scene.textures.exists(skinAsset.textureKey)) {
+    return skinAsset.textureKey;
+  }
+
   const textureKey = getPlayerShipMonochromeTextureKey(ship);
   if (!scene.textures.exists(textureKey)) {
     createPlayerShipMonochromeTextures(scene, [ship]);
@@ -411,26 +421,36 @@ function renderSkinWheel(
 
   let cursorX = x;
   for (const skin of skins) {
-    const skinWidth = Math.max(64, Math.min(92, skin.displayName.length * 8 + 18));
+    const skinAsset = getPlayerShipSkinAsset(ship.id, skin.id);
+    const hasImagePreview = Boolean(skinAsset && config.scene.textures.exists(skinAsset.textureKey));
+    const skinWidth = Math.max(hasImagePreview ? 78 : 64, Math.min(104, skin.displayName.length * 8 + (hasImagePreview ? 34 : 18)));
     const selected = skin.id === selectedSkin;
     graphics.fillStyle(selected ? 0x102633 : 0x111a24, 0.94);
     graphics.fillRoundedRect(cursorX, y, skinWidth, 24, 5);
     graphics.lineStyle(1, selected ? 0x42f5d7 : 0x52627f, selected ? 0.9 : 0.62);
     graphics.strokeRoundedRect(cursorX, y, skinWidth, 24, 5);
-    if (skin.tint !== undefined) {
+
+    if (hasImagePreview && skinAsset) {
+      const preview = config.scene.add
+        .image(cursorX + 13, y + 12, skinAsset.textureKey)
+        .setDisplaySize(18, 18)
+        .setRotation(ship.visualRotation)
+        .setAlpha(skin.unlockedByDefault ? 1 : 0.48);
+      container.add(preview);
+    } else if (skin.tint !== undefined) {
       graphics.fillStyle(skin.tint, 0.95);
       graphics.fillCircle(cursorX + 12, y + 12, 5);
     }
     container.add(
       config.scene.add
-        .text(cursorX + skinWidth / 2, y + 12, skin.displayName, {
+        .text(hasImagePreview ? cursorX + 28 : cursorX + skinWidth / 2, y + 12, skin.displayName, {
           fontFamily: FONT,
           fontSize: '10px',
           color: skin.unlockedByDefault ? '#f2fbff' : '#8090a6',
-          align: 'center',
-          fixedWidth: skinWidth - 6
+          align: hasImagePreview ? 'left' : 'center',
+          fixedWidth: skinWidth - (hasImagePreview ? 32 : 6)
         })
-        .setOrigin(0.5)
+        .setOrigin(hasImagePreview ? 0 : 0.5, 0.5)
     );
     const zone = config.scene.add
       .zone(config.scene.scale.width / 2 + cursorX, config.scene.scale.height / 2 + y, skinWidth, 24)

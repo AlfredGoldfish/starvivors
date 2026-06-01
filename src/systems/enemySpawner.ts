@@ -7,6 +7,10 @@ import {
   type EnemyDefinition,
   type EnemySquadDefinition
 } from '../data/enemyDefinitions';
+import {
+  getEnemyVariantAsset,
+  getRandomEnemyVariantAsset
+} from '../data/gameplayPngAssets';
 import { createEnemyVisualContainer } from './enemyVisuals';
 import { resolveEnemyDefinitionSize } from './enemyVectorRecipes';
 
@@ -64,6 +68,7 @@ export interface SpawnEnemyInput {
   time: number;
   hpMultiplier: number;
   showDebugLabel: boolean;
+  random?: () => number;
 }
 
 let nextEnemyRuntimeId = 1;
@@ -81,14 +86,17 @@ export function spawnEnemy(input: SpawnEnemyInput): EnemyInstance {
   const x = wrapCoordinate(input.x, input.arena.width);
   const y = wrapCoordinate(input.y, input.arena.height);
   const hp = Math.max(1, definition.stats.hp * input.hpMultiplier);
-  const body = createEnemyVisualContainer(input.scene, x, y, definition);
-  const wrapMirrorBody = createEnemyVisualContainer(input.scene, x, y, definition);
+  const variant =
+    getEnemyVariantAsset(definition.id, input.variantId) ??
+    getRandomEnemyVariantAsset(definition.id, input.random);
+  const body = createEnemyVisualContainer(input.scene, x, y, definition, { textureKey: variant?.textureKey });
+  const wrapMirrorBody = createEnemyVisualContainer(input.scene, x, y, definition, { textureKey: variant?.textureKey });
   wrapMirrorBody.setVisible(false);
 
   const instance: EnemyInstance = {
     id: `enemy-${nextEnemyRuntimeId++}`,
     definitionId: definition.id,
-    variantId: input.variantId,
+    variantId: variant?.variantId,
     definition,
     body,
     wrapMirrorBody,
@@ -132,6 +140,7 @@ export function spawnEnemySquad(input: {
   time: number;
   hpMultiplier: number;
   showDebugLabel: boolean;
+  random?: () => number;
 }): EnemyInstance[] {
   const squad = ENEMY_SQUADS.find((candidate) => candidate.id === input.squadId) ?? ENEMY_SQUADS[0];
   const totalCount = squad.entries.reduce((sum, entry) => sum + entry.count, 0);
@@ -151,7 +160,8 @@ export function spawnEnemySquad(input: {
           y: input.centerY + Math.sin(angle) * ring,
           time: input.time,
           hpMultiplier: input.hpMultiplier,
-          showDebugLabel: input.showDebugLabel
+          showDebugLabel: input.showDebugLabel,
+          random: input.random
         })
       );
       index += 1;

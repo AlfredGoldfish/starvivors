@@ -17,6 +17,10 @@ export function getEnemyTextureKey(definitionId: string): string {
   return `${ENEMY_TEXTURE_PREFIX}-${definitionId}`;
 }
 
+export interface EnemyVisualContainerOptions {
+  textureKey?: string;
+}
+
 export function createEnemyVisualTextures(scene: Phaser.Scene, definitions: EnemyDefinition[]): void {
   for (const definition of definitions) {
     createEnemyVisualTexture(scene, definition);
@@ -27,8 +31,13 @@ export function createEnemyVisualContainer(
   scene: Phaser.Scene,
   x: number,
   y: number,
-  definition: EnemyDefinition
+  definition: EnemyDefinition,
+  options: EnemyVisualContainerOptions = {}
 ): Phaser.GameObjects.Container {
+  if (options.textureKey && scene.textures.exists(options.textureKey)) {
+    return createRasterEnemyVisualContainer(scene, x, y, definition, options.textureKey);
+  }
+
   if (getEnemyVisualStyle(definition) === 'monochrome-outline' && definition.shapeRecipe) {
     return createMonochromeOutlineVisualContainer(scene, x, y, definition);
   }
@@ -69,6 +78,42 @@ export function createEnemyVisualContainer(
     core.setBlendMode(Phaser.BlendModes.ADD);
     container.setData('visualCore', core);
   }
+
+  return container;
+}
+
+function createRasterEnemyVisualContainer(
+  scene: Phaser.Scene,
+  x: number,
+  y: number,
+  definition: EnemyDefinition,
+  textureKey: string
+): Phaser.GameObjects.Container {
+  const size = resolveEnemyDefinitionSize(definition);
+  const visualWidth = size.visualDiameterPx;
+  const visualHeight = size.visualDiameterPx;
+  const glowScale = definition.visual.glowScale ?? 1;
+  const glow = scene.add.ellipse(
+    0,
+    0,
+    visualWidth * 1.35 * glowScale,
+    visualHeight * 1.35 * glowScale,
+    definition.visual.glowColor,
+    0.16
+  );
+  glow.setBlendMode(Phaser.BlendModes.ADD);
+
+  const image = scene.add.image(0, 0, textureKey);
+  image.setOrigin(0.5);
+  image.setDisplaySize(visualWidth, visualHeight);
+  image.setRotation(definition.visual.rotationOffset ?? 0);
+
+  const container = scene.add.container(x, y, [glow, image]);
+  container.setDepth(9);
+  container.setSize(visualWidth, visualHeight);
+  container.setData('visualImage', image);
+  container.setData('visualGlow', glow);
+  container.setData('visualTextureKey', textureKey);
 
   return container;
 }
